@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- Theme Colors (Light & Dark) ---------- */
+:root {
+  --bg: #0e0e10;
+  --text: #ffffff;
+  --text-light: #cccccc;
+}
+
+html.light {
+  --bg: #ffffff;
+  --text: #111111;
+  --text-light: #444444;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  @apply font-sans antialiased;
+}
+
+/* ---------- Smooth Scrolling ---------- */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ---------- Custom Input Style ---------- */
+.input {
+  @apply bg-[#2d3748] text-white p-3 rounded-lg w-full placeholder-gray-400 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition;
+}
+html.light .input {
+  @apply bg-white text-black placeholder-gray-500 border-gray-300;
+}
+
+/* ---------- Scrollbar Styling ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* ---------- Animations ---------- */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 1s ease-out forwards;
+}
+
+@keyframes fade-in-slow {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-slow {
+  animation: fade-in-slow 1.4s ease-out forwards;
+}
+
+@keyframes bounce-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.animate-bounce-slow {
+  animation: bounce-slow 2.5s infinite ease-in-out;
+}
