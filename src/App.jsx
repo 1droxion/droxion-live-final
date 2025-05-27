@@ -7,7 +7,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 // Pages
-import Home from "./home"; // ✅ Your landing page
+import Home from "./Home"; // ✅ Your landing page
 import Landing from "./Landing"; // Optional internal page
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
@@ -29,7 +29,7 @@ function AnimatedRoutes() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<home />} /> {/* ✅ Your real homepage */}
+        <Route path="/" element={<Home />} /> {/* ✅ Your real Homepage */}
         <Route path="/landing" element={<Landing />} /> {/* optional */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/generator" element={<Generator />} />
