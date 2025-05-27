@@ -29,7 +29,7 @@ function AnimatedRoutes() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<Home />} /> {/* ✅ Your real homepage */}
+        <Route path="/" element={<Home />} /> {/* ✅ Your real Homepage */}
         <Route path="/landing" element={<Landing />} /> {/* optional */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/generator" element={<Generator />} />
