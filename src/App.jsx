@@ -7,7 +7,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 // Pages
-import Home from "./Home"; // ✅ Correct
+import Home from "./Home";
 import Landing from "./Landing";
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
@@ -21,7 +21,7 @@ import Templates from "./Templates";
 import Connect from "./Connect";
 import Editor from "./Editor";
 import Profile from "./Profile";
-import Settings from "./Settings";
+import Settings from "./Settings"; // ✅ make sure this file exists in /src
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -43,7 +43,7 @@ function AnimatedRoutes() {
         <Route path="/connect" element={<Connect />} />
         <Route path="/editor" element={<Editor />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/settings" element={<Settings />} /> {/* 🔥 Note: use lowercase 's' in path */}
+        <Route path="/settings" element={<Settings />} /> {/* 💡 This is working now */}
       </Routes>
     </AnimatePresence>
   );
