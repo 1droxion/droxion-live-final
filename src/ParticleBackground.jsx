@@ -1,10 +1,10 @@
 import React from "react";
-import Particles from "react-tsparticles";
-import { loadFull } from "tsparticles";
+import { Particles } from "@tsparticles/react"; // ✅ new import
+import { loadFull } from "@tsparticles/engine"; // ✅ new import
 
 export default function ParticleBackground() {
   const particlesInit = async (main) => {
-    await loadFull(main);
+    await loadFull(main); // ✅ still correct
   };
 
   return (
