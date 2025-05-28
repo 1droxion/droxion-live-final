@@ -43,7 +43,7 @@ function AnimatedRoutes() {
         <Route path="/connect" element={<Connect />} />
         <Route path="/editor" element={<Editor />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/Settings" element={<Settings />} />
       </Routes>
     </AnimatePresence>
   );
