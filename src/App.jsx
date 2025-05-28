@@ -7,7 +7,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 // Pages
-import Home from "./Home"; // ✅ Your landing page
+import Home from "./home"; // ✅ Your landing page
 import Landing from "./Landing"; // Optional internal page
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
