@@ -45,7 +45,6 @@ function Settings() {
       </h1>
 
       <div className="bg-[#111827] rounded-xl p-6 shadow-xl border border-gray-800 space-y-6 max-w-xl">
-        {/* Profile Info */}
         <div>
           <h2 className="text-sm text-gray-400 mb-1">👤 Username</h2>
           <p className="text-lg font-bold">{user.username}</p>
@@ -53,7 +52,6 @@ function Settings() {
           <p className="text-md">{user.email}</p>
         </div>
 
-        {/* Sound Toggle */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Volume2 className="text-green-400" />
@@ -73,7 +71,6 @@ function Settings() {
           </button>
         </div>
 
-        {/* Toast Toggle */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Bell className="text-yellow-400" />
@@ -93,7 +90,6 @@ function Settings() {
           </button>
         </div>
 
-        {/* Logout */}
         <div className="pt-4 border-t border-gray-700">
           <button
             onClick={handleLogout}
