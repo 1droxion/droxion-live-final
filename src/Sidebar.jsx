@@ -33,7 +33,7 @@ function Sidebar({ isOpen }) {
   ];
 
   return (
-    <div className="h-full bg-[#111] border-r border-gray-800 p-4 flex flex-col">
+    <div className="h-full border-r border-gray-800 p-4 flex flex-col">
       <h1 className="text-xl font-bold mb-6 text-white">{isOpen ? "Droxion" : "🚀"}</h1>
       <div className="flex flex-col gap-2">
         {navLinks.map(({ label, path, icon: Icon }) => (
@@ -41,7 +41,9 @@ function Sidebar({ isOpen }) {
             key={path}
             to={path}
             className={`flex items-center gap-3 px-3 py-2 rounded-md hover:bg-[#1f2937] transition ${
-              location.pathname === path ? "bg-[#1f2937] text-green-400 font-semibold" : "text-gray-300"
+              location.pathname === path
+                ? "bg-[#1f2937] text-green-400 font-semibold shadow-lg shadow-green-500/20"
+                : "text-gray-300"
             }`}
           >
             <Icon size={20} />
