@@ -1,46 +1,57 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
-  Home, LayoutDashboard, BotMessageSquare, Sparkles, BadgeDollarSign,
-  Image as ImageIcon, Video, User, Settings, FileText, Book, Rocket, Wand2
+  LayoutDashboard,
+  Wand2,
+  Sparkles,
+  Image,
+  Film,
+  Bot,
+  GalleryHorizontal,
+  Link2,
+  PencilRuler,
+  User,
+  Settings,
 } from "lucide-react";
 
 function Sidebar() {
-  const navItems = [
-    { to: "/landing", icon: <Home size={20} />, label: "Landing" },
-    { to: "/dashboard", icon: <LayoutDashboard size={20} />, label: "Dashboard" },
-    { to: "/generator", icon: <Video size={20} />, label: "Generator" },
-    { to: "/auto-generator", icon: <Sparkles size={20} />, label: "Auto Generator" },
-    { to: "/chatboard", icon: <BotMessageSquare size={20} />, label: "AI Chat" },
-    { to: "/ai-image", icon: <ImageIcon size={20} />, label: "AI Image" },
-    { to: "/plans", icon: <BadgeDollarSign size={20} />, label: "Plans" },
-    { to: "/projects", icon: <Book size={20} />, label: "Projects" },
-    { to: "/templates", icon: <FileText size={20} />, label: "Templates" },
-    { to: "/connect", icon: <Rocket size={20} />, label: "Connect" },
-    { to: "/editor", icon: <Wand2 size={20} />, label: "Editor" },
-    { to: "/profile", icon: <User size={20} />, label: "Profile" },
-    { to: "/settings", icon: <Settings size={20} />, label: "Settings" }
+  const location = useLocation();
+
+  const navLinks = [
+    { label: "Landing", path: "/", icon: LayoutDashboard },
+    { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+    { label: "Generator", path: "/generator", icon: Sparkles },
+    { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
+    { label: "AI Chat", path: "/chatboard", icon: Bot },
+    { label: "AI Image", path: "/ai-image", icon: Image },
+    { label: "Plans", path: "/plans", icon: GalleryHorizontal },
+    { label: "Projects", path: "/projects", icon: Film },
+    { label: "Templates", path: "/templates", icon: PencilRuler },
+    { label: "Connect", path: "/connect", icon: Link2 },
+    { label: "Editor", path: "/editor", icon: PencilRuler },
+    { label: "Profile", path: "/profile", icon: User },
+    { label: "Settings", path: "/settings", icon: Settings },
   ];
 
   return (
-    <div className="fixed top-0 right-0 h-full w-64 bg-[#111827] shadow-lg border-l border-gray-700 p-4 overflow-y-auto z-50">
-      <div className="text-white text-2xl font-bold mb-6 text-center">DROXION</div>
-      <nav className="flex flex-col gap-3">
-        {navItems.map((item, idx) => (
-          <NavLink
-            key={idx}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-2 rounded hover:bg-gray-700 ${
-                isActive ? "bg-gray-700 text-white" : "text-gray-300"
-              }`
-            }
+    <div className="w-[250px] bg-[#111] text-white p-4 h-screen overflow-y-auto border-l border-gray-800 sticky top-0">
+      <div className="text-center text-xl font-bold mb-6 tracking-wider text-white">
+        DROXION
+      </div>
+      <div className="flex flex-col gap-3">
+        {navLinks.map(({ label, path, icon: Icon }) => (
+          <Link
+            key={path}
+            to={path}
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-[#1f2937] transition ${
+              location.pathname === path ? "bg-[#1f2937] font-semibold" : "text-gray-300"
+            }`}
           >
-            {item.icon}
-            <span>{item.label}</span>
-          </NavLink>
+            <Icon className="w-5 h-5" />
+            {label}
+          </Link>
         ))}
-      </nav>
+      </div>
     </div>
   );
 }
