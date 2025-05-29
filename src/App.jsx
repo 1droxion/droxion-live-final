@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Topbar from "./Topbar";
 import Sidebar from "./Sidebar";
 
-// All your pages
+// Pages
 import Landing from "./Landing";
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
@@ -21,19 +21,14 @@ import Plans from "./Plans";
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   return (
     <Router>
       <div className="min-h-screen bg-[#0e0e10] text-white">
         <Topbar toggleSidebar={toggleSidebar} />
-
         <div className="flex">
-          {/* Sidebar on the right */}
           {sidebarOpen && <Sidebar />}
-
-          {/* Main content area */}
           <div className="flex-1 p-4">
             <Routes>
               <Route path="/" element={<Landing />} />
