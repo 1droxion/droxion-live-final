@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Landing from "./Landing";
+import Sidebar from "./Sidebar";
+import Topbar from "./Topbar";
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
 import AutoGenerator from "./AutoGenerator";
@@ -13,23 +14,28 @@ import Connect from "./Connect";
 import Editor from "./Editor";
 import Profile from "./Profile";
 import Settings from "./Settings";
-import Topbar from "./Topbar";
-import Sidebar from "./Sidebar";
+import LandingPage from "./LandingPage";
 
 function App() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
   return (
     <Router>
-      <div className="flex h-screen">
-        <Sidebar />
+      <div className="flex h-screen bg-[#0e0e10] text-white">
+        <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
         <div className="flex-1 flex flex-col">
-          <Topbar />
+          <Topbar toggleSidebar={toggleSidebar} />
           <main className="flex-1 overflow-y-auto p-4">
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<LandingPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/generator" element={<Generator />} />
               <Route path="/auto-generator" element={<AutoGenerator />} />
-              <Route path="/ai-chat" element={<AIChat />} />
+              <Route path="/chatboard" element={<AIChat />} />
               <Route path="/ai-image" element={<AIImage />} />
               <Route path="/plans" element={<Plans />} />
               <Route path="/projects" element={<Projects />} />
