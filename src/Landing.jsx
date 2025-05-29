@@ -5,11 +5,10 @@ import { Sparkles, Video } from "lucide-react";
 function Landing() {
   return (
     <div className="w-full max-w-6xl mx-auto px-6 py-12 text-white">
-      <h1 className="text-5xl font-extrabold mb-6 tracking-wide text-white">
+      <h1 className="text-5xl font-extrabold mb-6 tracking-wide">
         Droxion
       </h1>
 
-      {/* Button Group */}
       <div className="flex flex-wrap gap-4 mb-10">
         <Link to="/generator" className="bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg text-white font-semibold shadow">
           Generator
@@ -22,21 +21,15 @@ function Landing() {
         </Link>
       </div>
 
-      {/* Tagline */}
       <h2 className="text-3xl font-bold mb-3">Create Stunning AI Reels in Seconds</h2>
       <p className="text-lg text-gray-300 mb-6 max-w-xl">
-        Script. Voice. Music. Captions. Everything done automatically for you by AI.
+        Script. Voice. Music. Captions. Everything done automatically by AI.
       </p>
 
-      {/* Try it button */}
-      <Link
-        to="/generator"
-        className="inline-flex items-center gap-2 bg-pink-600 hover:bg-pink-700 px-6 py-2 rounded-lg text-white font-medium mb-12 shadow"
-      >
+      <Link to="/generator" className="inline-flex items-center gap-2 bg-pink-600 hover:bg-pink-700 px-6 py-2 rounded-lg text-white font-medium mb-12 shadow">
         <Sparkles size={18} /> Try It Free Now
       </Link>
 
-      {/* Video Demo */}
       <h3 className="text-2xl font-semibold flex items-center gap-2 mb-2">
         <Video size={20} /> AI Reel Demo
       </h3>
