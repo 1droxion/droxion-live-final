@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from "react";
+import { Routes, Route } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
-import { Routes, Route } from "react-router-dom";
-import Dashboard from "./Dashboard"; // Replace this with Landing if you have one
-// import Landing from "./Landing"; // ← if using a custom landing page
+
+import Dashboard from "./Dashboard";
+import Generator from "./Generator";
+import AutoGenerator from "./AutoGenerator";
+import Chatboard from "./Chatboard";
+import AIImage from "./AIImage";
+import Plans from "./Plans";
+import Projects from "./Projects";
+import Templates from "./Templates";
+import Connect from "./Connect";
+import Editor from "./Editor";
+import Profile from "./Profile";
+import Settings from "./Settings";
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -34,9 +45,19 @@ function App() {
 
         <main className="flex-1 overflow-y-auto p-4">
           <Routes>
-            <Route path="/" element={<Dashboard />} /> {/* Default fallback */}
+            <Route path="/" element={<Dashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            {/* Add other routes here */}
+            <Route path="/generator" element={<Generator />} />
+            <Route path="/auto-generator" element={<AutoGenerator />} />
+            <Route path="/chatboard" element={<Chatboard />} />
+            <Route path="/ai-image" element={<AIImage />} />
+            <Route path="/plans" element={<Plans />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/connect" element={<Connect />} />
+            <Route path="/editor" element={<Editor />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>
