@@ -32,6 +32,12 @@ function Sidebar({ isOpen }) {
     { label: "Settings", path: "/settings", icon: Settings },
   ];
 
+  const handleNavClick = () => {
+    if (window.innerWidth < 768) {
+      document.querySelector("body").dispatchEvent(new Event("toggle-sidebar"));
+    }
+  };
+
   return (
     <div className="h-full border-r border-gray-800 p-4 flex flex-col">
       <h1 className="text-xl font-bold mb-6 text-white">{isOpen ? "Droxion" : "🚀"}</h1>
@@ -40,6 +46,7 @@ function Sidebar({ isOpen }) {
           <Link
             key={path}
             to={path}
+            onClick={handleNavClick}
             className={`flex items-center gap-3 px-3 py-2 rounded-md hover:bg-[#1f2937] transition ${
               location.pathname === path
                 ? "bg-[#1f2937] text-green-400 font-semibold shadow-lg shadow-green-500/20"
