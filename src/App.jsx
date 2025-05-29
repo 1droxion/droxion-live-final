@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import LandingPage from "./LandingPage";
@@ -13,11 +13,10 @@ import Support from "./Support";
 import Profile from "./Profile";
 import Connect from "./Connect";
 
-function AppContent() {
+function App() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Auto-close sidebar on page change (for mobile or improved UX)
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
@@ -43,14 +42,6 @@ function AppContent() {
         </main>
       </div>
     </div>
-  );
-}
-
-function App() {
-  return (
-    <Router>
-      <AppContent />
-    </Router>
   );
 }
 
