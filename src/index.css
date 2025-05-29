@@ -18,7 +18,9 @@ html.light {
 body {
   background-color: var(--bg);
   color: var(--text);
-  @apply font-sans antialiased;
+  font-family: theme('fontFamily.sans');
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---------- Smooth Scrolling ---------- */
