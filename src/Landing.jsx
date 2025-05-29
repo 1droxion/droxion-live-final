@@ -1,37 +1,33 @@
+// Step 1: Create this file as src/LandingPage.jsx
+
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 
 function LandingPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-black to-[#0e0e10] text-white flex flex-col items-center justify-center px-6 animate-fade-in-slow">
-      <h1 className="text-5xl md:text-6xl font-extrabold mb-6 text-center drop-shadow-md">
-        Droxion
+    <div className="min-h-screen bg-gradient-to-b from-black to-gray-900 text-white flex flex-col items-center justify-center text-center px-6 py-12">
+      <h1 className="text-5xl sm:text-6xl font-extrabold mb-4 animate-fade-in">
+        Welcome to <span className="text-purple-500">Droxion</span>
       </h1>
-      <p className="text-lg md:text-xl max-w-2xl text-center text-zinc-300 mb-8">
-        Create Stunning AI Reels in Seconds. Script. Voice. Music. Captions.
-        Everything done automatically for you by AI.
+      <p className="text-lg sm:text-xl text-gray-300 mb-8 animate-fade-in-slow">
+        The #1 AI Reel Generator — From Script to Upload in Seconds.
       </p>
-
-      <div className="flex flex-col sm:flex-row gap-4 items-center">
-        <Button
-          className="px-6 py-3 bg-green-500 hover:bg-green-400 text-black text-lg rounded-xl shadow-lg"
+      <div className="flex flex-wrap gap-4 justify-center animate-fade-in">
+        <button
           onClick={() => navigate("/generator")}
+          className="px-6 py-3 bg-green-500 text-black font-semibold rounded-xl hover:bg-green-400 transition shadow-lg"
         >
           🚀 Try It Free Now
-        </Button>
-        <Button
-          variant="ghost"
-          className="text-white border border-zinc-600 hover:bg-zinc-800 text-lg px-6 py-3 rounded-xl"
-          onClick={() => navigate("/chatboard")}
+        </button>
+        <button
+          onClick={() => navigate("/projects")}
+          className="px-6 py-3 bg-white text-black font-semibold rounded-xl hover:bg-gray-300 transition shadow-lg"
         >
-          🤖 AI Reel Demo
-        </Button>
+          📽️ AI Reel Demo
+        </button>
       </div>
-
-      <p className="text-sm text-zinc-400 mt-10">Trusted by creators from around the world</p>
     </div>
   );
 }
