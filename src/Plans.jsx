@@ -15,7 +15,7 @@ function Plans() {
         "Standard voice",
         `${starterUsage}/5 videos used`,
       ],
-      color: "bg-gray-900",
+      color: "bg-gradient-to-br from-gray-800 to-gray-900",
       badge: "Free",
       link: "starter",
     },
@@ -29,7 +29,7 @@ function Plans() {
         "Multi-language voices",
         "Priority support",
       ],
-      color: "bg-blue-900",
+      color: "bg-gradient-to-br from-blue-800 to-indigo-900",
       badge: "Popular",
       link: "https://buy.stripe.com/test_3cI4gz7YN4sR1oGfo77ss01",
     },
@@ -43,7 +43,7 @@ function Plans() {
         "Upload editor",
         "Analytics & API access",
       ],
-      color: "bg-yellow-700",
+      color: "bg-gradient-to-br from-yellow-600 to-orange-600",
       badge: "Best Value",
       link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02",
     },
@@ -60,22 +60,26 @@ function Plans() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white px-4 py-8">
-      <h1 className="text-4xl font-bold text-green-400 mb-10 text-center">💳 Choose Your Plan</h1>
+    <div className="min-h-screen bg-gradient-to-br from-[#0f172a] to-[#111827] text-white px-4 py-10">
+      <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 text-center mb-12 animate-fade-in">
+        💳 Choose Your Magical Plan
+      </h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 max-w-7xl mx-auto animate-slide-up">
         {plans.map((plan) => (
           <div
             key={plan.name}
-            className={`${plan.color} rounded-2xl shadow-lg p-6 border border-gray-700 relative transition hover:scale-[1.01]`}
+            className={`${plan.color} rounded-3xl shadow-xl p-8 border border-gray-700 relative transform hover:scale-[1.03] transition-all duration-300 ease-in-out`}
           >
-            <span className="absolute top-4 right-4 bg-white text-black text-xs font-bold px-2 py-1 rounded-full shadow">
+            <span className="absolute top-4 right-4 bg-white text-black text-xs font-bold px-3 py-1 rounded-full shadow-md animate-bounce">
               {plan.badge}
             </span>
 
-            <h2 className="text-2xl font-bold mb-1">{plan.name}</h2>
-            <p className="text-3xl font-bold mb-2">{plan.price}</p>
-            <p className="text-sm text-gray-300 mb-5">{plan.description}</p>
+            <h2 className="text-3xl font-bold mb-2 text-white tracking-wide">
+              {plan.name}
+            </h2>
+            <p className="text-4xl font-extrabold text-green-300 mb-3">{plan.price}</p>
+            <p className="text-sm text-gray-300 mb-6 italic">{plan.description}</p>
 
             <ul className="text-sm space-y-2 mb-6">
               {plan.features.map((f, i) => (
@@ -85,13 +89,13 @@ function Plans() {
 
             <button
               onClick={() => handleClick(plan)}
-              className="w-full bg-white text-black font-semibold px-4 py-2 rounded-lg hover:bg-gray-200 transition"
+              className="w-full bg-white text-black font-semibold px-6 py-3 rounded-xl hover:bg-gray-200 transition shadow-lg"
             >
-              {plan.name === "Starter" ? "Get Started" : "Upgrade"}
+              {plan.name === "Starter" ? "🚀 Get Started" : "🚀 Upgrade"}
             </button>
 
             {currentPlan === plan.name && (
-              <div className="mt-4 text-xs bg-green-700 text-white px-3 py-1 rounded-full text-center">
+              <div className="mt-5 text-xs bg-green-700 text-white px-3 py-1 rounded-full text-center">
                 ✅ You’re on this plan
               </div>
             )}
