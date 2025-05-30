@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { BarChart2, Film, Zap } from "lucide-react";
 
 /**
- * Dashboard
- * Shows: credits left, videos created this month, current plan.
- * Fully responsive UI — clean for mobile and desktop.
+ * Dashboard 2090
+ * Beautiful futuristic dashboard showing credits, videos, and plan.
+ * Styled with glow effects, gradient text, hover animations.
  */
 function Dashboard() {
   const [stats, setStats] = useState({
@@ -14,7 +14,6 @@ function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Fetch stats on mount
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -31,47 +30,48 @@ function Dashboard() {
         setLoading(false);
       }
     };
-
     fetchStats();
   }, []);
 
-  // Card Component
   const Card = ({ title, value, subtitle, icon }) => (
-    <div className="w-full sm:w-[200px] flex flex-col items-center justify-center bg-[#111827] rounded-2xl p-6 shadow-md border border-gray-800 transition-all hover:scale-[1.03]">
-      {icon}
-      <h2 className="mt-4 text-lg font-semibold text-gray-300">{title}</h2>
-      <p className="mt-1 mb-1 text-4xl font-extrabold text-white">
+    <div className="w-full sm:w-[220px] flex flex-col items-center justify-center bg-gradient-to-br from-[#0f172a] to-[#1a1a2e] rounded-2xl p-6 shadow-xl border border-[#2a2a40] hover:scale-[1.03] transition-all duration-300">
+      <div className="text-4xl mb-2 animate-bounce">
+        {icon}
+      </div>
+      <h2 className="text-lg font-semibold text-gradient bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+        {title}
+      </h2>
+      <p className="text-5xl font-extrabold text-white drop-shadow-xl my-1">
         {loading ? "…" : value}
       </p>
-      <span className="text-sm text-gray-400">{subtitle}</span>
+      <span className="text-sm text-gray-400 italic">{subtitle}</span>
     </div>
   );
 
   return (
-    <div className="p-4 md:p-6 text-white">
-      <h1 className="text-3xl font-bold mb-6 flex items-center gap-2">
-        <BarChart2 className="text-green-400" /> Dashboard
+    <div className="p-6 min-h-screen bg-[#0e0e10] text-white animate-fade-in">
+      <h1 className="text-4xl font-bold mb-10 text-center text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-green-400 to-blue-500 animate-pulse">
+        ⚡ Welcome to Droxion Dashboard
       </h1>
 
-      <div className="flex flex-wrap gap-6">
+      <div className="flex flex-wrap gap-6 justify-center">
         <Card
-          title="Credits"
+          title="⚡ Credits"
           value={stats.credits}
           subtitle="Available"
-          icon={<Zap size={36} className="text-green-500" />}
-        />
+          icon={<Zap size={40} className="text-green-400 drop-shadow" />} />
+
         <Card
-          title="Videos Created"
+          title="🎬 Videos Created"
           value={stats.videosThisMonth}
           subtitle="This Month"
-          icon={<Film size={36} className="text-blue-400" />}
-        />
+          icon={<Film size={40} className="text-blue-400 drop-shadow" />} />
+
         <Card
-          title="Plan"
+          title="💼 Plan"
           value={stats.plan.name}
           subtitle={`${stats.plan.limit} videos/month`}
-          icon={<BarChart2 size={36} className="text-yellow-400" />}
-        />
+          icon={<BarChart2 size={40} className="text-yellow-400 drop-shadow" />} />
       </div>
     </div>
   );
