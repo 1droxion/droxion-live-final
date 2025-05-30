@@ -37,7 +37,7 @@ function Generator() {
     setVideoUrl("");
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL}/generate`, formData);
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate`, formData);
       if (res.data.video_url) {
         setVideoUrl(res.data.video_url);
       } else {
@@ -85,7 +85,6 @@ function Generator() {
               />
             )}
 
-            {/* Dropdowns */}
             <div className="grid grid-cols-2 gap-4">
               <select name="language" value={formData.language} onChange={handleChange} className="input">
                 <option>English</option>
