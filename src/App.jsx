@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-// Your Pages
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
 import AutoGenerator from "./AutoGenerator";
@@ -22,8 +21,7 @@ function AppWrapper() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
-  useEffect(() => {
-    // Auto-close sidebar on page change for mobile
+  React.useEffect(() => {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
