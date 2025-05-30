@@ -14,14 +14,14 @@ import {
   Settings,
 } from "lucide-react";
 
-function Sidebar({ isOpen }) {
+function Sidebar({ isOpen, toggleSidebar }) {
   const location = useLocation();
 
   const navLinks = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { label: "Generator", path: "/generator", icon: Sparkles },
     { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
-    { label: "AI Chat", path: "/chatboard", icon: Bot },
+    { label: "Chatboard", path: "/chatboard", icon: Bot },
     { label: "AI Image", path: "/ai-image", icon: Image },
     { label: "Plans", path: "/plans", icon: GalleryHorizontal },
     { label: "Projects", path: "/projects", icon: Film },
@@ -33,28 +33,30 @@ function Sidebar({ isOpen }) {
   ];
 
   const handleNavClick = () => {
-    if (window.innerWidth < 768) {
-      document.querySelector("body").dispatchEvent(new Event("toggle-sidebar"));
+    if (window.innerWidth < 1024 && toggleSidebar) {
+      toggleSidebar();
     }
   };
 
   return (
-    <div className="h-full border-r border-gray-800 p-4 flex flex-col">
-      <h1 className="text-xl font-bold mb-6 text-white">{isOpen ? "Droxion" : "🚀"}</h1>
+    <div className={`h-full border-r border-gray-800 p-4 flex flex-col bg-[#0f172a] transition-all duration-300 ${isOpen ? "w-56" : "w-16"}`}>
+      <h1 className="text-xl font-bold mb-6 text-white text-center transition-opacity duration-300">
+        {isOpen ? "Droxion" : "🚀"}
+      </h1>
       <div className="flex flex-col gap-2">
         {navLinks.map(({ label, path, icon: Icon }) => (
           <Link
             key={path}
             to={path}
             onClick={handleNavClick}
-            className={`flex items-center gap-3 px-3 py-2 rounded-md hover:bg-[#1f2937] transition ${
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1f2937] transition-all duration-150 ${
               location.pathname === path
-                ? "bg-[#1f2937] text-green-400 font-semibold shadow-lg shadow-green-500/20"
+                ? "bg-[#1f2937] text-green-400 font-semibold shadow-md shadow-green-500/30"
                 : "text-gray-300"
             }`}
           >
             <Icon size={20} />
-            {isOpen && <span>{label}</span>}
+            {isOpen && <span className="whitespace-nowrap">{label}</span>}
           </Link>
         ))}
       </div>
