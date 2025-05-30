@@ -11,7 +11,7 @@ function Analytics() {
   }, []);
 
   const totalVideos = videos.length;
-  const totalLength = (totalVideos * 25).toFixed(1); // fake avg duration
+  const totalLength = (totalVideos * 25).toFixed(1); // Estimated duration in seconds
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-white p-6">
@@ -24,7 +24,7 @@ function Analytics() {
         </div>
 
         <div className="bg-[#1e293b] p-6 rounded shadow">
-          <h2 className="text-lg font-semibold">⏱️ Estimated Total Watch Time</h2>
+          <h2 className="text-lg font-semibold">⏱️ Estimated Watch Time</h2>
           <p className="text-4xl font-bold text-purple-400">{totalLength} sec</p>
         </div>
       </div>
