@@ -1,32 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Menu } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
-  const [avatar, setAvatar] = useState("/avatar.png");
-  const [credits, setCredits] = useState(0);
-
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("droxion_user"));
-    const avatarUrl = localStorage.getItem("droxion_avatar");
-
-    if (user) {
-      setCredits(user.credits || 0);
-    }
-    if (avatarUrl) {
-      setAvatar(avatarUrl);
-    }
-  }, []);
+  const location = useLocation();
+  const credits = localStorage.getItem("droxion_credits") || 0;
+  const avatar = localStorage.getItem("droxion_avatar");
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800 shadow">
-      {/* Left: Logo + 3-dots toggle */}
+    <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
+      {/* 3 dots on mobile */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={toggleSidebar}
-          className="text-white hover:text-gray-400 lg:hidden"
-        >
+        <button onClick={toggleSidebar} className="lg:hidden text-white hover:text-gray-400">
           <Menu size={22} />
         </button>
         <h1
@@ -37,31 +23,27 @@ function Topbar({ toggleSidebar }) {
         </h1>
       </div>
 
-      {/* Center: Search bar */}
-      <div className="flex-1 mx-4 max-w-xl relative">
+      <div className="flex-1 mx-4 max-w-lg">
         <input
           type="text"
-          placeholder="🔍 Search videos, tools, templates..."
+          placeholder="Search videos, tools, templates..."
           className="w-full px-4 py-2 rounded-md bg-[#1f2937] text-white placeholder-gray-400 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
         />
       </div>
 
-      {/* Right: Credits, Language, Avatar */}
       <div className="flex items-center gap-4">
-        <div className="bg-black px-3 py-1 rounded-full border border-green-500 text-green-400 font-semibold text-sm shadow">
-          ${credits}
-        </div>
-
-        <select className="bg-[#1f2937] text-white text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none">
+        <div className="text-green-400 font-medium text-sm">${credits}</div>
+        <select className="bg-[#1f2937] text-white text-sm px-2 py-1 rounded-md border border-gray-700">
           <option>English</option>
           <option>Hindi</option>
           <option>Gujarati</option>
         </select>
-
         <img
-          src={avatar}
-          alt="User"
-          className="w-9 h-9 rounded-full object-cover border border-gray-600 hover:scale-105 transition"
+          src={
+            avatar || "https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff"
+          }
+          alt="Avatar"
+          className="w-8 h-8 rounded-full object-cover border border-gray-600"
         />
       </div>
     </div>
