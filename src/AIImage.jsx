@@ -165,14 +165,73 @@ function AIImage() {
     }
   };
 
-  const projectOptions = [...new Set(history.map((item) => item.project))];
-
   return (
-    <div className="p-6 max-w-5xl mx-auto text-[var(--text)] animate-fade-in">
-      <h1 className="text-5xl font-bold text-center bg-gradient-to-r from-green-400 via-blue-400 to-purple-500 text-transparent bg-clip-text mb-10">
-        🎨 Create Stunning AI Images
+    <div className="min-h-screen bg-gradient-to-br from-[#0e0e10] to-[#1f1f27] text-white px-6 py-8">
+      <h1 className="text-center text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-blue-400 to-purple-500 mb-10 animate-pulse">
+        🪄 Create Stunning AI Images
       </h1>
-      {/* ...rest unchanged... */}
+
+      <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto">
+        <div className="flex-1 space-y-4">
+          <input
+            type="text"
+            placeholder="Describe an epic image..."
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="input bg-[#1f2937] border border-gray-700"
+          />
+          <button
+            onClick={generateImage}
+            disabled={loading}
+            className="w-full bg-green-500 hover:bg-green-600 text-black font-bold py-3 rounded-xl"
+          >
+            {loading ? "🎨 Generating..." : "🎨 Generate"}
+          </button>
+          <button
+            onClick={suggestPrompt}
+            className="w-full text-sm text-purple-400 hover:underline"
+          >
+            ✨ Suggest Random Prompt
+          </button>
+        </div>
+
+        <div className="flex-1 text-center">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt="Generated"
+              className="mx-auto rounded-xl shadow-lg border border-purple-600 transition duration-500 hover:scale-105"
+            />
+          ) : (
+            <div className="text-gray-500 italic mt-16">Image preview will appear here...</div>
+          )}
+
+          {imageUrl && (
+            <div className="mt-4">
+              <a
+                href={imageUrl}
+                download
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+              >
+                ⬇️ Download Image
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {tags.length > 0 && (
+        <div className="mt-8 text-center">
+          <p className="mb-2 text-lg font-semibold">🌟 Tags</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {tags.map((tag, i) => (
+              <span key={i} className="bg-gray-700 px-3 py-1 rounded-full text-sm text-white">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
