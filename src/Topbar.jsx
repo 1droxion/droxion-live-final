@@ -1,29 +1,44 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("droxion_user")) || {};
-  const avatar = localStorage.getItem("droxion_avatar");
+  const [avatar, setAvatar] = useState("/avatar.png");
+  const [credits, setCredits] = useState(0);
+
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("droxion_user"));
+    const avatarUrl = localStorage.getItem("droxion_avatar");
+
+    if (user) {
+      setCredits(user.credits || 0);
+    }
+    if (avatarUrl) {
+      setAvatar(avatarUrl);
+    }
+  }, []);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
-      {/* Left: Toggle + Logo */}
-      <div className="flex items-center gap-4">
-        <button onClick={toggleSidebar} className="text-white lg:hidden">
-          <Menu size={28} />
+    <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800 shadow">
+      {/* Left: Logo + 3-dots toggle */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={toggleSidebar}
+          className="text-white hover:text-gray-400 lg:hidden"
+        >
+          <Menu size={22} />
         </button>
-        <span
-          className="text-white font-bold text-lg cursor-pointer hidden sm:block"
+        <h1
+          className="text-white font-semibold text-lg hidden sm:block cursor-pointer"
           onClick={() => navigate("/")}
         >
           Droxion
-        </span>
+        </h1>
       </div>
 
-      {/* Center: Search */}
-      <div className="flex-1 mx-4 max-w-lg">
+      {/* Center: Search bar */}
+      <div className="flex-1 mx-4 max-w-xl relative">
         <input
           type="text"
           placeholder="🔍 Search videos, tools, templates..."
@@ -31,22 +46,22 @@ function Topbar({ toggleSidebar }) {
         />
       </div>
 
-      {/* Right: Info */}
+      {/* Right: Credits, Language, Avatar */}
       <div className="flex items-center gap-4">
-        <span className="text-sm font-semibold text-green-400">
-          ${user.credits || 0}
-        </span>
-        <select className="bg-[#1f2937] text-white px-2 py-1 rounded-md border border-gray-700 text-sm">
+        <div className="bg-black px-3 py-1 rounded-full border border-green-500 text-green-400 font-semibold text-sm shadow">
+          ${credits}
+        </div>
+
+        <select className="bg-[#1f2937] text-white text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none">
           <option>English</option>
           <option>Hindi</option>
+          <option>Gujarati</option>
         </select>
+
         <img
-          src={
-            avatar ||
-            `https://ui-avatars.com/api/?name=${user.username || "User"}&background=0D8ABC&color=fff`
-          }
-          alt="avatar"
-          className="w-9 h-9 rounded-full object-cover border-2 border-green-500"
+          src={avatar}
+          alt="User"
+          className="w-9 h-9 rounded-full object-cover border border-gray-600 hover:scale-105 transition"
         />
       </div>
     </div>
