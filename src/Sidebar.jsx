@@ -2,8 +2,8 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
-  Wand2,
   Sparkles,
+  Wand2,
   Bot,
   Image,
   GalleryHorizontal,
@@ -21,7 +21,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { label: "Generator", path: "/generator", icon: Sparkles },
     { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
-    { label: "Chatboard", path: "/chatboard", icon: Bot },
+    { label: "AI Chat", path: "/chatboard", icon: Bot },
     { label: "AI Image", path: "/ai-image", icon: Image },
     { label: "Plans", path: "/plans", icon: GalleryHorizontal },
     { label: "Projects", path: "/projects", icon: Film },
@@ -33,33 +33,40 @@ function Sidebar({ isOpen, toggleSidebar }) {
   ];
 
   const handleNavClick = () => {
-    if (window.innerWidth < 1024 && toggleSidebar) {
-      toggleSidebar();
+    if (window.innerWidth < 768 && toggleSidebar) {
+      toggleSidebar(); // auto close on small screens
     }
   };
 
   return (
-    <div className={`h-full border-r border-gray-800 p-4 flex flex-col bg-[#0f172a] transition-all duration-300 ${isOpen ? "w-56" : "w-16"}`}>
-      <h1 className="text-xl font-bold mb-6 text-white text-center transition-opacity duration-300">
-        {isOpen ? "Droxion" : "🚀"}
-      </h1>
-      <div className="flex flex-col gap-2">
-        {navLinks.map(({ label, path, icon: Icon }) => (
-          <Link
-            key={path}
-            to={path}
-            onClick={handleNavClick}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1f2937] transition-all duration-150 ${
-              location.pathname === path
-                ? "bg-[#1f2937] text-green-400 font-semibold shadow-md shadow-green-500/30"
-                : "text-gray-300"
-            }`}
-          >
-            <Icon size={20} />
-            {isOpen && <span className="whitespace-nowrap">{label}</span>}
-          </Link>
-        ))}
-      </div>
+    <div
+      className={`h-full border-r border-gray-800 p-3 flex flex-col transition-all duration-300 bg-[#0e0e10] ${
+        isOpen ? "w-64" : "w-16"
+      }`}
+    >
+      <h1 className="text-2xl font-bold text-white mb-6 text-center">{isOpen ? "🚀 Droxion" : "🚀"}</h1>
+      <nav className="flex flex-col gap-3">
+        {navLinks.map(({ label, path, icon: Icon }) => {
+          const active = location.pathname === path;
+          return (
+            <Link
+              key={label}
+              to={path}
+              onClick={handleNavClick}
+              className={`flex items-center gap-4 px-3 py-2 rounded-lg text-sm transition-all
+                ${
+                  active
+                    ? "bg-[#1f2937] text-green-400 shadow-inner"
+                    : "text-gray-300 hover:bg-[#1f2937] hover:text-white"
+                }
+              `}
+            >
+              <Icon size={24} />
+              {isOpen && <span className="text-base font-medium">{label}</span>}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }
