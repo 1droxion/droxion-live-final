@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
+
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
 import AutoGenerator from "./AutoGenerator";
-import Chatboard from "./Chatboard";
+import AIChat from "./AIChat"; // ✅ NEW chat component
 import AIImage from "./AIImage";
 import Plans from "./Plans";
 import Projects from "./Projects";
@@ -21,7 +22,7 @@ function AppWrapper() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
@@ -36,7 +37,7 @@ function AppWrapper() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/auto-generator" element={<AutoGenerator />} />
-            <Route path="/chatboard" element={<Chatboard />} />
+            <Route path="/chatboard" element={<AIChat />} /> {/* ✅ updated route */}
             <Route path="/ai-image" element={<AIImage />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/projects" element={<Projects />} />
