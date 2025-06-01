@@ -30,27 +30,11 @@ function AIChat() {
 
     try {
       const res = await axios.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          model: "openai/gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a helpful and friendly assistant for Droxion. Help users understand how to use Droxion's AI features: video generation, voiceovers, scripting, uploading, reels, and posting.",
-            },
-            ...newMessages.map(({ role, content }) => ({ role, content })),
-          ],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
+        `${import.meta.env.VITE_BACKEND_URL}/chat`,
+        { message: input }
       );
 
-      const reply = res?.data?.choices?.[0]?.message?.content || "No reply.";
+      const reply = res?.data?.reply || "No reply.";
       const assistantMessage = {
         role: "assistant",
         content: reply,
@@ -60,7 +44,7 @@ function AIChat() {
       setMessages([...newMessages, assistantMessage]);
     } catch (err) {
       console.error("❌ Chat Error:", err.message || err);
-      alert("❌ AI failed to respond. Please check API key or internet.");
+      alert("❌ Chat system failed to respond. Please check connection or server.");
     } finally {
       setLoading(false);
     }
