@@ -24,10 +24,21 @@ function AutoGenerator() {
   const [videoUrl, setVideoUrl] = useState("");
   const [videoReady, setVideoReady] = useState(false);
   const [credits, setCredits] = useState(0);
+  const [autoLimitReached, setAutoLimitReached] = useState(false);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("droxion_user"));
-    if (user) setCredits(user.credits);
+    axios
+      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
+      .then((res) => {
+        const stats = res.data;
+        setCredits(stats.credits);
+        if (stats.autoGenerates >= stats.plan.autoLimit) {
+          setAutoLimitReached(true);
+        }
+      })
+      .catch((err) => {
+        console.warn("⚠️ Could not fetch user stats.", err);
+      });
   }, []);
 
   const handleChange = (e) => {
@@ -36,8 +47,12 @@ function AutoGenerator() {
   };
 
   const handleAutoGenerate = async () => {
-    const user = JSON.parse(localStorage.getItem("droxion_user"));
-    if (!user || user.credits < 1) {
+    if (autoLimitReached) {
+      alert("🚫 You've reached your auto generation limit. Please upgrade your plan.");
+      return;
+    }
+
+    if (credits < 1) {
       alert("❌ Not enough credits. Please upgrade your plan.");
       return;
     }
@@ -47,17 +62,15 @@ function AutoGenerator() {
     setVideoUrl("");
 
     try {
-      const res = await axios.post("http://localhost:5000/generate", formData, {
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await axios.post(
+        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/generate`,
+        formData,
+        { headers: { "Content-Type": "application/json" } }
+      );
 
       const { videoUrl } = res.data;
       setVideoUrl(videoUrl);
       setVideoReady(true);
-
-      user.credits -= 1;
-      setCredits(user.credits);
-      localStorage.setItem("droxion_user", JSON.stringify(user));
     } catch (err) {
       console.error("❌ API ERROR:", err.response?.data || err.message);
       alert("❌ Generation failed: " + (err.response?.data?.message || err.message));
@@ -69,10 +82,11 @@ function AutoGenerator() {
   return (
     <div className="min-h-screen bg-[#0e0e10] text-white flex flex-col items-center justify-center px-4 py-10 animate-fade-in">
       <h1 className="text-4xl font-bold text-green-400 mb-2">⚡ Auto Reel Generator</h1>
-      <p className="text-sm text-gray-400 mb-6">Remaining Credits: <span className="text-yellow-300 font-semibold">{credits}</span></p>
+      <p className="text-sm text-gray-400 mb-6">
+        Credits: <span className="text-yellow-300 font-semibold">💰 {credits}</span>
+      </p>
 
       <div className="w-full max-w-md space-y-4">
-        {/* Topic Selector */}
         <div>
           <label className="block text-sm mb-1 text-gray-300">🎯 Select Topic</label>
           <select
@@ -89,27 +103,28 @@ function AutoGenerator() {
           </select>
         </div>
 
-        {/* Generate Button */}
         <button
           onClick={handleAutoGenerate}
-          disabled={isLoading}
+          disabled={isLoading || autoLimitReached}
           className={`w-full py-3 rounded-xl font-bold text-lg transition ${
-            isLoading
+            isLoading || autoLimitReached
               ? "bg-gray-600 cursor-not-allowed"
               : "bg-gradient-to-r from-green-400 via-blue-500 to-purple-500 hover:opacity-90"
           }`}
         >
-          {isLoading ? "⏳ Generating..." : "🚀 Generate Reel"}
+          {autoLimitReached
+            ? "🚫 Limit Reached"
+            : isLoading
+            ? "⏳ Generating..."
+            : "🚀 Generate Reel"}
         </button>
 
-        {/* Animated Progress */}
         {isLoading && (
           <div className="w-full h-2 bg-gray-800 rounded overflow-hidden">
             <div className="h-full bg-green-400 animate-pulse w-full" />
           </div>
         )}
 
-        {/* Video Preview */}
         {videoReady && videoUrl && (
           <div className="mt-8 text-center transition-all duration-300 ease-in-out">
             <video
