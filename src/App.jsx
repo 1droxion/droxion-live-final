@@ -5,9 +5,9 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 import Dashboard from "./Dashboard";
-import Generator from "./Generator";
-import AutoGenerator from "./AutoGenerator";
-import AIChat from "./AIChat"; // ✅ NEW chat component
+// import Generator from "./Generator";            ❌ Removed
+// import AutoGenerator from "./AutoGenerator";    ❌ Removed
+// import AIChat from "./AIChat";                  ❌ Removed
 import AIImage from "./AIImage";
 import Plans from "./Plans";
 import Projects from "./Projects";
@@ -35,9 +35,9 @@ function AppWrapper() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/generator" element={<Generator />} />
-            <Route path="/auto-generator" element={<AutoGenerator />} />
-            <Route path="/chatboard" element={<AIChat />} /> {/* ✅ updated route */}
+            {/* <Route path="/generator" element={<Generator />} /> */}
+            {/* <Route path="/auto-generator" element={<AutoGenerator />} /> */}
+            {/* <Route path="/chatboard" element={<AIChat />} /> */}
             <Route path="/ai-image" element={<AIImage />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/projects" element={<Projects />} />
