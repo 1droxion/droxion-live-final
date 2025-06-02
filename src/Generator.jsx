@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 function Generator() {
@@ -21,6 +21,23 @@ function Generator() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [credits, setCredits] = useState(0);
+  const [videoLimitReached, setVideoLimitReached] = useState(false);
+
+  useEffect(() => {
+    axios
+      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
+      .then((res) => {
+        const stats = res.data;
+        setCredits(stats.credits);
+        if (stats.videosThisMonth >= stats.plan.videoLimit) {
+          setVideoLimitReached(true);
+        }
+      })
+      .catch((err) => {
+        console.warn("⚠️ Could not fetch usage stats.", err);
+      });
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -28,6 +45,11 @@ function Generator() {
   };
 
   const handleGenerate = async () => {
+    if (videoLimitReached) {
+      alert("🚫 You've reached your video generation limit. Please upgrade your plan.");
+      return;
+    }
+
     if (!formData.topic.trim() && formData.mode !== "Manual") {
       alert("❗ Please enter a topic.");
       return;
@@ -37,9 +59,12 @@ function Generator() {
     setVideoUrl("");
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate`, formData);
-      if (res.data.video_url) {
-        setVideoUrl(res.data.video_url);
+      const res = await axios.post(
+        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/generate`,
+        formData
+      );
+      if (res.data.videoUrl) {
+        setVideoUrl(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}${res.data.videoUrl}`);
       } else {
         alert("⚠️ No video returned.");
       }
@@ -54,9 +79,14 @@ function Generator() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0c29] via-[#302b63] to-[#24243e] text-white p-6">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-5xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-purple-400 to-pink-500 text-center mb-12 animate-fade-in-slow">
-          ✨ Create Magical AI Reels
-        </h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-green-400 via-purple-400 to-pink-500 bg-clip-text text-transparent">
+            ✨ Create Magical AI Reels
+          </h1>
+          <div className="bg-black px-3 py-1 rounded text-green-400 font-semibold text-sm border border-green-600">
+            💰 {credits}
+          </div>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-10 animate-fade-in">
           {/* Left Form */}
@@ -177,14 +207,18 @@ function Generator() {
 
             <button
               onClick={handleGenerate}
-              disabled={isLoading}
+              disabled={isLoading || videoLimitReached}
               className={`w-full py-4 px-8 text-xl font-bold rounded-full transition-all shadow-lg ${
-                isLoading
+                isLoading || videoLimitReached
                   ? "bg-gray-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-pink-600 hover:to-purple-600"
               }`}
             >
-              {isLoading ? "Creating Magic..." : "✨ Generate Magical Reel"}
+              {videoLimitReached
+                ? "🚫 Limit Reached"
+                : isLoading
+                ? "Creating Magic..."
+                : "✨ Generate Magical Reel"}
             </button>
           </div>
         </div>
