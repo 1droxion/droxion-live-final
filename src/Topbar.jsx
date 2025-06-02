@@ -8,11 +8,22 @@ function Topbar({ toggleSidebar }) {
   const [credits, setCredits] = useState(localStorage.getItem("droxion_credits") || 0);
   const [avatar, setAvatar] = useState("/avatar.png");
 
+  // ✅ Update avatar anytime it's changed in localStorage
   useEffect(() => {
-    const storedAvatar = localStorage.getItem("droxion_avatar");
-    if (storedAvatar) setAvatar(storedAvatar);
+    const updateAvatar = () => {
+      const storedAvatar = localStorage.getItem("droxion_avatar");
+      if (storedAvatar) setAvatar(storedAvatar);
+    };
+
+    updateAvatar(); // on first load
+    window.addEventListener("storage", updateAvatar); // on change from profile
+
+    return () => {
+      window.removeEventListener("storage", updateAvatar);
+    };
   }, []);
 
+  // ✅ Load credits from API
   useEffect(() => {
     axios
       .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
@@ -23,13 +34,13 @@ function Topbar({ toggleSidebar }) {
         }
       })
       .catch((err) => {
-        console.warn("⚠️ Failed to fetch credits from backend, using localStorage.", err);
+        console.warn("⚠️ Failed to fetch credits from backend.", err);
       });
   }, []);
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
-      {/* Left: Logo + 3-dots */}
+      {/* Left: Logo + Menu */}
       <div className="flex items-center gap-3">
         <button
           onClick={toggleSidebar}
@@ -59,7 +70,7 @@ function Topbar({ toggleSidebar }) {
         <div
           className="bg-black px-2 py-1 rounded text-green-400 font-semibold text-sm border border-green-600 cursor-pointer"
           onClick={() => navigate("/plans")}
-          title="Click to upgrade"
+          title="Click to view/upgrade plan"
         >
           💰 {credits}
         </div>
@@ -73,8 +84,9 @@ function Topbar({ toggleSidebar }) {
         <img
           src={avatar}
           alt="User"
-          className="w-8 h-8 rounded-full object-cover border border-gray-600 cursor-pointer"
           onClick={() => navigate("/profile")}
+          className="w-8 h-8 rounded-full object-cover border border-gray-600 cursor-pointer"
+          title="Profile"
         />
       </div>
     </div>
