@@ -1,15 +1,30 @@
 import React, { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
-  const credits = localStorage.getItem("droxion_credits") || 0;
+  const [credits, setCredits] = useState(localStorage.getItem("droxion_credits") || 0);
   const [avatar, setAvatar] = useState("/avatar.png");
 
   useEffect(() => {
     const storedAvatar = localStorage.getItem("droxion_avatar");
     if (storedAvatar) setAvatar(storedAvatar);
+  }, []);
+
+  useEffect(() => {
+    axios
+      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
+      .then((res) => {
+        if (res.data.credits !== undefined) {
+          setCredits(res.data.credits);
+          localStorage.setItem("droxion_credits", res.data.credits);
+        }
+      })
+      .catch((err) => {
+        console.warn("⚠️ Failed to fetch credits from backend, using localStorage.", err);
+      });
   }, []);
 
   return (
@@ -41,8 +56,12 @@ function Topbar({ toggleSidebar }) {
 
       {/* Right: Credits + Language + Avatar */}
       <div className="flex items-center gap-4">
-        <div className="bg-black px-2 py-1 rounded text-green-400 font-semibold text-sm border border-green-600">
-          ${credits}
+        <div
+          className="bg-black px-2 py-1 rounded text-green-400 font-semibold text-sm border border-green-600 cursor-pointer"
+          onClick={() => navigate("/plans")}
+          title="Click to upgrade"
+        >
+          💰 {credits}
         </div>
 
         <select className="bg-[#1f2937] text-white text-sm px-2 py-1 rounded-md border border-gray-700 focus:outline-none">
@@ -54,7 +73,8 @@ function Topbar({ toggleSidebar }) {
         <img
           src={avatar}
           alt="User"
-          className="w-8 h-8 rounded-full object-cover border border-gray-600"
+          className="w-8 h-8 rounded-full object-cover border border-gray-600 cursor-pointer"
+          onClick={() => navigate("/profile")}
         />
       </div>
     </div>
