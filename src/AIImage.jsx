@@ -5,8 +5,30 @@ function AIImage() {
   const [prompt, setPrompt] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [credits, setCredits] = useState(0);
+  const [imageLimitReached, setImageLimitReached] = useState(false);
+
+  useEffect(() => {
+    axios
+      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
+      .then((res) => {
+        const stats = res.data;
+        setCredits(stats.credits);
+        if (stats.imagesThisMonth >= stats.plan.imageLimit) {
+          setImageLimitReached(true);
+        }
+      })
+      .catch((err) => {
+        console.warn("⚠️ Could not fetch image stats.", err);
+      });
+  }, []);
 
   const generateImage = async () => {
+    if (imageLimitReached) {
+      alert("🚫 You've reached your image generation limit. Please upgrade your plan.");
+      return;
+    }
+
     if (!prompt.trim()) {
       alert("⚠️ Please enter a prompt.");
       return;
@@ -44,9 +66,14 @@ function AIImage() {
 
   return (
     <div className="min-h-screen px-6 py-10 bg-gradient-to-br from-black via-[#0f0f23] to-black text-white flex flex-col items-center justify-center">
-      <h1 className="text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 animate-pulse mb-6">
-        🪄 Create Stunning AI Images
-      </h1>
+      <div className="flex justify-between w-full max-w-5xl mb-6">
+        <h1 className="text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 animate-pulse">
+          🪄 Create Stunning AI Images
+        </h1>
+        <div className="bg-black px-3 py-1 rounded text-green-400 font-semibold text-sm border border-green-600 self-start">
+          💰 {credits}
+        </div>
+      </div>
 
       <input
         type="text"
@@ -58,12 +85,12 @@ function AIImage() {
 
       <button
         onClick={generateImage}
-        disabled={loading}
+        disabled={loading || imageLimitReached}
         className={`px-8 py-3 font-bold text-lg rounded-xl transition-all bg-gradient-to-r from-green-400 via-cyan-400 to-blue-500 hover:from-pink-500 hover:to-yellow-500 ${
-          loading ? "opacity-50 cursor-not-allowed" : ""
+          loading || imageLimitReached ? "opacity-50 cursor-not-allowed" : ""
         }`}
       >
-        {loading ? "🌌 Generating..." : "⚡ Generate Image"}
+        {imageLimitReached ? "🚫 Limit Reached" : loading ? "🌌 Generating..." : "⚡ Generate Image"}
       </button>
 
       {imageUrl && (
