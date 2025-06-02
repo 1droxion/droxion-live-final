@@ -30,7 +30,7 @@ function AIChat() {
 
     try {
       const res = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/chat`,
+        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/chat`,
         { message: input }
       );
 
