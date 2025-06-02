@@ -2,9 +2,6 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
-  Sparkles,
-  Wand2,
-  Bot,
   Image,
   GalleryHorizontal,
   Film,
@@ -19,9 +16,9 @@ function Sidebar({ isOpen, setIsOpen }) {
 
   const navLinks = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Generator", path: "/generator", icon: Sparkles },
-    { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
-    { label: "AI Chat", path: "/chatboard", icon: Bot },
+    // { label: "Generator", path: "/generator", icon: Sparkles },
+    // { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
+    // { label: "AI Chat", path: "/chatboard", icon: Bot },
     { label: "AI Image", path: "/ai-image", icon: Image },
     { label: "Plans", path: "/plans", icon: GalleryHorizontal },
     { label: "Projects", path: "/projects", icon: Film },
