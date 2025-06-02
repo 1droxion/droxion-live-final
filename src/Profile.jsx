@@ -1,139 +1,140 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 
 function Profile() {
-  const navigate = useNavigate();
+  const [avatar, setAvatar] = useState("/avatar.png");
+  const [preview, setPreview] = useState(null);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [credits, setCredits] = useState(0);
+  const [plan, setPlan] = useState("Starter");
+  const [usage, setUsage] = useState({ videos: 0, images: 0, auto: 0 });
 
-  const stored = JSON.parse(localStorage.getItem("droxion_user")) || {
-    username: "Dhruv",
-    email: "",
-    password: "",
-    credits: 5,
-  };
-
-  const [username, setUsername] = useState(stored.username);
-  const [email, setEmail] = useState(stored.email);
-  const [password, setPassword] = useState(stored.password);
-  const [showPassword, setShowPassword] = useState(false);
-  const [avatar, setAvatar] = useState(null);
-  const [credits, setCredits] = useState(stored.credits || 0);
-
+  // Load user stats
   useEffect(() => {
-    const storedAvatar = localStorage.getItem("droxion_avatar");
-    if (storedAvatar) setAvatar(storedAvatar);
+    axios
+      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
+      .then((res) => {
+        const stats = res.data;
+        setCredits(stats.credits);
+        setPlan(stats.plan.name);
+        setUsage({
+          videos: stats.videosThisMonth,
+          images: stats.imagesThisMonth,
+          auto: stats.autoGenerates,
+        });
+      })
+      .catch((err) => console.error("Stats load error:", err));
   }, []);
 
-  const handleAvatarChange = (e) => {
+  // Load saved profile
+  useEffect(() => {
+    const savedName = localStorage.getItem("droxion_name");
+    const savedEmail = localStorage.getItem("droxion_email");
+    const savedAvatar = localStorage.getItem("droxion_avatar");
+
+    if (savedName) setName(savedName);
+    if (savedEmail) setEmail(savedEmail);
+    if (savedAvatar) setAvatar(savedAvatar);
+  }, []);
+
+  const handleImageChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setAvatar(url);
-      localStorage.setItem("droxion_avatar", url);
-    }
+    if (!file) return;
+
+    setPreview(URL.createObjectURL(file));
+
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    axios
+      .post(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/upload-avatar`, formData)
+      .then((res) => {
+        const url = `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}${res.data.url}`;
+        setAvatar(url);
+        localStorage.setItem("droxion_avatar", url);
+        window.dispatchEvent(new Event("storage"));
+      })
+      .catch((err) => {
+        console.error("Upload error:", err);
+        alert("❌ Avatar upload failed.");
+      });
   };
 
   const handleSave = () => {
-    const updatedUser = { username, email, password, credits };
-    localStorage.setItem("droxion_user", JSON.stringify(updatedUser));
-    alert("✅ Profile updated");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("droxion_user");
-    localStorage.removeItem("droxion_avatar");
-    navigate("/login");
+    localStorage.setItem("droxion_name", name);
+    localStorage.setItem("droxion_email", email);
+    alert("✅ Profile saved.");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-tr from-black via-[#0f172a] to-black flex items-center justify-center px-4 py-10 text-white">
-      <div className="w-full max-w-3xl bg-[#1e1e2f] border border-green-500 rounded-3xl shadow-[0_0_30px_rgba(0,255,127,0.4)] p-10 space-y-8 relative overflow-hidden">
-        <div className="absolute top-4 right-4 text-green-400 animate-pulse">
-          <Sparkles size={28} />
-        </div>
+    <div className="min-h-screen bg-[#0e0e10] text-white px-6 py-10 flex justify-center">
+      <div className="w-full max-w-3xl bg-[#1f2937] p-8 rounded-xl shadow-xl border border-gray-700 space-y-8 animate-fade-in">
+        <h1 className="text-3xl font-bold text-green-400">👤 My Profile</h1>
 
-        <h1 className="text-4xl font-extrabold text-center bg-gradient-to-r from-green-400 to-teal-500 text-transparent bg-clip-text">
-          ✨ My Futuristic Profile
-        </h1>
-
-        <div className="text-center text-sm text-gray-400">
-          🎟️ <span className="font-bold text-green-300">{credits}</span> credits remaining
-        </div>
-
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative group">
-            <img
-              src={
-                avatar ||
-                `https://ui-avatars.com/api/?name=${username}&background=0D8ABC&color=fff`
-              }
-              alt="Avatar"
-              className="w-28 h-28 rounded-full object-cover border-4 border-green-400 shadow-lg transform group-hover:scale-105 transition"
+        {/* Avatar Upload */}
+        <div className="flex items-center gap-6">
+          <img
+            src={preview || avatar}
+            alt="Avatar"
+            className="w-24 h-24 rounded-full object-cover border-4 border-green-500 shadow-lg"
+          />
+          <div>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="text-sm text-gray-300"
             />
-            <label className="absolute bottom-0 left-1/2 -translate-x-1/2 text-xs text-white bg-black bg-opacity-60 px-2 py-0.5 rounded cursor-pointer">
-              Change
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
-            </label>
+            <p className="text-gray-400 text-xs mt-1">Click to upload new avatar</p>
           </div>
         </div>
 
+        {/* Name & Email */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-semibold text-gray-300 mb-1">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-300 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-gray-300 mb-1">Password</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input pr-20"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600"
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+          <input
+            type="text"
+            placeholder="Full Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="input bg-[#111827] text-white"
+          />
+          <input
+            type="email"
+            placeholder="Email Address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input bg-[#111827] text-white"
+          />
+        </div>
+
+        <button
+          onClick={handleSave}
+          className="w-full py-3 rounded-lg bg-gradient-to-r from-green-400 to-blue-500 hover:opacity-90 font-bold text-lg"
+        >
+          💾 Save Profile
+        </button>
+
+        {/* Plan & Usage */}
+        <div className="mt-10 space-y-4">
+          <h2 className="text-xl font-semibold text-purple-400">📊 Plan Usage</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="bg-[#0e0e10] p-4 rounded-lg border border-green-500">
+              💳 <strong>Credits:</strong> {credits}
+            </div>
+            <div className="bg-[#0e0e10] p-4 rounded-lg border border-purple-500">
+              🪙 <strong>Plan:</strong> {plan}
+            </div>
+            <div className="bg-[#0e0e10] p-4 rounded-lg border border-blue-500">
+              🎬 <strong>Videos:</strong> {usage.videos} used
+            </div>
+            <div className="bg-[#0e0e10] p-4 rounded-lg border border-pink-500">
+              🖼️ <strong>Images:</strong> {usage.images} used
+            </div>
+            <div className="bg-[#0e0e10] p-4 rounded-lg border border-yellow-500">
+              ⚡ <strong>Auto Reels:</strong> {usage.auto} used
             </div>
           </div>
-        </div>
-
-        <div className="flex justify-between items-center pt-6">
-          <button
-            onClick={handleLogout}
-            className="bg-gradient-to-br from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 px-4 py-2 rounded-lg font-medium text-sm transition shadow-md"
-          >
-            🔓 Logout
-          </button>
-          <button
-            onClick={handleSave}
-            className="bg-gradient-to-br from-green-400 to-lime-500 hover:from-green-500 hover:to-green-600 px-6 py-2 rounded-xl font-semibold shadow-xl text-black transform hover:scale-105 transition-all"
-          >
-            💾 Save Profile
-          </button>
         </div>
       </div>
     </div>
