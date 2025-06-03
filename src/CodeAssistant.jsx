@@ -1,65 +1,96 @@
 import React, { useState } from "react";
 import axios from "axios";
+import { Loader2, Copy, Check } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 function CodeAssistant() {
   const [prompt, setPrompt] = useState("");
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const handleGenerate = async () => {
+  const handleSubmit = async () => {
     if (!prompt.trim()) return;
     setLoading(true);
     setOutput("");
-
     try {
-      const res = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend1.onrender.com"}/generate-code`,
-        { prompt }
-      );
+      const res = await axios.post("https://droxion-api.onrender.com/generate-code", {
+        prompt,
+      });
       setOutput(res.data.code);
     } catch (err) {
-      console.error("❌ Error generating code:", err);
-      alert("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
+      console.error("❌ Code Generation Failed", err);
+      setOutput("⚠️ Something went wrong. Try again.");
     }
+    setLoading(false);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(output);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="p-6 min-h-screen bg-[#0e0e10] text-white">
-      <h1 className="text-3xl font-bold mb-6 text-center text-green-400">💻 Droxion Code Assistant</h1>
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-4 text-green-400">💡 AI Code Assistant</h1>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="What do you want to build? e.g. 'todo app in React'"
-          className="flex-grow p-4 bg-[#1f2937] rounded-lg border border-gray-700 placeholder-gray-400"
-        />
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
-          className={`px-6 py-3 rounded-lg font-bold transition ${
-            loading ? "bg-gray-500 cursor-not-allowed" : "bg-green-500 hover:bg-green-600"
-          }`}
-        >
-          {loading ? "Generating..." : "Generate Code"}
-        </button>
-      </div>
+      <textarea
+        rows="4"
+        placeholder="Describe what you want to build... (e.g. 'Create a React login form with TailwindCSS')"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        className="w-full p-4 rounded-lg bg-[#1e1e1e] text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 placeholder:text-gray-400 transition mb-4"
+      ></textarea>
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-2 rounded-lg shadow-md transition disabled:opacity-50"
+      >
+        {loading ? (
+          <span className="flex items-center gap-2">
+            <Loader2 className="animate-spin" size={18} />
+            Generating...
+          </span>
+        ) : (
+          "Generate Code"
+        )}
+      </button>
 
       {output && (
-        <div className="bg-[#111827] p-5 rounded-lg border border-gray-800 overflow-x-auto">
-          <h2 className="text-lg text-green-300 font-semibold mb-2">🧩 Result</h2>
-          <pre className="text-sm whitespace-pre-wrap text-white">
-            <code>{output}</code>
-          </pre>
+        <div className="mt-6 relative bg-[#0e0e10] border border-gray-700 rounded-lg p-4">
           <button
-            className="mt-4 text-blue-400 hover:underline text-sm"
-            onClick={() => navigator.clipboard.writeText(output)}
+            onClick={handleCopy}
+            className="absolute top-2 right-2 text-gray-400 hover:text-white"
+            title="Copy to clipboard"
           >
-            📋 Copy All Code
+            {copied ? <Check size={18} /> : <Copy size={18} />}
           </button>
+
+          <ReactMarkdown
+            children={output}
+            components={{
+              code({ node, inline, className, children, ...props }) {
+                const match = /language-(\w+)/.exec(className || "");
+                return !inline && match ? (
+                  <SyntaxHighlighter
+                    style={oneDark}
+                    language={match[1]}
+                    PreTag="div"
+                    children={String(children).replace(/\n$/, "")}
+                    {...props}
+                  />
+                ) : (
+                  <code className="bg-gray-800 text-green-400 px-1 py-0.5 rounded text-sm">
+                    {children}
+                  </code>
+                );
+              },
+            }}
+          />
         </div>
       )}
     </div>
