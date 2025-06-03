@@ -9,17 +9,16 @@ import {
   Link2,
   User,
   Settings,
-} from "lucide-react";
+  Code,
+} from "lucide-react"; // ✅ Added Code icon
 
 function Sidebar({ isOpen, setIsOpen }) {
   const location = useLocation();
 
   const navLinks = [
     { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    // { label: "Generator", path: "/generator", icon: Sparkles },
-    // { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
-    // { label: "AI Chat", path: "/chatboard", icon: Bot },
     { label: "AI Image", path: "/ai-image", icon: Image },
+    { label: "Code Assistant", path: "/code", icon: Code }, // ✅ New Route
     { label: "Plans", path: "/plans", icon: GalleryHorizontal },
     { label: "Projects", path: "/projects", icon: Film },
     { label: "Templates", path: "/templates", icon: PencilRuler },
