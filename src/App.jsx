@@ -5,9 +5,6 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 import Dashboard from "./Dashboard";
-// import Generator from "./Generator";            ❌ Removed
-// import AutoGenerator from "./AutoGenerator";    ❌ Removed
-// import AIChat from "./AIChat";                  ❌ Removed
 import AIImage from "./AIImage";
 import Plans from "./Plans";
 import Projects from "./Projects";
@@ -17,6 +14,7 @@ import Editor from "./Editor";
 import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
+import CodeAssistant from "./CodeAssistant"; // ✅ New Code Assistant page
 
 function AppWrapper() {
   const location = useLocation();
@@ -35,9 +33,6 @@ function AppWrapper() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            {/* <Route path="/generator" element={<Generator />} /> */}
-            {/* <Route path="/auto-generator" element={<AutoGenerator />} /> */}
-            {/* <Route path="/chatboard" element={<AIChat />} /> */}
             <Route path="/ai-image" element={<AIImage />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/projects" element={<Projects />} />
@@ -46,6 +41,7 @@ function AppWrapper() {
             <Route path="/editor" element={<Editor />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/code" element={<CodeAssistant />} /> {/* ✅ Added route */}
           </Routes>
         </div>
       </div>
