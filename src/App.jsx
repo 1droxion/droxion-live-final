@@ -5,43 +5,49 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 import Dashboard from "./Dashboard";
+import Generator from "./Generator";
+import AutoGenerator from "./AutoGenerator";
+import AIChat from "./AIChat";
 import AIImage from "./AIImage";
 import Plans from "./Plans";
 import Projects from "./Projects";
 import Templates from "./Templates";
 import Connect from "./Connect";
 import Editor from "./Editor";
+import CodeAssistant from "./CodeAssistant";
 import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
-import CodeAssistant from "./CodeAssistant"; // ✅ New Code Assistant page
 
 function AppWrapper() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    if (window.innerWidth < 768) setSidebarOpen(false);
+    setSidebarOpen(true); // always open
   }, [location]);
 
   return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      {isSidebarOpen && <Sidebar isOpen={isSidebarOpen} />}
+      {isSidebarOpen && <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />}
       <div className="flex-1 flex flex-col">
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/generator" element={<Generator />} />
+            <Route path="/auto-generator" element={<AutoGenerator />} />
+            <Route path="/chatboard" element={<AIChat />} />
             <Route path="/ai-image" element={<AIImage />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/connect" element={<Connect />} />
             <Route path="/editor" element={<Editor />} />
+            <Route path="/code-assistant" element={<CodeAssistant />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/code" element={<CodeAssistant />} /> {/* ✅ Added route */}
           </Routes>
         </div>
       </div>
