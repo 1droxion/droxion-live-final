@@ -16,7 +16,7 @@ function CodeAssistant() {
     setLoading(true);
     setOutput("");
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/generate-code", {
+      const res = await axios.post("https://droxion-backend1.onrender.com/generate-code", {
         prompt,
       });
       setOutput(res.data.code);
