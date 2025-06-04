@@ -1,5 +1,1 @@
 .env
-VITE_BACKEND_URL=https://droxion-backend.onrender.com
-VITE_API_URL=https://droxion-backend.onrender.com ✅
-DID_API_KEY=ZGhydXY3OTM1QGdtYWlsLmNvbQ:rxG1asxA7oBYL8vXksZVA
-VITE_OPENROUTER_API_KEY=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
