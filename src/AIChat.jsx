@@ -1,6 +1,9 @@
-// AIChat.jsx with responsive sidebar toggle
+// AIChat.jsx with Markdown rendering + syntax highlighting
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -106,7 +109,6 @@ function AIChat() {
 
   return (
     <div className="flex h-screen text-white">
-      {/* Sidebar Toggle */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className="absolute top-4 left-4 z-50 lg:hidden bg-gray-800 text-white p-2 rounded"
@@ -114,7 +116,6 @@ function AIChat() {
         ☰
       </button>
 
-      {/* Sidebar */}
       {sidebarOpen && (
         <div className="w-64 bg-[#1f2937] border-r border-gray-700 p-4 space-y-2 overflow-y-auto">
           <button onClick={startNewChat} className="w-full bg-green-600 hover:bg-green-700 p-2 rounded">+ New Chat</button>
@@ -133,7 +134,6 @@ function AIChat() {
         </div>
       )}
 
-      {/* Main Chat */}
       <div className="flex-1 flex flex-col bg-[#0e0e10] p-4">
         <h1 className="text-3xl font-bold text-center text-purple-400 mb-4">🤖 Droxion AI Chatboard</h1>
 
@@ -141,16 +141,30 @@ function AIChat() {
           {messages.map((msg, i) => (
             <div
               key={i}
-              className={`max-w-xl px-5 py-4 rounded-2xl shadow-md relative animate-fade-in ${
+              className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative animate-fade-in whitespace-pre-wrap ${
                 msg.role === "user"
                   ? "ml-auto bg-gradient-to-br from-blue-600 to-indigo-600"
                   : "mr-auto bg-gradient-to-br from-purple-700 to-pink-700"
               }`}
             >
-              <div className="text-sm opacity-80 mb-1">
+              <div className="text-sm opacity-80 mb-2">
                 {msg.role === "user" ? "🧑 You" : "🤖 AI"} • {msg.timestamp}
               </div>
-              <div className="whitespace-pre-wrap text-md font-medium">{msg.content}</div>
+              <ReactMarkdown
+                children={msg.content}
+                components={{
+                  code({ inline, className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    return !inline && match ? (
+                      <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div" {...props}>
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
+                    );
+                  },
+                }}
+              />
             </div>
           ))}
           {loading && <div className="text-gray-400 italic animate-pulse">✍️ AI is typing...</div>}
