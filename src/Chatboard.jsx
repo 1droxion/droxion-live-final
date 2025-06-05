@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "../api/axios";
-import { Send, ClipboardCopy } from "lucide-react";
+import { Send, ClipboardCopy, RefreshCcw } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -12,6 +12,7 @@ function Chatboard() {
       type: "ai",
       text: "Welcome! I’m your Droxion AI Assistant. Ask me anything — like how to create videos, use voice, or manage styles.",
       time: new Date().toLocaleTimeString(),
+      origin: "system",
     },
   ]);
   const [input, setInput] = useState("");
@@ -23,30 +24,27 @@ function Chatboard() {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, aiTyping]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMsg = { type: "user", text: input, time: new Date().toLocaleTimeString() };
+  const sendMessage = async (messageText) => {
+    const userMsg = { type: "user", text: messageText, time: new Date().toLocaleTimeString() };
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
     setAiTyping(true);
 
     try {
-      const res = await axios.post("/chat", { message: input });
+      const res = await axios.post("/chat", { message: messageText });
       let reply = res.data.reply;
 
-      if (/who (made|created) you|who's your creator/i.test(input)) {
+      if (/who (made|created) you|who's your creator/i.test(messageText)) {
         reply = "I was created by Dhruv Patel and powered by Droxion™.";
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "ai",
-          text: reply,
-          time: new Date().toLocaleTimeString(),
-        },
-      ]);
+      const aiMsg = {
+        type: "ai",
+        text: reply,
+        time: new Date().toLocaleTimeString(),
+        origin: messageText,
+      };
+
+      setMessages((prev) => [...prev, aiMsg]);
     } catch (e) {
       console.error("Chat error:", e);
       setMessages((prev) => [
@@ -55,13 +53,22 @@ function Chatboard() {
       ]);
     }
 
-    setLoading(false);
     setAiTyping(false);
+  };
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    setInput("");
+    sendMessage(input.trim());
   };
 
   const handleCopy = (text) => {
     navigator.clipboard.writeText(text);
     alert("✅ Copied!");
+  };
+
+  const handleRegenerate = (originText) => {
+    sendMessage(originText);
   };
 
   const renderMessage = (msg, index) => (
@@ -102,12 +109,22 @@ function Chatboard() {
       </ReactMarkdown>
 
       {msg.type === "ai" && (
-        <button
-          onClick={() => handleCopy(msg.text)}
-          className="absolute top-2 right-2 p-1 bg-black/30 hover:bg-black/50 rounded"
-        >
-          <ClipboardCopy size={16} />
-        </button>
+        <div className="absolute top-2 right-2 flex gap-1">
+          <button
+            onClick={() => handleCopy(msg.text)}
+            className="p-1 bg-black/30 hover:bg-black/60 rounded"
+            title="Copy"
+          >
+            <ClipboardCopy size={16} />
+          </button>
+          <button
+            onClick={() => handleRegenerate(msg.origin)}
+            className="p-1 bg-black/30 hover:bg-black/60 rounded"
+            title="Regenerate"
+          >
+            <RefreshCcw size={16} />
+          </button>
+        </div>
       )}
     </motion.div>
   );
@@ -124,11 +141,8 @@ function Chatboard() {
           className="flex flex-col flex-grow overflow-y-auto space-y-3 px-4 py-4 bg-[#111827] rounded-xl shadow-lg"
         >
           {messages.map(renderMessage)}
-
           {aiTyping && (
-            <div className="text-sm text-white/60 animate-pulse px-4 py-2">
-              🤖 Typing...
-            </div>
+            <div className="text-sm text-white/60 animate-pulse px-4 py-2">🤖 Typing...</div>
           )}
         </div>
 
