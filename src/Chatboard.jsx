@@ -1,99 +1,92 @@
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
-import { Send } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+import requests
+import re
 
-function Chatboard() {
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem("droxion_chat_history");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef(null);
+# Load environment variables
+load_dotenv()
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    const userMsg = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-    setInput("");
-    try {
-      const res = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/chat`,
-        { message: input }
-      );
-      const botMsg = { role: "assistant", content: res.data.reply };
-      const newMessages = [...messages, userMsg, botMsg];
-      setMessages(newMessages);
-      localStorage.setItem("droxion_chat_history", JSON.stringify(newMessages));
-    } catch (err) {
-      console.error("❌ Chat failed", err);
-    }
-    setLoading(false);
-  };
+app = Flask(__name__)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+# ✅ Allow all *.vercel.app frontend + droxion.com using regex
+allowed_origin_regex = re.compile(
+    r"^https:\/\/(.*\.)?droxion(-live-final)?(-[a-z0-9]+)?\.vercel\.app$|^https:\/\/(www\.)?droxion\.com$"
+)
+CORS(app, origins=allowed_origin_regex, supports_credentials=True)
 
-  return (
-    <div className="flex flex-col h-screen bg-[#0e0e10] text-white">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`p-4 rounded-lg max-w-3xl whitespace-pre-wrap mx-auto shadow ${
-              msg.role === "user" ? "bg-[#1f2937] text-green-400" : "bg-[#111827] text-white"
-            }`}
-          >
-            <ReactMarkdown
-              children={msg.content}
-              components={{
-                code({ node, inline, className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || "");
-                  return !inline && match ? (
-                    <SyntaxHighlighter
-                      style={oneDark}
-                      language={match[1]}
-                      PreTag="div"
-                      children={String(children).replace(/\n$/, "")}
-                      {...props}
-                    />
-                  ) : (
-                    <code className="bg-gray-800 text-green-300 px-1 py-0.5 rounded text-sm">
-                      {children}
-                    </code>
-                  );
-                },
-              }}
-            />
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+@app.route("/")
+def home():
+    return "✅ Droxion API is live."
 
-      <div className="p-4 border-t border-gray-700 bg-[#111827] flex items-center gap-4">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Type your message..."
-          className="flex-1 p-3 rounded-lg bg-[#1f2937] text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-        />
-        <button
-          onClick={sendMessage}
-          disabled={loading}
-          className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg text-white"
-        >
-          <Send size={18} />
-        </button>
-      </div>
-    </div>
-  );
-}
+# ✅ Code Generator Endpoint
+@app.route("/generate-code", methods=["POST"])
+def generate_code():
+    data = request.json
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return jsonify({"error": "Prompt is required."}), 400
 
-export default Chatboard;
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "openai/gpt-4",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You're a senior software engineer. Return clean, working code with clear step-by-step explanation. Output code in Markdown triple-backtick format."
+                    },
+                    {"role": "user", "content": prompt}
+                ]
+            }
+        )
+        result = response.json()
+        code = result["choices"][0]["message"]["content"]
+        return jsonify({"code": code})
+    except Exception as e:
+        print("❌ Code Generation Error:", e)
+        return jsonify({"error": "Failed to generate code."}), 500
+
+# ✅ AI Chat Endpoint
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.json
+    message = data.get("message", "")
+    if not message:
+        return jsonify({"error": "Message is required."}), 400
+
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "openai/gpt-3.5-turbo",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": message}
+                ]
+            }
+        )
+        result = response.json()
+        reply = result["choices"][0]["message"]["content"]
+        return jsonify({"reply": reply})
+    except Exception as e:
+        print("❌ Chat Error:", e)
+        return jsonify({"error": "Failed to process chat."}), 500
+
+# ✅ CORS test endpoint
+@app.route("/test")
+def test():
+    return jsonify({"message": "CORS is working!"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
