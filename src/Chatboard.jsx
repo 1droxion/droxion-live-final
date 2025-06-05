@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "../api/axios";
-import { Send, ClipboardCopy, RefreshCcw } from "lucide-react";
+import { Send, ClipboardCopy, RefreshCcw, Heart } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 function Chatboard() {
-  const [messages, setMessages] = useState([
-    {
-      type: "ai",
-      text: "Welcome! I’m your Droxion AI Assistant. Ask me anything — like how to create videos, use voice, or manage styles.",
-      time: new Date().toLocaleTimeString(),
-      origin: "system",
-    },
-  ]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("droxion_chat");
+    return saved ? JSON.parse(saved) : [
+      {
+        type: "ai",
+        text: "Welcome! I’m your Droxion AI Assistant. Ask me anything — like how to create videos, use voice, or manage styles.",
+        time: new Date().toLocaleTimeString(),
+        origin: "system",
+        favorite: false,
+      }
+    ];
+  });
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
@@ -22,6 +27,7 @@ function Chatboard() {
 
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
+    localStorage.setItem("droxion_chat", JSON.stringify(messages));
   }, [messages, aiTyping]);
 
   const sendMessage = async (messageText) => {
@@ -42,6 +48,7 @@ function Chatboard() {
         text: reply,
         time: new Date().toLocaleTimeString(),
         origin: messageText,
+        favorite: false,
       };
 
       setMessages((prev) => [...prev, aiMsg]);
@@ -49,7 +56,7 @@ function Chatboard() {
       console.error("Chat error:", e);
       setMessages((prev) => [
         ...prev,
-        { type: "ai", text: "⚠️ Something went wrong. Try again.", time: new Date().toLocaleTimeString() },
+        { type: "ai", text: "⚠️ Something went wrong. Try again.", time: new Date().toLocaleTimeString(), favorite: false },
       ]);
     }
 
@@ -69,6 +76,14 @@ function Chatboard() {
 
   const handleRegenerate = (originText) => {
     sendMessage(originText);
+  };
+
+  const toggleFavorite = (index) => {
+    setMessages((prev) =>
+      prev.map((msg, i) =>
+        i === index ? { ...msg, favorite: !msg.favorite } : msg
+      )
+    );
   };
 
   const renderMessage = (msg, index) => (
@@ -124,44 +139,49 @@ function Chatboard() {
           >
             <RefreshCcw size={16} />
           </button>
+          <button
+            onClick={() => toggleFavorite(index)}
+            className="p-1 bg-black/30 hover:bg-black/60 rounded"
+            title={msg.favorite ? "Unsave" : "Save to Favorites"}
+          >
+            <Heart size={16} color={msg.favorite ? "red" : "white"} fill={msg.favorite ? "red" : "none"} />
+          </button>
         </div>
       )}
     </motion.div>
   );
 
   return (
-    <div className="flex justify-center items-center h-screen bg-[#0e0e10] text-white px-4">
-      <div className="w-full max-w-4xl h-full flex flex-col">
-        <div className="text-3xl font-bold text-center mb-4 text-purple-300">
-          🤖 Droxion AI Chatboard
-        </div>
+    <div className="flex flex-col h-screen p-4 bg-[#0e0e10] text-white">
+      <div className="text-3xl font-bold text-center mb-4 text-purple-300">
+        🤖 Droxion AI Chatboard
+      </div>
 
-        <div
-          ref={chatRef}
-          className="flex flex-col flex-grow overflow-y-auto space-y-3 px-4 py-4 bg-[#111827] rounded-xl shadow-lg"
+      <div
+        ref={chatRef}
+        className="flex flex-col flex-grow overflow-y-auto space-y-2 pb-4 px-2"
+      >
+        {messages.map(renderMessage)}
+        {aiTyping && (
+          <div className="text-sm text-white/60 animate-pulse px-4 py-2">🤖 Typing...</div>
+        )}
+      </div>
+
+      <div className="flex items-center mt-4 gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          placeholder="Ask me anything about Droxion..."
+          className="flex-grow p-3 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none"
+        />
+        <button
+          onClick={handleSend}
+          disabled={loading}
+          className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-bold transition"
         >
-          {messages.map(renderMessage)}
-          {aiTyping && (
-            <div className="text-sm text-white/60 animate-pulse px-4 py-2">🤖 Typing...</div>
-          )}
-        </div>
-
-        <div className="flex items-center mt-4 gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Ask me anything about Droxion..."
-            className="flex-grow p-3 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
-          />
-          <button
-            onClick={handleSend}
-            disabled={loading}
-            className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-bold transition"
-          >
-            Send
-          </button>
-        </div>
+          Send
+        </button>
       </div>
     </div>
   );
