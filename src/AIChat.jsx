@@ -1,9 +1,10 @@
-// AIChat.jsx with Markdown rendering + syntax highlighting
+// AIChat.jsx with separated text/code + copy button
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { ClipboardCopy } from "lucide-react";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -107,6 +108,11 @@ function AIChat() {
     setLoading(false);
   };
 
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text);
+    alert("✅ Copied to clipboard");
+  };
+
   return (
     <div className="flex h-screen text-white">
       <button
@@ -155,10 +161,19 @@ function AIChat() {
                 components={{
                   code({ inline, className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || "");
+                    const codeContent = String(children).replace(/\n$/, "");
                     return !inline && match ? (
-                      <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div" {...props}>
-                        {String(children).replace(/\n$/, "")}
-                      </SyntaxHighlighter>
+                      <div className="relative group">
+                        <button
+                          onClick={() => handleCopy(codeContent)}
+                          className="absolute top-2 right-2 text-xs text-white bg-black/60 rounded px-2 py-1 hidden group-hover:block"
+                        >
+                          <ClipboardCopy size={14} className="inline-block mr-1" /> Copy
+                        </button>
+                        <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div" {...props}>
+                          {codeContent}
+                        </SyntaxHighlighter>
+                      </div>
                     ) : (
                       <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
                     );
