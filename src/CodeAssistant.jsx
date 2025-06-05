@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "../api/axios"; // ✅ use axios instance
+import axios from "./api/axios"; // ✅ Corrected path
 import { Loader2, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -16,12 +16,12 @@ function CodeAssistant() {
     setLoading(true);
     setOutput("");
     try {
-      const res = await axios.post("/chat", {
-        message: `You're a senior developer. Generate code only:\n\n${prompt}`
+      const res = await axios.post("/generate-code", {
+        prompt,
       });
-      setOutput(res.data.reply);
+      setOutput(res.data.code);
     } catch (err) {
-      console.error("❌ Code Generation via Chat Failed", err);
+      console.error("❌ Code Generation Failed", err);
       setOutput("⚠️ Something went wrong. Try again.");
     }
     setLoading(false);
@@ -35,11 +35,11 @@ function CodeAssistant() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-4 text-green-400">💡 AI Code Assistant (Chat Powered)</h1>
+      <h1 className="text-3xl font-bold mb-4 text-green-400">💡 AI Code Assistant</h1>
 
       <textarea
         rows="4"
-        placeholder="Describe the code you want generated..."
+        placeholder="Describe what you want to build... (e.g. 'Create a React login form with TailwindCSS')"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         className="w-full p-4 rounded-lg bg-[#1e1e1e] text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 placeholder:text-gray-400 transition mb-4"
