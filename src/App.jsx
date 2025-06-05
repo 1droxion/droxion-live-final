@@ -8,7 +8,6 @@ import Dashboard from "./Dashboard";
 import Generator from "./Generator";
 import AutoGenerator from "./AutoGenerator";
 import AIChat from "./AIChat";
-import CodeAssistant from "./CodeAssistant";
 import AIImage from "./AIImage";
 import Plans from "./Plans";
 import Projects from "./Projects";
@@ -41,7 +40,6 @@ function AppWrapper() {
             <Route path="/generator" element={<Generator />} />
             <Route path="/auto-generator" element={<AutoGenerator />} />
             <Route path="/chatboard" element={<AIChat />} />
-            <Route path="/code-assistant" element={<CodeAssistant />} />
             <Route path="/ai-image" element={<AIImage />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/projects" element={<Projects />} />
