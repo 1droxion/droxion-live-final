@@ -1,4 +1,4 @@
-// AIChat.jsx (with chat history, reset, delete, identity reply)
+// AIChat.jsx with responsive sidebar toggle
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
@@ -8,7 +8,14 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const chatRef = useRef(null);
+
+  useEffect(() => {
+    const handleResize = () => setSidebarOpen(window.innerWidth >= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
@@ -55,6 +62,7 @@ function AIChat() {
     if (found) {
       setActiveChatId(id);
       setMessages(found.messages);
+      if (window.innerWidth < 768) setSidebarOpen(false);
     }
   };
 
@@ -91,31 +99,39 @@ function AIChat() {
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      console.error("❌ Chat Error:", err);
-      alert("❌ Chat failed. Check backend or network.");
+      alert("❌ Chat failed. Check your backend.");
     }
-
     setLoading(false);
   };
 
   return (
     <div className="flex h-screen text-white">
+      {/* Sidebar Toggle */}
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="absolute top-4 left-4 z-50 lg:hidden bg-gray-800 text-white p-2 rounded"
+      >
+        ☰
+      </button>
+
       {/* Sidebar */}
-      <div className="w-64 bg-[#1f2937] border-r border-gray-700 p-4 space-y-2 overflow-y-auto">
-        <button onClick={startNewChat} className="w-full bg-green-600 hover:bg-green-700 p-2 rounded">+ New Chat</button>
-        {chats.map((chat) => (
-          <div
-            key={chat.id}
-            onClick={() => loadChat(chat.id)}
-            className={`p-2 rounded cursor-pointer ${activeChatId === chat.id ? "bg-purple-700" : "bg-gray-800 hover:bg-gray-700"}`}
-          >
-            <div className="flex justify-between items-center">
-              <span className="truncate w-36">{chat.title}</span>
-              <button onClick={(e) => { e.stopPropagation(); deleteChat(chat.id); }} className="text-red-400">🗑️</button>
+      {sidebarOpen && (
+        <div className="w-64 bg-[#1f2937] border-r border-gray-700 p-4 space-y-2 overflow-y-auto">
+          <button onClick={startNewChat} className="w-full bg-green-600 hover:bg-green-700 p-2 rounded">+ New Chat</button>
+          {chats.map((chat) => (
+            <div
+              key={chat.id}
+              onClick={() => loadChat(chat.id)}
+              className={`p-2 rounded cursor-pointer ${activeChatId === chat.id ? "bg-purple-700" : "bg-gray-800 hover:bg-gray-700"}`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="truncate w-36">{chat.title}</span>
+                <button onClick={(e) => { e.stopPropagation(); deleteChat(chat.id); }} className="text-red-400">🗑️</button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Main Chat */}
       <div className="flex-1 flex flex-col bg-[#0e0e10] p-4">
@@ -137,7 +153,6 @@ function AIChat() {
               <div className="whitespace-pre-wrap text-md font-medium">{msg.content}</div>
             </div>
           ))}
-
           {loading && <div className="text-gray-400 italic animate-pulse">✍️ AI is typing...</div>}
         </div>
 
