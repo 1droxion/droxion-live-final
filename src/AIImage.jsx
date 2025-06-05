@@ -39,22 +39,11 @@ function AIImage() {
 
     try {
       const response = await axios.post(
-        "https://api.openai.com/v1/images/generations",
-        {
-          model: "dall-e-3",
-          prompt,
-          n: 1,
-          size: "1024x1024",
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
+        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/generate-image`,
+        { prompt }
       );
 
-      const url = response.data.data[0].url;
+      const url = response.data.url;
       setImageUrl(url);
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
