@@ -1,81 +1,95 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Send, Loader2 } from "lucide-react";
+import { Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 function Chatboard() {
-  const [message, setMessage] = useState("");
-  const [chatLog, setChatLog] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("droxion_chat_history");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
   const sendMessage = async () => {
-    if (!message.trim()) return;
-
-    const userMsg = { sender: "user", text: message };
-    setChatLog((prev) => [...prev, userMsg]);
-    setMessage("");
+    if (!input.trim()) return;
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
-
+    setInput("");
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/chat`, {
-        message,
-      });
-      const reply = res.data.reply || "⚠️ No reply from AI.";
-      setChatLog((prev) => [...prev, { sender: "ai", text: reply }]);
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_BASE_URL}/chat`,
+        { message: input }
+      );
+      const botMsg = { role: "assistant", content: res.data.reply };
+      const newMessages = [...messages, userMsg, botMsg];
+      setMessages(newMessages);
+      localStorage.setItem("droxion_chat_history", JSON.stringify(newMessages));
     } catch (err) {
-      console.error("❌ Chat error:", err);
-      setChatLog((prev) => [...prev, { sender: "ai", text: "❌ Failed to get response." }]);
+      console.error("❌ Chat failed", err);
     }
-
     setLoading(false);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
   };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatLog]);
+  }, [messages]);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-4 text-green-400">💬 AI Chatboard</h1>
-
-      <div className="bg-[#0e0e10] border border-gray-700 rounded-lg p-4 h-[500px] overflow-y-auto space-y-4">
-        {chatLog.map((msg, index) => (
+    <div className="flex flex-col h-screen bg-[#0e0e10] text-white">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg, idx) => (
           <div
-            key={index}
-            className={`p-3 rounded-lg max-w-[80%] ${
-              msg.sender === "user"
-                ? "ml-auto bg-green-600 text-white"
-                : "mr-auto bg-gray-800 text-green-300"
+            key={idx}
+            className={`p-4 rounded-lg max-w-3xl whitespace-pre-wrap mx-auto shadow ${
+              msg.role === "user" ? "bg-[#1f2937] text-green-400" : "bg-[#111827] text-white"
             }`}
           >
-            {msg.text}
+            <ReactMarkdown
+              children={msg.content}
+              components={{
+                code({ node, inline, className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || "");
+                  return !inline && match ? (
+                    <SyntaxHighlighter
+                      style={oneDark}
+                      language={match[1]}
+                      PreTag="div"
+                      children={String(children).replace(/\n$/, "")}
+                      {...props}
+                    />
+                  ) : (
+                    <code className="bg-gray-800 text-green-300 px-1 py-0.5 rounded text-sm">
+                      {children}
+                    </code>
+                  );
+                },
+              }}
+            />
           </div>
         ))}
-        <div ref={bottomRef}></div>
+        <div ref={bottomRef} />
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        <textarea
-          rows="2"
-          className="flex-grow p-3 rounded-lg bg-[#1e1e1e] text-white border border-gray-600 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-          placeholder="Type a message..."
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
+      <div className="p-4 border-t border-gray-700 bg-[#111827] flex items-center gap-4">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          placeholder="Type your message..."
+          className="flex-1 p-3 rounded-lg bg-[#1f2937] text-white focus:outline-none focus:ring-2 focus:ring-green-500"
         />
         <button
           onClick={sendMessage}
           disabled={loading}
-          className="p-3 bg-green-500 rounded-full text-white hover:bg-green-600 transition disabled:opacity-50"
+          className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg text-white"
         >
-          {loading ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+          <Send size={18} />
         </button>
       </div>
     </div>
