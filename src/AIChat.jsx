@@ -1,10 +1,10 @@
-// AIChat.jsx with separated text/code + copy button
+// AIChat.jsx with export to .txt
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { ClipboardCopy } from "lucide-react";
+import { ClipboardCopy, Download } from "lucide-react";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -113,6 +113,17 @@ function AIChat() {
     alert("✅ Copied to clipboard");
   };
 
+  const exportChat = () => {
+    const fullText = messages.map(m => `${m.role === "user" ? "🧑 You" : "🤖 AI"} • ${m.timestamp}\n${m.content}\n\n`).join("");
+    const blob = new Blob([fullText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `chat-${Date.now()}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex h-screen text-white">
       <button
@@ -125,6 +136,9 @@ function AIChat() {
       {sidebarOpen && (
         <div className="w-64 bg-[#1f2937] border-r border-gray-700 p-4 space-y-2 overflow-y-auto">
           <button onClick={startNewChat} className="w-full bg-green-600 hover:bg-green-700 p-2 rounded">+ New Chat</button>
+          <button onClick={exportChat} className="w-full mt-2 bg-purple-600 hover:bg-purple-700 p-2 rounded flex items-center gap-2 justify-center">
+            <Download size={16} /> Export Chat
+          </button>
           {chats.map((chat) => (
             <div
               key={chat.id}
