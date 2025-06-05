@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import axios from "./api/axios"; // ✅ use shared axios instance
 import { Loader2, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -16,15 +16,14 @@ function CodeAssistant() {
     setLoading(true);
     setOutput("");
     try {
-      const res = await axios.post("https://droxion-backend1.onrender.com/generate-code", {
-        prompt,
-      });
-      setOutput(res.data.code);
+      const res = await axios.post("/generate-code", { prompt }); // ✅ uses base URL
+      setOutput(res.data.code || "⚠️ No response from server.");
     } catch (err) {
       console.error("❌ Code Generation Failed", err);
       setOutput("⚠️ Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleCopy = () => {
