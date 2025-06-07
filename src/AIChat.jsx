@@ -86,7 +86,7 @@ function AIChat() {
     setLoading(true);
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { message: input });
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
       let reply = res?.data?.reply || "No reply.";
 
       if (/who (made|created) you|who's your creator/i.test(input)) {
