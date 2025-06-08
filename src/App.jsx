@@ -1,10 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  useLocation,
-} from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -25,7 +20,7 @@ import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
 
-function LayoutWithSidebar() {
+function AppWrapper() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
@@ -33,14 +28,17 @@ function LayoutWithSidebar() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  return (
+  const noSidebarRoutes = ["/login", "/signup", "/"];
+
+  const showLayout = !noSidebarRoutes.includes(location.pathname);
+
+  return showLayout ? (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
       <div className="flex-1 flex flex-col">
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
-            <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/auto-generator" element={<AutoGenerator />} />
@@ -57,17 +55,13 @@ function LayoutWithSidebar() {
         </div>
       </div>
     </div>
+  ) : (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+    </Routes>
   );
 }
 
-export default function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/*" element={<LayoutWithSidebar />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-      </Routes>
-    </Router>
-  );
-}
+export default AppWrapper;
