@@ -1,9 +1,9 @@
-// ✅ App.jsx (no Router here!)
 import React, { useState, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
 import AutoGenerator from "./AutoGenerator";
@@ -17,8 +17,10 @@ import Editor from "./Editor";
 import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
+import Login from "./Login";
+import Signup from "./Signup";
 
-function AppWrapper() {
+function LayoutWithSidebar() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
@@ -35,7 +37,6 @@ function AppWrapper() {
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
-            <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/auto-generator" element={<AutoGenerator />} />
@@ -55,4 +56,19 @@ function AppWrapper() {
   );
 }
 
-export default AppWrapper;
+function AppWrapper() {
+  const location = useLocation();
+  const isLandingPage = location.pathname === "/";
+
+  return isLandingPage ? <LandingPage /> : <LayoutWithSidebar />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<AppWrapper />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+    </Routes>
+  );
+}
