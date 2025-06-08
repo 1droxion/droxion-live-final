@@ -1,5 +1,6 @@
+// src/App.jsx
 import React, { useState, useEffect } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -18,7 +19,7 @@ import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 
-function AppWrapper() {
+function InnerLayout() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
@@ -26,18 +27,13 @@ function AppWrapper() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  const hideLayoutRoutes = ["/", "/login", "/signup"];
-  const showLayout = !hideLayoutRoutes.includes(location.pathname);
-
   return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      {showLayout && isSidebarOpen && (
+      {isSidebarOpen && (
         <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
       )}
       <div className="flex-1 flex flex-col">
-        {showLayout && (
-          <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-        )}
+        <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
             <Route path="/" element={<LandingPage />} />
@@ -60,4 +56,10 @@ function AppWrapper() {
   );
 }
 
-export default AppWrapper;
+export default function App() {
+  return (
+    <Router>
+      <InnerLayout />
+    </Router>
+  );
+}
