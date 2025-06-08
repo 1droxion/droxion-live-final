@@ -10,7 +10,7 @@ function Profile() {
   const [plan, setPlan] = useState("Starter");
   const [usage, setUsage] = useState({ videos: 0, images: 0, auto: 0 });
 
-  // Load user stats
+  // ✅ Load user stats
   useEffect(() => {
     axios
       .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
@@ -27,7 +27,7 @@ function Profile() {
       .catch((err) => console.error("Stats load error:", err));
   }, []);
 
-  // Load saved profile
+  // ✅ Load saved profile
   useEffect(() => {
     const savedName = localStorage.getItem("droxion_name");
     const savedEmail = localStorage.getItem("droxion_email");
@@ -38,11 +38,13 @@ function Profile() {
     if (savedAvatar) setAvatar(savedAvatar);
   }, []);
 
+  // ✅ Handle image upload
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setPreview(URL.createObjectURL(file));
+    const previewURL = URL.createObjectURL(file);
+    setPreview(previewURL);
 
     const formData = new FormData();
     formData.append("avatar", file);
@@ -53,7 +55,7 @@ function Profile() {
         const url = `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}${res.data.url}`;
         setAvatar(url);
         localStorage.setItem("droxion_avatar", url);
-        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new Event("storage")); // ✅ triggers live update
       })
       .catch((err) => {
         console.error("Upload error:", err);
@@ -61,6 +63,7 @@ function Profile() {
       });
   };
 
+  // ✅ Save name and email
   const handleSave = () => {
     localStorage.setItem("droxion_name", name);
     localStorage.setItem("droxion_email", email);
@@ -72,7 +75,7 @@ function Profile() {
       <div className="w-full max-w-3xl bg-[#1f2937] p-8 rounded-xl shadow-xl border border-gray-700 space-y-8 animate-fade-in">
         <h1 className="text-3xl font-bold text-green-400">👤 My Profile</h1>
 
-        {/* Avatar Upload */}
+        {/* ✅ Avatar Upload */}
         <div className="flex items-center gap-6">
           <img
             src={preview || avatar}
@@ -90,7 +93,7 @@ function Profile() {
           </div>
         </div>
 
-        {/* Name & Email */}
+        {/* ✅ Name & Email */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <input
             type="text"
@@ -115,7 +118,7 @@ function Profile() {
           💾 Save Profile
         </button>
 
-        {/* Plan & Usage */}
+        {/* ✅ Plan & Usage Info */}
         <div className="mt-10 space-y-4">
           <h2 className="text-xl font-semibold text-purple-400">📊 Plan Usage</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
