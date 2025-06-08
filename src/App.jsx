@@ -40,6 +40,7 @@ function LayoutWithSidebar() {
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/auto-generator" element={<AutoGenerator />} />
@@ -59,18 +60,11 @@ function LayoutWithSidebar() {
   );
 }
 
-function AppWrapper() {
-  const location = useLocation();
-  const isLandingPage = location.pathname === "/";
-
-  return isLandingPage ? <LandingPage /> : <LayoutWithSidebar />;
-}
-
 export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/*" element={<AppWrapper />} />
+        <Route path="/*" element={<LayoutWithSidebar />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
       </Routes>
