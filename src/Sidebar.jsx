@@ -9,6 +9,13 @@ function Sidebar({ isOpen, setIsOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const isMobile = window.innerWidth < 768;
+
+  const handleNavClick = (path) => {
+    navigate(path);
+    if (isMobile) setIsOpen(false); // Auto-close only on mobile
+  };
+
   const routes = [
     { path: "/dashboard", icon: Compass, label: "Dashboard" },
     { path: "/generator", icon: Zap, label: "Generator" },
@@ -24,68 +31,68 @@ function Sidebar({ isOpen, setIsOpen }) {
     { path: "/settings", icon: Settings, label: "Settings" },
   ];
 
-  const handleNavClick = (path) => {
-    navigate(path);
-    setIsOpen(false); // Automatically close sidebar
-  };
-
   return (
-    <div className={`bg-[#111827] ${isOpen ? "w-56" : "w-14"} transition-all duration-300 h-screen flex flex-col`}>
-      
-      <button
-        className="text-gray-400 hover:text-white p-2"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {isOpen ? "←" : "→"}
-      </button>
-
-      <nav className="flex-1 overflow-auto px-2 py-4 space-y-1">
-        {routes.map(({ path, icon: Icon, label }) => (
+    <div
+      className={`bg-[#111827] fixed lg:relative z-50 top-0 left-0 h-full transition-all duration-300 ease-in-out ${
+        isOpen ? "w-56" : "w-0 lg:w-14"
+      } overflow-hidden`}
+    >
+      <div className="flex flex-col h-full">
+        <div className="p-2 lg:hidden">
           <button
-            key={path}
-            onClick={() => handleNavClick(path)}
-            className={`flex items-center p-2 rounded transition ${
-              location.pathname === path
-                ? "bg-green-500 text-white"
-                : "text-gray-300 hover:bg-gray-700 hover:text-white"
-            } w-full`}
+            onClick={() => setIsOpen(false)}
+            className="text-gray-400 hover:text-white"
           >
-            <Icon className="w-5 h-5" />
-            {isOpen && <span className="ml-3 text-sm">{label}</span>}
+            ✕ Close
           </button>
-        ))}
-      </nav>
+        </div>
 
-      <div className="border-t border-gray-700 p-2 space-y-2">
-        <button
-          onClick={() => handleNavClick("/login")}
-          className="flex items-center p-2 rounded transition text-gray-300 hover:bg-gray-700 hover:text-white w-full"
-        >
-          <LogIn className="w-5 h-5" />
-          {isOpen && <span className="ml-3 text-sm">Login</span>}
-        </button>
+        <nav className="flex-1 overflow-auto px-2 py-4 space-y-1">
+          {routes.map(({ path, icon: Icon, label }) => (
+            <button
+              key={path}
+              onClick={() => handleNavClick(path)}
+              className={`flex items-center p-2 rounded transition ${
+                location.pathname === path
+                  ? "bg-green-500 text-white"
+                  : "text-gray-300 hover:bg-gray-700 hover:text-white"
+              } w-full`}
+            >
+              <Icon className="w-5 h-5" />
+              {isOpen && <span className="ml-3 text-sm">{label}</span>}
+            </button>
+          ))}
+        </nav>
 
-        <button
-          onClick={() => handleNavClick("/signup")}
-          className="flex items-center p-2 rounded transition text-gray-300 hover:bg-gray-700 hover:text-white w-full"
-        >
-          <UserPlus className="w-5 h-5" />
-          {isOpen && <span className="ml-3 text-sm">Signup</span>}
-        </button>
+        <div className="border-t border-gray-700 p-2 space-y-2">
+          <button
+            onClick={() => handleNavClick("/login")}
+            className="flex items-center p-2 rounded transition text-gray-300 hover:bg-gray-700 hover:text-white w-full"
+          >
+            <LogIn className="w-5 h-5" />
+            {isOpen && <span className="ml-3 text-sm">Login</span>}
+          </button>
 
-        <button
-          onClick={() => {
-            // Implement logout logic here
-            navigate("/login");
-            setIsOpen(false);
-          }}
-          className="flex items-center p-2 rounded transition text-red-400 hover:bg-red-700 hover:text-white w-full"
-        >
-          <LogOut className="w-5 h-5" />
-          {isOpen && <span className="ml-3 text-sm">Logout</span>}
-        </button>
+          <button
+            onClick={() => handleNavClick("/signup")}
+            className="flex items-center p-2 rounded transition text-gray-300 hover:bg-gray-700 hover:text-white w-full"
+          >
+            <UserPlus className="w-5 h-5" />
+            {isOpen && <span className="ml-3 text-sm">Signup</span>}
+          </button>
+
+          <button
+            onClick={() => {
+              navigate("/login");
+              if (isMobile) setIsOpen(false);
+            }}
+            className="flex items-center p-2 rounded transition text-red-400 hover:bg-red-700 hover:text-white w-full"
+          >
+            <LogOut className="w-5 h-5" />
+            {isOpen && <span className="ml-3 text-sm">Logout</span>}
+          </button>
+        </div>
       </div>
-
     </div>
   );
 }
