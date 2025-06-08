@@ -1,25 +1,21 @@
 import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  Compass, Zap, MessageSquare, Image, Layers, Folder, LayoutTemplate,
+  MessageSquare, Image, Layers, Folder, LayoutTemplate,
   Link as ConnectIcon, Edit, User, Settings, LogOut, LogIn, UserPlus
 } from "lucide-react";
 
 function Sidebar({ isOpen, setIsOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
-
   const isMobile = window.innerWidth < 768;
 
   const handleNavClick = (path) => {
     navigate(path);
-    if (isMobile) setIsOpen(false); // Auto-close only on mobile
+    if (isMobile) setIsOpen(false);
   };
 
   const routes = [
-    { path: "/dashboard", icon: Compass, label: "Dashboard" },
-    { path: "/generator", icon: Zap, label: "Generator" },
-    { path: "/auto-generator", icon: Zap, label: "Auto Generator" },
     { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
     { path: "/ai-image", icon: Image, label: "AI Image" },
     { path: "/plans", icon: Layers, label: "Plans" },
