@@ -6,7 +6,6 @@ function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
   const [avatar, setAvatar] = useState(localStorage.getItem("droxion_avatar") || "/avatar.png");
 
-  // ✅ Sync avatar from localStorage live
   useEffect(() => {
     const syncAvatar = () => {
       const storedAvatar = localStorage.getItem("droxion_avatar");
@@ -15,9 +14,10 @@ function Topbar({ toggleSidebar }) {
       }
     };
 
+    // Sync from localStorage on update
     syncAvatar();
     window.addEventListener("storage", syncAvatar);
-    const interval = setInterval(syncAvatar, 5000);
+    const interval = setInterval(syncAvatar, 3000);
 
     return () => {
       window.removeEventListener("storage", syncAvatar);
@@ -27,7 +27,6 @@ function Topbar({ toggleSidebar }) {
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
-      {/* Left: Hamburger + Brand */}
       <div className="flex items-center gap-3">
         <button
           onClick={toggleSidebar}
@@ -45,7 +44,6 @@ function Topbar({ toggleSidebar }) {
         </h1>
       </div>
 
-      {/* Center: Search */}
       <div className="flex-1 mx-4 max-w-lg hidden md:block">
         <input
           type="text"
@@ -54,7 +52,6 @@ function Topbar({ toggleSidebar }) {
         />
       </div>
 
-      {/* Right: Avatar */}
       <div className="flex items-center gap-3">
         <img
           src={avatar}
