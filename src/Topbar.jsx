@@ -6,7 +6,7 @@ function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
   const [avatar, setAvatar] = useState(localStorage.getItem("droxion_avatar") || "/avatar.png");
 
-  // ✅ Live sync avatar from localStorage
+  // ✅ Sync avatar from localStorage live
   useEffect(() => {
     const syncAvatar = () => {
       const storedAvatar = localStorage.getItem("droxion_avatar");
@@ -27,11 +27,16 @@ function Topbar({ toggleSidebar }) {
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
-      {/* Left: Hamburger + Logo */}
+      {/* Left: Hamburger + Brand */}
       <div className="flex items-center gap-3">
-        <button onClick={toggleSidebar} className="lg:hidden text-white hover:text-gray-400">
+        <button
+          onClick={toggleSidebar}
+          className="text-white block lg:hidden"
+          title="Toggle menu"
+        >
           <Menu size={22} />
         </button>
+
         <h1
           className="text-white font-semibold text-lg cursor-pointer hidden sm:block"
           onClick={() => navigate("/")}
@@ -40,8 +45,8 @@ function Topbar({ toggleSidebar }) {
         </h1>
       </div>
 
-      {/* Center: Search bar */}
-      <div className="flex-1 mx-4 max-w-lg">
+      {/* Center: Search */}
+      <div className="flex-1 mx-4 max-w-lg hidden md:block">
         <input
           type="text"
           placeholder="🔍 Search videos, tools, templates..."
@@ -49,7 +54,7 @@ function Topbar({ toggleSidebar }) {
         />
       </div>
 
-      {/* Right: Avatar only */}
+      {/* Right: Avatar */}
       <div className="flex items-center gap-3">
         <img
           src={avatar}
