@@ -24,17 +24,20 @@ export default function App() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
+  // Auto-collapse on small screens
   useEffect(() => {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
   return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      {isSidebarOpen && (
-        <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
-      )}
+      {/* Sidebar (toggleable) */}
+      <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+
+      {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+
         <div className="p-4">
           <Routes>
             <Route path="/" element={<LandingPage />} />
