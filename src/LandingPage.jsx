@@ -10,21 +10,21 @@ function LandingPage() {
         Welcome to <span className="text-purple-500">Droxion</span>
       </h1>
       <p className="text-xl md:text-2xl text-gray-300 text-center max-w-2xl mb-10">
-        The <span className="text-green-400 font-semibold">#1 AI Reel Generator</span> — From Script to Upload in Seconds.
+        Your All-in-One AI Creation Studio — <span className="text-green-400 font-semibold">Generate. Chat. Create.</span>
       </p>
 
       <div className="flex flex-col md:flex-row gap-6 justify-center">
         <button
-          onClick={() => navigate("/generator")}
-          className="px-6 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-lg rounded-2xl shadow-xl hover:scale-105 transform transition duration-300"
+          onClick={() => navigate("/ai-image")}
+          className="px-6 py-4 bg-gradient-to-r from-green-500 to-blue-600 text-white text-lg rounded-2xl shadow-xl hover:scale-105 transform transition duration-300"
         >
-          🚀 Try It Free Now
+          🎨 Try AI Image Generator
         </button>
         <button
-          onClick={() => navigate("/projects")}
+          onClick={() => navigate("/chatboard")}
           className="px-6 py-4 bg-white text-black text-lg font-semibold rounded-2xl shadow-xl hover:scale-105 transform transition duration-300"
         >
-          🎬 See AI Demo
+          💬 Ask AI Anything
         </button>
       </div>
 
@@ -33,14 +33,41 @@ function LandingPage() {
           What can Droxion do?
         </h2>
         <ul className="text-gray-300 space-y-2 text-lg">
-          <li>✅ Generate cinematic reels in 30 seconds</li>
-          <li>✅ Use AI voiceovers, subtitles, and music</li>
-          <li>✅ Automate your content pipeline</li>
-          <li>✅ One-click download & upload ready</li>
+          <li>✅ Generate high-quality AI images instantly</li>
+          <li>✅ Get instant answers & content from AI Chatboard</li>
+          <li>✅ Use smart templates for creative workflows</li>
+          <li>✅ Manage your projects and content seamlessly</li>
+          <li>✅ Full-featured editor for precise customization</li>
         </ul>
       </div>
 
-      <p className="mt-10 text-gray-500 text-sm">Built with ❤️ for creators who demand the best.</p>
+      <div className="mt-16 w-full max-w-5xl text-center">
+        <h2 className="text-3xl font-bold text-green-400 mb-6">What people are saying 💬</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-[#1f2937] p-6 rounded-xl shadow-lg">
+            <p className="text-gray-300 italic">
+              “Droxion helped me turn ideas into viral content — in minutes. Game changer.”
+            </p>
+            <p className="text-sm mt-4 text-gray-500">— Aditi, Content Creator</p>
+          </div>
+          <div className="bg-[#1f2937] p-6 rounded-xl shadow-lg">
+            <p className="text-gray-300 italic">
+              “From AI images to smart editing, this is the future of creative automation.”
+            </p>
+            <p className="text-sm mt-4 text-gray-500">— Rahul, Startup Founder</p>
+          </div>
+          <div className="bg-[#1f2937] p-6 rounded-xl shadow-lg">
+            <p className="text-gray-300 italic">
+              “Simple. Powerful. Automated. Droxion is my daily tool now.”
+            </p>
+            <p className="text-sm mt-4 text-gray-500">— Sara, Freelance Designer</p>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-12 text-gray-500 text-sm">
+        Built with ❤️ for creators who demand the best.
+      </p>
     </div>
   );
 }
