@@ -1,88 +1,85 @@
-import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import React, { useState, useEffect } from "react";
 import {
-  LayoutDashboard,
-  Sparkles,
-  Wand2,
-  Bot,
-  Image,
-  GalleryHorizontal,
-  Film,
-  PencilRuler,
-  Link2,
-  User,
-  Settings,
-  MoreVertical
-} from "lucide-react";
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useLocation,
+} from "react-router-dom";
 
-function Sidebar({ isOpen, setIsOpen }) {
+import Sidebar from "./Sidebar";
+import Topbar from "./Topbar";
+
+import Dashboard from "./Dashboard";
+import Generator from "./Generator";
+import AutoGenerator from "./AutoGenerator";
+import AIChat from "./AIChat";
+import AIImage from "./AIImage";
+import Plans from "./Plans";
+import Projects from "./Projects";
+import Templates from "./Templates";
+import Connect from "./Connect";
+import Editor from "./Editor";
+import Profile from "./Profile";
+import Settings from "./Settings";
+import LandingPage from "./LandingPage";
+import Login from "./Login";
+import Signup from "./Signup";
+
+function LayoutWithSidebar() {
   const location = useLocation();
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
 
-  const navLinks = [
-    { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Generator", path: "/generator", icon: Sparkles },
-    { label: "Auto Generator", path: "/auto-generator", icon: Wand2 },
-    { label: "AI Chat", path: "/chatboard", icon: Bot },
-    { label: "AI Image", path: "/ai-image", icon: Image },
-    { label: "Plans", path: "/plans", icon: GalleryHorizontal },
-    { label: "Projects", path: "/projects", icon: Film },
-    { label: "Templates", path: "/templates", icon: PencilRuler },
-    { label: "Connect", path: "/connect", icon: Link2 },
-    { label: "Editor", path: "/editor", icon: PencilRuler },
-    { label: "Profile", path: "/profile", icon: User },
-    { label: "Settings", path: "/settings", icon: Settings },
-  ];
-
-  const handleNavClick = () => {
-    if (window.innerWidth < 1024 && setIsOpen) {
-      setIsOpen(false);
-    }
-  };
+  useEffect(() => {
+    if (window.innerWidth < 768) setSidebarOpen(false);
+  }, [location]);
 
   return (
-    <div
-      className={`${
-        isOpen ? "w-56" : "w-16"
-      } h-screen bg-[#0e0e10] border-r border-gray-800 text-white transition-all duration-300 flex flex-col px-2 py-4 relative`}
-    >
-      {/* 🚀 Brand */}
-      <div className="flex items-center justify-between mb-6 px-2">
-        <div className="text-xl font-bold tracking-wide">
-          {isOpen ? "🚀 Droxion" : "🚀"}
+    <div className="flex min-h-screen bg-[#0e0e10] text-white">
+      {isSidebarOpen && (
+        <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+      )}
+      <div className="flex-1 flex flex-col">
+        <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+        <div className="p-4">
+          <Routes>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/generator" element={<Generator />} />
+            <Route path="/auto-generator" element={<AutoGenerator />} />
+            <Route path="/chatboard" element={<AIChat />} />
+            <Route path="/ai-image" element={<AIImage />} />
+            <Route path="/plans" element={<Plans />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/connect" element={<Connect />} />
+            <Route path="/editor" element={<Editor />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
         </div>
-
-        {/* ⋮ Button to toggle sidebar */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="text-gray-400 hover:text-white transition"
-        >
-          <MoreVertical size={20} />
-        </button>
       </div>
-
-      {/* Navigation Links */}
-      <nav className="flex flex-col gap-1">
-        {navLinks.map(({ label, path, icon: Icon }) => {
-          const active = location.pathname === path;
-          return (
-            <Link
-              key={label}
-              to={path}
-              onClick={handleNavClick}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
-                active
-                  ? "bg-[#1f2937] text-green-400 font-semibold shadow-sm shadow-green-400/10"
-                  : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
-              }`}
-            >
-              <Icon size={20} />
-              {isOpen && <span>{label}</span>}
-            </Link>
-          );
-        })}
-      </nav>
     </div>
   );
 }
 
-export default Sidebar;
+function AppWrapper() {
+  const location = useLocation();
+  const isLandingPage = location.pathname === "/";
+
+  return isLandingPage ? (
+    <LandingPage />
+  ) : (
+    <LayoutWithSidebar />
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<AppWrapper />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+      </Routes>
+    </Router>
+  );
+}
