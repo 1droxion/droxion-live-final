@@ -1,14 +1,14 @@
-// ✅ main.jsx (Vite entry point)
+// main.jsx (Entry point for Vite)
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import AppWrapper from "./App";
+import App from "./App";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AppWrapper />
+      <App />
     </BrowserRouter>
   </React.StrictMode>
 );
