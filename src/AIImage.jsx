@@ -43,7 +43,7 @@ function AIImage() {
         { prompt }
       );
 
-      const url = response.data.url;
+      const url = response.data.image_url; // ✅ fixed key
       setImageUrl(url);
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
