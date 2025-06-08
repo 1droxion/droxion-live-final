@@ -1,10 +1,9 @@
-// ✅ App.jsx — DON'T include <BrowserRouter> here
+// ✅ App.jsx (no Router here!)
 import React, { useState, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
-
 import Dashboard from "./Dashboard";
 import Generator from "./Generator";
 import AutoGenerator from "./AutoGenerator";
