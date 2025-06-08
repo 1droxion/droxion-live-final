@@ -6,25 +6,31 @@ import axios from "axios";
 function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
   const [credits, setCredits] = useState(localStorage.getItem("droxion_credits") || 0);
-  const [avatar, setAvatar] = useState("/avatar.png");
+  const [avatar, setAvatar] = useState(localStorage.getItem("droxion_avatar") || "/avatar.png");
 
-  // ✅ Update avatar anytime it's changed in localStorage
+  // ✅ Update avatar on change (live)
   useEffect(() => {
-    const updateAvatar = () => {
+    const syncAvatar = () => {
       const storedAvatar = localStorage.getItem("droxion_avatar");
-      if (storedAvatar) setAvatar(storedAvatar);
+      if (storedAvatar && storedAvatar !== avatar) {
+        setAvatar(storedAvatar);
+      }
     };
 
-    updateAvatar(); // on first load
-    window.addEventListener("storage", updateAvatar); // on change from profile
+    syncAvatar();
+    window.addEventListener("storage", syncAvatar);
+
+    // Optional: Refresh avatar every 5 seconds
+    const interval = setInterval(syncAvatar, 5000);
 
     return () => {
-      window.removeEventListener("storage", updateAvatar);
+      window.removeEventListener("storage", syncAvatar);
+      clearInterval(interval);
     };
-  }, []);
+  }, [avatar]);
 
-  // ✅ Load credits from API
-  useEffect(() => {
+  // ✅ Load credits from backend
+  const fetchCredits = () => {
     axios
       .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
       .then((res) => {
@@ -34,18 +40,21 @@ function Topbar({ toggleSidebar }) {
         }
       })
       .catch((err) => {
-        console.warn("⚠️ Failed to fetch credits from backend.", err);
+        console.warn("⚠️ Failed to fetch credits", err);
       });
+  };
+
+  useEffect(() => {
+    fetchCredits(); // on first load
+    const interval = setInterval(fetchCredits, 30000); // refresh every 30s
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
-      {/* Left: Logo + Menu */}
+      {/* Sidebar Toggle + Logo */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={toggleSidebar}
-          className="lg:hidden text-white hover:text-gray-400"
-        >
+        <button onClick={toggleSidebar} className="lg:hidden text-white hover:text-gray-400">
           <Menu size={22} />
         </button>
         <h1
@@ -56,7 +65,7 @@ function Topbar({ toggleSidebar }) {
         </h1>
       </div>
 
-      {/* Center: Search */}
+      {/* Center Search */}
       <div className="flex-1 mx-4 max-w-lg">
         <input
           type="text"
@@ -65,7 +74,7 @@ function Topbar({ toggleSidebar }) {
         />
       </div>
 
-      {/* Right: Credits + Language + Avatar */}
+      {/* Right Side: Credits, Language, Avatar */}
       <div className="flex items-center gap-4">
         <div
           className="bg-black px-2 py-1 rounded text-green-400 font-semibold text-sm border border-green-600 cursor-pointer"
