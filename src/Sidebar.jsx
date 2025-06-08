@@ -1,85 +1,55 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  useLocation,
-} from "react-router-dom";
+  Compass, Zap, MessageSquare, Image, Layers, Folder, LayoutTemplate,
+  Link as ConnectIcon, Edit, User, Settings
+} from "lucide-react";
 
-import Sidebar from "./Sidebar";
-import Topbar from "./Topbar";
-
-import Dashboard from "./Dashboard";
-import Generator from "./Generator";
-import AutoGenerator from "./AutoGenerator";
-import AIChat from "./AIChat";
-import AIImage from "./AIImage";
-import Plans from "./Plans";
-import Projects from "./Projects";
-import Templates from "./Templates";
-import Connect from "./Connect";
-import Editor from "./Editor";
-import Profile from "./Profile";
-import Settings from "./Settings";
-import LandingPage from "./LandingPage";
-import Login from "./Login";
-import Signup from "./Signup";
-
-function LayoutWithSidebar() {
+function Sidebar({ isOpen, setIsOpen }) {
   const location = useLocation();
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
 
-  useEffect(() => {
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  }, [location]);
+  const routes = [
+    { path: "/dashboard", icon: Compass, label: "Dashboard" },
+    { path: "/generator", icon: Zap, label: "Generator" },
+    { path: "/auto-generator", icon: Zap, label: "Auto Generator" },
+    { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
+    { path: "/ai-image", icon: Image, label: "AI Image" },
+    { path: "/plans", icon: Layers, label: "Plans" },
+    { path: "/projects", icon: Folder, label: "Projects" },
+    { path: "/templates", icon: LayoutTemplate, label: "Templates" },
+    { path: "/connect", icon: ConnectIcon, label: "Connect" },
+    { path: "/editor", icon: Edit, label: "Editor" },
+    { path: "/profile", icon: User, label: "Profile" },
+    { path: "/settings", icon: Settings, label: "Settings" },
+  ];
 
   return (
-    <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      {isSidebarOpen && (
-        <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
-      )}
-      <div className="flex-1 flex flex-col">
-        <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-        <div className="p-4">
-          <Routes>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/generator" element={<Generator />} />
-            <Route path="/auto-generator" element={<AutoGenerator />} />
-            <Route path="/chatboard" element={<AIChat />} />
-            <Route path="/ai-image" element={<AIImage />} />
-            <Route path="/plans" element={<Plans />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/connect" element={<Connect />} />
-            <Route path="/editor" element={<Editor />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </div>
-      </div>
+    <div className={`bg-[#111827] ${isOpen ? "w-64" : "w-20"} transition-all duration-300 h-screen p-4`}>
+      <button
+        className="mb-4 text-white"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {isOpen ? "← Close" : "→ Open"}
+      </button>
+
+      <nav>
+        {routes.map(({ path, icon: Icon, label }) => (
+          <Link
+            key={path}
+            to={path}
+            className={`flex items-center my-3 p-2 rounded-md transition ${
+              location.pathname === path
+                ? "bg-green-500 text-white"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Icon className="w-6 h-6" />
+            {isOpen && <span className="ml-4">{label}</span>}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }
 
-function AppWrapper() {
-  const location = useLocation();
-  const isLandingPage = location.pathname === "/";
-
-  return isLandingPage ? (
-    <LandingPage />
-  ) : (
-    <LayoutWithSidebar />
-  );
-}
-
-export default function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<AppWrapper />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-      </Routes>
-    </Router>
-  );
-}
+export default Sidebar;
