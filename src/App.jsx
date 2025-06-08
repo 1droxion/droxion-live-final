@@ -17,8 +17,6 @@ import Editor from "./Editor";
 import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
-import Login from "./Login";
-import Signup from "./Signup";
 
 function AppWrapper() {
   const location = useLocation();
@@ -28,17 +26,21 @@ function AppWrapper() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  const noSidebarRoutes = ["/login", "/signup", "/"];
+  const hideLayoutRoutes = ["/", "/login", "/signup"];
+  const showLayout = !hideLayoutRoutes.includes(location.pathname);
 
-  const showLayout = !noSidebarRoutes.includes(location.pathname);
-
-  return showLayout ? (
+  return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+      {showLayout && isSidebarOpen && (
+        <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+      )}
       <div className="flex-1 flex flex-col">
-        <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+        {showLayout && (
+          <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+        )}
         <div className="p-4">
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/auto-generator" element={<AutoGenerator />} />
@@ -55,12 +57,6 @@ function AppWrapper() {
         </div>
       </div>
     </div>
-  ) : (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-    </Routes>
   );
 }
 
