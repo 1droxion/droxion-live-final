@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { Routes, Route, useLocation, BrowserRouter } from "react-router-dom";
+// ✅ App.jsx — DON'T include <BrowserRouter> here
+import React, { useState, useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -23,14 +24,14 @@ function AppWrapper() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      setSidebarOpen(false);
-    }
+    if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
   return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+      {isSidebarOpen && (
+        <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+      )}
       <div className="flex-1 flex flex-col">
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
@@ -55,10 +56,4 @@ function AppWrapper() {
   );
 }
 
-export default function App() {
-  return (
-    <BrowserRouter>
-      <AppWrapper />
-    </BrowserRouter>
-  );
-}
+export default AppWrapper;
