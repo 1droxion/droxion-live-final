@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -19,7 +19,7 @@ import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 
-function InnerLayout() {
+function App() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
@@ -56,10 +56,4 @@ function InnerLayout() {
   );
 }
 
-export default function App() {
-  return (
-    <Router>
-      <InnerLayout />
-    </Router>
-  );
-}
+export default App;
