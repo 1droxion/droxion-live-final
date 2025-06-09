@@ -1,49 +1,49 @@
 import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
-function Analytics() {
-  const [videos, setVideos] = useState([]);
+export default function Analytics() {
+  const [summary, setSummary] = useState(null);
 
   useEffect(() => {
-    fetch("http://localhost:5000/videos")
-      .then((res) => res.json())
-      .then((data) => setVideos(data.reverse()))
-      .catch((err) => console.error("❌ Error loading analytics:", err));
+    axios.get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/analytics-summary`)
+      .then(res => setSummary(res.data))
+      .catch(err => console.error("❌ Analytics Fetch Error:", err));
   }, []);
 
-  const totalVideos = videos.length;
-  const totalLength = (totalVideos * 25).toFixed(1); // Estimated duration in seconds
+  if (!summary) return <div className="text-center mt-10">Loading analytics...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white p-6">
-      <h1 className="text-2xl font-bold text-green-400 mb-6">📊 Video Analytics</h1>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">📈 Usage Analytics</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-[#1e293b] p-6 rounded shadow">
-          <h2 className="text-lg font-semibold">📦 Total Videos</h2>
-          <p className="text-4xl font-bold text-blue-400">{totalVideos}</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-[#1f2937] p-4 rounded-lg">
+          <p className="text-gray-400">Total Visitors</p>
+          <h2 className="text-3xl font-semibold">{summary.totalSessions}</h2>
         </div>
-
-        <div className="bg-[#1e293b] p-6 rounded shadow">
-          <h2 className="text-lg font-semibold">⏱️ Estimated Watch Time</h2>
-          <p className="text-4xl font-bold text-purple-400">{totalLength} sec</p>
+        <div className="bg-[#1f2937] p-4 rounded-lg">
+          <p className="text-gray-400">Average Time Spent</p>
+          <h2 className="text-3xl font-semibold">{summary.avgDuration} sec</h2>
+        </div>
+        <div className="bg-[#1f2937] p-4 rounded-lg">
+          <p className="text-gray-400">Most Visited</p>
+          <h2 className="text-xl font-semibold">{summary.topPath || "-"}</h2>
         </div>
       </div>
 
-      <h2 className="mt-10 mb-4 text-xl font-bold">📈 Recent Activity</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {videos.slice(0, 6).map((video) => (
-          <div key={video.filename} className="bg-[#1e293b] p-4 rounded">
-            <video
-              src={`http://localhost:5000/videos/${video.filename}`}
-              controls
-              className="w-full h-48 mb-2 rounded"
-            />
-            <p className="text-sm text-gray-300">🎯 {video.topic} | 📅 {video.date}</p>
-          </div>
-        ))}
+      <div className="bg-[#1f2937] p-4 rounded-lg">
+        <h3 className="text-lg mb-2">Daily Visits</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={summary.dailyCounts}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" />
+            <XAxis dataKey="date" stroke="#ccc" />
+            <YAxis stroke="#ccc" />
+            <Tooltip />
+            <Line type="monotone" dataKey="count" stroke="#10b981" strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
-}
-
-export default Analytics;
+} 
