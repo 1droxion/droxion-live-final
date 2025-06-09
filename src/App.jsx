@@ -19,32 +19,47 @@ import Signup from "./Signup";
 export default function App() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const backendURL = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
+  // ✅ Collapse sidebar on mobile route change
   useEffect(() => {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  // ✅ TRACK TIME SPENT ON SITE
+  // ✅ Log page visit
+  useEffect(() => {
+    fetch(`${backendURL}/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "page_visit",
+        path: location.pathname,
+        userAgent: navigator.userAgent,
+      }),
+    });
+  }, [location]);
+
+  // ✅ Log session time on unload
   useEffect(() => {
     const startTime = Date.now();
 
     const handleUnload = () => {
       const duration = Math.floor((Date.now() - startTime) / 1000); // seconds
-      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`, {
+      fetch(`${backendURL}/track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event: "session_time",
-          path: window.location.pathname,
+          path: location.pathname,
           duration,
-          userAgent: navigator.userAgent
-        })
+          userAgent: navigator.userAgent,
+        }),
       });
     };
 
     window.addEventListener("beforeunload", handleUnload);
     return () => {
-      handleUnload(); // also send if route changes
+      handleUnload();
       window.removeEventListener("beforeunload", handleUnload);
     };
   }, []);
@@ -52,10 +67,8 @@ export default function App() {
   return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
-
       <div className="flex-1 flex flex-col">
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-
         <div className="p-4">
           <Routes>
             <Route path="/" element={<LandingPage />} />
