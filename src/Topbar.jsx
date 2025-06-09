@@ -4,29 +4,10 @@ import { useNavigate } from "react-router-dom";
 
 function Topbar({ toggleSidebar }) {
   const navigate = useNavigate();
-  const [avatar, setAvatar] = useState(localStorage.getItem("droxion_avatar") || "/avatar.png");
-
-  useEffect(() => {
-    const syncAvatar = () => {
-      const storedAvatar = localStorage.getItem("droxion_avatar");
-      if (storedAvatar && storedAvatar !== avatar) {
-        setAvatar(storedAvatar);
-      }
-    };
-
-    // Sync from localStorage on update
-    syncAvatar();
-    window.addEventListener("storage", syncAvatar);
-    const interval = setInterval(syncAvatar, 3000);
-
-    return () => {
-      window.removeEventListener("storage", syncAvatar);
-      clearInterval(interval);
-    };
-  }, [avatar]);
 
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-[#111827] border-b border-gray-800">
+      {/* Left: Hamburger + Logo */}
       <div className="flex items-center gap-3">
         <button
           onClick={toggleSidebar}
@@ -44,6 +25,7 @@ function Topbar({ toggleSidebar }) {
         </h1>
       </div>
 
+      {/* Center: Search */}
       <div className="flex-1 mx-4 max-w-lg hidden md:block">
         <input
           type="text"
@@ -52,14 +34,9 @@ function Topbar({ toggleSidebar }) {
         />
       </div>
 
+      {/* Right: (Avatar removed) */}
       <div className="flex items-center gap-3">
-        <img
-          src={avatar}
-          alt="User"
-          onClick={() => navigate("/profile")}
-          className="w-8 h-8 rounded-full object-cover border border-gray-600 cursor-pointer"
-          title="Profile"
-        />
+        {/* No avatar here */}
       </div>
     </div>
   );
