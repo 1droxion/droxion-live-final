@@ -15,42 +15,27 @@ import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
+import Analytics from "./Analytics"; // ✅ New Analytics page
 
 export default function App() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const backendURL = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
-  // ✅ Collapse sidebar on mobile route change
   useEffect(() => {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  // ✅ Log page visit
-  useEffect(() => {
-    fetch(`${backendURL}/track`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event: "page_visit",
-        path: location.pathname,
-        userAgent: navigator.userAgent,
-      }),
-    });
-  }, [location]);
-
-  // ✅ Log session time on unload
+  // ✅ Track time spent on session
   useEffect(() => {
     const startTime = Date.now();
-
     const handleUnload = () => {
-      const duration = Math.floor((Date.now() - startTime) / 1000); // seconds
-      fetch(`${backendURL}/track`, {
+      const duration = Math.floor((Date.now() - startTime) / 1000);
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event: "session_time",
-          path: location.pathname,
+          path: window.location.pathname,
           duration,
           userAgent: navigator.userAgent,
         }),
@@ -82,6 +67,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/analytics" element={<Analytics />} /> {/* ✅ Added */}
           </Routes>
         </div>
       </div>
