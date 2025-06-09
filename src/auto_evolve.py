@@ -1,53 +1,54 @@
-import openai
-import time
 import os
+import random
+import time
+from datetime import datetime
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-STORY_FILE = "engine/story_feed.txt"
+# Make sure the engine folder exists
+if not os.path.exists("engine"):
+    os.makedirs("engine")
 
-def get_last_days(n=3):
-    if not os.path.exists(STORY_FILE):
-        return []
-    with open(STORY_FILE, "r", encoding="utf-8") as f:
-        lines = [line.strip() for line in f if line.strip()]
-        return lines[-n:]
+story_file = "engine/story_feed.txt"
 
-def write_day(entry):
-    with open(STORY_FILE, "a", encoding="utf-8") as f:
-        f.write(entry + "\n")
+names = [
+    ("Emma", "New York", "USA"),
+    ("Arjun", "Mumbai", "India"),
+    ("Sofia", "Berlin", "Germany"),
+    ("Juan", "Mexico City", "Mexico"),
+    ("Aisha", "Lagos", "Nigeria"),
+    ("Hiroshi", "Tokyo", "Japan"),
+    ("Fatima", "Dubai", "UAE"),
+    ("Luca", "Rome", "Italy"),
+    ("Ming", "Shanghai", "China"),
+    ("Sarah", "Sydney", "Australia")
+]
 
-def generate_next_day():
-    history = get_last_days()
-    prompt = "This is an AI-generated real-time evolving world. Here are the last few days of its history:\n\n"
-    prompt += "\n".join(history)
-    prompt += "\n\nWrite the next realistic Day as a continuation. Format: [Day 123]: ..."
+jobs = [
+    "started working as a teacher",
+    "opened a small bakery",
+    "enrolled in a university",
+    "joined a startup",
+    "ran for city council",
+    "launched a tech blog",
+    "became a delivery driver",
+    "invested in real estate",
+    "started learning AI development",
+    "quit their job to travel"
+]
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are generating a timeline of a real AI-powered civilization on a simulated Earth. Keep it realistic, evolving, not fantasy."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        reply = response["choices"][0]["message"]["content"].strip()
-        return reply
-    except Exception as e:
-        print("Error:", e)
-        return None
+emotions = [
+    "happy", "ambitious", "curious", "hopeful", "nervous", "excited", "free", "focused", "proud", "brave"
+]
 
-def run_forever():
-    day_count = 1
-    while True:
-        print(f"🌀 Generating Day {day_count}...")
-        entry = generate_next_day()
-        if entry:
-            write_day(entry)
-            print("✅", entry)
-        else:
-            print("❌ Skipped due to error")
-        day_count += 1
-        time.sleep(10)
+while True:
+    name, city, country = random.choice(names)
+    job = random.choice(jobs)
+    emotion = random.choice(emotions)
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-if __name__ == "__main__":
-    run_forever()
+    line = f"🌍 [{timestamp}] {name} from {city}, {country} {job}. Emotion: {emotion}.\n"
+
+    with open(story_file, "a", encoding="utf-8") as f:
+        f.write(line)
+
+    print("✅ New story added:", line.strip())
+    time.sleep(10)
