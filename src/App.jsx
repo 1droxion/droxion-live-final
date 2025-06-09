@@ -11,7 +11,6 @@ import Projects from "./Projects";
 import Templates from "./Templates";
 import Connect from "./Connect";
 import Editor from "./Editor";
-import Profile from "./Profile";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 import Login from "./Login";
@@ -42,7 +41,6 @@ export default function App() {
             <Route path="/templates" element={<Templates />} />
             <Route path="/connect" element={<Connect />} />
             <Route path="/editor" element={<Editor />} />
-            <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
