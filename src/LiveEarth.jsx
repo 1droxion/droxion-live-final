@@ -1,15 +1,31 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Particles from "@tsparticles/react";
 import { loadFull } from "tsparticles";
-import { useCallback } from "react";
+import axios from "axios";
 
 export default function LiveEarth() {
   const particlesInit = useCallback(async (engine) => {
     await loadFull(engine);
   }, []);
 
+  const [storyFeed, setStoryFeed] = useState("");
+
+  useEffect(() => {
+    const fetchStory = async () => {
+      try {
+        const res = await axios.get("https://droxion-backend.onrender.com/get-story-feed");
+        setStoryFeed(res.data.story);
+      } catch (err) {
+        setStoryFeed("⚠️ Failed to load story feed.");
+      }
+    };
+    fetchStory();
+    const interval = setInterval(fetchStory, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <div className="relative min-h-screen bg-black text-white flex items-center justify-center overflow-hidden">
+    <div className="relative min-h-screen bg-black text-white flex items-center justify-center overflow-hidden px-4">
       {/* Particle Background */}
       <Particles
         id="tsparticles"
@@ -28,7 +44,7 @@ export default function LiveEarth() {
       />
 
       {/* Main Content */}
-      <div className="relative z-10 max-w-2xl text-center bg-white/5 backdrop-blur-lg p-10 rounded-2xl border border-white/10 shadow-xl animate-fade-in">
+      <div className="relative z-10 w-full max-w-3xl text-center bg-white/5 backdrop-blur-lg p-10 rounded-2xl border border-white/10 shadow-xl animate-fade-in">
         <img
           src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/The_Earth_seen_from_Apollo_17.jpg/480px-The_Earth_seen_from_Apollo_17.jpg"
           alt="Earth"
@@ -63,6 +79,12 @@ export default function LiveEarth() {
             Join Early Access
           </button>
         </form>
+
+        {/* Live Timeline Viewer */}
+        <div className="mt-10 max-h-[300px] overflow-y-auto text-left bg-white/10 p-4 rounded-lg border border-white/20">
+          <h2 className="text-xl font-bold mb-2 text-white">🌐 Live World Timeline</h2>
+          <pre className="whitespace-pre-wrap text-sm text-gray-200">{storyFeed}</pre>
+        </div>
       </div>
     </div>
   );
