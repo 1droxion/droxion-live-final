@@ -15,7 +15,8 @@ import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
-import Analytics from "./Analytics"; // ✅ New Analytics page
+import Analytics from "./Analytics";
+import LiveEarth from "./LiveEarth"; // ✅ NEW: Live Earth Page
 
 export default function App() {
   const location = useLocation();
@@ -30,16 +31,21 @@ export default function App() {
     const startTime = Date.now();
     const handleUnload = () => {
       const duration = Math.floor((Date.now() - startTime) / 1000);
-      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "session_time",
-          path: window.location.pathname,
-          duration,
-          userAgent: navigator.userAgent,
-        }),
-      });
+      fetch(
+        `${
+          import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"
+        }/track`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "session_time",
+            path: window.location.pathname,
+            duration,
+            userAgent: navigator.userAgent,
+          }),
+        }
+      );
     };
 
     window.addEventListener("beforeunload", handleUnload);
@@ -67,7 +73,8 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            <Route path="/analytics" element={<Analytics />} /> {/* ✅ Added */}
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/live-earth" element={<LiveEarth />} /> {/* ✅ NEW */}
           </Routes>
         </div>
       </div>
