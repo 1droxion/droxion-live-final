@@ -1,143 +1,175 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+import requests
+import re
+import sys
+import logging
+from werkzeug.utils import secure_filename
+import time
 
-function Profile() {
-  const [avatar, setAvatar] = useState("/avatar.png");
-  const [preview, setPreview] = useState(null);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [credits, setCredits] = useState(0);
-  const [plan, setPlan] = useState("Starter");
-  const [usage, setUsage] = useState({ videos: 0, images: 0, auto: 0 });
+# ✅ Logging for Render
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
-  useEffect(() => {
-    axios
-      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
-      .then((res) => {
-        const stats = res.data;
-        setCredits(stats.credits);
-        setPlan(stats.plan.name);
-        setUsage({
-          videos: stats.videosThisMonth,
-          images: stats.imagesThisMonth,
-          auto: stats.autoGenerates,
-        });
-      })
-      .catch((err) => console.error("Stats load error:", err));
-  }, []);
+# ✅ Load environment variables
+load_dotenv()
 
-  useEffect(() => {
-    const savedName = localStorage.getItem("droxion_name");
-    const savedEmail = localStorage.getItem("droxion_email");
-    const savedAvatar = localStorage.getItem("droxion_avatar");
+app = Flask(__name__)
 
-    if (savedName) setName(savedName);
-    if (savedEmail) setEmail(savedEmail);
-    if (savedAvatar) setAvatar(savedAvatar);
-  }, []);
+# ✅ Allow only Droxion domains
+allowed_origin_regex = re.compile(
+    r"^https:\/\/(www\.)?droxion\.com$|"
+    r"^https:\/\/droxion(-live-final)?(-[a-z0-9]+)?\.vercel\.app$"
+)
+CORS(app, supports_credentials=True, origins=allowed_origin_regex)
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+# ✅ Public & Upload Folder setup
+PUBLIC_FOLDER = os.path.join(os.getcwd(), "public")
+AVATAR_FOLDER = os.path.join(PUBLIC_FOLDER, "avatars")
+os.makedirs(AVATAR_FOLDER, exist_ok=True)
 
-    const previewURL = URL.createObjectURL(file);
-    setPreview(previewURL);
+@app.route("/")
+def home():
+    return "✅ Droxion API is live."
 
-    const formData = new FormData();
-    formData.append("avatar", file);
+@app.route("/user-stats", methods=["GET"])
+def user_stats():
+    try:
+        plan = {
+            "name": "Starter",
+            "videoLimit": 5,
+            "imageLimit": 20,
+            "autoLimit": 10
+        }
 
-    axios
-      .post(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/upload-avatar`, formData)
-      .then((res) => {
-        const url = `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}${res.data.url}`;
-        setAvatar(url);
-        localStorage.setItem("droxion_avatar", url);
-        window.dispatchEvent(new Event("storage")); // trigger Topbar to refresh avatar
-      })
-      .catch((err) => {
-        console.error("Upload error:", err);
-        alert("❌ Avatar upload failed.");
-      });
-  };
+        videos = [f for f in os.listdir(PUBLIC_FOLDER) if f.endswith(".mp4")]
+        images = [f for f in os.listdir(PUBLIC_FOLDER) if f.endswith(".png") and "styled" in f]
+        auto_generates = 6
 
-  const handleSave = () => {
-    localStorage.setItem("droxion_name", name);
-    localStorage.setItem("droxion_email", email);
-    alert("✅ Profile saved.");
-  };
+        stats = {
+            "credits": 18,
+            "videosThisMonth": len(videos),
+            "imagesThisMonth": len(images),
+            "autoGenerates": auto_generates,
+            "plan": plan
+        }
 
-  return (
-    <div className="min-h-screen bg-[#0e0e10] text-white px-6 py-10 flex justify-center">
-      <div className="w-full max-w-3xl bg-[#1f2937] p-8 rounded-xl shadow-xl border border-gray-700 space-y-8 animate-fade-in">
-        <h1 className="text-3xl font-bold text-green-400">👤 My Profile</h1>
+        return jsonify(stats)
+    except Exception as e:
+        print("❌ Stats Error:", e)
+        return jsonify({"error": "Could not fetch stats"}), 500
 
-        {/* Avatar Upload */}
-        <div className="flex items-center gap-6">
-          <img
-            src={preview || avatar}
-            alt="Avatar"
-            className="w-24 h-24 rounded-full object-cover border-4 border-green-500 shadow-lg"
-          />
-          <div>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="text-sm text-gray-300"
-            />
-            <p className="text-gray-400 text-xs mt-1">Click to upload new avatar</p>
-          </div>
-        </div>
+# ✅ AI Image Generation (unchanged)
+@app.route("/generate-image", methods=["POST"])
+def generate_image():
+    try:
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"error": "Prompt is required."}), 400
 
-        {/* Name & Email */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <input
-            type="text"
-            placeholder="Full Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="input bg-[#111827] text-white"
-          />
-          <input
-            type="email"
-            placeholder="Email Address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input bg-[#111827] text-white"
-          />
-        </div>
+        print("🖼️ Prompt received:", prompt)
 
-        <button
-          onClick={handleSave}
-          className="w-full py-3 rounded-lg bg-gradient-to-r from-green-400 to-blue-500 hover:opacity-90 font-bold text-lg"
-        >
-          💾 Save Profile
-        </button>
+        headers = {
+            "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
+            "Content-Type": "application/json"
+        }
 
-        {/* Plan & Usage */}
-        <div className="mt-10 space-y-4">
-          <h2 className="text-xl font-semibold text-purple-400">📊 Plan Usage</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div className="bg-[#0e0e10] p-4 rounded-lg border border-green-500">
-              💳 <strong>Credits:</strong> {credits}
-            </div>
-            <div className="bg-[#0e0e10] p-4 rounded-lg border border-purple-500">
-              🪙 <strong>Plan:</strong> {plan}
-            </div>
-            <div className="bg-[#0e0e10] p-4 rounded-lg border border-blue-500">
-              🎬 <strong>Videos:</strong> {usage.videos} used
-            </div>
-            <div className="bg-[#0e0e10] p-4 rounded-lg border border-pink-500">
-              🖼️ <strong>Images:</strong> {usage.images} used
-            </div>
-            <div className="bg-[#0e0e10] p-4 rounded-lg border border-yellow-500">
-              ⚡ <strong>Auto Reels:</strong> {usage.auto} used
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        payload = {
+            "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+            "input": {
+                "prompt": prompt,
+                "width": 1024,
+                "height": 1024,
+                "num_inference_steps": 30,
+                "refine": "expert_ensemble_refiner",
+                "apply_watermark": False
+            }
+        }
 
-export default Profile;
+        create = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload)
+        if create.status_code != 201:
+            return jsonify({"error": "Failed to create prediction", "details": create.json()}), 500
+
+        prediction = create.json()
+        get_url = prediction.get("urls", {}).get("get")
+
+        # Polling until done
+        while True:
+            poll = requests.get(get_url, headers=headers)
+            poll_result = poll.json()
+            if poll_result.get("status") == "succeeded":
+                return jsonify({"image_url": poll_result.get("output")})
+            elif poll_result.get("status") == "failed":
+                return jsonify({"error": "Prediction failed"}), 500
+            time.sleep(1)
+
+    except Exception as e:
+        print("❌ Image Generation Error:", e)
+        return jsonify({"error": str(e)}), 500
+
+# ✅ AI Chat (unchanged)
+@app.route("/chat", methods=["POST", "OPTIONS"])
+def chat():
+    if request.method == "OPTIONS":
+        return '', 200
+
+    try:
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"error": "Prompt is required."}), 400
+
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return jsonify({"error": "API key missing"}), 500
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "openai/gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "You are an assistant powered by Droxion."},
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+        result = response.json()
+
+        if response.status_code != 200:
+            return jsonify({"reply": f"❌ OpenRouter Error: {result.get('message', 'Unknown error')}"}), 400
+
+        if "choices" in result and result["choices"]:
+            return jsonify({"reply": result["choices"][0]["message"]["content"]})
+        else:
+            return jsonify({"reply": "⚠️ No reply from model."})
+
+    except Exception as e:
+        print("❌ Chat Exception:", e)
+        return jsonify({"reply": f"Error: {str(e)}"}), 500
+
+# ✅ Avatar Upload Route
+@app.route("/upload-avatar", methods=["POST"])
+def upload_avatar():
+    if "avatar" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["avatar"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(AVATAR_FOLDER, filename)
+    file.save(filepath)
+
+    return jsonify({"url": f"/public/avatars/{filename}"})
+
+# ✅ Serve public files (avatar/images)
+@app.route("/public/<path:filename>")
+def serve_public_file(filename):
+    return send_from_directory(PUBLIC_FOLDER, filename)
