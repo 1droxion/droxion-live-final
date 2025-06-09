@@ -2,7 +2,7 @@ import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   MessageSquare, Image, Layers, Folder, LayoutTemplate,
-  Link as ConnectIcon, Edit, Settings, LogOut, LogIn, UserPlus
+  Link as ConnectIcon, Edit, Settings, LogOut, LogIn, UserPlus, BarChart3
 } from "lucide-react";
 
 function Sidebar({ isOpen, setIsOpen }) {
@@ -20,6 +20,7 @@ function Sidebar({ isOpen, setIsOpen }) {
     { path: "/ai-image", icon: Image, label: "AI Image" },
     { path: "/plans", icon: Layers, label: "Plans" },
     { path: "/projects", icon: Folder, label: "Projects" },
+    { path: "/analytics", icon: BarChart3, label: "Analytics" }, // ✅ New
     { path: "/templates", icon: LayoutTemplate, label: "Templates" },
     { path: "/connect", icon: ConnectIcon, label: "Connect" },
     { path: "/editor", icon: Edit, label: "Editor" },
