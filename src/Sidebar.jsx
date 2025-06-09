@@ -2,7 +2,7 @@ import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   MessageSquare, Image, Layers, Folder, LayoutTemplate,
-  Link as ConnectIcon, Edit, User, Settings, LogOut, LogIn, UserPlus
+  Link as ConnectIcon, Edit, Settings, LogOut, LogIn, UserPlus
 } from "lucide-react";
 
 function Sidebar({ isOpen, setIsOpen }) {
@@ -23,7 +23,6 @@ function Sidebar({ isOpen, setIsOpen }) {
     { path: "/templates", icon: LayoutTemplate, label: "Templates" },
     { path: "/connect", icon: ConnectIcon, label: "Connect" },
     { path: "/editor", icon: Edit, label: "Editor" },
-    { path: "/profile", icon: User, label: "Profile" },
     { path: "/settings", icon: Settings, label: "Settings" },
   ];
 
