@@ -24,6 +24,31 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
+  // ✅ TRACK TIME SPENT ON SITE
+  useEffect(() => {
+    const startTime = Date.now();
+
+    const handleUnload = () => {
+      const duration = Math.floor((Date.now() - startTime) / 1000); // seconds
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: "session_time",
+          path: window.location.pathname,
+          duration,
+          userAgent: navigator.userAgent
+        })
+      });
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      handleUnload(); // also send if route changes
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-[#0e0e10] text-white">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
