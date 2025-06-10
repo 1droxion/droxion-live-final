@@ -1,12 +1,15 @@
 import express from "express";
 import Stripe from "stripe";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import bodyParser from "body-parser";
 
 dotenv.config();
 
 const app = express();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const USER_DB_PATH = path.join(process.cwd(), "users.json");
 
 // Stripe requires raw body for webhooks
 app.post(
@@ -17,7 +20,6 @@ app.post(
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     let event;
-
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err) {
@@ -27,24 +29,37 @@ app.post(
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-
       const customerEmail = session.customer_email;
-      const planName = session.metadata?.plan || "Pro"; // You can pass this in Stripe metadata
+      const plan = session.metadata?.plan || "pro"; // default to pro if missing
 
-      // 👉 Store this in your DB (pseudo code below)
-      console.log(`✅ Stripe payment complete: ${customerEmail} → ${planName}`);
+      console.log(`✅ Payment complete: ${customerEmail} → ${plan}`);
 
-      // TODO: Replace with actual DB call
-      // await db.users.update({ email: customerEmail }, { plan: planName });
+      // Read users.json
+      const users = JSON.parse(fs.readFileSync(USER_DB_PATH, "utf8"));
 
-      // Optionally notify frontend via webhook event queue or email
+      if (!users[customerEmail]) {
+        users[customerEmail] = { coins: 0, plan: "None" };
+      }
+
+      let coinsToAdd = 0;
+      if (plan === "starter") coinsToAdd = 50;
+      if (plan === "pro") coinsToAdd = 150;
+      if (plan === "business") coinsToAdd = 400;
+
+      users[customerEmail].coins = (users[customerEmail].coins || 0) + coinsToAdd;
+      users[customerEmail].plan = plan;
+
+      // Save users.json
+      fs.writeFileSync(USER_DB_PATH, JSON.stringify(users, null, 2));
+
+      console.log(`🪙 ${coinsToAdd} coins added to ${customerEmail}`);
     }
 
     res.json({ received: true });
   }
 );
 
-// Health check
+// Test
 app.get("/", (req, res) => {
   res.send("🔁 Stripe webhook is running.");
 });
