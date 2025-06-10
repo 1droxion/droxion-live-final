@@ -14,6 +14,7 @@ function Plans() {
         "Basic templates",
         "Standard voice",
         `${starterUsage}/5 videos used`,
+        "🪙 50 coins"
       ],
       color: "bg-gradient-to-br from-gray-800 to-gray-900",
       badge: "Free",
@@ -28,10 +29,12 @@ function Plans() {
         "Premium templates",
         "Multi-language voices",
         "Priority support",
+        "🪙 150 coins"
       ],
       color: "bg-gradient-to-br from-blue-800 to-indigo-900",
       badge: "Popular",
-      link: "https://buy.stripe.com/test_3cI4gz7YN4sR1oGfo77ss01",
+      link: "https://buy.stripe.com/test_3cI4gz7YN4sR1oGfo77ss01", // Add metadata via backend Stripe Checkout
+      plan: "pro"
     },
     {
       name: "Business",
@@ -42,10 +45,12 @@ function Plans() {
         "Custom branding",
         "Upload editor",
         "Analytics & API access",
+        "🪙 400 coins"
       ],
       color: "bg-gradient-to-br from-yellow-600 to-orange-600",
       badge: "Best Value",
-      link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02",
+      link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02", // Add metadata via backend Stripe Checkout
+      plan: "business"
     },
   ];
 
@@ -55,6 +60,7 @@ function Plans() {
       alert("✅ You're now on the free Starter plan.");
     } else {
       localStorage.setItem("droxion_plan", plan.name);
+      // Ideally you generate a Stripe checkout session with metadata on backend
       window.open(plan.link, "_blank");
     }
   };
