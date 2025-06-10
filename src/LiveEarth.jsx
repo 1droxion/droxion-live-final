@@ -1,91 +1,212 @@
-import React, { useCallback, useEffect, useState } from "react";
-import Particles from "@tsparticles/react";
-import { loadFull } from "tsparticles";
-import axios from "axios";
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+import requests
+import re
+import sys
+import logging
+import time
+import datetime
+import ast
+import threading  # ✅ for background AI evolution
+from engine.live_engine import run_forever  # ✅ import live loop
 
-export default function LiveEarth() {
-  const particlesInit = useCallback(async (engine) => {
-    await loadFull(engine);
-  }, []);
+# ✅ Log to stdout for Render
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
-  const [storyFeed, setStoryFeed] = useState("");
+# Load environment variables
+load_dotenv()
 
-  useEffect(() => {
-    const fetchStory = async () => {
-      try {
-        const res = await axios.get("https://droxion-backend.onrender.com/get-story-feed");
-        setStoryFeed(res.data.story);
-      } catch (err) {
-        setStoryFeed("⚠️ Failed to load story feed.");
-      }
-    };
-    fetchStory();
-    const interval = setInterval(fetchStory, 15000);
-    return () => clearInterval(interval);
-  }, []);
+app = Flask(__name__)
 
-  return (
-    <div className="relative min-h-screen bg-black text-white flex items-center justify-center overflow-hidden px-4">
-      {/* Particle Background */}
-      <Particles
-        id="tsparticles"
-        init={particlesInit}
-        options={{
-          fullScreen: { enable: false },
-          particles: {
-            number: { value: 150 },
-            size: { value: 1.5 },
-            color: { value: "#00ffff" },
-            links: { enable: true, color: "#00ffff", opacity: 0.2 },
-            move: { enable: true, speed: 0.6 },
-          },
-        }}
-        className="absolute top-0 left-0 w-full h-full z-0"
-      />
+# ✅ Allow only Droxion domains
+allowed_origin_regex = re.compile(
+    r"^https:\/\/(www\.)?droxion\.com$|"
+    r"^https:\/\/droxion(-live-final)?(-[a-z0-9]+)?\.vercel\.app$"
+)
+CORS(app, supports_credentials=True, origins=allowed_origin_regex)
 
-      {/* Main Content */}
-      <div className="relative z-10 w-full max-w-3xl text-center bg-white/5 backdrop-blur-lg p-10 rounded-2xl border border-white/10 shadow-xl animate-fade-in">
-        <img
-          src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/The_Earth_seen_from_Apollo_17.jpg/480px-The_Earth_seen_from_Apollo_17.jpg"
-          alt="Earth"
-          className="w-20 h-20 mx-auto mb-4 animate-bounce-slow rounded-full shadow-lg"
-        />
+# ✅ Public folder
+PUBLIC_FOLDER = os.path.join(os.getcwd(), "public")
+if not os.path.exists(PUBLIC_FOLDER):
+    os.makedirs(PUBLIC_FOLDER)
 
-        <h1 className="text-3xl md:text-4xl font-extrabold mb-4 tracking-wide text-white animate-slide-up">
-          🌍 Witness the Birth of a New World
-        </h1>
+@app.route("/")
+def home():
+    return "✅ Droxion API is live."
 
-        <p className="text-lg text-gray-300 mb-6 leading-relaxed animate-fade-in-slow">
-          An AI-powered universe starting from the Big Bang.<br />
-          Real-time civilizations, stories, evolution — forever unfolding.
-        </p>
+@app.route("/user-stats", methods=["GET"])
+def user_stats():
+    try:
+        plan = {
+            "name": "Starter",
+            "videoLimit": 5,
+            "imageLimit": 20,
+            "autoLimit": 10
+        }
+        videos = [f for f in os.listdir(PUBLIC_FOLDER) if f.endswith(".mp4")]
+        images = [f for f in os.listdir(PUBLIC_FOLDER) if f.endswith(".png") and "styled" in f]
+        auto_generates = 6
 
-        <form
-          action="https://formspree.io/f/xwpblnjw"
-          method="POST"
-          className="flex flex-col md:flex-row gap-4 justify-center"
-        >
-          <input
-            type="email"
-            name="email"
-            placeholder="Enter your email"
-            required
-            className="p-3 rounded-md text-black w-64"
-          />
-          <button
-            type="submit"
-            className="bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600 px-6 py-3 rounded-md text-white font-bold shadow-lg transform hover:scale-105 transition-all duration-300"
-          >
-            Join Early Access
-          </button>
-        </form>
+        stats = {
+            "credits": 18,
+            "videosThisMonth": len(videos),
+            "imagesThisMonth": len(images),
+            "autoGenerates": auto_generates,
+            "plan": plan
+        }
+        return jsonify(stats)
+    except Exception as e:
+        print("❌ Stats Error:", e)
+        return jsonify({"error": "Could not fetch stats"}), 500
 
-        {/* Live Timeline Viewer */}
-        <div className="mt-10 max-h-[300px] overflow-y-auto text-left bg-white/10 p-4 rounded-lg border border-white/20">
-          <h2 className="text-xl font-bold mb-2 text-white">🌐 Live World Timeline</h2>
-          <pre className="whitespace-pre-wrap text-sm text-gray-200">{storyFeed}</pre>
-        </div>
-      </div>
-    </div>
-  );
-}
+@app.route("/generate-image", methods=["POST"])
+def generate_image():
+    try:
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"error": "Prompt is required."}), 400
+
+        print("🖼️ Prompt received:", prompt)
+        headers = {
+            "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+            "input": {
+                "prompt": prompt,
+                "width": 1024,
+                "height": 1024,
+                "num_inference_steps": 30,
+                "refine": "expert_ensemble_refiner",
+                "apply_watermark": False
+            }
+        }
+
+        create = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload)
+        if create.status_code != 201:
+            return jsonify({"error": "Failed to create prediction", "details": create.json()}), 500
+
+        prediction = create.json()
+        get_url = prediction.get("urls", {}).get("get")
+
+        while True:
+            poll = requests.get(get_url, headers=headers)
+            poll_result = poll.json()
+            status = poll_result.get("status")
+
+            if status == "succeeded":
+                image_url = poll_result.get("output")
+                return jsonify({"image_url": image_url})
+            if status == "failed":
+                return jsonify({"error": "Prediction failed"}), 500
+            time.sleep(1)
+
+    except Exception as e:
+        print("❌ Image Generation Error:", e)
+        return jsonify({"error": f"Exception: {str(e)}"}), 500
+
+@app.route("/chat", methods=["POST", "OPTIONS"])
+def chat():
+    if request.method == "OPTIONS":
+        return '', 200
+
+    try:
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        print("📩 Prompt received:", prompt)
+
+        if not prompt:
+            return jsonify({"error": "Prompt is required."}), 400
+
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return jsonify({"error": "API key missing"}), 500
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "openai/gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "You are an assistant powered by Droxion."},
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+
+        result = response.json()
+        print("✅ Chat result:", result)
+
+        if response.status_code != 200:
+            return jsonify({"reply": f"❌ OpenRouter Error: {result.get('message', 'Unknown error')}"}), 400
+
+        if "choices" in result and result["choices"]:
+            reply = result["choices"][0]["message"]["content"]
+            return jsonify({"reply": reply})
+        else:
+            return jsonify({"reply": "⚠️ No reply from model."})
+
+    except Exception as e:
+        print("❌ Chat Exception:", e)
+        return jsonify({"reply": f"Error: {str(e)}"}), 500
+
+analytics_log = os.path.join(os.getcwd(), "analytics.log")
+
+@app.route("/track", methods=["POST"])
+def track_event():
+    try:
+        data = request.json
+        data["timestamp"] = str(datetime.datetime.utcnow())
+        with open(analytics_log, "a") as f:
+            f.write(str(data) + "\n")
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        print("❌ Track error:", e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/analytics", methods=["GET"])
+def get_analytics():
+    try:
+        if not os.path.exists("analytics.log"):
+            return jsonify([])
+
+        logs = []
+        with open("analytics.log", "r") as f:
+            for line in f:
+                try:
+                    entry = ast.literal_eval(line.strip())
+                    logs.append(entry)
+                except:
+                    pass
+        return jsonify(logs)
+    except Exception as e:
+        print("❌ Read analytics error:", e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/get-story-feed", methods=["GET"])
+def get_story_feed():
+    try:
+        with open("engine/story_feed.txt", "r", encoding="utf-8") as f:
+            content = f.read()
+        return jsonify({"story": content})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ✅ Start auto world evolution thread before launching API
+threading.Thread(target=run_forever, daemon=True).start()
+
+# ✅ Run the Flask app
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
