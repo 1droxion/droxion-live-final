@@ -20,14 +20,14 @@ export default function Universe() {
 
   useEffect(() => {
     fetchUniverse();
-    const interval = setInterval(fetchUniverse, 5000); // auto-refresh every 5 sec
+    const interval = setInterval(fetchUniverse, 5000);
     return () => clearInterval(interval);
   }, []);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen text-xl text-purple-300 animate-pulse">
-        🌠 Loading Universe...
+        🌠 Initializing Universe...
       </div>
     );
   }
@@ -35,7 +35,7 @@ export default function Universe() {
   if (!universeData) {
     return (
       <div className="flex items-center justify-center h-screen text-red-400">
-        ❌ No universe data found.
+        ❌ Universe data not found.
       </div>
     );
   }
@@ -43,7 +43,7 @@ export default function Universe() {
   const { age, galaxies, stars, planets, blackHoles, nebulae } = universeData;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-indigo-900 to-black text-white p-8">
+    <div className="min-h-screen bg-gradient-to-b from-black via-indigo-950 to-black text-white p-8">
       <h1 className="text-4xl md:text-6xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-600">
         🌌 Live Universe Simulation
       </h1>
@@ -61,22 +61,22 @@ export default function Universe() {
 
         <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
           <h2 className="text-xl font-semibold text-yellow-300 mb-2">Stars</h2>
-          <p>{stars?.length || 0} stars burning</p>
+          <p>{stars?.length || 0} stars glowing</p>
         </div>
 
         <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
           <h2 className="text-xl font-semibold text-green-300 mb-2">Planets</h2>
-          <p>{planets?.length || 0} planets discovered</p>
+          <p>{planets?.length || 0} planets orbiting</p>
         </div>
 
         <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
           <h2 className="text-xl font-semibold text-red-300 mb-2">Black Holes</h2>
-          <p>{blackHoles?.length || 0} active black holes</p>
+          <p>{blackHoles?.length || 0} singularities</p>
         </div>
 
         <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
           <h2 className="text-xl font-semibold text-blue-300 mb-2">Nebulae</h2>
-          <p>{nebulae?.length || 0} nebulae clouds</p>
+          <p>{nebulae?.length || 0} cosmic clouds</p>
         </div>
       </div>
     </div>
