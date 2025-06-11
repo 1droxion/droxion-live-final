@@ -1,74 +1,62 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 
-export default function LiveUniverse() {
-  const [universe, setUniverse] = useState(null);
+export default function Universe() {
+  const [universeData, setUniverseData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUniverse = async () => {
     try {
-      const res = await axios.get(
+      const res = await fetch(
         `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/world-state`
       );
-      setUniverse(res.data);
-      setLoading(false);
+      const data = await res.json();
+      setUniverseData(data);
     } catch (err) {
-      console.error("❌ Failed to fetch universe:", err);
+      console.error("Error fetching universe:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchUniverse();
-    const interval = setInterval(fetchUniverse, 5000); // refresh every 5 seconds
+    const interval = setInterval(fetchUniverse, 5000); // Refresh every 5 sec
     return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="p-6 text-white text-center text-2xl animate-pulse">
-        🌌 Loading Universe...
-      </div>
-    );
-  }
+  if (loading) return <div className="text-white p-4">🌀 Loading universe...</div>;
+  if (!universeData) return <div className="text-red-400 p-4">⚠️ Universe data unavailable.</div>;
 
   return (
-    <div className="p-6 text-white">
-      <h1 className="text-4xl font-bold mb-6 text-purple-400">🌌 Live Universe</h1>
+    <div className="text-white p-6 space-y-4">
+      <h1 className="text-2xl font-bold text-green-400">🌌 Universe Simulation</h1>
 
-      <p className="text-sm mb-4 text-gray-400 italic">
-        Evolving since: {universe.created_at} | Last update: {universe.last_updated}
-      </p>
+      <div className="bg-[#1e1e22] p-4 rounded-lg shadow space-y-2">
+        <p><strong>🕒 Time Since Big Bang:</strong> {universeData.time_since_big_bang}</p>
+        <p><strong>💥 Current Era:</strong> {universeData.current_era}</p>
+        <p><strong>🌍 Known Galaxies:</strong> {universeData.galaxies?.length || 0}</p>
+        <p><strong>🌐 Known Civilizations:</strong> {universeData.civilizations?.length || 0}</p>
+      </div>
 
-      {universe.galaxies.map((galaxy, gIndex) => (
-        <div key={gIndex} className="mb-8 p-4 rounded-lg bg-gray-900 shadow-xl">
-          <h2 className="text-2xl font-semibold text-cyan-400">🌀 Galaxy: {galaxy.name}</h2>
-
-          {galaxy.stars.map((star, sIndex) => (
-            <div key={sIndex} className="ml-4 mt-4">
-              <h3 className="text-lg text-yellow-300">⭐ Star: {star.name}</h3>
-
-              <div className="ml-4">
-                {star.planets.map((planet, pIndex) => (
-                  <div key={pIndex} className="mb-2">
-                    <p className="text-green-400 font-medium">🌍 Planet: {planet.name}</p>
-                    <p className="text-gray-300 ml-2 text-sm">
-                      Type: {planet.type} | Life: {planet.life ? "Yes" : "No"}
-                    </p>
-
-                    {planet.civilization && (
-                      <div className="ml-4 mt-1 text-sm text-pink-300">
-                        👽 Civilization: {planet.civilization.name}<br />
-                        Level: {planet.civilization.level}<br />
-                        Status: {planet.civilization.status}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-[#2b2b30] p-4 rounded">
+          <h2 className="text-xl font-semibold mb-2">🌀 Galaxies</h2>
+          <ul className="list-disc list-inside space-y-1">
+            {universeData.galaxies?.map((g, i) => (
+              <li key={i}>{g.name} — 🌟 {g.stars.length} stars</li>
+            ))}
+          </ul>
         </div>
-      ))}
+
+        <div className="bg-[#2b2b30] p-4 rounded">
+          <h2 className="text-xl font-semibold mb-2">🧠 Civilizations</h2>
+          <ul className="list-disc list-inside space-y-1">
+            {universeData.civilizations?.map((c, i) => (
+              <li key={i}>{c.name} — 🌍 Planet: {c.planet}, Status: {c.status}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
