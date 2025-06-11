@@ -16,7 +16,8 @@ import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
 import Analytics from "./Analytics";
-import LiveEarth from "./LiveEarth"; // ✅ NEW: Live Earth Page
+import LiveEarth from "./LiveEarth";       // ✅ Live Earth page
+import LiveUniverse from "./LiveUniverse"; // ✅ Live Universe page
 
 export default function App() {
   const location = useLocation();
@@ -26,7 +27,7 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  // ✅ Track time spent on session
+  // ✅ Track session time
   useEffect(() => {
     const startTime = Date.now();
     const handleUnload = () => {
@@ -74,7 +75,8 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/analytics" element={<Analytics />} />
-            <Route path="/live-earth" element={<LiveEarth />} /> {/* ✅ NEW */}
+            <Route path="/live-earth" element={<LiveEarth />} />         {/* ✅ Earth Simulation */}
+            <Route path="/live-universe" element={<LiveUniverse />} />   {/* ✅ Universe Simulation */}
           </Routes>
         </div>
       </div>
