@@ -3,10 +3,9 @@ import axios from "axios";
 
 function Generator() {
   const [formData, setFormData] = useState({
-    mode: "Manual",
+    mode: "Auto",
     topic: "",
     language: "English",
-    manualScript: "no",
     userScript: "",
     voice: "onyx",
     style: "Cinematic",
@@ -50,8 +49,8 @@ function Generator() {
       return;
     }
 
-    if (!formData.topic.trim() && formData.mode !== "Manual") {
-      alert("❗ Please enter a topic.");
+    if (!formData.topic.trim()) {
+      alert("❗ Please enter a topic or prompt.");
       return;
     }
 
@@ -88,32 +87,16 @@ function Generator() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-10 animate-fade-in">
-          {/* Left Form */}
+        <div className="grid md:grid-cols-2 gap-10">
+          {/* Form Panel */}
           <div className="space-y-4 backdrop-blur-md bg-white/5 p-6 rounded-xl shadow-lg border border-purple-600/30">
-            <select name="mode" value={formData.mode} onChange={handleChange} className="input">
-              <option value="Auto">Auto Mode</option>
-              <option value="Manual">Manual Mode</option>
-            </select>
-
-            {formData.mode === "Manual" ? (
-              <textarea
-                name="userScript"
-                rows={3}
-                value={formData.userScript}
-                onChange={handleChange}
-                placeholder="✍️ Write your own script..."
-                className="input resize-none"
-              />
-            ) : (
-              <input
-                name="topic"
-                value={formData.topic}
-                onChange={handleChange}
-                placeholder="💡 Enter a topic like 'Success'"
-                className="input"
-              />
-            )}
+            <input
+              name="topic"
+              value={formData.topic}
+              onChange={handleChange}
+              placeholder="💡 Enter prompt like 'A futuristic AI rising from digital particles'"
+              className="input"
+            />
 
             <div className="grid grid-cols-2 gap-4">
               <select name="language" value={formData.language} onChange={handleChange} className="input">
@@ -176,7 +159,6 @@ function Generator() {
                 name="clipCount"
                 value={formData.clipCount}
                 onChange={handleChange}
-                placeholder="🎞️ Clip Count"
                 className="input"
               />
               <input
@@ -185,20 +167,15 @@ function Generator() {
                 step="0.1"
                 value={formData.voiceSpeed}
                 onChange={handleChange}
-                placeholder="🎙️ Voice Speed"
                 className="input"
               />
             </div>
           </div>
 
-          {/* Right Preview */}
+          {/* Preview Panel */}
           <div className="flex flex-col items-center justify-center space-y-6 text-center">
             {videoUrl ? (
-              <video
-                src={videoUrl}
-                controls
-                className="w-full rounded-2xl shadow-2xl border border-purple-500/30"
-              />
+              <video src={videoUrl} controls className="w-full rounded-2xl shadow-2xl border border-purple-500/30" />
             ) : (
               <div className="text-gray-400 italic animate-pulse">
                 🎞️ Your magical reel will appear here after generation.
