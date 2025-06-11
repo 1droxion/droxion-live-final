@@ -21,7 +21,8 @@ function Sidebar({ isOpen, setIsOpen }) {
     { path: "/plans", icon: Layers, label: "Plans" },
     { path: "/projects", icon: Folder, label: "Projects" },
     { path: "/analytics", icon: BarChart3, label: "Analytics" },
-    { path: "/live-earth", icon: Globe, label: "Live Earth 🌍" }, // ✅ NEW
+    { path: "/live-earth", icon: Globe, label: "Live Earth 🌍" },
+    { path: "/universe", icon: Globe, label: "Universe 🌌" }, // ✅ NEW UNIVERSE
     { path: "/templates", icon: LayoutTemplate, label: "Templates" },
     { path: "/connect", icon: ConnectIcon, label: "Connect" },
     { path: "/editor", icon: Edit, label: "Editor" },
