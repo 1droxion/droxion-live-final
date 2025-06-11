@@ -19,6 +19,8 @@ function AIImage() {
     "Watercolor",
   ];
 
+  const isDhruv = true; // ✅ Allow free use for you
+
   useEffect(() => {
     axios
       .get(`${import.meta.env.VITE_BACKEND_URL}/user-stats`)
@@ -37,7 +39,8 @@ function AIImage() {
       return;
     }
 
-    if (coins < 3) {
+    // ✅ Skip coin check if isDhruv
+    if (!isDhruv && coins < 3) {
       if (window.confirm("❌ You don’t have enough coins. Go to Plans page to buy more?")) {
         window.location.href = "/plans";
       }
@@ -58,7 +61,7 @@ function AIImage() {
       const url = response.data.image_url;
       setImageUrl(url);
 
-      setCoins(prev => prev - 3); // Deduct 3 coins locally
+      if (!isDhruv) setCoins(prev => prev - 3); // ✅ Only deduct if not Dhruv
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
       alert("Image generation failed. Try again.");
@@ -75,7 +78,7 @@ function AIImage() {
           🪄 Create Stunning AI Images
         </h1>
         <div className="bg-black px-3 py-1 rounded text-yellow-300 font-bold text-sm border border-yellow-400 self-start">
-          🪙 Coins: {coins}
+          🪙 Coins: {isDhruv ? "∞" : coins}
         </div>
       </div>
 
