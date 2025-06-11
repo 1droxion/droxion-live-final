@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-export default function Universe() {
+export default function LiveUniverse() {
   const [universeData, setUniverseData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -10,9 +10,9 @@ export default function Universe() {
         `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/world-state`
       );
       const data = await res.json();
-      setUniverseData(data);
+      setUniverseData(data.universe);
     } catch (err) {
-      console.error("🌌 Error fetching universe:", err);
+      console.error("❌ Error fetching universe data:", err);
     } finally {
       setLoading(false);
     }
@@ -20,64 +20,34 @@ export default function Universe() {
 
   useEffect(() => {
     fetchUniverse();
-    const interval = setInterval(fetchUniverse, 5000);
+    const interval = setInterval(fetchUniverse, 10000); // Refresh every 10 sec
     return () => clearInterval(interval);
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen text-xl text-purple-300 animate-pulse">
-        🌠 Initializing Universe...
-      </div>
-    );
+    return <div className="p-8 text-center text-xl text-gray-400 animate-pulse">🌌 Loading Universe...</div>;
   }
 
   if (!universeData) {
-    return (
-      <div className="flex items-center justify-center h-screen text-red-400">
-        ❌ Universe data not found.
-      </div>
-    );
+    return <div className="p-8 text-center text-red-400">❌ Failed to load universe data.</div>;
   }
 
-  const { age, galaxies, stars, planets, blackHoles, nebulae } = universeData;
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-indigo-950 to-black text-white p-8">
-      <h1 className="text-4xl md:text-6xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-600">
-        🌌 Live Universe Simulation
-      </h1>
+    <div className="p-6 max-w-5xl mx-auto text-white">
+      <h1 className="text-4xl font-bold text-center mb-8 text-blue-400">🌌 Evolution of the Universe</h1>
+      <p className="text-center text-sm text-gray-400 mb-10">Age: {universeData.age}</p>
 
-      <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto text-center text-lg">
-        <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
-          <h2 className="text-xl font-semibold text-cyan-300 mb-2">Age</h2>
-          <p>{age} years since the Big Bang</p>
-        </div>
-
-        <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
-          <h2 className="text-xl font-semibold text-pink-400 mb-2">Galaxies</h2>
-          <p>{galaxies?.length || 0} galaxies formed</p>
-        </div>
-
-        <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
-          <h2 className="text-xl font-semibold text-yellow-300 mb-2">Stars</h2>
-          <p>{stars?.length || 0} stars glowing</p>
-        </div>
-
-        <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
-          <h2 className="text-xl font-semibold text-green-300 mb-2">Planets</h2>
-          <p>{planets?.length || 0} planets orbiting</p>
-        </div>
-
-        <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
-          <h2 className="text-xl font-semibold text-red-300 mb-2">Black Holes</h2>
-          <p>{blackHoles?.length || 0} singularities</p>
-        </div>
-
-        <div className="bg-[#1e1e2f] p-6 rounded-2xl shadow-lg">
-          <h2 className="text-xl font-semibold text-blue-300 mb-2">Nebulae</h2>
-          <p>{nebulae?.length || 0} cosmic clouds</p>
-        </div>
+      <div className="space-y-6">
+        {universeData.events.map((event, index) => (
+          <div
+            key={index}
+            className="bg-[#1e293b] border border-blue-500 rounded-2xl p-5 shadow-xl hover:scale-[1.01] transition-transform"
+          >
+            <div className="text-green-400 text-sm font-mono mb-1">{event.time}</div>
+            <div className="text-xl font-semibold text-blue-300">{event.event}</div>
+            <div className="text-gray-300 mt-1">{event.description}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
