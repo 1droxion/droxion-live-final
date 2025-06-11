@@ -2,52 +2,47 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 function LiveEarth() {
-  const [world, setWorld] = useState(null);
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchWorld = async () => {
+    try {
+      const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/world-state`);
+      setState(res.data);
+    } catch (err) {
+      console.error("🌍 Error fetching world state:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    axios
-      .get(`${import.meta.env.VITE_BACKEND_URL}/world-state`)
-      .then((res) => setWorld(res.data))
-      .catch((err) => {
-        console.error("Failed to fetch world state:", err);
-        setWorld(null);
-      });
+    fetchWorld();
+    const interval = setInterval(fetchWorld, 5000); // refresh every 5 seconds
+    return () => clearInterval(interval);
   }, []);
 
-  const renderSection = (title, items) => (
-    <div className="bg-[#1e293b] p-6 rounded-xl shadow-lg w-full md:w-[48%] mb-4">
-      <h2 className="text-xl font-bold text-green-400 mb-3">{title}</h2>
-      {(!items || items.length === 0) ? (
-        <p className="text-gray-400">• No data yet</p>
-      ) : (
-        <ul className="text-sm text-white space-y-2 list-disc list-inside">
-          {items.map((item, i) => (
-            <li key={i}>
-              {typeof item === "string" ? item : JSON.stringify(item)}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  if (loading) return <div className="text-center text-white mt-20">🌀 Loading universe...</div>;
+
+  if (!state) return <div className="text-center text-red-500 mt-20">❌ No data found</div>;
 
   return (
-    <div className="min-h-screen px-4 py-10 bg-gradient-to-br from-black via-[#0f0f23] to-black text-white">
-      <h1 className="text-4xl font-extrabold text-center text-blue-300 mb-10">
-        🌍 Live Earth Simulation
-      </h1>
-
-      {!world ? (
-        <p className="text-center text-gray-500">Loading...</p>
-      ) : (
-        <div className="flex flex-wrap justify-center gap-4 max-w-6xl mx-auto">
-          {renderSection("Day", [world.day])}
-          {renderSection("Weather", [world.weather])}
-          {renderSection("Economy", [world.economy])}
-          {renderSection("Politics", [world.politics])}
-          {renderSection("Humans", world.humans)}
+    <div className="min-h-screen bg-black text-white p-6">
+      <h1 className="text-3xl font-bold text-center mb-6">🌌 Live Universe Simulation</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+        <div className="bg-gray-900 p-5 rounded-xl border border-blue-500 shadow-lg">
+          <h2 className="text-xl font-semibold text-cyan-400 mb-2">📆 Current Era</h2>
+          <p className="text-lg">{state.era}</p>
         </div>
-      )}
+        <div className="bg-gray-900 p-5 rounded-xl border border-purple-500 shadow-lg">
+          <h2 className="text-xl font-semibold text-purple-400 mb-2">🧠 Main Event</h2>
+          <p className="text-lg italic">{state.event}</p>
+        </div>
+        <div className="bg-gray-900 p-5 rounded-xl border border-green-500 shadow-lg col-span-2">
+          <h2 className="text-xl font-semibold text-green-400 mb-2">📖 Narrative</h2>
+          <p className="text-base leading-relaxed">{state.description}</p>
+        </div>
+      </div>
     </div>
   );
 }
