@@ -1,98 +1,72 @@
-import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  MessageSquare, Image, Layers, Folder, LayoutTemplate,
-  Link as ConnectIcon, Edit, Settings, LogOut, LogIn, UserPlus, BarChart3, Globe
-} from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 
-function Sidebar({ isOpen, setIsOpen }) {
+import Sidebar from "./Sidebar";
+import Topbar from "./Topbar";
+
+import Generator from "./Generator";
+import AIChat from "./AIChat";
+import AIImage from "./AIImage";
+import Plans from "./Plans";
+import Settings from "./Settings";
+import LandingPage from "./LandingPage";
+import Login from "./Login";
+import Signup from "./Signup";
+
+export default function App() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const isMobile = window.innerWidth < 768;
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
 
-  const handleNavClick = (path) => {
-    navigate(path);
-    if (isMobile) setIsOpen(false);
-  };
+  useEffect(() => {
+    if (window.innerWidth < 768) setSidebarOpen(false);
+  }, [location]);
 
-  const routes = [
-    { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
-    { path: "/ai-image", icon: Image, label: "AI Image" },
-    { path: "/plans", icon: Layers, label: "Plans" },
-    { path: "/projects", icon: Folder, label: "Projects" },
-    { path: "/analytics", icon: BarChart3, label: "Analytics" },
-    { path: "/live-earth", icon: Globe, label: "Live Earth 🌍" },
-    { path: "/universe", icon: Globe, label: "Universe 🌌" }, // ✅ NEW UNIVERSE
-    { path: "/templates", icon: LayoutTemplate, label: "Templates" },
-    { path: "/connect", icon: ConnectIcon, label: "Connect" },
-    { path: "/editor", icon: Edit, label: "Editor" },
-    { path: "/settings", icon: Settings, label: "Settings" },
-  ];
+  useEffect(() => {
+    const startTime = Date.now();
+    const handleUnload = () => {
+      const duration = Math.floor((Date.now() - startTime) / 1000);
+      fetch(
+        `${
+          import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"
+        }/track`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "session_time",
+            path: window.location.pathname,
+            duration,
+            userAgent: navigator.userAgent,
+          }),
+        }
+      );
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      handleUnload();
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, []);
 
   return (
-    <div
-      className={`bg-[#111827] fixed lg:relative z-50 top-0 left-0 h-full transition-all duration-300 ease-in-out ${
-        isOpen ? "w-56" : "w-0 lg:w-14"
-      } overflow-hidden`}
-    >
-      <div className="flex flex-col h-full">
-        <div className="p-2 lg:hidden">
-          <button
-            onClick={() => setIsOpen(false)}
-            className="text-gray-400 hover:text-white"
-          >
-            ✕ Close
-          </button>
-        </div>
-
-        <nav className="flex-1 overflow-auto px-2 py-4 space-y-1">
-          {routes.map(({ path, icon: Icon, label }) => (
-            <button
-              key={path}
-              onClick={() => handleNavClick(path)}
-              className={`flex items-center p-2 rounded transition ${
-                location.pathname === path
-                  ? "bg-green-500 text-white"
-                  : "text-gray-300 hover:bg-gray-700 hover:text-white"
-              } w-full`}
-            >
-              <Icon className="w-5 h-5" />
-              {isOpen && <span className="ml-3 text-sm">{label}</span>}
-            </button>
-          ))}
-        </nav>
-
-        <div className="border-t border-gray-700 p-2 space-y-2">
-          <button
-            onClick={() => handleNavClick("/login")}
-            className="flex items-center p-2 rounded transition text-gray-300 hover:bg-gray-700 hover:text-white w-full"
-          >
-            <LogIn className="w-5 h-5" />
-            {isOpen && <span className="ml-3 text-sm">Login</span>}
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/signup")}
-            className="flex items-center p-2 rounded transition text-gray-300 hover:bg-gray-700 hover:text-white w-full"
-          >
-            <UserPlus className="w-5 h-5" />
-            {isOpen && <span className="ml-3 text-sm">Signup</span>}
-          </button>
-
-          <button
-            onClick={() => {
-              navigate("/login");
-              if (isMobile) setIsOpen(false);
-            }}
-            className="flex items-center p-2 rounded transition text-red-400 hover:bg-red-700 hover:text-white w-full"
-          >
-            <LogOut className="w-5 h-5" />
-            {isOpen && <span className="ml-3 text-sm">Logout</span>}
-          </button>
+    <div className="flex min-h-screen bg-[#0e0e10] text-white">
+      <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
+      <div className="flex-1 flex flex-col">
+        <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+        <div className="p-4">
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/generator" element={<Generator />} />
+            <Route path="/chatboard" element={<AIChat />} />
+            <Route path="/ai-image" element={<AIImage />} />
+            <Route path="/plans" element={<Plans />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+          </Routes>
         </div>
       </div>
     </div>
   );
 }
-
-export default Sidebar;
