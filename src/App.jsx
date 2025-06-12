@@ -13,8 +13,6 @@ import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
 
-// ❌ Removed: Editor, Projects, Analytics, LiveEarth, Universe
-
 export default function App() {
   const location = useLocation();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -28,7 +26,9 @@ export default function App() {
     const handleUnload = () => {
       const duration = Math.floor((Date.now() - startTime) / 1000);
       fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`,
+        `${
+          import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"
+        }/track`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -56,7 +56,7 @@ export default function App() {
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
-            <Route path="/" element={<Generator />} />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/chatboard" element={<AIChat />} />
             <Route path="/ai-image" element={<AIImage />} />
