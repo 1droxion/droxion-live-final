@@ -1,6 +1,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  Home,
   MessageSquare,
   Image,
   Layers,
@@ -27,6 +28,8 @@ function Sidebar({ isOpen, setIsOpen }) {
   };
 
   const routes = [
+    { path: "/", icon: Home, label: "Home" }, // ✅ Landing Page
+    { path: "/generator", icon: Globe, label: "Generator" },
     { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
     { path: "/ai-image", icon: Image, label: "AI Image" },
     { path: "/plans", icon: Layers, label: "Plans" },
@@ -37,8 +40,7 @@ function Sidebar({ isOpen, setIsOpen }) {
     { path: "/settings", icon: Settings, label: "Settings" },
     { path: "/login", icon: LogIn, label: "Login" },
     { path: "/signup", icon: UserPlus, label: "Signup" },
-    { path: "/analytics", icon: BarChart3, label: "Analytics" },
-    { path: "/generator", icon: Globe, label: "Generator" },
+    { path: "/analytics", icon: BarChart3, label: "Analytics" }
   ];
 
   return (
