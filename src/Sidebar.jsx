@@ -4,7 +4,6 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-import Generator from "./Generator";
 import AIChat from "./AIChat";
 import AIImage from "./AIImage";
 import Plans from "./Plans";
@@ -12,6 +11,7 @@ import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
+import Generator from "./Generator"; // ✅ NEW Reel Generator
 
 export default function App() {
   const location = useLocation();
