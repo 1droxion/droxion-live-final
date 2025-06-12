@@ -4,20 +4,16 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
+import Generator from "./Generator";
 import AIChat from "./AIChat";
 import AIImage from "./AIImage";
 import Plans from "./Plans";
-import Projects from "./Projects";
-import Templates from "./Templates";
-import Connect from "./Connect";
-import Editor from "./Editor";
 import Settings from "./Settings";
 import LandingPage from "./LandingPage";
 import Login from "./Login";
 import Signup from "./Signup";
-import Analytics from "./Analytics";
-import LiveEarth from "./LiveEarth";         // ✅ Live Earth simulation
-import LiveUniverse from "./Universe";       // ✅ Universe simulation page
+
+// ❌ Removed: Editor, Projects, Analytics, LiveEarth, Universe
 
 export default function App() {
   const location = useLocation();
@@ -27,15 +23,12 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  // ✅ Session tracking
   useEffect(() => {
     const startTime = Date.now();
     const handleUnload = () => {
       const duration = Math.floor((Date.now() - startTime) / 1000);
       fetch(
-        `${
-          import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"
-        }/track`,
+        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -63,20 +56,14 @@ export default function App() {
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={<Generator />} />
+            <Route path="/generator" element={<Generator />} />
             <Route path="/chatboard" element={<AIChat />} />
             <Route path="/ai-image" element={<AIImage />} />
             <Route path="/plans" element={<Plans />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/connect" element={<Connect />} />
-            <Route path="/editor" element={<Editor />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/live-earth" element={<LiveEarth />} />         {/* 🌍 Earth Simulation */}
-            <Route path="/live-universe" element={<LiveUniverse />} />   {/* 🌌 Universe Simulation */}
           </Routes>
         </div>
       </div>
