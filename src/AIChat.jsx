@@ -1,4 +1,4 @@
-// ✅ Final Unified AIChat.jsx (Chat + Image + Reel + Search + Voice)
+// ✅ Final AIChat.jsx — Triggers Real AI Image + Video + Chat + Link with Voice Support
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -29,35 +29,42 @@ function AIChat() {
       let aiReply = "";
       const lowerInput = input.toLowerCase();
 
-      // Smart routing
-      if (/draw|make image of|generate image of|image of|picture of/i.test(lowerInput)) {
-        const imgPrompt = input.replace(/draw|make image of|generate image of|image of|picture of/i, "").trim();
-        const imgRes = await axios.post(`${VITE_BACKEND_URL}/generate-image`, { prompt: imgPrompt });
+      // 🖼️ Trigger AI Image
+      if (/create image|make image|draw|picture of/i.test(lowerInput)) {
+        const prompt = input.replace(/create image|make image|draw|picture of/i, "").trim();
+        const imgRes = await axios.post(`${VITE_BACKEND_URL}/generate-image`, { prompt });
         const url = imgRes?.data?.image_url[0] || "";
-        aiReply = url ? `🖼️ Generated Image:\n\n![Generated](${url})\n\n[Open Image](${url})` : "❌ Failed to generate image.";
+        aiReply = url
+          ? `🖼️ Image Generated:\n\n![Generated](${url})\n\n[Open Full Image](${url})`
+          : "❌ Failed to generate image.";
 
-      } else if (/make reel|generate video|make video|cinematic reel/i.test(lowerInput)) {
-        const topic = input.replace(/make reel|generate video|make video|cinematic reel/i, "").trim();
-        const genRes = await axios.post(`${VITE_BACKEND_URL}/generate`, {
+      // 🎬 Trigger AI Video
+      } else if (/create video|make reel|generate video|reel on/i.test(lowerInput)) {
+        const topic = input.replace(/create video|make reel|generate video|reel on/i, "").trim();
+        const res = await axios.post(`${VITE_BACKEND_URL}/generate`, {
           topic,
           language: "Hindi",
           voice: "onyx",
           length: "Short",
           mode: "Auto",
         });
-        const videoUrl = genRes?.data?.videoUrl || "";
-        aiReply = videoUrl ? `🎬 Generated Video: [Watch Here](${VITE_BACKEND_URL}${videoUrl})` : "❌ Failed to generate video.";
+        const videoUrl = res?.data?.videoUrl || "";
+        aiReply = videoUrl
+          ? `🎬 Reel Created: [Watch Now](${VITE_BACKEND_URL}${videoUrl})\n\n<video controls src='${VITE_BACKEND_URL}${videoUrl}' class='rounded-xl mt-4 w-full max-w-md'></video>`
+          : "❌ Failed to generate video.";
 
-      } else if (/youtube|news/i.test(lowerInput)) {
-        const q = encodeURIComponent(input);
-        if (lowerInput.includes("youtube")) aiReply = `[🔎 YouTube Results](https://www.youtube.com/results?search_query=${q})`;
-        else aiReply = `[📰 Google News](https://www.google.com/search?q=${q})`;
+      // 🔗 Trigger YouTube/News search
+      } else if (lowerInput.includes("youtube") || lowerInput.includes("news")) {
+        const query = encodeURIComponent(input);
+        if (lowerInput.includes("youtube")) aiReply = `[🔍 YouTube Results](https://www.youtube.com/results?search_query=${query})`;
+        else aiReply = `[📰 News Search](https://www.google.com/search?q=${query})`;
 
+      // 🤖 Default AI Chat
       } else {
-        const res = await axios.post(`${VITE_BACKEND_URL}/chat`, { prompt: input });
-        aiReply = res?.data?.reply || "No reply.";
+        const chatRes = await axios.post(`${VITE_BACKEND_URL}/chat`, { prompt: input });
+        aiReply = chatRes?.data?.reply || "No reply.";
 
-        if (/who (made|created) you|who's your creator/i.test(input)) {
+        if (/who (made|created) you|who's your creator/i.test(lowerInput)) {
           aiReply = "I was created by Dhruv Patel and powered by Droxion™. Owned by Dhruv Patel.";
         }
       }
@@ -65,7 +72,7 @@ function AIChat() {
       const assistantMsg = { role: "assistant", content: aiReply, timestamp: new Date().toLocaleTimeString() };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error while processing. Please try again.", timestamp: new Date().toLocaleTimeString() }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Something went wrong. Try again.", timestamp: new Date().toLocaleTimeString() }]);
     }
 
     setLoading(false);
@@ -124,7 +131,7 @@ function AIChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask anything: chat, image, reel, YouTube/news..."
+          placeholder="Ask anything: draw, video, chat, YouTube/news..."
           className="flex-1 p-4 rounded-lg bg-[#1f2937] placeholder-gray-400 focus:outline-none"
         />
         <button onClick={handleVoice} className="bg-yellow-500 px-4 rounded">🎤</button>
