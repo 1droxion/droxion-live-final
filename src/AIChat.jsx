@@ -1,8 +1,9 @@
-// ✅ Final AIChat.jsx — Triggers Real AI Image + Video + Chat + Link with Voice Support
+// ✅ Final AIChat.jsx with inline video + link preview rendering
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ClipboardCopy } from "lucide-react";
@@ -29,7 +30,7 @@ function AIChat() {
       let aiReply = "";
       const lowerInput = input.toLowerCase();
 
-      // 🖼️ Trigger AI Image
+      // 🖼️ Image Trigger
       if (/create image|make image|draw|picture of/i.test(lowerInput)) {
         const prompt = input.replace(/create image|make image|draw|picture of/i, "").trim();
         const imgRes = await axios.post(`${VITE_BACKEND_URL}/generate-image`, { prompt });
@@ -38,7 +39,7 @@ function AIChat() {
           ? `🖼️ Image Generated:\n\n![Generated](${url})\n\n[Open Full Image](${url})`
           : "❌ Failed to generate image.";
 
-      // 🎬 Trigger AI Video
+      // 🎬 Video Trigger
       } else if (/create video|make reel|generate video|reel on/i.test(lowerInput)) {
         const topic = input.replace(/create video|make reel|generate video|reel on/i, "").trim();
         const res = await axios.post(`${VITE_BACKEND_URL}/generate`, {
@@ -50,16 +51,16 @@ function AIChat() {
         });
         const videoUrl = res?.data?.videoUrl || "";
         aiReply = videoUrl
-          ? `🎬 Reel Created: [Watch Now](${VITE_BACKEND_URL}${videoUrl})\n\n<video controls src='${VITE_BACKEND_URL}${videoUrl}' class='rounded-xl mt-4 w-full max-w-md'></video>`
+          ? `🎬 Reel Created: [Watch Now](${VITE_BACKEND_URL}${videoUrl})\n\n<video controls src='${VITE_BACKEND_URL}${videoUrl}' class='rounded-xl mt-4 w-full max-w-lg'></video>`
           : "❌ Failed to generate video.";
 
-      // 🔗 Trigger YouTube/News search
+      // 🔗 Link Trigger
       } else if (lowerInput.includes("youtube") || lowerInput.includes("news")) {
         const query = encodeURIComponent(input);
         if (lowerInput.includes("youtube")) aiReply = `[🔍 YouTube Results](https://www.youtube.com/results?search_query=${query})`;
         else aiReply = `[📰 News Search](https://www.google.com/search?q=${query})`;
 
-      // 🤖 Default AI Chat
+      // 🤖 Chat Fallback
       } else {
         const chatRes = await axios.post(`${VITE_BACKEND_URL}/chat`, { prompt: input });
         aiReply = chatRes?.data?.reply || "No reply.";
@@ -96,7 +97,7 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div key={i} className={`p-4 rounded-xl shadow ${msg.role === "user" ? "bg-blue-800 ml-auto" : "bg-purple-700 mr-auto"}`}>
             <div className="text-xs opacity-80 mb-1">{msg.role === "user" ? "🧑 You" : "🤖 AI"} • {msg.timestamp}</div>
-            <ReactMarkdown
+            <ReactMarkdown rehypePlugins={[rehypeRaw]}
               children={msg.content}
               components={{
                 code({ inline, className, children }) {
