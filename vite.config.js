@@ -30,5 +30,13 @@ export default defineConfig({
         ]
       }
     })
-  ]
+  ],
+  build: {
+    rollupOptions: {
+      external: ['rehype-raw'] // ✅ Prevent Rollup error on rehype-raw
+    }
+  },
+  optimizeDeps: {
+    include: ['rehype-raw'] // ✅ Ensure it's bundled in dev mode
+  }
 });
