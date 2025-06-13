@@ -1,11 +1,11 @@
-// ✅ Combined AIChat with Smart Prompt Routing (Chat + Image + Reel + Link Search)
+// ✅ Combined AIChat with Smart Prompt Routing (Chat + Image + Reel + Link Search + Voice)
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { ClipboardCopy, Download } from "lucide-react";
+import { ClipboardCopy } from "lucide-react";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -29,14 +29,14 @@ function AIChat() {
       let aiReply = "";
 
       // 🌐 Smart Routing
-      if (/make image of|generate image of/i.test(input)) {
-        const imgPrompt = input.replace(/make image of|generate image of/i, "").trim();
+      if (/make image of|generate image of|draw/i.test(input)) {
+        const imgPrompt = input.replace(/make image of|generate image of|draw/i, "").trim();
         const imgRes = await axios.post(`${VITE_BACKEND_URL}/generate-image`, { prompt: imgPrompt });
-        const url = imgRes?.data?.image_url || "";
-        aiReply = url ? `🖼️ Image Generated: ![](${url})\n\n[View Full Image](${url})` : "❌ Failed to generate image.";
+        const url = imgRes?.data?.image_url[0] || "";
+        aiReply = url ? `🖼️ Image Generated:\n\n![Generated Image](${url})\n\n[View Image](${url})` : "❌ Failed to generate image.";
 
-      } else if (/generate video about|make reel/i.test(input)) {
-        const topic = input.replace(/generate video about|make reel/i, "").trim();
+      } else if (/generate video about|make reel|make video/i.test(input)) {
+        const topic = input.replace(/generate video about|make reel|make video/i, "").trim();
         const genRes = await axios.post(`${VITE_BACKEND_URL}/generate`, {
           topic,
           language: "Hindi",
@@ -45,7 +45,7 @@ function AIChat() {
           mode: "Auto",
         });
         const videoUrl = genRes?.data?.videoUrl || "";
-        aiReply = videoUrl ? `🎥 Video Created: [Watch Reel](${videoUrl})` : "❌ Failed to generate video.";
+        aiReply = videoUrl ? `🎬 Reel Created: [Watch Now](${VITE_BACKEND_URL}${videoUrl})` : "❌ Failed to generate video.";
 
       } else if (/youtube|news/i.test(input)) {
         const q = encodeURIComponent(input);
@@ -68,6 +68,16 @@ function AIChat() {
     }
 
     setLoading(false);
+  };
+
+  const handleVoice = () => {
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.start();
+    recognition.onresult = (event) => {
+      const voiceText = event.results[0][0].transcript;
+      setInput(voiceText);
+    };
   };
 
   return (
@@ -112,9 +122,10 @@ function AIChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Type here: generate video, image or chat..."
+          placeholder="Ask anything: chat, draw, reel, search YouTube/news..."
           className="flex-1 p-4 rounded-lg bg-[#1f2937] placeholder-gray-400 focus:outline-none"
         />
+        <button onClick={handleVoice} className="bg-yellow-500 px-4 rounded">🎤</button>
         <button
           onClick={sendMessage}
           disabled={loading}
