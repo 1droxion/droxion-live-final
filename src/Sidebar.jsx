@@ -1,7 +1,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Home,
+  Zap,
   MessageSquare,
   Image,
   Layers,
@@ -28,7 +28,7 @@ function Sidebar({ isOpen, setIsOpen }) {
   };
 
   const routes = [
-    { path: "/", icon: Home, label: "Home" }, // ✅ Landing Page
+    { path: "/", icon: Zap, label: "Smart Bar" }, // ✅ New Home (SmartBar)
     { path: "/generator", icon: Globe, label: "Generator" },
     { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
     { path: "/ai-image", icon: Image, label: "AI Image" },
