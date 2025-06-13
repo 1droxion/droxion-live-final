@@ -1,4 +1,4 @@
-// ✅ Combined AIChat with Smart Prompt Routing (Chat + Image + Reel + Link Search + Voice)
+// ✅ Final Unified AIChat.jsx (Chat + Image + Reel + Search + Voice)
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -27,16 +27,17 @@ function AIChat() {
 
     try {
       let aiReply = "";
+      const lowerInput = input.toLowerCase();
 
-      // 🌐 Smart Routing
-      if (/make image of|generate image of|draw/i.test(input)) {
-        const imgPrompt = input.replace(/make image of|generate image of|draw/i, "").trim();
+      // Smart routing
+      if (/draw|make image of|generate image of|image of|picture of/i.test(lowerInput)) {
+        const imgPrompt = input.replace(/draw|make image of|generate image of|image of|picture of/i, "").trim();
         const imgRes = await axios.post(`${VITE_BACKEND_URL}/generate-image`, { prompt: imgPrompt });
         const url = imgRes?.data?.image_url[0] || "";
-        aiReply = url ? `🖼️ Image Generated:\n\n![Generated Image](${url})\n\n[View Image](${url})` : "❌ Failed to generate image.";
+        aiReply = url ? `🖼️ Generated Image:\n\n![Generated](${url})\n\n[Open Image](${url})` : "❌ Failed to generate image.";
 
-      } else if (/generate video about|make reel|make video/i.test(input)) {
-        const topic = input.replace(/generate video about|make reel|make video/i, "").trim();
+      } else if (/make reel|generate video|make video|cinematic reel/i.test(lowerInput)) {
+        const topic = input.replace(/make reel|generate video|make video|cinematic reel/i, "").trim();
         const genRes = await axios.post(`${VITE_BACKEND_URL}/generate`, {
           topic,
           language: "Hindi",
@@ -45,12 +46,12 @@ function AIChat() {
           mode: "Auto",
         });
         const videoUrl = genRes?.data?.videoUrl || "";
-        aiReply = videoUrl ? `🎬 Reel Created: [Watch Now](${VITE_BACKEND_URL}${videoUrl})` : "❌ Failed to generate video.";
+        aiReply = videoUrl ? `🎬 Generated Video: [Watch Here](${VITE_BACKEND_URL}${videoUrl})` : "❌ Failed to generate video.";
 
-      } else if (/youtube|news/i.test(input)) {
+      } else if (/youtube|news/i.test(lowerInput)) {
         const q = encodeURIComponent(input);
-        if (/youtube/i.test(input)) aiReply = `[🔍 YouTube Search](https://www.youtube.com/results?search_query=${q})`;
-        else aiReply = `[📰 News Search](https://www.google.com/search?q=${q})`;
+        if (lowerInput.includes("youtube")) aiReply = `[🔎 YouTube Results](https://www.youtube.com/results?search_query=${q})`;
+        else aiReply = `[📰 Google News](https://www.google.com/search?q=${q})`;
 
       } else {
         const res = await axios.post(`${VITE_BACKEND_URL}/chat`, { prompt: input });
@@ -64,7 +65,7 @@ function AIChat() {
       const assistantMsg = { role: "assistant", content: aiReply, timestamp: new Date().toLocaleTimeString() };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Failed to process. Check backend.", timestamp: new Date().toLocaleTimeString() }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error while processing. Please try again.", timestamp: new Date().toLocaleTimeString() }]);
     }
 
     setLoading(false);
@@ -82,7 +83,8 @@ function AIChat() {
 
   return (
     <div className="flex flex-col h-screen p-4 text-white bg-[#0e0e10]">
-      <h1 className="text-3xl font-bold text-center text-purple-400 mb-4">🧠 Droxion Smart Chat</h1>
+      <h1 className="text-3xl font-bold text-center text-purple-400 mb-4">💡 Droxion Smart AI Bar</h1>
+
       <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#111827] rounded-xl">
         {messages.map((msg, i) => (
           <div key={i} className={`p-4 rounded-xl shadow ${msg.role === "user" ? "bg-blue-800 ml-auto" : "bg-purple-700 mr-auto"}`}>
@@ -113,7 +115,7 @@ function AIChat() {
             />
           </div>
         ))}
-        {loading && <div className="text-gray-400 italic animate-pulse">⏳ Generating...</div>}
+        {loading && <div className="text-gray-400 italic animate-pulse">⏳ Processing...</div>}
       </div>
 
       <div className="mt-4 flex gap-2">
@@ -122,7 +124,7 @@ function AIChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask anything: chat, draw, reel, search YouTube/news..."
+          placeholder="Ask anything: chat, image, reel, YouTube/news..."
           className="flex-1 p-4 rounded-lg bg-[#1f2937] placeholder-gray-400 focus:outline-none"
         />
         <button onClick={handleVoice} className="bg-yellow-500 px-4 rounded">🎤</button>
