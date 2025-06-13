@@ -12,7 +12,6 @@ function AIChat() {
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
-  const [coins, setCoins] = useState(0);
   const chatRef = useRef(null);
 
   useEffect(() => {
@@ -27,12 +26,6 @@ function AIChat() {
 
   useEffect(() => {
     if (!activeChatId) startNewChat();
-  }, []);
-
-  useEffect(() => {
-    axios.get(`${import.meta.env.VITE_BACKEND_URL}/user-stats`)
-      .then(res => setCoins(res.data.coins || 0))
-      .catch(() => setCoins(0));
   }, []);
 
   const startNewChat = () => {
@@ -79,13 +72,6 @@ function AIChat() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    if (coins <= 0) {
-      if (window.confirm("❌ You don’t have enough coins. Go to Plans page to buy more?")) {
-        window.location.href = "/plans";
-      }
-      return;
-    }
-
     const userMsg = {
       role: "user",
       content: input,
@@ -115,10 +101,10 @@ function AIChat() {
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
       updateChat(finalMessages);
-      setCoins(prev => prev - 1); // Deduct 1 coin
     } catch (err) {
       alert("❌ Chat failed. Check your backend.");
     }
+
     setLoading(false);
   };
 
@@ -169,7 +155,7 @@ function AIChat() {
       )}
 
       <div className="flex-1 flex flex-col bg-[#0e0e10] p-4">
-        <div className="text-right text-sm text-yellow-300 font-semibold mb-1">🪙 Coins: {coins}</div>
+        <div className="text-right text-sm text-green-400 font-semibold mb-1">✅ Free Plan Active</div>
         <h1 className="text-3xl font-bold text-center text-purple-400 mb-4">🤖 Droxion AI Chatboard</h1>
 
         <div ref={chatRef} className="flex-1 overflow-y-auto bg-[#111827] rounded-xl p-6 space-y-4">
