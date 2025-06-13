@@ -1,4 +1,4 @@
-// ✅ Fixed AIChat.jsx — with rehype-raw, inline video rendering, and smart AI triggers
+// ✅ Final Smart AIChat.jsx with video, image, and full URL + metadata
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -29,17 +29,16 @@ function AIChat() {
     try {
       let aiReply = "";
       const lowerInput = input.toLowerCase();
+      const now = new Date().toLocaleDateString();
 
-      // 🖼️ Image Trigger
       if (/create image|make image|draw|picture of/i.test(lowerInput)) {
         const prompt = input.replace(/create image|make image|draw|picture of/i, "").trim();
         const imgRes = await axios.post(`${VITE_BACKEND_URL}/generate-image`, { prompt });
         const url = imgRes?.data?.image_url[0] || "";
         aiReply = url
-          ? `🖼️ Image Generated:\n\n![Generated](${url})\n\n[Open Full Image](${url})`
+          ? `🖼️ **Image Created: ${prompt}**\n📅 Generated on: ${now}\n\n![Generated Image](${url})\n\n[🔗 Open Full Image](${url})`
           : "❌ Failed to generate image.";
 
-      // 🎬 Video Trigger
       } else if (/create video|make reel|generate video|reel on/i.test(lowerInput)) {
         const topic = input.replace(/create video|make reel|generate video|reel on/i, "").trim();
         const res = await axios.post(`${VITE_BACKEND_URL}/generate`, {
@@ -51,20 +50,18 @@ function AIChat() {
         });
         const videoUrl = res?.data?.videoUrl || "";
         aiReply = videoUrl
-          ? `🎬 Reel Created: [Watch Now](${VITE_BACKEND_URL}${videoUrl})\n\n<video controls src='${VITE_BACKEND_URL}${videoUrl}' class='rounded-xl mt-4 w-full max-w-lg'></video>`
-          : "❌ Failed to generate video.";
+          ? `🎬 **Reel Created: ${topic}**\n📅 Generated on: ${now}\n[🔗 Click to Watch Full Reel](${VITE_BACKEND_URL}${videoUrl})\n\n<video controls src='${VITE_BACKEND_URL}${videoUrl}' class='rounded-xl mt-4 w-full max-w-lg'></video>`
+          : "❌ Failed to generate reel.";
 
-      // 🔗 Link Trigger
       } else if (lowerInput.includes("youtube") || lowerInput.includes("news")) {
         const query = encodeURIComponent(input);
-        if (lowerInput.includes("youtube")) aiReply = `[🔍 YouTube Results](https://www.youtube.com/results?search_query=${query})`;
-        else aiReply = `[📰 News Search](https://www.google.com/search?q=${query})`;
+        aiReply = lowerInput.includes("youtube")
+          ? `[🔍 YouTube Results](https://www.youtube.com/results?search_query=${query})`
+          : `[📰 News Results](https://www.google.com/search?q=${query})`;
 
-      // 🤖 Chat Fallback
       } else {
         const chatRes = await axios.post(`${VITE_BACKEND_URL}/chat`, { prompt: input });
         aiReply = chatRes?.data?.reply || "No reply.";
-
         if (/who (made|created) you|who's your creator/i.test(lowerInput)) {
           aiReply = "I was created by Dhruv Patel and powered by Droxion™. Owned by Dhruv Patel.";
         }
