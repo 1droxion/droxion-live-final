@@ -1,4 +1,4 @@
-// ✅ Final AIChat.jsx with inline video + link preview rendering
+// ✅ Fixed AIChat.jsx — with rehype-raw, inline video rendering, and smart AI triggers
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
