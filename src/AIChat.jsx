@@ -58,7 +58,7 @@ function AIChat() {
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     updateChat(updatedMessages);
-    setInput("");
+    setInput(""); // ✅ Fix input bar blinking
     setLoading(true);
 
     try {
@@ -83,7 +83,7 @@ function AIChat() {
         return;
       }
 
-      // ✅ YouTube video detection
+      // ✅ YouTube video search
       if (lower.includes("video")) {
         const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, {
           prompt: input,
@@ -96,17 +96,16 @@ function AIChat() {
         }
       }
 
-      // ✅ Image generation
-      if (lower.includes("create image") || lower.includes("draw")) {
-        const imagePrompt = input.replace("create image", "").replace("draw", "").trim();
+      // ✅ Image generation for any image-related prompt
+      if (lower.includes("image") || lower.includes("draw")) {
         const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, {
-          prompt: imagePrompt,
+          prompt: input,
         });
         const imageUrl = imgRes?.data?.image_url || "";
         if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
       }
 
-      // ✅ News detection
+      // ✅ News headlines
       if (lower.includes("news")) {
         const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, {
           prompt: input,
@@ -117,7 +116,7 @@ function AIChat() {
         }
       }
 
-      // ✅ Fallback to general chat
+      // ✅ Fallback to general chat if no direct match
       if (!reply) {
         const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
         reply = res?.data?.reply || "No reply.";
