@@ -140,7 +140,7 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${
+            className={`max-w-3xl px-5 py-2 rounded-2xl shadow-md relative whitespace-pre-wrap ${
               msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"
             }`}
           >
@@ -177,8 +177,12 @@ function AIChat() {
                 },
                 img({ src, alt }) {
                   return (
-                    <div className="bg-purple-700 p-3 rounded-xl shadow max-w-xs inline-block">
-                      <img src={src} alt={alt} className="rounded-lg max-w-full h-auto object-contain" />
+                    <div className="inline-block">
+                      <img
+                        src={src}
+                        alt={alt}
+                        className="w-[180px] h-auto object-contain rounded-lg"
+                      />
                     </div>
                   );
                 },
