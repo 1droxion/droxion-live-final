@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { ClipboardCopy, Download } from "lucide-react";
+import { ClipboardCopy } from "lucide-react";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -35,11 +35,13 @@ function AIChat() {
     const updated = [newChat, ...chats];
     setChats(updated);
     localStorage.setItem("droxion_chats", JSON.stringify(updated));
-    setMessages([{
-      role: "assistant",
-      content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `draw car`, `create reel about motivation`, or `YouTube Narendra Modi news`.",
-      timestamp: new Date().toLocaleTimeString(),
-    }]);
+    setMessages([
+      {
+        role: "assistant",
+        content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `draw car`, `create reel about motivation`, or `YouTube Narendra Modi news`.",
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
     setActiveChatId(id);
   };
 
@@ -67,8 +69,22 @@ function AIChat() {
     setLoading(true);
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
-      let reply = res?.data?.reply || "No reply.";
+      let reply = "";
+
+      if (input.toLowerCase().includes("youtube") || input.toLowerCase().includes("movie")) {
+        const ytRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/search-youtube?query=${encodeURIComponent(input)}`);
+        reply = `🎬 Watch on YouTube: [${ytRes.data.title}](${ytRes.data.url})`;
+      } else if (input.toLowerCase().includes("news")) {
+        const newsRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/search-news?query=${encodeURIComponent(input)}`);
+        reply = `📰 Latest News:\n\n${newsRes.data.articles.map((a, i) => `**${i + 1}.** [${a.title}](${a.link})`).join("\n\n")}`;
+      } else if (input.toLowerCase().startsWith("create image")) {
+        const imagePrompt = input.replace("create image", "").trim();
+        const imageRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: imagePrompt });
+        reply = `🖼️ Generated Image:\n\n![Generated Image](${imageRes.data.url})`;
+      } else {
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
+        reply = res?.data?.reply || "No reply.";
+      }
 
       const aiMsg = {
         role: "assistant",
@@ -80,7 +96,7 @@ function AIChat() {
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      alert("❌ Chat failed. Check your backend.");
+      alert("❌ Chat failed. Check backend or internet.");
     }
 
     setLoading(false);
@@ -121,7 +137,8 @@ function AIChat() {
                     <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
                   );
                 },
-              }}>
+              }}
+            >
               {msg.content}
             </ReactMarkdown>
           </div>
