@@ -13,6 +13,7 @@ function AIChat() {
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
   const chatRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!activeChatId) startNewChat();
@@ -31,7 +32,7 @@ function AIChat() {
     setMessages([
       {
         role: "assistant",
-        content: "🌟 Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
+        content: "\ud83c\udf1f Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
@@ -49,31 +50,27 @@ function AIChat() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
+    const raw = input;
+    const lower = raw.toLowerCase();
     const userMsg = {
       role: "user",
-      content: input,
+      content: raw,
       timestamp: new Date().toLocaleTimeString(),
     };
 
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     updateChat(updatedMessages);
-    setInput(""); // ✅ Fix input bar blinking
+    setInput("");
     setLoading(true);
 
     try {
-      const lower = input.toLowerCase();
       let reply = "";
 
-      // ✅ Identity override
-      if (
-        lower.includes("who made you") ||
-        lower.includes("who owns you") ||
-        lower.includes("who created you")
-      ) {
+      if (lower.includes("who made you") || lower.includes("who owns you") || lower.includes("who created you")) {
         const aiMsg = {
           role: "assistant",
-          content: "I was created by **Dhruv Patel** and powered by **Droxion™**. Owned by Dhruv Patel.",
+          content: "I was created by **Dhruv Patel** and powered by **Droxion\u2122**. Owned by Dhruv Patel.",
           timestamp: new Date().toLocaleTimeString(),
         };
         const finalMessages = [...updatedMessages, aiMsg];
@@ -83,42 +80,33 @@ function AIChat() {
         return;
       }
 
-      // ✅ YouTube video search
       if (lower.includes("video")) {
-        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, {
-          prompt: input,
-        });
+        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: raw });
         const ytLink = ytRes?.data?.url;
+        const ytTitle = ytRes?.data?.title || "YouTube Video";
         if (ytLink) {
-          reply += `Here's a video I found:\n\n[▶️ Watch on YouTube](${ytLink})`;
+          reply += `**${ytTitle}**\n\n[\u25b6\ufe0f Watch on YouTube](${ytLink})`;
         } else {
-          reply += "❌ Couldn't find a video.";
+          reply += "\u274c Couldn't find a video.";
         }
       }
 
-      // ✅ Image generation for any image-related prompt
       if (lower.includes("image") || lower.includes("draw")) {
-        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, {
-          prompt: input,
-        });
+        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: raw });
         const imageUrl = imgRes?.data?.image_url || "";
         if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
       }
 
-      // ✅ News headlines
       if (lower.includes("news")) {
-        const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, {
-          prompt: input,
-        });
+        const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, { prompt: raw });
         const headlines = newsRes?.data?.headlines || [];
         if (headlines.length > 0) {
-          reply += "\n\n**Latest News:**\n" + headlines.map((h) => `- ${h}`).join("\n");
+          reply += "\n\n**Latest News:**\n" + headlines.map((h) => `- [${h.title}](${h.url})`).join("\n");
         }
       }
 
-      // ✅ Fallback to general chat if no direct match
       if (!reply) {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: raw });
         reply = res?.data?.reply || "No reply.";
       }
 
@@ -132,7 +120,7 @@ function AIChat() {
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      alert("❌ Chat failed. Check your backend/API keys.");
+      alert("\u274c Chat failed. Check your backend/API keys.");
     }
 
     setLoading(false);
@@ -141,7 +129,7 @@ function AIChat() {
   return (
     <div className="flex flex-col h-screen text-white bg-[#0e0e10]">
       <h1 className="text-2xl text-center py-3 font-bold text-purple-400">
-        💡 Droxion Smart AI Bar
+        \ud83d\udca1 Droxion Smart AI Bar
       </h1>
       <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
@@ -152,7 +140,7 @@ function AIChat() {
             }`}
           >
             <div className="text-sm opacity-80 mb-2">
-              {msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}
+              {msg.role === "user" ? "\ud83e\uddcd You" : "\ud83e\udd16 AI"} • {msg.timestamp}
             </div>
             <ReactMarkdown
               rehypePlugins={[rehypeRaw]}
@@ -183,11 +171,9 @@ function AIChat() {
                 },
                 img({ src, alt }) {
                   return (
-                    <img
-                      src={src}
-                      alt={alt}
-                      className="rounded-lg max-w-xs max-h-64 border border-white/10 shadow"
-                    />
+                    <div className="bg-white p-3 rounded-xl shadow max-w-xs inline-block">
+                      <img src={src} alt={alt} className="rounded-lg max-w-full h-auto object-contain" />
+                    </div>
                   );
                 },
                 code({ inline, className, children, className: cls, ...props }) {
@@ -219,6 +205,7 @@ function AIChat() {
       </div>
       <div className="p-4 border-t border-gray-700 flex gap-3">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
