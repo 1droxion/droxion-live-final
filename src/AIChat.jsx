@@ -32,7 +32,7 @@ function AIChat() {
     setMessages([
       {
         role: "assistant",
-        content: "🌟 Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
+        content: "💡 Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
@@ -86,8 +86,8 @@ function AIChat() {
         reply += `Here’s a Google search for **${search}**:\n\n[🔍 Open Google](${link})`;
       }
 
-      if (lower.includes("video") || lower.match(/^ep\d+$/i)) {
-        const ytPrompt = lower.match(/^ep\d+$/i) ? `tmkoc episode ${lower.replace(/[^\d]/g, "")}` : raw;
+      if (lower.includes("video") || lower.match(/ep\d+/i) || lower.includes("episode")) {
+        const ytPrompt = lower.match(/ep\d+/i) || lower.includes("episode") ? `tmkoc ${raw}` : raw;
         const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: ytPrompt });
         const ytLink = ytRes?.data?.url;
         const ytTitle = ytRes?.data?.title || "YouTube Video";
@@ -156,6 +156,7 @@ function AIChat() {
                     return (
                       <div className="mt-2">
                         <iframe
+                          key={videoId}
                           width="100%"
                           height="315"
                           src={`https://www.youtube.com/embed/${videoId}`}
@@ -176,7 +177,7 @@ function AIChat() {
                 },
                 img({ src, alt }) {
                   return (
-                    <div className="bg-white p-3 rounded-xl shadow max-w-xs inline-block">
+                    <div className="bg-purple-700 p-3 rounded-xl shadow max-w-xs inline-block">
                       <img src={src} alt={alt} className="rounded-lg max-w-full h-auto object-contain" />
                     </div>
                   );
