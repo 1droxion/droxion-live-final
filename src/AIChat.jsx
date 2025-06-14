@@ -12,22 +12,15 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const chatRef = useRef(null);
 
   useEffect(() => {
-    const handleResize = () => setSidebarOpen(window.innerWidth >= 768);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    if (!activeChatId) startNewChat();
   }, []);
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
-
-  useEffect(() => {
-    if (!activeChatId) startNewChat();
-  }, []);
 
   const startNewChat = () => {
     const id = Date.now();
@@ -35,11 +28,13 @@ function AIChat() {
     const updated = [newChat, ...chats];
     setChats(updated);
     localStorage.setItem("droxion_chats", JSON.stringify(updated));
-    setMessages([{
-      role: "assistant",
-      content: "👋 Welcome to Droxion",
-      timestamp: new Date().toLocaleTimeString(),
-    }]);
+    setMessages([
+      {
+        role: "assistant",
+        content: "🌟 Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
     setActiveChatId(id);
   };
 
@@ -70,14 +65,28 @@ function AIChat() {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
       let reply = res?.data?.reply || "No reply.";
 
-      // YouTube Link Parsing
-      if (reply.includes("youtube.com/watch")) {
-        reply = reply.replace(/(https?:\/\/www\.youtube\.com\/watch\?v=\S+)/g, '[🔗 Watch on YouTube]($1)');
+      // Handle image request
+      if (input.toLowerCase().includes("create image") || input.toLowerCase().includes("draw")) {
+        const imagePrompt = input.replace("create image", "").replace("draw", "").trim();
+        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: imagePrompt });
+        const imageUrl = imgRes?.data?.image_url || "";
+        if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
       }
 
-      // News Link Parsing
-      if (reply.includes("http") && reply.includes("news")) {
-        reply = reply.replace(/(https?:\/\/[^\s]+)/g, '[📰 Read News]($1)');
+      // Auto YouTube video preview if query includes "video"
+      if (input.toLowerCase().includes("video")) {
+        const ytRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/youtube?q=${encodeURIComponent(input)}`);
+        const ytLink = ytRes?.data?.url;
+        if (ytLink) reply += `\n\n[▶️ Watch on YouTube](${ytLink})`;
+      }
+
+      // Auto news
+      if (input.toLowerCase().includes("news")) {
+        const newsRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/news?q=${encodeURIComponent(input)}`);
+        const headlines = newsRes?.data?.headlines || [];
+        if (headlines.length > 0) {
+          reply += "\n\n**Latest News:**\n" + headlines.map(h => `- ${h}`).join("\n");
+        }
       }
 
       const aiMsg = {
@@ -90,7 +99,7 @@ function AIChat() {
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      alert("❌ Chat failed. Check your backend.");
+      alert("❌ Chat failed. Check your backend/API keys.");
     }
 
     setLoading(false);
@@ -103,12 +112,14 @@ function AIChat() {
 
   return (
     <div className="flex flex-col h-screen text-white bg-[#0e0e10]">
-      <h1 className="text-2xl text-center py-3 font-bold text-purple-400">💡 Droxion Smart AI Bar</h1>
+      <h1 className="text-2xl text-center py-3 font-bold text-purple-400">
+        💡 Droxion Smart AI Bar
+      </h1>
       <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
           <div key={i} className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"}`}>
             <div className="text-sm opacity-80 mb-2">
-              {msg.role === "user" ? "🧑 You" : "🤖 AI"} • {msg.timestamp}
+              {msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}
             </div>
             <ReactMarkdown rehypePlugins={[rehypeRaw]}
               components={{
