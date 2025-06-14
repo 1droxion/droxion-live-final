@@ -35,13 +35,11 @@ function AIChat() {
     const updated = [newChat, ...chats];
     setChats(updated);
     localStorage.setItem("droxion_chats", JSON.stringify(updated));
-    setMessages([
-      {
-        role: "assistant",
-        content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `draw car`, `YouTube AI future`, or `news about economy`.",
-        timestamp: new Date().toLocaleTimeString(),
-      },
-    ]);
+    setMessages([{
+      role: "assistant",
+      content: "👋 Welcome to Droxion",
+      timestamp: new Date().toLocaleTimeString(),
+    }]);
     setActiveChatId(id);
   };
 
@@ -69,41 +67,30 @@ function AIChat() {
     setLoading(true);
 
     try {
-      let aiMsg = {
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
+      let reply = res?.data?.reply || "No reply.";
+
+      // YouTube Link Parsing
+      if (reply.includes("youtube.com/watch")) {
+        reply = reply.replace(/(https?:\/\/www\.youtube\.com\/watch\?v=\S+)/g, '[🔗 Watch on YouTube]($1)');
+      }
+
+      // News Link Parsing
+      if (reply.includes("http") && reply.includes("news")) {
+        reply = reply.replace(/(https?:\/\/[^\s]+)/g, '[📰 Read News]($1)');
+      }
+
+      const aiMsg = {
         role: "assistant",
-        content: "No reply.",
+        content: reply,
         timestamp: new Date().toLocaleTimeString(),
       };
-
-      const lower = input.toLowerCase();
-
-      if (lower.startsWith("news") || lower.includes("news about")) {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, { query: input });
-        const articles = res.data?.articles || [];
-        aiMsg.content = articles.length
-          ? articles.map((a, i) => `**${i + 1}. [${a.title}](${a.url})**`).join("\n\n")
-          : "No news found.";
-      } else if (lower.startsWith("youtube") || lower.includes("youtube") || lower.includes("watch")) {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { query: input });
-        const video = res.data?.video;
-        aiMsg.content = video
-          ? `🎬 [Watch Now: ${video.title}](${video.url})`
-          : "No video found.";
-      } else if (lower.startsWith("draw") || lower.startsWith("image") || lower.startsWith("make image")) {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: input });
-        aiMsg.content = res.data?.image_url
-          ? `🖼️ Generated Image:\n\n![Generated](${res.data.image_url})`
-          : "Image generation failed.";
-      } else {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
-        aiMsg.content = res.data?.reply || "No reply.";
-      }
 
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      alert("❌ Chat failed. Check your backend or API keys.");
+      alert("❌ Chat failed. Check your backend.");
     }
 
     setLoading(false);
@@ -156,7 +143,7 @@ function AIChat() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything: draw, video, YouTube, news..."
+          placeholder="Ask anything: draw, video, chat, YouTube/news..."
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           className="flex-1 bg-[#1f2937] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
         />
