@@ -10,13 +10,46 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const chatRef = useRef(null);
 
   useEffect(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
+    const handleResize = () => setSidebarOpen(window.innerWidth >= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    if (!activeChatId) startNewChat();
+  }, []);
+
+  const startNewChat = () => {
+    const id = Date.now();
+    const newChat = { id, title: "New Chat", messages: [] };
+    const updated = [newChat, ...chats];
+    setChats(updated);
+    localStorage.setItem("droxion_chats", JSON.stringify(updated));
+    setMessages([{
+      role: "assistant",
+      content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `draw car`, `create reel about motivation`, or `YouTube Narendra Modi news`.",
+      timestamp: new Date().toLocaleTimeString(),
+    }]);
+    setActiveChatId(id);
+  };
+
+  const updateChat = (updatedMessages) => {
+    const updated = chats.map((chat) =>
+      chat.id === activeChatId ? { ...chat, messages: updatedMessages } : chat
+    );
+    setChats(updated);
+    localStorage.setItem("droxion_chats", JSON.stringify(updated));
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -24,10 +57,12 @@ function AIChat() {
     const userMsg = {
       role: "user",
       content: input,
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toLocaleTimeString(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+    updateChat(updatedMessages);
     setInput("");
     setLoading(true);
 
@@ -35,32 +70,17 @@ function AIChat() {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
       let reply = res?.data?.reply || "No reply.";
 
-      if (/youtube|video|watch/i.test(input)) {
-        const q = encodeURIComponent(input);
-        reply += `<br/><a href="https://www.youtube.com/results?search_query=${q}" target="_blank">📺 YouTube Results</a>`;
-      }
-
-      if (/news|headline|breaking/i.test(input)) {
-        const q = encodeURIComponent(input);
-        reply += `<br/><a href="https://news.google.com/search?q=${q}" target="_blank">📰 News Results</a>`;
-      }
-
       const aiMsg = {
         role: "assistant",
         content: reply,
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString(),
       };
 
-      setMessages((prev) => [...prev, aiMsg]);
+      const finalMessages = [...updatedMessages, aiMsg];
+      setMessages(finalMessages);
+      updateChat(finalMessages);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "❌ Error fetching reply. Check backend.",
-          timestamp: new Date().toLocaleTimeString()
-        }
-      ]);
+      alert("❌ Chat failed. Check your backend.");
     }
 
     setLoading(false);
@@ -72,26 +92,15 @@ function AIChat() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#0e0e10] text-white">
-      <h1 className="text-3xl font-bold text-center text-purple-400 py-4">💡 Droxion Smart AI Bar</h1>
-
-      <div ref={chatRef} className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
+    <div className="flex flex-col h-screen text-white bg-[#0e0e10]">
+      <h1 className="text-2xl text-center py-3 font-bold text-purple-400">💡 Droxion Smart AI Bar</h1>
+      <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative animate-fade-in whitespace-pre-wrap ${
-              msg.role === "user"
-                ? "ml-auto bg-gradient-to-br from-blue-600 to-indigo-600"
-                : "mr-auto bg-gradient-to-br from-purple-700 to-pink-700"
-            }`}
-          >
+          <div key={i} className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"}`}>
             <div className="text-sm opacity-80 mb-2">
               {msg.role === "user" ? "🧑 You" : "🤖 AI"} • {msg.timestamp}
             </div>
-
-            <ReactMarkdown
-              children={msg.content}
-              rehypePlugins={[rehypeRaw]}
+            <ReactMarkdown rehypePlugins={[rehypeRaw]}
               components={{
                 code({ inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || "");
@@ -111,30 +120,27 @@ function AIChat() {
                   ) : (
                     <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
                   );
-                }
-              }}
-            />
+                },
+              }}>
+              {msg.content}
+            </ReactMarkdown>
           </div>
         ))}
-
-        {loading && <div className="text-gray-400 italic animate-pulse px-6">✍️ AI is typing...</div>}
+        {loading && <div className="text-center text-gray-400 italic animate-pulse">✍️ AI is typing...</div>}
       </div>
-
-      <div className="p-4 flex gap-3 border-t border-gray-700">
+      <div className="p-4 border-t border-gray-700 flex gap-3">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           placeholder="Ask anything: draw, video, chat, YouTube/news..."
-          className="flex-1 bg-[#1f2937] p-4 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          className="flex-1 bg-[#1f2937] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
         />
         <button
           onClick={sendMessage}
           disabled={loading}
-          className={`px-6 py-3 text-lg rounded-xl font-bold transition-all ${
-            loading ? "bg-gray-500" : "bg-green-500 hover:bg-green-600"
-          }`}
+          className={`px-6 py-3 text-lg rounded-lg font-bold ${loading ? "bg-gray-600" : "bg-green-600 hover:bg-green-700"}`}
         >
           {loading ? "..." : "Send"}
         </button>
