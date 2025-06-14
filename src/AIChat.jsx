@@ -12,15 +12,22 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const chatRef = useRef(null);
 
   useEffect(() => {
-    if (!activeChatId) startNewChat();
+    const handleResize = () => setSidebarOpen(window.innerWidth >= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    if (!activeChatId) startNewChat();
+  }, []);
 
   const startNewChat = () => {
     const id = Date.now();
@@ -31,8 +38,7 @@ function AIChat() {
     setMessages([
       {
         role: "assistant",
-        content:
-          "👋 Welcome to Droxion Smart AI Bar! Ask anything like `latest YouTube video`, `get real news`, `create image of alien robot`, or `explain bitcoin`. Built for creators, students, and global thinkers 🌍",
+        content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `draw car`, `YouTube AI future`, or `news about economy`.",
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
@@ -63,36 +69,41 @@ function AIChat() {
     setLoading(true);
 
     try {
-      let reply = "";
+      let aiMsg = {
+        role: "assistant",
+        content: "No reply.",
+        timestamp: new Date().toLocaleTimeString(),
+      };
 
       const lower = input.toLowerCase();
 
-      if (lower.includes("youtube") || lower.includes("video") || lower.includes("movie")) {
-        const ytRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/search-youtube?query=${encodeURIComponent(input)}`);
-        reply = `🎬 **${ytRes.data.title}**\n\n[▶️ Watch Now](${ytRes.data.url})`;
-      } else if (lower.includes("news")) {
-        const newsRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/search-news?query=${encodeURIComponent(input)}`);
-        reply = `📰 **Top News:**\n\n${newsRes.data.articles.map((a, i) => `**${i + 1}.** [${a.title}](${a.link})`).join("\n\n")}`;
-      } else if (lower.startsWith("create image")) {
-        const prompt = input.replace("create image", "").trim();
-        const imageRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt });
-        reply = `🖼️ **Generated Image:**\n\n![Generated](${imageRes.data.url})`;
+      if (lower.startsWith("news") || lower.includes("news about")) {
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, { query: input });
+        const articles = res.data?.articles || [];
+        aiMsg.content = articles.length
+          ? articles.map((a, i) => `**${i + 1}. [${a.title}](${a.url})**`).join("\n\n")
+          : "No news found.";
+      } else if (lower.startsWith("youtube") || lower.includes("youtube") || lower.includes("watch")) {
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { query: input });
+        const video = res.data?.video;
+        aiMsg.content = video
+          ? `🎬 [Watch Now: ${video.title}](${video.url})`
+          : "No video found.";
+      } else if (lower.startsWith("draw") || lower.startsWith("image") || lower.startsWith("make image")) {
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: input });
+        aiMsg.content = res.data?.image_url
+          ? `🖼️ Generated Image:\n\n![Generated](${res.data.image_url})`
+          : "Image generation failed.";
       } else {
         const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
-        reply = res?.data?.reply || "No reply.";
+        aiMsg.content = res.data?.reply || "No reply.";
       }
-
-      const aiMsg = {
-        role: "assistant",
-        content: reply,
-        timestamp: new Date().toLocaleTimeString(),
-      };
 
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      alert("❌ Chat failed. Please check your backend.");
+      alert("❌ Chat failed. Check your backend or API keys.");
     }
 
     setLoading(false);
@@ -108,19 +119,14 @@ function AIChat() {
       <h1 className="text-2xl text-center py-3 font-bold text-purple-400">💡 Droxion Smart AI Bar</h1>
       <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${
-              msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"
-            }`}
-          >
+          <div key={i} className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"}`}>
             <div className="text-sm opacity-80 mb-2">
               {msg.role === "user" ? "🧑 You" : "🤖 AI"} • {msg.timestamp}
             </div>
             <ReactMarkdown rehypePlugins={[rehypeRaw]}
               components={{
                 code({ inline, className, children, ...props }) {
-                  const match = /language-(\\w+)/.exec(props.className || "");
+                  const match = /language-(\w+)/.exec(className || "");
                   const codeContent = String(children).replace(/\n$/, "");
                   return !inline && match ? (
                     <div className="relative group">
@@ -138,8 +144,7 @@ function AIChat() {
                     <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
                   );
                 },
-              }}
-            >
+              }}>
               {msg.content}
             </ReactMarkdown>
           </div>
@@ -151,7 +156,7 @@ function AIChat() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything: video, news, image, chat..."
+          placeholder="Ask anything: draw, video, YouTube, news..."
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           className="flex-1 bg-[#1f2937] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
         />
