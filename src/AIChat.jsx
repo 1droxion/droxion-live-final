@@ -62,10 +62,23 @@ function AIChat() {
     setLoading(true);
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
-      let reply = res?.data?.reply || "No reply.";
+      let reply = "";
+      let hasVideo = input.toLowerCase().includes("video");
 
-      // Handle image request
+      // ✅ If prompt contains 'video' → try YouTube search first
+      if (hasVideo) {
+        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, {
+          prompt: input,
+        });
+        const ytLink = ytRes?.data?.url;
+        if (ytLink) {
+          reply += `Here's a video I found:\n\n[▶️ Watch on YouTube](${ytLink})`;
+        } else {
+          reply += "❌ Couldn't find a video.";
+        }
+      }
+
+      // ✅ If prompt asks for image
       if (input.toLowerCase().includes("create image") || input.toLowerCase().includes("draw")) {
         const imagePrompt = input.replace("create image", "").replace("draw", "").trim();
         const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: imagePrompt });
@@ -73,16 +86,7 @@ function AIChat() {
         if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
       }
 
-      // Auto YouTube video preview if query includes "video"
-      if (input.toLowerCase().includes("video")) {
-        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, {
-          prompt: input,
-        });
-        const ytLink = ytRes?.data?.url;
-        if (ytLink) reply += `\n\n[▶️ Watch on YouTube](${ytLink})`;
-      }
-
-      // Auto news
+      // ✅ If prompt includes 'news'
       if (input.toLowerCase().includes("news")) {
         const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, {
           prompt: input,
@@ -91,6 +95,12 @@ function AIChat() {
         if (headlines.length > 0) {
           reply += "\n\n**Latest News:**\n" + headlines.map((h) => `- ${h}`).join("\n");
         }
+      }
+
+      // ✅ Otherwise, fallback to OpenRouter chat
+      if (!hasVideo && !reply) {
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
+        reply = res?.data?.reply || "No reply.";
       }
 
       const aiMsg = {
@@ -107,11 +117,6 @@ function AIChat() {
     }
 
     setLoading(false);
-  };
-
-  const handleCopy = (text) => {
-    navigator.clipboard.writeText(text);
-    alert("✅ Copied to clipboard");
   };
 
   return (
@@ -133,13 +138,37 @@ function AIChat() {
             <ReactMarkdown
               rehypePlugins={[rehypeRaw]}
               components={{
-                code({ inline, className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || "");
+                a({ href, children }) {
+                  if (href.includes("youtube.com/watch")) {
+                    const videoId = new URL(href).searchParams.get("v");
+                    return (
+                      <div className="mt-2">
+                        <iframe
+                          width="100%"
+                          height="315"
+                          src={`https://www.youtube.com/embed/${videoId}`}
+                          title="YouTube Video"
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="rounded-xl"
+                        ></iframe>
+                      </div>
+                    );
+                  }
+                  return (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
+                      {children}
+                    </a>
+                  );
+                },
+                code({ inline, className, children, className: cls, ...props }) {
+                  const match = /language-(\w+)/.exec(cls || "");
                   const codeContent = String(children).replace(/\n$/, "");
                   return !inline && match ? (
                     <div className="relative group">
                       <button
-                        onClick={() => handleCopy(codeContent)}
+                        onClick={() => navigator.clipboard.writeText(codeContent)}
                         className="absolute top-2 right-2 text-xs text-white bg-black/60 rounded px-2 py-1 hidden group-hover:block"
                       >
                         <ClipboardCopy size={14} className="inline-block mr-1" /> Copy
