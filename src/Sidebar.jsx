@@ -1,9 +1,8 @@
 import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Zap,
-  MessageSquare,
   Globe,
+  MessageSquare,
   Layers,
   LogIn,
   UserPlus,
@@ -38,7 +37,6 @@ function Sidebar({ isOpen, setIsOpen }) {
   }, []);
 
   const routes = [
-    { path: "/", icon: Zap, label: "Smart Bar" },
     { path: "/generator", icon: Globe, label: "Generator" },
     { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
     { path: "/plans", icon: Layers, label: "Plans" },
