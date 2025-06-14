@@ -66,8 +66,9 @@ function AIChat() {
     return (
       lower.includes("draw") ||
       lower.includes("create image") ||
-      lower.includes("show image") ||
-      lower.includes("generate image")
+      lower.includes("generate image") ||
+      lower.startsWith("image ") ||
+      lower.includes("make image")
     );
   };
 
