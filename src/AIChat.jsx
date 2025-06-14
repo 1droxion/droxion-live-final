@@ -80,19 +80,34 @@ function AIChat() {
         return;
       }
 
+      // 🎬 Check for any video/movie related prompt
+      const movieKeywords = ["video", "movie", "web series", "show", "episode", "film", "scene", "short"];
+      const isVideoPrompt = movieKeywords.some((kw) => lower.includes(kw));
+      const isCreate = lower.includes("create") || lower.includes("make") || lower.includes("generate");
+
+      if (isCreate && isVideoPrompt) {
+        const genRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate`, { prompt: raw });
+        const video = genRes?.data?.video;
+        if (video) {
+          reply += `🎬 Here's your generated video:\n\n[▶️ Watch Video](${video})`;
+        } else {
+          reply += "❌ Couldn’t generate the video.";
+        }
+      }
+
       if (lower.includes("google") || lower.includes("search")) {
         const search = raw.replace("google", "").replace("search", "").trim();
         const link = `https://www.google.com/search?q=${encodeURIComponent(search)}`;
         reply += `Here’s a Google search for **${search}**:\n\n[🔍 Open Google](${link})`;
       }
 
-      if (lower.includes("video") || lower.match(/ep\d+/i) || lower.includes("episode")) {
-        const ytPrompt = lower.match(/ep\d+/i) || lower.includes("episode") ? `tmkoc ${raw}` : raw;
+      if (lower.includes("youtube") || lower.match(/ep\d+/i)) {
+        const ytPrompt = lower.match(/ep\d+/i) ? `tmkoc ${raw}` : raw;
         const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: ytPrompt });
         const ytLink = ytRes?.data?.url;
         const ytTitle = ytRes?.data?.title || "YouTube Video";
         if (ytLink) {
-          reply += `**${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
+          reply += `\n\n**${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
         } else {
           reply += "❌ Couldn't find a video.";
         }
@@ -186,7 +201,7 @@ function AIChat() {
                     </div>
                   );
                 },
-                code({ inline, className, children, className: cls, ...props }) {
+                code({ inline, className: cls, children, ...props }) {
                   const match = /language-(\w+)/.exec(cls || "");
                   const codeContent = String(children).replace(/\n$/, "");
                   return !inline && match ? (
@@ -219,7 +234,7 @@ function AIChat() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything: draw, video, chat, YouTube/news..."
+          placeholder="Ask anything: draw, video, movie, YouTube/news..."
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           className="flex-1 bg-[#1f2937] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
         />
