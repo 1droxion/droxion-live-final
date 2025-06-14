@@ -62,11 +62,29 @@ function AIChat() {
     setLoading(true);
 
     try {
+      const lower = input.toLowerCase();
       let reply = "";
-      let hasVideo = input.toLowerCase().includes("video");
 
-      // ✅ If prompt contains 'video' → try YouTube search first
-      if (hasVideo) {
+      // ✅ Identity override
+      if (
+        lower.includes("who made you") ||
+        lower.includes("who owns you") ||
+        lower.includes("who created you")
+      ) {
+        const aiMsg = {
+          role: "assistant",
+          content: "I was created by **Dhruv Patel** and powered by **Droxion™**. Owned by Dhruv Patel.",
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        const finalMessages = [...updatedMessages, aiMsg];
+        setMessages(finalMessages);
+        updateChat(finalMessages);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ YouTube video detection
+      if (lower.includes("video")) {
         const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, {
           prompt: input,
         });
@@ -78,16 +96,18 @@ function AIChat() {
         }
       }
 
-      // ✅ If prompt asks for image
-      if (input.toLowerCase().includes("create image") || input.toLowerCase().includes("draw")) {
+      // ✅ Image generation
+      if (lower.includes("create image") || lower.includes("draw")) {
         const imagePrompt = input.replace("create image", "").replace("draw", "").trim();
-        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: imagePrompt });
+        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, {
+          prompt: imagePrompt,
+        });
         const imageUrl = imgRes?.data?.image_url || "";
         if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
       }
 
-      // ✅ If prompt includes 'news'
-      if (input.toLowerCase().includes("news")) {
+      // ✅ News detection
+      if (lower.includes("news")) {
         const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, {
           prompt: input,
         });
@@ -97,8 +117,8 @@ function AIChat() {
         }
       }
 
-      // ✅ Otherwise, fallback to OpenRouter chat
-      if (!hasVideo && !reply) {
+      // ✅ Fallback to general chat
+      if (!reply) {
         const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: input });
         reply = res?.data?.reply || "No reply.";
       }
@@ -160,6 +180,15 @@ function AIChat() {
                     <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
                       {children}
                     </a>
+                  );
+                },
+                img({ src, alt }) {
+                  return (
+                    <img
+                      src={src}
+                      alt={alt}
+                      className="rounded-lg max-w-xs max-h-64 border border-white/10 shadow"
+                    />
                   );
                 },
                 code({ inline, className, children, className: cls, ...props }) {
