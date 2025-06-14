@@ -75,17 +75,21 @@ function AIChat() {
 
       // Auto YouTube video preview if query includes "video"
       if (input.toLowerCase().includes("video")) {
-        const ytRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/youtube?q=${encodeURIComponent(input)}`);
+        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, {
+          prompt: input,
+        });
         const ytLink = ytRes?.data?.url;
         if (ytLink) reply += `\n\n[▶️ Watch on YouTube](${ytLink})`;
       }
 
       // Auto news
       if (input.toLowerCase().includes("news")) {
-        const newsRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/news?q=${encodeURIComponent(input)}`);
+        const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, {
+          prompt: input,
+        });
         const headlines = newsRes?.data?.headlines || [];
         if (headlines.length > 0) {
-          reply += "\n\n**Latest News:**\n" + headlines.map(h => `- ${h}`).join("\n");
+          reply += "\n\n**Latest News:**\n" + headlines.map((h) => `- ${h}`).join("\n");
         }
       }
 
@@ -117,11 +121,17 @@ function AIChat() {
       </h1>
       <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
-          <div key={i} className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"}`}>
+          <div
+            key={i}
+            className={`max-w-3xl px-5 py-4 rounded-2xl shadow-md relative whitespace-pre-wrap ${
+              msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"
+            }`}
+          >
             <div className="text-sm opacity-80 mb-2">
               {msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}
             </div>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
               components={{
                 code({ inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || "");
@@ -142,7 +152,8 @@ function AIChat() {
                     <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
                   );
                 },
-              }}>
+              }}
+            >
               {msg.content}
             </ReactMarkdown>
           </div>
@@ -161,7 +172,9 @@ function AIChat() {
         <button
           onClick={sendMessage}
           disabled={loading}
-          className={`px-6 py-3 text-lg rounded-lg font-bold ${loading ? "bg-gray-600" : "bg-green-600 hover:bg-green-700"}`}
+          className={`px-6 py-3 text-lg rounded-lg font-bold ${
+            loading ? "bg-gray-600" : "bg-green-600 hover:bg-green-700"
+          }`}
         >
           {loading ? "..." : "Send"}
         </button>
