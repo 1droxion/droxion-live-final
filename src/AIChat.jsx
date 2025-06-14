@@ -12,22 +12,15 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const chatRef = useRef(null);
 
   useEffect(() => {
-    const handleResize = () => setSidebarOpen(window.innerWidth >= 768);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    if (!activeChatId) startNewChat();
   }, []);
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
-
-  useEffect(() => {
-    if (!activeChatId) startNewChat();
-  }, []);
 
   const startNewChat = () => {
     const id = Date.now();
@@ -38,7 +31,7 @@ function AIChat() {
     setMessages([
       {
         role: "assistant",
-        content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `draw car`, `create reel about motivation`, or `YouTube Narendra Modi news`.",
+        content: "👋 Welcome to Droxion Smart AI Bar! Ask anything like `generate AI image`, `get latest news`, `YouTube video for MrBeast`, or `create motivational reel`. Built for creators, students, and global thinkers 🌍",
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
@@ -119,8 +112,8 @@ function AIChat() {
             <ReactMarkdown rehypePlugins={[rehypeRaw]}
               components={{
                 code({ inline, className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || "");
-                  const codeContent = String(children).replace(/\n$/, "");
+                  const match = /language-(\\w+)/.exec(className || "");
+                  const codeContent = String(children).replace(/\\n$/, "");
                   return !inline && match ? (
                     <div className="relative group">
                       <button
