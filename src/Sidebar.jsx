@@ -2,7 +2,6 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   MessageSquare,
-  Globe,
   Layers,
   LogIn,
   UserPlus
@@ -19,7 +18,6 @@ function Sidebar({ isOpen, setIsOpen }) {
   };
 
   const routes = [
-    { path: "/generator", icon: Globe, label: "Generator" },
     { path: "/chatboard", icon: MessageSquare, label: "AI Chat" },
     { path: "/plans", icon: Layers, label: "Plans" },
     { path: "/login", icon: LogIn, label: "Login" },
