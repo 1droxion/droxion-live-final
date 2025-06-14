@@ -32,7 +32,7 @@ function AIChat() {
     setMessages([
       {
         role: "assistant",
-        content: "\ud83c\udf1f Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
+        content: "🌟 Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
@@ -70,7 +70,7 @@ function AIChat() {
       if (lower.includes("who made you") || lower.includes("who owns you") || lower.includes("who created you")) {
         const aiMsg = {
           role: "assistant",
-          content: "I was created by **Dhruv Patel** and powered by **Droxion\u2122**. Owned by Dhruv Patel.",
+          content: "I was created by **Dhruv Patel** and powered by **Droxion™**. Owned by Dhruv Patel.",
           timestamp: new Date().toLocaleTimeString(),
         };
         const finalMessages = [...updatedMessages, aiMsg];
@@ -80,14 +80,21 @@ function AIChat() {
         return;
       }
 
-      if (lower.includes("video")) {
-        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: raw });
+      if (lower.includes("google") || lower.includes("search")) {
+        const search = raw.replace("google", "").replace("search", "").trim();
+        const link = `https://www.google.com/search?q=${encodeURIComponent(search)}`;
+        reply += `Here’s a Google search for **${search}**:\n\n[🔍 Open Google](${link})`;
+      }
+
+      if (lower.includes("video") || lower.match(/^ep\d+$/i)) {
+        const ytPrompt = lower.match(/^ep\d+$/i) ? `tmkoc episode ${lower.replace(/[^\d]/g, "")}` : raw;
+        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: ytPrompt });
         const ytLink = ytRes?.data?.url;
         const ytTitle = ytRes?.data?.title || "YouTube Video";
         if (ytLink) {
-          reply += `**${ytTitle}**\n\n[\u25b6\ufe0f Watch on YouTube](${ytLink})`;
+          reply += `**${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
         } else {
-          reply += "\u274c Couldn't find a video.";
+          reply += "❌ Couldn't find a video.";
         }
       }
 
@@ -120,7 +127,7 @@ function AIChat() {
       setMessages(finalMessages);
       updateChat(finalMessages);
     } catch (err) {
-      alert("\u274c Chat failed. Check your backend/API keys.");
+      alert("❌ Chat failed. Check your backend/API keys.");
     }
 
     setLoading(false);
@@ -128,9 +135,7 @@ function AIChat() {
 
   return (
     <div className="flex flex-col h-screen text-white bg-[#0e0e10]">
-      <h1 className="text-2xl text-center py-3 font-bold text-purple-400">
-        \ud83d\udca1 Droxion Smart AI Bar
-      </h1>
+      <h1 className="text-2xl text-center py-3 font-bold text-purple-400">💡 Droxion Smart AI Bar</h1>
       <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
           <div
@@ -140,7 +145,7 @@ function AIChat() {
             }`}
           >
             <div className="text-sm opacity-80 mb-2">
-              {msg.role === "user" ? "\ud83e\uddcd You" : "\ud83e\udd16 AI"} • {msg.timestamp}
+              {msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}
             </div>
             <ReactMarkdown
               rehypePlugins={[rehypeRaw]}
@@ -216,9 +221,7 @@ function AIChat() {
         <button
           onClick={sendMessage}
           disabled={loading}
-          className={`px-6 py-3 text-lg rounded-lg font-bold ${
-            loading ? "bg-gray-600" : "bg-green-600 hover:bg-green-700"
-          }`}
+          className={`px-6 py-3 text-lg rounded-lg font-bold ${loading ? "bg-gray-600" : "bg-green-600 hover:bg-green-700"}`}
         >
           {loading ? "..." : "Send"}
         </button>
