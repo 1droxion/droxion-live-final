@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { ClipboardCopy } from "lucide-react";
+import { ClipboardCopy, FolderOpen, Trash2 } from "lucide-react";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -12,8 +12,8 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const chatRef = useRef(null);
-  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!activeChatId) startNewChat();
@@ -47,8 +47,16 @@ function AIChat() {
     localStorage.setItem("droxion_chats", JSON.stringify(updated));
   };
 
+  const deleteChat = (id) => {
+    const updated = chats.filter((c) => c.id !== id);
+    setChats(updated);
+    localStorage.setItem("droxion_chats", JSON.stringify(updated));
+    if (id === activeChatId) startNewChat();
+  };
+
   const sendMessage = async () => {
     if (!input.trim()) return;
+
     const raw = input;
     const lower = raw.toLowerCase();
     const userMsg = {
@@ -56,6 +64,7 @@ function AIChat() {
       content: raw,
       timestamp: new Date().toLocaleTimeString(),
     };
+
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     updateChat(updatedMessages);
@@ -66,62 +75,11 @@ function AIChat() {
       let reply = "";
 
       if (lower.includes("who made you") || lower.includes("who owns you") || lower.includes("who created you")) {
-        const aiMsg = {
-          role: "assistant",
-          content: "I was created by **Dhruv Patel** and powered by **Droxion™**. Owned by Dhruv Patel.",
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        const finalMessages = [...updatedMessages, aiMsg];
-        setMessages(finalMessages);
-        updateChat(finalMessages);
-        setLoading(false);
-        return;
+        reply = "I was created by **Dhruv Patel** and powered by **Droxion™**. Owned by Dhruv Patel.";
       }
 
-      const movieKeywords = ["video", "movie", "web series", "show", "episode", "film", "scene", "short"];
-      const isVideoPrompt = movieKeywords.some((kw) => lower.includes(kw));
-      const isCreate = lower.includes("create") || lower.includes("make") || lower.includes("generate");
-
-      if (isCreate && isVideoPrompt) {
-        const genRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate`, { prompt: raw });
-        const video = genRes?.data?.video;
-        if (video) reply += `🎬 Here's your generated video:\n\n[▶️ Watch Video](${video})`;
-        else reply += "❌ Couldn’t generate the video.";
-      }
-
-      if (lower.includes("google") || lower.includes("search")) {
-        const search = raw.replace("google", "").replace("search", "").trim();
-        const link = `https://www.google.com/search?q=${encodeURIComponent(search)}`;
-        reply += `Here’s a Google search for **${search}**:\n\n[🔍 Open Google](${link})`;
-      }
-
-      if (lower.includes("youtube") || lower.match(/ep\d+/i)) {
-        const ytPrompt = lower.match(/ep\d+/i) ? `tmkoc ${raw}` : raw;
-        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: ytPrompt });
-        const ytLink = ytRes?.data?.url;
-        const ytTitle = ytRes?.data?.title || "YouTube Video";
-        if (ytLink) reply += `\n\n**${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
-        else reply += "❌ Couldn't find a video.";
-      }
-
-      if (lower.includes("image") || lower.includes("draw")) {
-        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: raw });
-        const imageUrl = imgRes?.data?.image_url || "";
-        if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
-      }
-
-      if (lower.includes("news")) {
-        const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, { prompt: raw });
-        const headlines = newsRes?.data?.headlines || [];
-        if (headlines.length > 0) {
-          reply += "\n\n**Latest News:**\n" + headlines.map((h) => `- [${h.title}](${h.url})`).join("\n");
-        }
-      }
-
-      if (!reply) {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: raw });
-        reply = res?.data?.reply || "No reply.";
-      }
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: raw });
+      if (!reply) reply = res?.data?.reply || "No reply.";
 
       const aiMsg = {
         role: "assistant",
@@ -141,110 +99,65 @@ function AIChat() {
 
   return (
     <div className="flex h-screen bg-[#0e0e10] text-white">
-      <div className="w-[220px] bg-[#111827] border-r border-gray-800 p-3 overflow-y-auto">
-        <h2 className="text-sm uppercase font-semibold text-gray-400 mb-2">History</h2>
-        <div className="space-y-1">
+      {historyOpen && (
+        <div className="w-64 bg-[#111827] border-r border-gray-800 p-4 overflow-y-auto">
+          <h3 className="text-lg font-bold mb-4 text-purple-400">📂 Your Chats</h3>
           {chats.map((chat) => (
             <div
               key={chat.id}
+              className={`mb-2 px-3 py-2 rounded-lg cursor-pointer ${
+                chat.id === activeChatId ? "bg-purple-700" : "hover:bg-gray-700"
+              } flex justify-between items-center`}
               onClick={() => {
                 setActiveChatId(chat.id);
                 setMessages(chat.messages);
+                if (window.innerWidth < 768) setHistoryOpen(false);
               }}
-              className={`cursor-pointer text-sm px-3 py-2 rounded-lg transition-all hover:bg-gray-700 ${chat.id === activeChatId ? "bg-gray-700 text-white" : "text-gray-300"}`}
             >
-              {chat.title}
+              <span className="truncate w-40">{chat.title}</span>
+              <Trash2 size={16} className="text-red-400 hover:text-red-600" onClick={(e) => { e.stopPropagation(); deleteChat(chat.id); }} />
             </div>
           ))}
         </div>
-      </div>
+      )}
 
-      <div className="flex flex-col flex-1">
-        <div ref={chatRef} className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 flex flex-col">
+        <div className="p-3 bg-[#1f2937] border-b border-gray-800 flex justify-between items-center">
+          <h1 className="text-lg font-bold text-purple-400">🤖 Droxion AI Chat</h1>
+          <button onClick={() => setHistoryOpen(!historyOpen)}>
+            <FolderOpen size={22} className="text-white" />
+          </button>
+        </div>
+
+        <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, i) => (
             <div
               key={i}
-              className={`max-w-3xl px-5 py-3 rounded-2xl shadow-md whitespace-pre-wrap ${msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"}`}
+              className={`max-w-3xl px-5 py-3 rounded-xl shadow-md relative whitespace-pre-wrap text-sm ${
+                msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"
+              }`}
             >
-              <div className="text-sm opacity-80 mb-2">
-                {msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}
-              </div>
-              <ReactMarkdown
-                rehypePlugins={[rehypeRaw]}
-                components={{
-                  a({ href, children }) {
-                    if (href.includes("youtube.com/watch")) {
-                      const videoId = new URL(href).searchParams.get("v");
-                      return (
-                        <div className="mt-2">
-                          <iframe
-                            key={videoId}
-                            width="100%"
-                            height="315"
-                            src={`https://www.youtube.com/embed/${videoId}`}
-                            title="YouTube Video"
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            className="rounded-xl"
-                          ></iframe>
-                        </div>
-                      );
-                    }
-                    return (
-                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
-                        {children}
-                      </a>
-                    );
-                  },
-                  img({ src, alt }) {
-                    return <img src={src} alt={alt} className="w-[180px] h-auto rounded-lg" />;
-                  },
-                  code({ inline, className: cls, children, ...props }) {
-                    const match = /language-(\w+)/.exec(cls || "");
-                    const codeContent = String(children).replace(/\n$/, "");
-                    return !inline && match ? (
-                      <div className="relative group">
-                        <button
-                          onClick={() => navigator.clipboard.writeText(codeContent)}
-                          className="absolute top-2 right-2 text-xs text-white bg-black/60 rounded px-2 py-1 hidden group-hover:block"
-                        >
-                          <ClipboardCopy size={14} className="inline-block mr-1" /> Copy
-                        </button>
-                        <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div" {...props}>
-                          {codeContent}
-                        </SyntaxHighlighter>
-                      </div>
-                    ) : (
-                      <code className="bg-black/20 px-1 py-0.5 rounded text-green-400">{children}</code>
-                    );
-                  },
-                }}
-              >
-                {msg.content}
-              </ReactMarkdown>
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
             </div>
           ))}
-          {loading && (
-            <div className="text-center text-gray-400 italic animate-pulse text-xl">●</div>
-          )}
+          {loading && <div className="text-center text-gray-400 animate-pulse text-lg">●</div>}
         </div>
-        <div className="p-4 border-t border-gray-700 flex gap-3">
+
+        <div className="p-4 border-t border-gray-800 flex gap-2">
           <input
-            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything: draw, video, movie, YouTube/news..."
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            className="flex-1 bg-[#1f2937] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            placeholder="Ask anything..."
+            className="flex-1 bg-[#1f2937] text-white p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
           <button
             onClick={sendMessage}
             disabled={loading}
-            className={`px-6 py-3 text-lg rounded-lg font-bold ${loading ? "bg-gray-600" : "bg-green-600 hover:bg-green-700"}`}
+            className="px-6 py-3 text-lg rounded-lg font-bold bg-green-600 hover:bg-green-700"
           >
-            {loading ? "..." : "Send"}
+            Send
           </button>
         </div>
       </div>
