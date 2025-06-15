@@ -4,7 +4,8 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-import SmartBar from "./SmartBar"; // ✅ New homepage
+import LandingPage from "./LandingPage"; // ✅ This will be default
+import SmartBar from "./SmartBar";
 import Generator from "./Generator";
 import AIChat from "./AIChat";
 import AIImage from "./AIImage";
@@ -16,7 +17,7 @@ import Editor from "./Editor";
 import Settings from "./Settings";
 import Login from "./Login";
 import Signup from "./Signup";
-import Analytics from "./Analytics"; // Optional
+import Analytics from "./Analytics";
 
 export default function App() {
   const location = useLocation();
@@ -26,24 +27,20 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location]);
 
-  // ✅ Session tracking
   useEffect(() => {
     const startTime = Date.now();
     const handleUnload = () => {
       const duration = Math.floor((Date.now() - startTime) / 1000);
-      fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: "session_time",
-            path: window.location.pathname,
-            duration,
-            userAgent: navigator.userAgent,
-          }),
-        }
-      );
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/track`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: "session_time",
+          path: window.location.pathname,
+          duration,
+          userAgent: navigator.userAgent,
+        }),
+      });
     };
 
     window.addEventListener("beforeunload", handleUnload);
@@ -60,7 +57,7 @@ export default function App() {
         <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="p-4">
           <Routes>
-            <Route path="/" element={<SmartBar />} /> {/* ✅ Homepage */}
+            <Route path="/" element={<LandingPage />} /> {/* ✅ Main landing page */}
             <Route path="/smart" element={<SmartBar />} />
             <Route path="/generator" element={<Generator />} />
             <Route path="/chatboard" element={<AIChat />} />
