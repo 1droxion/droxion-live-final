@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Particles from "@tsparticles/react";
 import { loadFull } from "tsparticles";
-import { Typewriter } from "react-simple-typewriter";
+import Typewriter from "react-simple-typewriter"; // ✅ Default import
 import "./LandingPageMagic.css";
 
 function LandingPage() {
