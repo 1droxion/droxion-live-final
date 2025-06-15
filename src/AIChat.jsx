@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Mic, SendHorizonal, ImageIcon, Download, Clock, Trash2, Plus } from "lucide-react";
+import { Mic, SendHorizonal, ImageIcon, Download, Volume2, VolumeX } from "lucide-react";
 
 const API = "https://droxion-backend.onrender.com";
 
@@ -12,9 +12,17 @@ function AIChat() {
   const [chat, setChat] = useState([]);
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(true);
   const scrollRef = useRef();
   const fileInputRef = useRef();
+
+  const speak = (text) => {
+    if (!voiceOn) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "en-US";
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  };
 
   const handleVoiceInput = () => {
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -53,7 +61,7 @@ function AIChat() {
         res = await axios.post(`${API}/search-youtube`, { prompt });
         updatedChat.push({
           role: "assistant",
-          content: `🎬 [${res.data.title}](${res.data.url})`,
+          content: res.data.title,
           youtube: res.data.url
         });
       } else if (type === "news") {
@@ -65,6 +73,7 @@ function AIChat() {
       } else {
         res = await axios.post(`${API}/chat`, { prompt });
         updatedChat.push({ role: "assistant", content: res.data.reply });
+        speak(res.data.reply);
       }
 
       setChat(updatedChat);
@@ -91,38 +100,32 @@ function AIChat() {
     a.click();
   };
 
-  const handleNewChat = () => {
-    setChat([]);
-    setPrompt("");
-  };
-
-  const handleClearAll = () => {
-    localStorage.removeItem("chat-history");
-    setChat([]);
-    alert("🗑 All history cleared");
-  };
-
   const renderMessage = (msg, i) => {
-    const isYouTubeLink = msg.youtube || (msg.content && msg.content.includes("youtube.com/watch?v="));
-    const videoId = isYouTubeLink
-      ? (msg.youtube || msg.content.match(/v=([\w-]{11})/)?.[1])
-      : null;
+    const isYouTube = msg.youtube || msg.content.includes("youtube.com/watch?v=");
+    const videoUrl = msg.youtube || msg.content.match(/https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})/)?.[0];
+    const videoId = videoUrl?.split("v=")[1];
 
     return (
       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
         <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
           {msg.imageUrl && <img src={msg.imageUrl} alt="upload" className="rounded max-w-xs mb-2" />}
-          {videoId ? (
-            <div className="rounded overflow-hidden mt-2">
-              <iframe
-                width="100%"
-                height="220"
-                src={`https://www.youtube.com/embed/${videoId}`}
-                title="YouTube video"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              ></iframe>
+          {isYouTube && videoId ? (
+            <div className="space-y-2">
+              <ReactMarkdown>{msg.content}</ReactMarkdown>
+              <img
+                src={`https://img.youtube.com/vi/${videoId}/0.jpg`}
+                alt="YouTube Thumbnail"
+                className="rounded cursor-pointer"
+                onClick={() => window.open(`https://www.youtube.com/watch?v=${videoId}`, "_blank")}
+              />
+              <a
+                href={`https://www.youtube.com/watch?v=${videoId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center mt-1 text-sm text-blue-400 underline"
+              >
+                ▶️ Watch on YouTube
+              </a>
             </div>
           ) : (
             <ReactMarkdown
@@ -154,17 +157,17 @@ function AIChat() {
     <div className="w-full h-screen flex flex-col bg-black text-white">
       <div className="p-3 border-b border-gray-700 flex justify-between items-center">
         <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
-        <div className="flex items-center gap-4">
-          <Clock onClick={() => setSidebarOpen(!sidebarOpen)} title="History" className="cursor-pointer" />
-          <Plus onClick={handleNewChat} title="New Chat" className="cursor-pointer" />
-          <Trash2 onClick={handleClearAll} title="Clear All" className="cursor-pointer" />
-          <Download onClick={handleDownload} title="Download Chat" className="cursor-pointer" />
+        <div className="flex gap-4 items-center">
+          <button onClick={() => setVoiceOn(!voiceOn)} title="Toggle Voice">
+            {voiceOn ? <Volume2 className="text-white" /> : <VolumeX className="text-white" />}
+          </button>
+          <Download onClick={handleDownload} className="cursor-pointer" />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
         {chat.map((msg, i) => renderMessage(msg, i))}
-        {loading && <div className="text-left text-sm text-gray-500 px-4 animate-pulse">Typing<span className="animate-bounce">...</span></div>}
+        {loading && <div className="text-left text-sm text-gray-500 px-4 animate-pulse">Typing...</div>}
         <div ref={scrollRef}></div>
       </div>
 
@@ -174,7 +177,7 @@ function AIChat() {
         <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" hidden />
         <input
           type="text"
-          placeholder="Type anything..."
+          placeholder="Type or speak anything..."
           className="flex-1 p-2 rounded-lg bg-zinc-800 text-white outline-none"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
