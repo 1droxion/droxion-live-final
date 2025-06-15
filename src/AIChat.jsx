@@ -1,5 +1,3 @@
-// AIChat.jsx with Avatar Talking Video (D-ID like feature integrated)
-
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -7,11 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, Download, ImageIcon, Trash2, Plus, Clock } from "lucide-react";
 
-const API =
-  import.meta.env.VITE_API_URL ||
-  (window.location.hostname === "localhost"
-    ? "http://127.0.0.1:5000"
-    : "https://droxion-backend.onrender.com");
+const API = "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
@@ -57,7 +51,6 @@ function AIChat() {
       setChat(updatedChat);
       localStorage.setItem("chat-history", JSON.stringify(updatedChat));
 
-      // Request avatar talking video
       if (!image) {
         const videoRes = await axios.post(`${API}/talk-avatar`, { prompt: replyText });
         if (videoRes.data.video_url) setAvatarVideoUrl(videoRes.data.video_url);
