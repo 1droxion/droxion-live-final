@@ -21,7 +21,7 @@
     "react-syntax-highlighter": "^15.5.0",
     "rehype-raw": "^6.1.1",
     "vite-plugin-pwa": "^0.16.4",
-    "react-simple-typewriter": "^1.0.8"
+    "react-simple-typewriter": "1.0.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.3",
