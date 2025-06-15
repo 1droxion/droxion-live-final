@@ -7,9 +7,11 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, Download, ImageIcon, Trash2, Plus, Clock } from "lucide-react";
 
-const API = import.meta.env.VITE_API_URL || (window.location.hostname === "localhost"
-  ? "http://127.0.0.1:5000"
-  : "https://droxion-backend.onrender.com");
+const API =
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost"
+    ? "http://127.0.0.1:5000"
+    : "https://droxion-backend.onrender.com");
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
@@ -56,8 +58,10 @@ function AIChat() {
       localStorage.setItem("chat-history", JSON.stringify(updatedChat));
 
       // Request avatar talking video
-      const videoRes = await axios.post(`${API}/avatar-video`, { text: replyText });
-      setAvatarVideoUrl(videoRes.data.video_url);
+      if (!image) {
+        const videoRes = await axios.post(`${API}/talk-avatar`, { prompt: replyText });
+        if (videoRes.data.video_url) setAvatarVideoUrl(videoRes.data.video_url);
+      }
     } catch (err) {
       updatedChat.push({ role: "assistant", content: "❌ Error: Something went wrong." });
       setChat(updatedChat);
