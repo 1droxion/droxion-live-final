@@ -1,10 +1,9 @@
-// ⬇️ AIChat.jsx — Smart Input Version
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock } from "lucide-react";
+import { Mic, SendHorizonal, ImageIcon, Download } from "lucide-react";
 
 const API = "https://droxion-backend.onrender.com";
 
@@ -14,6 +13,7 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
   const scrollRef = useRef();
+  const fileInputRef = useRef(); // ✅ FIXED
 
   const handleVoiceInput = () => {
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -83,19 +83,21 @@ function AIChat() {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
 
+  const downloadChat = () => {
+    const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "chat.txt";
+    a.click();
+  };
+
   return (
     <div className="w-full h-screen flex flex-col bg-black text-white">
       <div className="p-3 border-b border-gray-700 flex justify-between items-center">
         <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
         <div className="flex gap-4 items-center">
-          <Download onClick={() => {
-            const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
-            const blob = new Blob([content], { type: "text/plain" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "chat.txt";
-            a.click();
-          }} className="cursor-pointer" />
+          <Download onClick={downloadChat} className="cursor-pointer" />
         </div>
       </div>
 
