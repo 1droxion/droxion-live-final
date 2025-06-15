@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { ClipboardCopy, Trash2 } from "lucide-react";
+import { ClipboardCopy, Trash2, Download, Mic } from "lucide-react";
 
 function AIChat() {
   const [input, setInput] = useState("");
@@ -13,6 +13,8 @@ function AIChat() {
   const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem("droxion_chats")) || []);
   const [activeChatId, setActiveChatId] = useState(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [upload, setUpload] = useState(null);
+  const [typingText, setTypingText] = useState("");
   const chatRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -22,9 +24,7 @@ function AIChat() {
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
-  }, [messages]);
-
-  const cleanInput = (text) => text.trim().toLowerCase();
+  }, [messages, typingText]);
 
   const startNewChat = () => {
     const id = Date.now();
@@ -35,7 +35,7 @@ function AIChat() {
     setMessages([
       {
         role: "assistant",
-        content: "\ud83d\udca1 Welcome to Droxion. Ask anything: draw, real news, YouTube, or create images!",
+        content: "💡 Welcome to Droxion. Ask anything — draw, video, YouTube, or upload an image!",
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
@@ -57,11 +57,30 @@ function AIChat() {
     if (id === activeChatId) startNewChat();
   };
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const handleVoiceInput = () => {
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.lang = "en-IN";
+    recognition.start();
+    recognition.onresult = (event) => {
+      const speechText = event.results[0][0].transcript;
+      setInput(speechText);
+      sendMessage(speechText);
+    };
+  };
 
-    const raw = input;
-    const lower = cleanInput(raw);
+  const downloadMessage = (text) => {
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "message.txt";
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const sendMessage = async (overrideInput = null) => {
+    const raw = overrideInput || input;
+    if (!raw.trim() && !upload) return;
 
     const userMsg = {
       role: "user",
@@ -73,92 +92,75 @@ function AIChat() {
     setMessages(updatedMessages);
     updateChat(updatedMessages);
     setInput("");
+    setTypingText("...");
     setLoading(true);
     setShowSidebar(false);
 
     try {
       let reply = "";
 
-      if (lower.includes("who made you") || lower.includes("who owns you") || lower.includes("who created you")) {
-        const aiMsg = {
-          role: "assistant",
-          content: "I was created by **Dhruv Patel** and powered by **Droxion\u2122**. Owned by Dhruv Patel.",
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        const finalMessages = [...updatedMessages, aiMsg];
-        setMessages(finalMessages);
-        updateChat(finalMessages);
-        setLoading(false);
-        return;
-      }
-
-      if (lower.includes("news")) {
-        const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, { prompt: raw });
-        const headlines = newsRes?.data?.headlines || [];
-        if (headlines.length > 0) {
-          reply += "\n\n\ud83d\uddfe\ufe0f **Latest News:**\n" + headlines.map((h) => `- [${h.title}](${h.url})`).join("\n");
-        } else {
-          reply += "❌ No news found.";
-        }
-      }
-
-      if (lower.includes("youtube") || lower.match(/ep\d+/i)) {
-        const ytPrompt = lower.match(/ep\d+/i) ? `tmkoc ${raw}` : raw;
-        const ytRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/youtube`, { prompt: ytPrompt });
-        const ytLink = ytRes?.data?.url;
-        const ytTitle = ytRes?.data?.title || "YouTube Video";
-        if (ytLink) {
-          reply += `\n\n\ud83c\udfa5 **${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
-        } else {
-          reply += "❌ Couldn't find a video.";
-        }
-      }
-
-      if (lower.includes("image") || lower.includes("draw")) {
-        const imgRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/generate-image`, { prompt: raw });
-        const imageUrl = imgRes?.data?.image_url || "";
-        if (imageUrl) reply += `\n\n![Generated Image](${imageUrl})`;
-      }
-
-      if (!reply) {
-        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, { prompt: raw });
+      if (upload) {
+        const form = new FormData();
+        form.append("image", upload);
+        form.append("prompt", raw);
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/analyze-image`, form);
+        reply = res?.data?.reply || "❌ Image analysis failed.";
+        setUpload(null);
+      } else {
+        const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/chat`, {
+          prompt: raw,
+          language: "auto",
+        });
         reply = res?.data?.reply || "No reply.";
       }
 
-      const aiMsg = {
-        role: "assistant",
-        content: reply,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-
-      const finalMessages = [...updatedMessages, aiMsg];
-      setMessages(finalMessages);
-      updateChat(finalMessages);
+      let current = "";
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < reply.length) {
+          current += reply[i];
+          setTypingText(current);
+          i++;
+        } else {
+          clearInterval(interval);
+          const aiMsg = {
+            role: "assistant",
+            content: reply,
+            timestamp: new Date().toLocaleTimeString(),
+          };
+          const finalMessages = [...updatedMessages, aiMsg];
+          setMessages(finalMessages);
+          updateChat(finalMessages);
+          setTypingText("");
+        }
+      }, 15);
     } catch (err) {
-      alert("❌ Chat failed. Check your backend/API keys.");
+      alert("❌ Failed. Check backend/API keys.");
+      setTypingText("");
     }
 
     setLoading(false);
   };
 
   return (
-    <div className="flex h-screen bg-[#0e0e10] text-white">
-      <div className="w-12 flex flex-col p-2 bg-[#1f2937] border-r border-gray-800">
+    <div className="flex h-screen bg-black text-white">
+      {/* Sidebar Toggle */}
+      <div className="w-12 flex flex-col p-2 bg-[#111] border-r border-gray-800">
         <button onClick={() => setShowSidebar(!showSidebar)} title="Toggle chat history" className="text-white mb-4">
           💬
         </button>
         <button onClick={startNewChat} title="New Chat" className="text-green-400">＋</button>
       </div>
 
+      {/* Sidebar */}
       {showSidebar && (
-        <div className="w-60 bg-[#111827] p-3 overflow-y-auto border-r border-gray-700">
-          <h3 className="text-sm font-semibold mb-2 text-purple-300">💾 History</h3>
+        <div className="w-64 bg-[#0e0e10] p-3 overflow-y-auto border-r border-gray-700">
+          <h3 className="text-sm font-semibold mb-2 text-green-300">🕘 History</h3>
           {chats.map((chat) => (
             <div key={chat.id} className="flex items-center justify-between mb-2 bg-gray-800 p-2 rounded text-sm">
               <button onClick={() => {
                 setActiveChatId(chat.id);
                 setMessages(chat.messages);
-                setShowSidebar(false);
               }} className="text-left text-white truncate w-full">
                 {chat.title}
               </button>
@@ -170,38 +172,94 @@ function AIChat() {
         </div>
       )}
 
+      {/* Chat Window */}
       <div className="flex-1 flex flex-col">
         <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, i) => (
             <div
               key={i}
-              className={`max-w-3xl px-5 py-2 rounded-2xl shadow-md relative whitespace-pre-wrap ${
-                msg.role === "user" ? "ml-auto bg-blue-800" : "mr-auto bg-purple-700"
+              className={`max-w-3xl px-5 py-3 rounded-2xl relative whitespace-pre-wrap shadow ${
+                msg.role === "user" ? "ml-auto bg-[#222]" : "mr-auto bg-[#333]"
               }`}
             >
-              <div className="text-sm opacity-80 mb-2">
-                {msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}
+              <div className="text-sm opacity-70 mb-2 flex justify-between items-center">
+                <span>{msg.role === "user" ? "🧍 You" : "🤖 AI"} • {msg.timestamp}</span>
+                {msg.role === "assistant" && (
+                  <button onClick={() => downloadMessage(msg.content)} title="Download">
+                    <Download size={16} />
+                  </button>
+                )}
               </div>
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+              <ReactMarkdown
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  a({ href, children }) {
+                    if (href.includes("youtube.com/watch")) {
+                      const videoId = new URL(href).searchParams.get("v");
+                      return (
+                        <div className="mt-2">
+                          <iframe
+                            key={videoId}
+                            width="100%"
+                            height="300"
+                            src={`https://www.youtube.com/embed/${videoId}`}
+                            title="YouTube Video"
+                            frameBorder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            className="rounded-xl"
+                          ></iframe>
+                        </div>
+                      );
+                    }
+                    return <a href={href} target="_blank" rel="noreferrer" className="text-blue-400 underline">{children}</a>;
+                  },
+                  img({ src, alt }) {
+                    return <img src={src} alt={alt} className="rounded-lg w-[180px]" />;
+                  },
+                  code({ inline, className, children }) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const content = String(children).replace(/\n$/, "");
+                    return !inline && match ? (
+                      <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div">
+                        {content}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className="bg-black/20 px-1 py-0.5 rounded">{children}</code>
+                    );
+                  },
+                }}
+              >
+                {msg.content}
+              </ReactMarkdown>
             </div>
           ))}
-          {loading && <div className="text-center text-gray-400 italic animate-pulse">🟣 Typing...</div>}
+          {typingText && (
+            <div className="text-gray-400 italic animate-pulse">
+              <span className="ml-2">🤖 {typingText}</span>
+            </div>
+          )}
         </div>
 
-        <div className="p-4 border-t border-gray-700 flex gap-3">
+        {/* Input Bar */}
+        <div className="p-4 border-t border-gray-800 flex items-center gap-3 bg-[#111]">
+          <button onClick={handleVoiceInput} className="text-white" title="Voice Input">
+            <Mic size={20} />
+          </button>
           <input
-            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything: draw, movie, video, YouTube..."
+            placeholder="Type anything or upload image..."
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            className="flex-1 bg-black text-white p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white border border-white shadow"
+            className="flex-1 bg-[#222] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
           />
+          <input type="file" accept="image/*" onChange={(e) => setUpload(e.target.files[0])} className="hidden" id="file-upload" />
+          <label htmlFor="file-upload" className="cursor-pointer text-green-400 font-bold">📁</label>
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={loading}
-            className="bg-white text-black px-5 py-3 rounded-full hover:bg-black hover:text-white border border-white shadow-lg transition"
+            className="px-5 py-3 rounded-full bg-white text-black font-semibold"
             title="Send"
           >
             ➤
