@@ -3,19 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Particles from "@tsparticles/react";
 import { loadFull } from "tsparticles";
-import { useTypewriter } from "react-simple-typewriter";
+import { Typewriter } from "react-simple-typewriter";
 import "./LandingPageMagic.css";
 
 function LandingPage() {
   const navigate = useNavigate();
   const [showIntro, setShowIntro] = useState(true);
-  const [text] = useTypewriter({
-    words: ["Create", "Chat", "Imagine", "Generate", "Explore"],
-    loop: 0,
-    typeSpeed: 80,
-    deleteSpeed: 60,
-    delaySpeed: 1000,
-  });
 
   const particlesInit = async (main) => {
     await loadFull(main);
@@ -78,8 +71,17 @@ function LandingPage() {
           <h1 className="text-5xl md:text-6xl font-extrabold mb-6 text-center">
             Welcome to <span className="text-purple-500">Droxion</span>
           </h1>
+
           <p className="text-xl md:text-2xl text-gray-300 text-center max-w-2xl mb-10">
-            <span>{text}</span><span className="blinking-cursor">_</span>
+            <Typewriter
+              words={["Create", "Chat", "Imagine", "Generate", "Explore"]}
+              loop={0}
+              cursor
+              cursorStyle="_"
+              typeSpeed={80}
+              deleteSpeed={60}
+              delaySpeed={1000}
+            />
           </p>
 
           <motion.button
