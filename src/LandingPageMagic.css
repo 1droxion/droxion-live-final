@@ -1,60 +1,17 @@
-/* LandingPageMagic.css */
-
-@keyframes fadeInUp {
-  0% {
-    opacity: 0;
-    transform: translateY(40px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Optional visual animation for blinking dot */
+@keyframes blink {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+.animate-blink {
+  animation: blink 1.2s infinite;
 }
 
-.animate-fade-in-slow {
-  animation: fadeInUp 1.8s ease-out both;
+/* Fade-in effect */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-body {
-  margin: 0;
-  padding: 0;
-  background: radial-gradient(circle at center, #1f1f1f, #0e0e10);
-  color: white;
-  font-family: 'Segoe UI', sans-serif;
-  overflow-x: hidden;
-}
-
-h1, p, button {
-  animation: fadeInUp 1s ease both;
-}
-
-button {
-  cursor: pointer;
-  border: none;
-  font-size: 1rem;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
-}
-
-/* Optional 3D-ish glow text */
-.glow-text {
-  text-shadow:
-    0 0 5px #6d28d9,
-    0 0 10px #6d28d9,
-    0 0 20px #6d28d9;
-}
-
-/* Center everything */
-.landing-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  text-align: center;
-  padding: 2rem;
+.animate-fade-in {
+  animation: fade-in 1s ease-out both;
 }
