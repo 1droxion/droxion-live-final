@@ -3,7 +3,9 @@ import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Mic, SendHorizonal, ImageIcon, Bookmark, Download } from "lucide-react";
+import { Mic, SendHorizonal, ImageIcon, Download } from "lucide-react";
+
+const API = import.meta.env.VITE_API_URL;
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
@@ -48,11 +50,11 @@ function AIChat() {
         const formData = new FormData();
         formData.append("image", image);
         formData.append("prompt", prompt);
-        res = await axios.post("/analyze-image", formData);
+        res = await axios.post(`${API}/analyze-image`, formData);
         setImage(null);
       } else if (prompt.toLowerCase().startsWith("/yt")) {
         const search = prompt.replace("/yt", "").trim();
-        res = await axios.post("/search-youtube", { prompt: search });
+        res = await axios.post(`${API}/search-youtube`, { prompt: search });
         updatedChat.push({
           role: "assistant",
           content: `🎬 [${res.data.title}](${res.data.url})`
@@ -62,7 +64,7 @@ function AIChat() {
         return;
       } else if (prompt.toLowerCase().startsWith("/news")) {
         const search = prompt.replace("/news", "").trim();
-        res = await axios.post("/news", { prompt: search });
+        res = await axios.post(`${API}/news`, { prompt: search });
         updatedChat.push({
           role: "assistant",
           content: res.data.headlines.map(h => `📰 ${h}`).join("\n\n")
@@ -71,7 +73,7 @@ function AIChat() {
         setLoading(false);
         return;
       } else {
-        res = await axios.post("/chat", { prompt });
+        res = await axios.post(`${API}/chat`, { prompt });
       }
 
       updatedChat.push({ role: "assistant", content: res.data.reply || res.data.error });
