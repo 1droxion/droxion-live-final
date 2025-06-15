@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock } from "lucide-react";
 
-// ✅ Fully fixed API (no localhost call in production)
+// ✅ FINAL FIXED API URL — NO LOCALHOST
 const API = import.meta.env.VITE_API_URL || "https://droxion-backend.onrender.com";
 
 function AIChat() {
@@ -161,9 +161,8 @@ function AIChat() {
         </div>
       )}
 
-      {/* Main content */}
+      {/* Main */}
       <div className="flex-1 flex flex-col">
-        {/* Topbar */}
         <div className="p-3 border-b border-gray-700 flex justify-between items-center">
           <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
           <div className="flex gap-4 items-center">
@@ -174,7 +173,6 @@ function AIChat() {
           </div>
         </div>
 
-        {/* Chat display */}
         <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
           {chat.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -206,7 +204,6 @@ function AIChat() {
           <div ref={scrollRef}></div>
         </div>
 
-        {/* Input bar */}
         <div className="border-t border-gray-700 p-3 flex items-center gap-2">
           <button onClick={handleVoiceInput}><Mic className="text-white" /></button>
           <button onClick={() => fileInputRef.current.click()}><ImageIcon className="text-white" /></button>
