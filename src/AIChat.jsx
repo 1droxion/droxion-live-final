@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download } from "lucide-react";
 
-const API = import.meta.env.VITE_API_URL;
+const API = "https://droxion-backend.onrender.com"; // 🔥 hardcoded backend URL
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
