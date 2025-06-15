@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Mic, SendHorizonal, ImageIcon, Download, Volume2, VolumeX } from "lucide-react";
+import { Mic, SendHorizonal, ImageIcon, Download, Volume2, VolumeX, Clock, Plus, Trash2 } from "lucide-react";
 
 const API = "https://droxion-backend.onrender.com";
 
@@ -64,6 +64,12 @@ function AIChat() {
           content: res.data.title,
           youtube: res.data.url
         });
+      } else if (type === "google") {
+        const query = encodeURIComponent(prompt.replace(/google/i, "").trim());
+        updatedChat.push({
+          role: "assistant",
+          content: `🔎 [Search "${prompt.replace(/google/i, "").trim()}" on Google](https://www.google.com/search?q=${query})`
+        });
       } else if (type === "news") {
         res = await axios.post(`${API}/news`, { prompt });
         updatedChat.push({
@@ -91,6 +97,17 @@ function AIChat() {
     if (file) setImage(file);
   };
 
+  const handleNewChat = () => {
+    setChat([]);
+    setPrompt("");
+  };
+
+  const handleClear = () => {
+    setChat([]);
+    setPrompt("");
+    localStorage.removeItem("chat-history");
+  };
+
   const handleDownload = () => {
     const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
     const blob = new Blob([content], { type: "text/plain" });
@@ -108,21 +125,23 @@ function AIChat() {
     return (
       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
         <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
-          {msg.imageUrl && <img src={msg.imageUrl} alt="upload" className="rounded max-w-xs mb-2" />}
+          {msg.imageUrl && (
+            <img src={msg.imageUrl} alt="Uploaded" className="rounded max-w-[300px] mb-2" />
+          )}
           {isYouTube && videoId ? (
             <div className="space-y-2">
               <ReactMarkdown>{msg.content}</ReactMarkdown>
               <img
                 src={`https://img.youtube.com/vi/${videoId}/0.jpg`}
-                alt="YouTube Thumbnail"
-                className="rounded cursor-pointer"
+                alt="YouTube"
+                className="rounded cursor-pointer max-w-xs"
                 onClick={() => window.open(`https://www.youtube.com/watch?v=${videoId}`, "_blank")}
               />
               <a
                 href={`https://www.youtube.com/watch?v=${videoId}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-center mt-1 text-sm text-blue-400 underline"
+                className="text-blue-400 underline text-sm block text-center"
               >
                 ▶️ Watch on YouTube
               </a>
@@ -155,29 +174,35 @@ function AIChat() {
 
   return (
     <div className="w-full h-screen flex flex-col bg-black text-white">
+      {/* 🔘 Topbar */}
       <div className="p-3 border-b border-gray-700 flex justify-between items-center">
         <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
-        <div className="flex gap-4 items-center">
+        <div className="flex items-center gap-4">
+          <Clock onClick={() => alert("History coming soon")} className="cursor-pointer" title="History" />
+          <Plus onClick={handleNewChat} className="cursor-pointer" title="New Chat" />
+          <Trash2 onClick={handleClear} className="cursor-pointer" title="Clear All" />
+          <Download onClick={handleDownload} className="cursor-pointer" title="Download Chat" />
           <button onClick={() => setVoiceOn(!voiceOn)} title="Toggle Voice">
             {voiceOn ? <Volume2 className="text-white" /> : <VolumeX className="text-white" />}
           </button>
-          <Download onClick={handleDownload} className="cursor-pointer" />
         </div>
       </div>
 
+      {/* 💬 Chat List */}
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
         {chat.map((msg, i) => renderMessage(msg, i))}
-        {loading && <div className="text-left text-sm text-gray-500 px-4 animate-pulse">Typing...</div>}
+        {loading && <div className="text-left text-sm text-gray-400 animate-pulse">Typing...</div>}
         <div ref={scrollRef}></div>
       </div>
 
+      {/* ⌨️ Input */}
       <div className="border-t border-gray-700 p-3 flex items-center gap-2">
         <button onClick={handleVoiceInput}><Mic className="text-white" /></button>
         <button onClick={() => fileInputRef.current.click()}><ImageIcon className="text-white" /></button>
         <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" hidden />
         <input
           type="text"
-          placeholder="Type or speak anything..."
+          placeholder="Type or say anything..."
           className="flex-1 p-2 rounded-lg bg-zinc-800 text-white outline-none"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
