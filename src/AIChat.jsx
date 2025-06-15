@@ -5,8 +5,8 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock } from "lucide-react";
 
-// ✅ FINAL FIXED API URL — NO LOCALHOST
-const API = import.meta.env.VITE_API_URL || "https://droxion-backend.onrender.com";
+// ✅ FINAL FIXED: Always use production backend
+const API = "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
@@ -143,7 +143,6 @@ function AIChat() {
 
   return (
     <div className="w-full h-screen flex bg-black text-white relative">
-      {/* Sidebar */}
       {sidebarOpen && (
         <div className="w-64 bg-zinc-900 p-4 border-r border-gray-800 absolute z-10 h-full">
           <div className="text-lg font-bold mb-2">🧠 Chat History</div>
@@ -161,7 +160,6 @@ function AIChat() {
         </div>
       )}
 
-      {/* Main */}
       <div className="flex-1 flex flex-col">
         <div className="p-3 border-b border-gray-700 flex justify-between items-center">
           <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
