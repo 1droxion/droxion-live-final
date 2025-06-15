@@ -1,4 +1,14 @@
-/* Optional visual animation for blinking dot */
+/* ---------- Base Styling ---------- */
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: #0e0e10;
+  color: #ffffff;
+  scroll-behavior: smooth;
+}
+
+/* ---------- Intro Screen Blink Dot ---------- */
 @keyframes blink {
   0%, 100% { opacity: 0.2; }
   50% { opacity: 1; }
@@ -7,11 +17,44 @@
   animation: blink 1.2s infinite;
 }
 
-/* Fade-in effect */
+/* ---------- Fade In Animation ---------- */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-in {
   animation: fade-in 1s ease-out both;
+}
+
+/* ---------- Blinking Cursor for Typewriter ---------- */
+.blinking-cursor {
+  font-weight: 500;
+  color: #66ff99;
+  margin-left: 4px;
+  animation: blink 1s step-end infinite;
+}
+
+/* ---------- Button Hover Animation ---------- */
+button:hover {
+  transition: all 0.3s ease-in-out;
+}
+
+/* ---------- Particle Canvas Layer ---------- */
+#tsparticles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+/* ---------- Responsive Text Scaling ---------- */
+h1, h2 {
+  line-height: 1.2;
+  text-shadow: 0 0 12px rgba(128, 90, 213, 0.5);
+}
+
+ul li::marker {
+  color: #66ff99;
 }
