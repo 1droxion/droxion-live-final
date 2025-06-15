@@ -1,70 +1,77 @@
-import React from "react";
-import Particles from "@tsparticles/react";
-import { loadFull } from "tsparticles";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import "./LandingPageMagic.css";
 
 function LandingPage() {
   const navigate = useNavigate();
+  const [showIntro, setShowIntro] = useState(true);
 
-  const particlesInit = async (main) => {
-    await loadFull(main);
-  };
-
-  const handleEnter = () => {
-    const box = document.getElementById("droxion-world");
-    box.classList.add("animate-fade-out");
-    setTimeout(() => navigate("/chatboard"), 1800);
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => setShowIntro(false), 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
-    <div className="relative w-full h-screen bg-black text-white overflow-hidden">
-      <Particles
-        id="tsparticles"
-        init={particlesInit}
-        options={{
-          background: { color: { value: "#0e0e10" } },
-          fpsLimit: 60,
-          interactivity: {
-            events: { onHover: { enable: true, mode: "repulse" } },
-            modes: { repulse: { distance: 100, duration: 0.4 } },
-          },
-          particles: {
-            color: { value: "#ffffff" },
-            links: { color: "#ffffff", distance: 150, enable: true, opacity: 0.5, width: 1 },
-            move: { enable: true, speed: 2 },
-            number: { density: { enable: true, area: 800 }, value: 80 },
-            opacity: { value: 0.5 },
-            shape: { type: "circle" },
-            size: { value: { min: 1, max: 4 } },
-          },
-          detectRetina: true,
-        }}
-      />
+    <div className="bg-[#0e0e10] text-white min-h-screen overflow-hidden">
+      <AnimatePresence>
+        {showIntro && (
+          <motion.div
+            key="intro"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 1.5 } }}
+            className="intro-screen flex items-center justify-center h-screen bg-gradient-to-br from-[#0f0f0f] to-[#111827] relative z-50"
+          >
+            <div className="text-center">
+              <motion.h1
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1.1, opacity: 1 }}
+                transition={{ duration: 1 }}
+                className="text-5xl md:text-6xl font-bold text-purple-500 drop-shadow-lg"
+              >
+                Droxion™
+              </motion.h1>
+              <p className="mt-4 text-lg text-gray-400 animate-blink">.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div
-        id="droxion-world"
-        className="absolute inset-0 flex flex-col items-center justify-center text-center z-10 transition-all duration-700"
-      >
-        <h1 className="text-4xl md:text-5xl font-extrabold text-purple-500 drop-shadow-lg mb-4">
-          🌐 Droxion AI World
-        </h1>
-        <p className="text-lg md:text-xl text-gray-300 mb-6">
-          Step into the world where AI creates your imagination
-        </p>
+      {!showIntro && (
+        <div className="px-6 py-12 flex flex-col items-center justify-center animate-fade-in">
+          <h1 className="text-5xl md:text-6xl font-extrabold mb-6 text-center">
+            Welcome to <span className="text-purple-500">Droxion</span>
+          </h1>
+          <p className="text-xl md:text-2xl text-gray-300 text-center max-w-2xl mb-10">
+            Step into the Future — <span className="text-green-400 font-semibold">Create, Chat & Imagine</span>
+          </p>
 
-        <div className="flex items-center justify-center gap-1 text-3xl text-white mb-8 animate-pulse">
-          <span className="animate-bounce">.</span>
-          <span className="animate-bounce delay-150">.</span>
-          <span className="animate-bounce delay-300">.</span>
+          <button
+            onClick={() => navigate("/chatboard")}
+            className="px-8 py-4 bg-gradient-to-r from-purple-600 to-indigo-500 text-white text-lg rounded-full shadow-xl hover:scale-105 transition duration-300"
+          >
+            🚀 Enter the AI World
+          </button>
+
+          <div className="mt-16 max-w-4xl bg-[#1a1a2e] p-8 rounded-2xl shadow-xl border border-gray-700 text-center">
+            <h2 className="text-3xl font-bold text-purple-400 mb-4">
+              What can Droxion do?
+            </h2>
+            <ul className="text-gray-300 space-y-2 text-lg text-left">
+              <li>✅ Chat with AI like a real assistant</li>
+              <li>✅ Generate videos from a single idea</li>
+              <li>✅ Draw stunning AI images instantly</li>
+              <li>✅ Watch trending YouTube clips from one place</li>
+              <li>✅ Explore news, ideas, and content magically</li>
+            </ul>
+          </div>
+
+          <p className="mt-12 text-sm text-gray-500">
+            Created by Dhruv Patel • Powered by Droxion™
+          </p>
         </div>
-
-        <button
-          onClick={handleEnter}
-          className="bg-green-500 hover:bg-green-600 text-white text-lg px-6 py-3 rounded-xl font-semibold transition-transform hover:scale-105 shadow-lg"
-        >
-          🚀 Enter AI World
-        </button>
-      </div>
+      )}
     </div>
   );
 }
