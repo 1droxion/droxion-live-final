@@ -1,121 +1,169 @@
-// ✅ AIChat.jsx (React Frontend) - fixed with working backend URL, upload, voice input, black & white theme
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Mic, Send, Trash2 } from "lucide-react";
-import { useDropzone } from "react-dropzone";
+import axios from "axios";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import { Mic, SendHorizonal, ImageIcon, Bookmark, Download } from "lucide-react";
 
-export default function AIChat() {
+function AIChat() {
   const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState([]);
-  const [isTyping, setIsTyping] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const messagesEndRef = useRef(null);
+  const [chat, setChat] = useState(() => JSON.parse(localStorage.getItem("chat-history")) || []);
+  const [loading, setLoading] = useState(false);
+  const [image, setImage] = useState(null);
+  const fileInputRef = useRef();
 
-  const BACKEND_URL = "https://droxion-backend.onrender.com"; // ✅ UPDATE THIS to your backend
+  const scrollRef = useRef();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const speak = (text) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    window.speechSynthesis.speak(utterance);
   };
 
-  useEffect(scrollToBottom, [messages]);
-
-  const onDrop = (acceptedFiles) => {
-    if (acceptedFiles.length > 0) setImageFile(acceptedFiles[0]);
+  const handleVoiceInput = () => {
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "en-US";
+    recognition.start();
+    recognition.onresult = (event) => {
+      const spoken = event.results[0][0].transcript;
+      setPrompt(spoken);
+    };
   };
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
   const handleSend = async () => {
-    if (!prompt.trim() && !imageFile) return;
-    const userMsg = { role: "user", content: prompt || "[Image]" };
-    setMessages((prev) => [...prev, userMsg]);
+    if (!prompt.trim() && !image) return;
+    const newMessage = { role: "user", content: prompt };
+    const updatedChat = [...chat, newMessage];
+    setChat(updatedChat);
     setPrompt("");
-    setIsTyping(true);
+    setLoading(true);
 
     try {
-      let reply;
-      if (imageFile) {
+      let res;
+      if (image) {
         const formData = new FormData();
-        formData.append("image", imageFile);
+        formData.append("image", image);
         formData.append("prompt", prompt);
-        const res = await axios.post(`${BACKEND_URL}/analyze-image`, formData);
-        reply = res.data.reply;
-        setImageFile(null);
+        res = await axios.post("/analyze-image", formData);
+        setImage(null);
+      } else if (prompt.toLowerCase().startsWith("/yt")) {
+        const search = prompt.replace("/yt", "").trim();
+        res = await axios.post("/search-youtube", { prompt: search });
+        updatedChat.push({
+          role: "assistant",
+          content: `🎬 [${res.data.title}](${res.data.url})`
+        });
+        setChat(updatedChat);
+        setLoading(false);
+        return;
+      } else if (prompt.toLowerCase().startsWith("/news")) {
+        const search = prompt.replace("/news", "").trim();
+        res = await axios.post("/news", { prompt: search });
+        updatedChat.push({
+          role: "assistant",
+          content: res.data.headlines.map(h => `📰 ${h}`).join("\n\n")
+        });
+        setChat(updatedChat);
+        setLoading(false);
+        return;
       } else {
-        const res = await axios.post(`${BACKEND_URL}/chat`, { prompt });
-        reply = res.data.reply;
+        res = await axios.post("/chat", { prompt });
       }
-      const botMsg = { role: "assistant", content: reply };
-      setMessages((prev) => [...prev, botMsg]);
+
+      updatedChat.push({ role: "assistant", content: res.data.reply || res.data.error });
+      setChat(updatedChat);
+      localStorage.setItem("chat-history", JSON.stringify(updatedChat));
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "❌ Error: " + err.message },
-      ]);
+      updatedChat.push({ role: "assistant", content: "❌ Error: Something went wrong." });
+      setChat(updatedChat);
     }
-    setIsTyping(false);
+
+    setLoading(false);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) setImage(file);
   };
 
-  const handleClear = () => {
-    setMessages([]);
-    setPrompt("");
-    setImageFile(null);
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat]);
+
+  const downloadChat = () => {
+    const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "chat.txt";
+    a.click();
   };
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white">
-      <div className="flex justify-between items-center px-4 py-2 border-b border-gray-700">
-        <h1 className="text-lg font-bold">Droxion Chat</h1>
-        <button onClick={handleClear}><Trash2 /></button>
+    <div className="w-full h-screen flex flex-col bg-black text-white">
+      <div className="p-3 border-b border-gray-700 flex justify-between items-center">
+        <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
+        <div className="flex gap-4 items-center">
+          <Download onClick={downloadChat} className="cursor-pointer" />
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`whitespace-pre-wrap px-4 py-2 rounded-xl max-w-2xl ${msg.role === "user" ? "bg-gray-800 self-end" : "bg-gray-900 self-start"}`}
-          >
-            <ReactMarkdown>{msg.content}</ReactMarkdown>
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
+        {chat.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
+              <ReactMarkdown
+                children={msg.content}
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  a: ({ node, ...props }) => (
+                    <a {...props} className="text-blue-400 underline" target="_blank" rel="noopener noreferrer" />
+                  ),
+                  code: ({ node, inline, className, children, ...props }) => (
+                    <pre className="bg-gray-900 p-2 rounded text-green-300 overflow-x-auto">
+                      <code {...props}>{children}</code>
+                    </pre>
+                  )
+                }}
+              />
+            </div>
           </div>
         ))}
-        {isTyping && <div className="px-4 py-2 animate-pulse">Typing...</div>}
-        <div ref={messagesEndRef} />
+        {loading && (
+          <div className="text-left text-sm text-gray-500 px-4">Typing...</div>
+        )}
+        <div ref={scrollRef}></div>
       </div>
 
-      <div className="border-t border-gray-700 p-3">
-        <div className="flex items-center gap-2">
-          <div
-            {...getRootProps()}
-            className="bg-gray-800 px-3 py-1 rounded cursor-pointer text-sm"
-          >
-            <input {...getInputProps()} />
-            {isDragActive ? "Drop..." : imageFile ? imageFile.name : "Upload"}
-          </div>
-
-          <textarea
-            className="flex-1 resize-none bg-black text-white border border-gray-600 rounded-lg px-3 py-2 focus:outline-none"
-            rows="1"
-            placeholder="Type or upload image..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-
-          <button
-            onClick={handleSend}
-            className="bg-white text-black px-3 py-2 rounded hover:bg-gray-300"
-          >
-            <Send size={18} />
-          </button>
-        </div>
+      <div className="border-t border-gray-700 p-3 flex items-center gap-2">
+        <button onClick={handleVoiceInput}>
+          <Mic className="text-white" />
+        </button>
+        <button onClick={() => fileInputRef.current.click()}>
+          <ImageIcon className="text-white" />
+        </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImageSelect}
+          accept="image/*"
+          hidden
+        />
+        <input
+          type="text"
+          placeholder="Type a message or /yt Messi"
+          className="flex-1 p-2 rounded-lg bg-zinc-800 text-white outline-none"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+        />
+        <button onClick={handleSend}>
+          <SendHorizonal className="text-white" />
+        </button>
       </div>
     </div>
   );
 }
+
+export default AIChat;
