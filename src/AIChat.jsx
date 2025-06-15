@@ -9,9 +9,8 @@ const API = "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
-  const [chat, setChat] = useState([]);
+  const [chat, setChat] = useState(() => JSON.parse(localStorage.getItem("chat-history")) || []);
   const [loading, setLoading] = useState(false);
-  const [image, setImage] = useState(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const scrollRef = useRef();
   const fileInputRef = useRef();
@@ -33,30 +32,48 @@ function AIChat() {
     };
   };
 
+  const toBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleSend = async () => {
-    if (!prompt.trim() && !image) return;
+    if (!prompt.trim() && !fileInputRef.current.files.length) return;
+
     const userMsg = { role: "user", content: prompt };
-    if (image) userMsg.imageUrl = URL.createObjectURL(image);
+    const imageFile = fileInputRef.current.files[0];
+    if (imageFile) {
+      const base64 = await toBase64(imageFile);
+      userMsg.imageBase64 = base64;
+    }
+
     const updatedChat = [...chat, userMsg];
     setChat(updatedChat);
     setPrompt("");
     setLoading(true);
+    fileInputRef.current.value = "";
 
     try {
       const classify = await axios.post(`${API}/classify`, { prompt });
       const type = classify.data.type;
       let res;
 
-      if (type === "image" || image) {
-        if (image) {
+      if (type === "image" || userMsg.imageBase64) {
+        if (userMsg.imageBase64) {
           const formData = new FormData();
-          formData.append("image", image);
+          formData.append("image", imageFile);
           formData.append("prompt", prompt);
           res = await axios.post(`${API}/analyze-image`, formData);
         } else {
           res = await axios.post(`${API}/generate-image`, { prompt });
         }
-        updatedChat.push({ role: "assistant", content: `🖼️ ![Image](${res.data.image_url})` });
+        updatedChat.push({
+          role: "assistant",
+          content: `🖼️ ![Image](${res.data.image_url})`
+        });
       } else if (type === "youtube") {
         res = await axios.post(`${API}/search-youtube`, { prompt });
         updatedChat.push({
@@ -65,10 +82,10 @@ function AIChat() {
           youtube: res.data.url
         });
       } else if (type === "google") {
-        const query = encodeURIComponent(prompt.replace(/google/i, "").trim());
+        const q = encodeURIComponent(prompt.replace(/google/i, "").trim());
         updatedChat.push({
           role: "assistant",
-          content: `🔎 [Search "${prompt.replace(/google/i, "").trim()}" on Google](https://www.google.com/search?q=${query})`
+          content: `🔎 [Search "${prompt.replace(/google/i, "").trim()}" on Google](https://www.google.com/search?q=${q})`
         });
       } else if (type === "news") {
         res = await axios.post(`${API}/news`, { prompt });
@@ -92,22 +109,6 @@ function AIChat() {
     setLoading(false);
   };
 
-  const handleImageSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) setImage(file);
-  };
-
-  const handleNewChat = () => {
-    setChat([]);
-    setPrompt("");
-  };
-
-  const handleClear = () => {
-    setChat([]);
-    setPrompt("");
-    localStorage.removeItem("chat-history");
-  };
-
   const handleDownload = () => {
     const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
     const blob = new Blob([content], { type: "text/plain" });
@@ -115,6 +116,12 @@ function AIChat() {
     a.href = URL.createObjectURL(blob);
     a.download = "chat.txt";
     a.click();
+  };
+
+  const handleNewChat = () => {
+    setChat([]);
+    setPrompt("");
+    localStorage.removeItem("chat-history");
   };
 
   const renderMessage = (msg, i) => {
@@ -125,8 +132,8 @@ function AIChat() {
     return (
       <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
         <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
-          {msg.imageUrl && (
-            <img src={msg.imageUrl} alt="Uploaded" className="rounded max-w-[300px] mb-2" />
+          {msg.imageBase64 && (
+            <img src={msg.imageBase64} alt="Uploaded" className="rounded max-w-[300px] mb-2" />
           )}
           {isYouTube && videoId ? (
             <div className="space-y-2">
@@ -174,32 +181,32 @@ function AIChat() {
 
   return (
     <div className="w-full h-screen flex flex-col bg-black text-white">
-      {/* 🔘 Topbar */}
+      {/* Topbar */}
       <div className="p-3 border-b border-gray-700 flex justify-between items-center">
         <div className="text-xl font-bold">💬 AI Chat (Droxion)</div>
         <div className="flex items-center gap-4">
-          <Clock onClick={() => alert("History coming soon")} className="cursor-pointer" title="History" />
-          <Plus onClick={handleNewChat} className="cursor-pointer" title="New Chat" />
-          <Trash2 onClick={handleClear} className="cursor-pointer" title="Clear All" />
-          <Download onClick={handleDownload} className="cursor-pointer" title="Download Chat" />
+          <Clock onClick={() => alert("History coming soon")} title="History" className="cursor-pointer" />
+          <Plus onClick={handleNewChat} title="New Chat" className="cursor-pointer" />
+          <Trash2 onClick={handleNewChat} title="Clear All" className="cursor-pointer" />
+          <Download onClick={handleDownload} title="Download Chat" className="cursor-pointer" />
           <button onClick={() => setVoiceOn(!voiceOn)} title="Toggle Voice">
             {voiceOn ? <Volume2 className="text-white" /> : <VolumeX className="text-white" />}
           </button>
         </div>
       </div>
 
-      {/* 💬 Chat List */}
+      {/* Chat list */}
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
         {chat.map((msg, i) => renderMessage(msg, i))}
         {loading && <div className="text-left text-sm text-gray-400 animate-pulse">Typing...</div>}
         <div ref={scrollRef}></div>
       </div>
 
-      {/* ⌨️ Input */}
+      {/* Input bar */}
       <div className="border-t border-gray-700 p-3 flex items-center gap-2">
         <button onClick={handleVoiceInput}><Mic className="text-white" /></button>
         <button onClick={() => fileInputRef.current.click()}><ImageIcon className="text-white" /></button>
-        <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" hidden />
+        <input type="file" ref={fileInputRef} accept="image/*" hidden />
         <input
           type="text"
           placeholder="Type or say anything..."
