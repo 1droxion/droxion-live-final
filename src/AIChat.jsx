@@ -24,6 +24,8 @@ function AIChat() {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
 
+  const cleanInput = (text) => text.trim().toLowerCase(); // Smart interpreter base
+
   const startNewChat = () => {
     const id = Date.now();
     const newChat = { id, title: "New Chat", messages: [] };
@@ -59,7 +61,8 @@ function AIChat() {
     if (!input.trim()) return;
 
     const raw = input;
-    const lower = raw.toLowerCase();
+    const lower = cleanInput(raw);
+
     const userMsg = {
       role: "user",
       content: raw,
@@ -71,7 +74,7 @@ function AIChat() {
     updateChat(updatedMessages);
     setInput("");
     setLoading(true);
-    setShowSidebar(false);
+    setShowSidebar(false); // ✅ auto-close sidebar
 
     try {
       let reply = "";
@@ -106,7 +109,7 @@ function AIChat() {
       if (lower.includes("google") || lower.includes("search")) {
         const search = raw.replace("google", "").replace("search", "").trim();
         const link = `https://www.google.com/search?q=${encodeURIComponent(search)}`;
-        reply += `Here’s a Google search for **${search}**:\n\n[🔍 Open Google](${link})`;
+        reply += `\n\n🧠 [**Google Search** → ${search}](https://www.google.com/search?q=${encodeURIComponent(search)})`;
       }
 
       if (lower.includes("youtube") || lower.match(/ep\d+/i)) {
@@ -115,7 +118,7 @@ function AIChat() {
         const ytLink = ytRes?.data?.url;
         const ytTitle = ytRes?.data?.title || "YouTube Video";
         if (ytLink) {
-          reply += `\n\n**${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
+          reply += `\n\n🎥 **${ytTitle}**\n\n[▶️ Watch on YouTube](${ytLink})`;
         } else {
           reply += "❌ Couldn't find a video.";
         }
@@ -131,7 +134,7 @@ function AIChat() {
         const newsRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/news`, { prompt: raw });
         const headlines = newsRes?.data?.headlines || [];
         if (headlines.length > 0) {
-          reply += "\n\n**Latest News:**\n" + headlines.map((h) => `- [${h.title}](${h.url})`).join("\n");
+          reply += "\n\n🗞️ **Latest News:**\n" + headlines.map((h) => `- [${h.title}](${h.url})`).join("\n");
         }
       }
 
@@ -175,6 +178,7 @@ function AIChat() {
               <button onClick={() => {
                 setActiveChatId(chat.id);
                 setMessages(chat.messages);
+                setShowSidebar(false); // ✅ auto-close when clicked
               }} className="text-left text-white truncate w-full">
                 {chat.title}
               </button>
@@ -206,9 +210,8 @@ function AIChat() {
                     if (href.includes("youtube.com/watch")) {
                       const videoId = new URL(href).searchParams.get("v");
                       return (
-                        <div className="mt-2">
+                        <div className="mt-2 rounded-xl overflow-hidden border border-white/10 shadow-lg">
                           <iframe
-                            key={videoId}
                             width="100%"
                             height="315"
                             src={`https://www.youtube.com/embed/${videoId}`}
@@ -216,19 +219,23 @@ function AIChat() {
                             frameBorder="0"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowFullScreen
-                            className="rounded-xl"
                           ></iframe>
                         </div>
                       );
                     }
                     return (
-                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-green-400 underline hover:brightness-125 transition"
+                      >
                         {children}
                       </a>
                     );
                   },
                   img({ src, alt }) {
-                    return <img src={src} alt={alt} className="w-[180px] h-auto object-contain rounded-lg" />;
+                    return <img src={src} alt={alt} className="w-[180px] h-auto object-contain rounded-lg shadow" />;
                   },
                   code({ inline, className: cls, children, ...props }) {
                     const match = /language-(\w+)/.exec(cls || "");
@@ -255,7 +262,7 @@ function AIChat() {
               </ReactMarkdown>
             </div>
           ))}
-          {loading && <div className="text-center text-gray-400 italic animate-pulse">🟣</div>}
+          {loading && <div className="text-center text-gray-400 italic animate-pulse">🟣 Typing...</div>}
         </div>
 
         {/* Input Bar */}
@@ -265,7 +272,7 @@ function AIChat() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything: draw, movie, video, YouTube..."
+            placeholder="Ask anything: draw, movie, YouTube, image..."
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             className="flex-1 bg-[#1f2937] p-3 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 shadow-md"
           />
