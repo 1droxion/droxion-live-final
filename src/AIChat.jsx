@@ -44,12 +44,12 @@ function AIChat() {
 
     try {
       let res;
+
       if (image) {
         const formData = new FormData();
         formData.append("image", image);
         formData.append("prompt", prompt);
         res = await axios.post(`${API}/analyze-image`, formData);
-        setImage(null);
       } else if (prompt.toLowerCase().startsWith("/yt")) {
         const search = prompt.replace("/yt", "").trim();
         res = await axios.post(`${API}/search-youtube`, { prompt: search });
@@ -66,6 +66,18 @@ function AIChat() {
         updatedChat.push({
           role: "assistant",
           content: res.data.headlines.map(h => `📰 ${h}`).join("\n\n")
+        });
+        setChat(updatedChat);
+        setLoading(false);
+        return;
+      } else if (
+        prompt.toLowerCase().startsWith("/img") ||
+        prompt.toLowerCase().includes("create image")
+      ) {
+        res = await axios.post(`${API}/generate-image`, { prompt });
+        updatedChat.push({
+          role: "assistant",
+          content: `🖼️ ![Generated Image](${res.data.image_url})`
         });
         setChat(updatedChat);
         setLoading(false);
@@ -159,7 +171,7 @@ function AIChat() {
         />
         <input
           type="text"
-          placeholder="Type a message or /yt Messi"
+          placeholder='Type a message or /yt Messi or /img flying car'
           className="flex-1 p-2 rounded-lg bg-zinc-800 text-white outline-none"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
