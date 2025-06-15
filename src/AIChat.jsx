@@ -5,7 +5,11 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download } from "lucide-react";
 
-const API = "https://droxion-backend.onrender.com"; // 🔥 hardcoded backend URL
+const API =
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost"
+    ? "http://127.0.0.1:5000"
+    : "https://droxion-backend.onrender.com");
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
@@ -14,12 +18,6 @@ function AIChat() {
   const [image, setImage] = useState(null);
   const fileInputRef = useRef();
   const scrollRef = useRef();
-
-  const speak = (text) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    window.speechSynthesis.speak(utterance);
-  };
 
   const handleVoiceInput = () => {
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
