@@ -1,223 +1,207 @@
-// AIChat.jsx
-import React, { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import axios from "axios";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
-import {
-  Mic,
-  SendHorizonal,
-  ImageIcon,
-  Download,
-  Trash,
-  Plus,
-  Clock3,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+import requests
+import time
+import base64
 
-const API =
-  import.meta.env.VITE_API_URL ||
-  (window.location.hostname === "localhost"
-    ? "http://127.0.0.1:5000"
-    : "https://droxion-backend.onrender.com");
+load_dotenv()
+app = Flask(__name__)
+CORS(app, origins=["*"], supports_credentials=True)
 
-function AIChat() {
-  const [prompt, setPrompt] = useState("");
-  const [chat, setChat] = useState(
-    () => JSON.parse(localStorage.getItem("chat-history")) || []
-  );
-  const [loading, setLoading] = useState(false);
-  const [image, setImage] = useState(null);
-  const [videoMode, setVideoMode] = useState(false);
-  const fileInputRef = useRef();
-  const scrollRef = useRef();
+@app.route("/")
+def home():
+    return "✅ Droxion API is live."
 
-  const handleVoiceInput = () => {
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = "en-US";
-    recognition.start();
-    recognition.onresult = (event) => {
-      const spoken = event.results[0][0].transcript;
-      setPrompt(spoken);
-    };
-  };
+@app.route("/chat", methods=["POST"])
+def chat():
+    try:
+        prompt = request.json.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"reply": "❗ Prompt is required."}), 400
 
-  const handleSend = async () => {
-    if (!prompt.trim() && !image) return;
-    const userMessage = { role: "user", content: prompt };
-    if (image) {
-      userMessage.imageUrl = URL.createObjectURL(image);
-    }
-    const updatedChat = [...chat, userMessage];
-    setChat(updatedChat);
-    setPrompt("");
-    setLoading(true);
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+            "Content-Type": "application/json"
+        }
 
-    try {
-      let res;
+        payload = {
+            "model": "gpt-4",
+            "messages": [
+                {"role": "system", "content": "You are an AI assistant created by Dhruv Patel and powered by Droxion™."},
+                {"role": "user", "content": prompt}
+            ]
+        }
 
-      if (image) {
-        const formData = new FormData();
-        formData.append("image", image);
-        formData.append("prompt", prompt);
-        res = await axios.post(`${API}/analyze-image`, formData);
-      } else if (prompt.toLowerCase().includes("google link")) {
-        const query = encodeURIComponent(prompt.replace("google link", ""));
-        updatedChat.push({
-          role: "assistant",
-          content: `[🔗 Google Search](https://www.google.com/search?q=${query})`
-        });
-        setChat(updatedChat);
-        localStorage.setItem("chat-history", JSON.stringify(updatedChat));
-        setLoading(false);
-        return;
-      } else if (
-        prompt.toLowerCase().startsWith("/yt") ||
-        prompt.toLowerCase().includes("youtube")
-      ) {
-        const search = prompt.replace("/yt", "").replace("youtube", "").trim();
-        res = await axios.post(`${API}/search-youtube`, { prompt: search });
-        updatedChat.push({
-          role: "assistant",
-          content: videoMode
-            ? `<iframe width='100%' height='200' src='https://www.youtube.com/embed/${res.data.url.split("v=")[1]}' frameborder='0' allow='autoplay; encrypted-media' allowfullscreen></iframe>`
-            : `[🎬 ${res.data.title}](${res.data.url})`
-        });
-        setChat(updatedChat);
-        localStorage.setItem("chat-history", JSON.stringify(updatedChat));
-        setLoading(false);
-        return;
-      } else if (
-        prompt.toLowerCase().startsWith("/img") ||
-        prompt.toLowerCase().includes("create image")
-      ) {
-        res = await axios.post(`${API}/generate-image`, { prompt });
-        updatedChat.push({
-          role: "assistant",
-          content: `![AI Image](${res.data.image_url})`
-        });
-        setChat(updatedChat);
-        localStorage.setItem("chat-history", JSON.stringify(updatedChat));
-        setLoading(false);
-        return;
-      } else {
-        res = await axios.post(`${API}/chat`, { prompt });
-      }
+        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        reply = res.json()["choices"][0]["message"]["content"]
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"reply": f"❌ Exception: {str(e)}"}), 500
 
-      updatedChat.push({ role: "assistant", content: res.data.reply });
-      setChat(updatedChat);
-      localStorage.setItem("chat-history", JSON.stringify(updatedChat));
-    } catch (err) {
-      updatedChat.push({ role: "assistant", content: "❌ Error: Something went wrong." });
-      setChat(updatedChat);
-    }
-    setLoading(false);
-  };
+@app.route("/generate-image", methods=["POST"])
+def generate_image():
+    try:
+        prompt = request.json.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"error": "Prompt is required."}), 400
 
-  const downloadChat = () => {
-    const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
-    const blob = new Blob([content], { type: "text/plain" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "chat.txt";
-    a.click();
-  };
+        headers = {
+            "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
+            "Content-Type": "application/json"
+        }
 
-  const handleImageSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) setImage(file);
-  };
+        payload = {
+            "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+            "input": {
+                "prompt": prompt,
+                "width": 768,
+                "height": 768,
+                "num_inference_steps": 30,
+                "refine": "expert_ensemble_refiner",
+                "apply_watermark": False
+            }
+        }
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat]);
+        create = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload)
+        prediction = create.json()
+        get_url = prediction.get("urls", {}).get("get")
 
-  const clearChat = () => {
-    setChat([]);
-    localStorage.removeItem("chat-history");
-  };
+        while True:
+            poll = requests.get(get_url, headers=headers)
+            poll_result = poll.json()
+            if poll_result.get("status") == "succeeded":
+                return jsonify({"image_url": poll_result.get("output")})
+            elif poll_result.get("status") == "failed":
+                return jsonify({"error": "Prediction failed"}), 500
+            time.sleep(1)
+    except Exception as e:
+        return jsonify({"error": f"Exception: {str(e)}"}), 500
 
-  return (
-    <div className="w-full h-screen flex flex-col bg-black text-white">
-      <div className="p-3 border-b border-gray-700 flex justify-between items-center">
-        <div className="text-xl font-bold flex gap-2 items-center">
-          <span>💬 AI Chat</span> <span className="text-purple-400">(Droxion)</span>
-        </div>
-        <div className="flex gap-4 items-center">
-          <Clock3 className="cursor-pointer" />
-          <Plus onClick={() => clearChat()} className="cursor-pointer" />
-          <Trash onClick={() => clearChat()} className="cursor-pointer" />
-          {videoMode ? (
-            <Volume2 className="cursor-pointer" onClick={() => setVideoMode(false)} />
-          ) : (
-            <VolumeX className="cursor-pointer" onClick={() => setVideoMode(true)} />
-          )}
-          <Download onClick={downloadChat} className="cursor-pointer" />
-        </div>
-      </div>
+@app.route("/analyze-image", methods=["POST"])
+def analyze_image():
+    try:
+        image = request.files.get("image")
+        prompt = request.form.get("prompt", "").strip()
+        if not image:
+            return jsonify({"reply": "❌ No image uploaded."}), 400
 
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
-        {chat.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
-              {msg.imageUrl && (
-                <img
-                  src={msg.imageUrl}
-                  alt="Uploaded"
-                  className="rounded-lg max-w-xs max-h-40 mb-2"
-                />
-              )}
-              <ReactMarkdown
-                children={msg.content}
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-                components={{
-                  a: ({ node, ...props }) => (
-                    <a {...props} className="text-blue-400 underline" target="_blank" rel="noopener noreferrer" />
-                  ),
-                  code: ({ node, inline, className, children, ...props }) => (
-                    <pre className="bg-gray-900 p-2 rounded text-green-300 overflow-x-auto">
-                      <code {...props}>{children}</code>
-                    </pre>
-                  )
-                }}
-              />
-            </div>
-          </div>
-        ))}
-        {loading && <div className="text-left text-sm text-gray-500 px-4">Typing...</div>}
-        <div ref={scrollRef}></div>
-      </div>
+        image_bytes = image.read()
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-      <div className="border-t border-gray-700 p-3 flex items-center gap-2">
-        <button onClick={handleVoiceInput}>
-          <Mic className="text-white" />
-        </button>
-        <button onClick={() => fileInputRef.current.click()}>
-          <ImageIcon className="text-white" />
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImageSelect}
-          accept="image/*"
-          hidden
-        />
-        <input
-          type="text"
-          placeholder="Type a message or /yt Messi or /img car"
-          className="flex-1 p-2 rounded-lg bg-zinc-800 text-white outline-none"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-        />
-        <button onClick={handleSend}>
-          <SendHorizonal className="text-white" />
-        </button>
-      </div>
-    </div>
-  );
-}
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+            "Content-Type": "application/json"
+        }
 
-export default AIChat;
+        messages = [
+            {"role": "system", "content": "You are an AI image analyzer assistant."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    }
+                ]
+            }
+        ]
+
+        payload = {
+            "model": "gpt-4-vision-preview",
+            "messages": messages,
+            "max_tokens": 500
+        }
+
+        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        reply = res.json()["choices"][0]["message"]["content"]
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"reply": f"❌ Image error: {str(e)}"}), 500
+
+@app.route("/search-youtube", methods=["POST"])
+def search_youtube():
+    try:
+        prompt = request.json.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"error": "Missing prompt"}), 400
+
+        key = os.getenv("YOUTUBE_API_KEY")
+        url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            "part": "snippet",
+            "q": prompt,
+            "type": "video",
+            "maxResults": 1,
+            "key": key
+        }
+
+        res = requests.get(url, params=params)
+        data = res.json()
+
+        if "items" not in data or not data["items"]:
+            return jsonify({"error": "No video found"}), 404
+
+        video = data["items"][0]
+        video_id = video["id"]["videoId"]
+        title = video["snippet"]["title"]
+        return jsonify({
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "title": title
+        })
+    except Exception as e:
+        return jsonify({"error": f"Exception: {str(e)}"}), 500
+
+@app.route("/news", methods=["POST"])
+def search_news():
+    try:
+        prompt = request.json.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"headlines": []})
+
+        gnews_key = os.getenv("GNEWS_API_KEY")
+        url = f"https://gnews.io/api/v4/search?q={prompt}&lang=en&max=3&apikey={gnews_key}"
+
+        res = requests.get(url)
+        articles = res.json().get("articles", [])[:3]
+        headlines = [a["title"] for a in articles]
+        return jsonify({"headlines": headlines})
+    except Exception as e:
+        return jsonify({"error": f"News error: {str(e)}"}), 500
+
+@app.route("/talk-avatar", methods=["POST"])
+def talk_avatar():
+    try:
+        image = request.files.get("image")
+        script = request.form.get("prompt", "")
+        if not image or not script:
+            return jsonify({"error": "Image and script required"}), 400
+
+        image_data = base64.b64encode(image.read()).decode("utf-8")
+        headers = {
+            "Authorization": f"Basic {os.getenv('DID_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "source_url": f"data:image/jpeg;base64,{image_data}",
+            "script": {
+                "type": "text",
+                "input": script,
+                "provider": {"type": "microsoft", "voice_id": "en-US-JennyNeural"}
+            }
+        }
+
+        res = requests.post("https://api.d-id.com/talks", headers=headers, json=payload)
+        data = res.json()
+        video_url = data.get("result_url", "")
+        return jsonify({"video_url": video_url})
+    except Exception as e:
+        return jsonify({"error": f"Avatar error: {str(e)}"}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
