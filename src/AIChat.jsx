@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock } from "lucide-react";
 
-// ✅ FINAL FIXED: Always use production backend
+// ✅ Always use production backend
 const API = "https://droxion-backend.onrender.com";
 
 function AIChat() {
@@ -80,7 +80,10 @@ function AIChat() {
         return;
       } else if (
         prompt.toLowerCase().startsWith("/img") ||
-        prompt.toLowerCase().includes("create image")
+        prompt.toLowerCase().includes("create image") ||
+        prompt.toLowerCase().includes("generate image") ||
+        prompt.toLowerCase().includes("make image") ||
+        prompt.toLowerCase().includes("image of")
       ) {
         res = await axios.post(`${API}/generate-image`, { prompt });
         updatedChat.push({
