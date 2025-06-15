@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock } from "lucide-react";
 
+// ✅ Correct backend setup for both dev and production
 const API =
   import.meta.env.VITE_API_URL ||
   (window.location.hostname === "localhost"
@@ -146,7 +147,6 @@ function AIChat() {
 
   return (
     <div className="w-full h-screen flex bg-black text-white relative">
-
       {/* Sidebar */}
       {sidebarOpen && (
         <div className="w-64 bg-zinc-900 p-4 border-r border-gray-800 absolute z-10 h-full">
@@ -173,12 +173,12 @@ function AIChat() {
           <div className="flex gap-4 items-center">
             <Clock onClick={() => setSidebarOpen(!sidebarOpen)} title="Chat History" className="cursor-pointer" />
             <Plus onClick={handleNewChat} title="New Chat" className="cursor-pointer" />
-            <Trash2 onClick={handleClearHistory} title="Clear All History" className="cursor-pointer" />
+            <Trash2 onClick={handleClearHistory} title="Clear History" className="cursor-pointer" />
             <Download onClick={downloadChat} title="Download Chat" className="cursor-pointer" />
           </div>
         </div>
 
-        {/* Chat area */}
+        {/* Chat display */}
         <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
           {chat.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
