@@ -11,7 +11,6 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
   const fileInputRef = useRef();
-
   const scrollRef = useRef();
 
   const speak = (text) => {
@@ -32,8 +31,13 @@ function AIChat() {
 
   const handleSend = async () => {
     if (!prompt.trim() && !image) return;
-    const newMessage = { role: "user", content: prompt };
-    const updatedChat = [...chat, newMessage];
+
+    const userMessage = { role: "user", content: prompt };
+    if (image) {
+      userMessage.imageUrl = URL.createObjectURL(image);
+    }
+
+    const updatedChat = [...chat, userMessage];
     setChat(updatedChat);
     setPrompt("");
     setLoading(true);
@@ -112,6 +116,9 @@ function AIChat() {
         {chat.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
+              {msg.imageUrl && (
+                <img src={msg.imageUrl} alt="Uploaded" className="rounded-lg max-w-xs mb-2" />
+              )}
               <ReactMarkdown
                 children={msg.content}
                 remarkPlugins={[remarkGfm]}
