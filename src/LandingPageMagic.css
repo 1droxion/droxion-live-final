@@ -1,20 +1,14 @@
-/* src/LandingPageMagic.css */
-.magic-glow {
-  background: radial-gradient(ellipse at center, #1a1a1d, #0e0e10);
-  animation: pulseGlow 6s ease-in-out infinite;
-}
-
-@keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 30px rgba(128, 0, 255, 0.4);
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(40px);
   }
-  50% {
-    box-shadow: 0 0 60px rgba(128, 0, 255, 0.8);
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.landing-hero-text {
-  background: linear-gradient(90deg, #00ffe0, #ff00d4);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+.animate-fade-in-slow {
+  animation: fadeInUp 1.4s ease-out both;
 }
