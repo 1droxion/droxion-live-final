@@ -5,12 +5,8 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock } from "lucide-react";
 
-// ✅ Correct backend setup for both dev and production
-const API =
-  import.meta.env.VITE_API_URL ||
-  (window.location.hostname === "localhost"
-    ? "http://127.0.0.1:5000"
-    : "https://droxion-backend.onrender.com");
+// ✅ Fully fixed API (no localhost call in production)
+const API = import.meta.env.VITE_API_URL || "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
@@ -34,8 +30,8 @@ function AIChat() {
     };
   };
 
-  const saveSession = (messages, title = null) => {
-    const name = title || (messages[0]?.content?.substring(0, 30) || "New Chat");
+  const saveSession = (messages) => {
+    const name = messages[0]?.content?.slice(0, 30) || "New Chat";
     const session = { id: Date.now(), name, messages };
     const updated = [session, ...sessions];
     setSessions(updated);
