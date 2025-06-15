@@ -1,10 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 
-import Sidebar from "./Sidebar";
-import Topbar from "./Topbar";
-
-import LandingPage from "./LandingPage"; // ✅ This will be default
+import LandingPage from "./LandingPage";
 import SmartBar from "./SmartBar";
 import Generator from "./Generator";
 import AIChat from "./AIChat";
@@ -21,11 +18,6 @@ import Analytics from "./Analytics";
 
 export default function App() {
   const location = useLocation();
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
-
-  useEffect(() => {
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  }, [location]);
 
   useEffect(() => {
     const startTime = Date.now();
@@ -51,29 +43,23 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-[#0e0e10] text-white">
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setSidebarOpen} />
-      <div className="flex-1 flex flex-col">
-        <Topbar toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-        <div className="p-4">
-          <Routes>
-            <Route path="/" element={<LandingPage />} /> {/* ✅ Main landing page */}
-            <Route path="/smart" element={<SmartBar />} />
-            <Route path="/generator" element={<Generator />} />
-            <Route path="/chatboard" element={<AIChat />} />
-            <Route path="/ai-image" element={<AIImage />} />
-            <Route path="/plans" element={<Plans />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/connect" element={<Connect />} />
-            <Route path="/editor" element={<Editor />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/analytics" element={<Analytics />} />
-          </Routes>
-        </div>
-      </div>
+    <div className="min-h-screen bg-[#0e0e10] text-white">
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/smart" element={<SmartBar />} />
+        <Route path="/generator" element={<Generator />} />
+        <Route path="/chatboard" element={<AIChat />} />
+        <Route path="/ai-image" element={<AIImage />} />
+        <Route path="/plans" element={<Plans />} />
+        <Route path="/projects" element={<Projects />} />
+        <Route path="/templates" element={<Templates />} />
+        <Route path="/connect" element={<Connect />} />
+        <Route path="/editor" element={<Editor />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/analytics" element={<Analytics />} />
+      </Routes>
     </div>
   );
 }
