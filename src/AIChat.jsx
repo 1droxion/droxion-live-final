@@ -1,143 +1,118 @@
-import React, { useEffect, useState, useRef } from "react";
+// ✅ Droxion AIChat.jsx - Final Fixed Version (Black & White Theme)
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
-function AIChat() {
+export default function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
-  const [avatarMode, setAvatarMode] = useState(false);
-  const [videoUrl, setVideoUrl] = useState(null);
-  const [imageUrl, setImageUrl] = useState(null);
-  const fileInputRef = useRef();
-  const bottomRef = useRef();
+  const [videoMode, setVideoMode] = useState(false);
+  const bottomRef = useRef(null);
 
-  const handleSend = async () => {
+  const speak = (text) => {
+    if (!voiceMode) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.lang = "en-US";
+    speechSynthesis.speak(utterance);
+  };
+
+  const scrollToBottom = () => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  };
+
+  const sendMessage = async () => {
     if (!input.trim()) return;
-    const userMessage = { sender: "user", text: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const userInput = input;
+    setMessages((prev) => [...prev, { role: "user", content: userInput }]);
     setInput("");
-    setLoading(true);
+    setIsLoading(true);
 
     try {
-      const response = await axios.post("/chat", { prompt: input });
-      const reply = response.data.reply;
+      let res = await axios.post("/chat", { prompt: userInput });
+      let reply = res.data.reply;
 
-      const classification = await axios.post("/classify", { prompt: input });
-      const type = classification.data.type;
-
-      if (type === "youtube") {
-        const yt = await axios.post("/search-youtube", { prompt: input });
-        const url = yt.data.url;
-        const title = yt.data.title;
-        setMessages((prev) => [
-          ...prev,
-          { sender: "ai", text: reply },
-          { sender: "yt", text: title, url }
-        ]);
-        setVideoUrl(url);
-        if (voiceMode && avatarMode) handleVoice(reply);
-        return;
+      // YouTube search
+      if (videoMode) {
+        const yt = await axios.post("/search-youtube", { prompt: userInput });
+        if (yt.data.url) {
+          setMessages((prev) => [...prev, { role: "assistant", content: reply }, { role: "youtube", url: yt.data.url }]);
+          setIsLoading(false);
+          return;
+        }
       }
 
-      if (type === "image") {
-        const img = await axios.post("/generate-image", { prompt: input });
-        const url = img.data.image_url;
-        setMessages((prev) => [
-          ...prev,
-          { sender: "ai", text: reply },
-          { sender: "img", url }
-        ]);
-        setImageUrl(url);
-        if (voiceMode && avatarMode) handleVoice(reply);
-        return;
-      }
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      speak(reply);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "error", content: "Something went wrong." }]);
+    }
+    setIsLoading(false);
+  };
 
-      setMessages((prev) => [...prev, { sender: "ai", text: reply }]);
-      if (voiceMode && avatarMode) handleVoice(reply);
-    } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        { sender: "ai", text: "❌ Error: Something went wrong." }
-      ]);
-    } finally {
-      setLoading(false);
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
     }
   };
 
-  const handleVoice = async (text) => {
-    try {
-      const res = await axios.post("/talk-avatar", 
-        Object.assign(new FormData(), {
-          image: fileInputRef.current.files[0],
-          prompt: text
-        }),
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-      setMessages((prev) => [...prev, { sender: "avatar", url: res.data.video_url }]);
-    } catch (e) {
-      console.error("Voice error", e);
-    }
-  };
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") handleSend();
-  };
+  useEffect(scrollToBottom, [messages]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-white">
-      <div className="px-4 py-2 border-b border-gray-800 text-lg font-bold flex items-center">
-        <span className="text-2xl mr-2">💬</span> AI Chat <span className="text-purple-400 ml-2">(Droxion)</span>
-        <div className="ml-auto flex gap-2">
-          <button onClick={() => setVoiceMode(!voiceMode)}>{voiceMode ? "🔊" : "🔇"}</button>
-          <button onClick={() => setAvatarMode(!avatarMode)}>{avatarMode ? "🎭" : "👤"}</button>
-          <input type="file" accept="image/*" hidden ref={fileInputRef} />
-          <button onClick={() => fileInputRef.current.click()}>➕</button>
+    <div className="flex flex-col h-screen bg-black text-white">
+      {/* Topbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-white/20">
+        <div className="text-xl font-bold">
+          <span className="text-white">AI </span><span className="text-purple-400">Chat</span>
+          <span className="text-purple-300 ml-1">(Droxion)</span>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setVideoMode(!videoMode)} className="text-white text-lg">🎥</button>
+          <button onClick={() => setVoiceMode(!voiceMode)} className="text-white text-lg">
+            {voiceMode ? "🔊" : "🔇"}
+          </button>
+          <button onClick={() => window.location.reload()} className="text-white text-lg">➕</button>
         </div>
       </div>
+
+      {/* Chat Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {messages.map((msg, i) => (
-          <div key={i} className={`mb-4 ${msg.sender === "user" ? "text-right" : "text-left"}`}>
-            {msg.sender === "yt" && (
-              <div className="bg-purple-700 text-white p-2 rounded-lg inline-block">
-                <a href={msg.url} target="_blank" rel="noopener noreferrer">📺 {msg.text}</a>
-              </div>
-            )}
-            {msg.sender === "img" && <img src={msg.url} alt="Result" className="w-72 rounded-lg" />}
-            {msg.sender === "avatar" && (
-              <video src={msg.url} controls className="w-80 rounded-lg" />
-            )}
-            {msg.sender !== "yt" && msg.sender !== "img" && msg.sender !== "avatar" && (
-              <div className={`inline-block px-4 py-2 rounded-lg ${msg.sender === "user" ? "bg-white text-black" : "bg-gray-800 text-white"}`}>
-                {msg.text}
+          <div key={i} className={`mb-3 ${msg.role === "user" ? "text-right" : "text-left"}`}>
+            {msg.role === "youtube" ? (
+              <iframe
+                width="100%"
+                height="300"
+                src={msg.url.replace("watch?v=", "embed/")}
+                title="YouTube video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="rounded-lg"
+              ></iframe>
+            ) : (
+              <div className={`inline-block px-4 py-2 rounded-lg ${msg.role === "user" ? "bg-white text-black" : msg.role === "error" ? "bg-red-600" : "bg-gray-800 text-white"}`}>
+                {msg.content}
               </div>
             )}
           </div>
         ))}
-        {loading && <div className="text-gray-500">⏳ Droxion is thinking...</div>}
+        {isLoading && <div className="text-sm text-white">Typing...</div>}
         <div ref={bottomRef}></div>
       </div>
-      <div className="p-2 border-t border-gray-800 flex">
-        <input
-          className="flex-1 bg-black text-white p-2 rounded border border-gray-700"
+
+      {/* Input */}
+      <div className="p-3 border-t border-white/10">
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleKeyPress}
           placeholder="Type or say anything..."
+          rows={1}
+          className="w-full bg-black text-white border border-white/30 rounded-md px-3 py-2 focus:outline-none"
         />
-        <button
-          className="ml-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded"
-          onClick={handleSend}
-        >
-          ➤
-        </button>
       </div>
     </div>
   );
 }
-
-export default AIChat;
