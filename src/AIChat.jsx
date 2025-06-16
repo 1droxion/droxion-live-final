@@ -1,28 +1,39 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const chatRef = useRef(null);
+  const [typingDots, setTypingDots] = useState(".");
+  const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (loading) {
+      const interval = setInterval(() => {
+        setTypingDots((dots) => (dots.length >= 3 ? "." : dots + "."));
+      }, 400);
+      return () => clearInterval(interval);
+    }
+  }, [loading]);
+
+  useEffect(scrollToBottom, [messages]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    const userMessage = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    setIsLoading(true);
+    setLoading(true);
 
     try {
       const res = await axios.post("/chat", {
@@ -31,52 +42,16 @@ function AIChat() {
         videoMode,
       });
       const reply = res.data.reply;
-      const replyMessage = { role: "assistant", content: reply };
-
-      setMessages((prev) => [...prev, replyMessage]);
+      setMessages((prev) => [...prev, { role: "ai", content: reply }]);
 
       if (voiceMode) {
-        const speak = await axios.post("/speak", { text: reply });
-        const audio = new Audio(speak.data.url);
+        const audio = new Audio(`/speak?text=${encodeURIComponent(reply)}`);
         audio.play();
       }
-
-      if (input.toLowerCase().includes("image")) {
-        const img = await axios.post("/generate-image", { prompt: input });
-        if (img.data.image_url) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "image",
-              content: img.data.image_url,
-            },
-          ]);
-        }
-      }
-
-      if (
-        input.toLowerCase().includes("youtube") ||
-        input.toLowerCase().includes("video")
-      ) {
-        const yt = await axios.post("/search-youtube", { prompt: input });
-        if (yt.data.url) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "youtube",
-              content: yt.data.url,
-              title: yt.data.title,
-            },
-          ]);
-        }
-      }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "❌ Error: Something went wrong." },
-      ]);
+      setMessages((prev) => [...prev, { role: "ai", content: "❌ Error: Something went wrong." }]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -87,92 +62,83 @@ function AIChat() {
     }
   };
 
-  const toggleVoice = () => setVoiceMode((v) => !v);
-  const toggleVideo = () => setVideoMode((v) => !v);
+  const renderContent = (msg) => {
+    const hasIframe = msg.content.includes("<iframe");
+    const hasImage = msg.content.includes("<img");
+    const className = `max-w-xl px-4 py-2 text-sm whitespace-pre-wrap bg-transparent text-white`;
+
+    return (
+      <div className={className}>
+        <ReactMarkdown
+          children={msg.content}
+          rehypePlugins={[rehypeRaw]}
+          remarkPlugins={[remarkGfm]}
+          components={{
+            img: (props) => (
+              <img
+                {...props}
+                style={{ maxHeight: "180px", borderRadius: "12px", marginTop: "10px" }}
+              />
+            ),
+            iframe: (props) => (
+              <div style={{ borderRadius: "12px", overflow: "hidden", marginTop: "10px" }}>
+                <iframe
+                  {...props}
+                  width="100%"
+                  height="200"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            ),
+          }}
+        />
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col p-2">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-xl font-bold">
-          <span className="text-purple-300">💬 AI Chat</span>{" "}
-          <span className="text-white">(Droxion)</span>
-        </h2>
-        <div className="flex items-center gap-3">
-          <button onClick={toggleVoice} className="text-white text-sm">
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      <div className="p-4 text-xl font-semibold">
+        <span className="text-white">💬 AI Chat </span>
+        <span className="text-purple-400">(Droxion)</span>
+        <div className="float-right space-x-4 text-sm">
+          <span onClick={() => setVoiceMode(!voiceMode)} className="cursor-pointer">
             🔊 {voiceMode ? "On" : "Off"}
-          </button>
-          <button onClick={toggleVideo} className="text-white text-sm">
+          </span>
+          <span onClick={() => setVideoMode(!videoMode)} className="cursor-pointer">
             🎥 {videoMode ? "On" : "Off"}
-          </button>
+          </span>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-3">
-        {messages.map((msg, i) => {
-          if (msg.role === "image") {
-            return (
-              <div key={i} className="flex justify-start">
-                <img
-                  src={msg.content}
-                  alt="generated"
-                  className="w-[250px] h-auto rounded-lg"
-                />
-              </div>
-            );
-          }
-
-          if (msg.role === "youtube") {
-            const videoId = msg.content.split("v=")[1];
-            return (
-              <div key={i} className="flex justify-start">
-                <div className="w-full max-w-[420px] border border-gray-700 rounded-lg overflow-hidden">
-                  <iframe
-                    width="100%"
-                    height="215"
-                    src={`https://www.youtube.com/embed/${videoId}`}
-                    title={msg.title}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={i}
-              className={`px-4 py-2 max-w-[85%] rounded-lg ${
-                msg.role === "user"
-                  ? "bg-white text-black self-end text-right ml-auto"
-                  : "bg-black text-white self-start text-left mr-auto"
-              }`}
-            >
-              {msg.content}
-            </div>
-          );
-        })}
-        {isLoading && (
-          <div className="text-gray-400 px-4 py-2">Typing<span className="animate-pulse">...</span></div>
-        )}
-        <div ref={chatRef} />
+      <div className="flex-1 px-4 pb-4 overflow-y-auto space-y-4">
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            {renderContent(msg)}
+          </div>
+        ))}
+        {loading && <div className="text-gray-500 px-4">Typing{typingDots}</div>}
+        <div ref={messagesEndRef} />
       </div>
 
-      <div className="pt-3">
-        <div className="flex items-center gap-2">
-          <textarea
+      <div className="p-3 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            rows={1}
             placeholder="Type your message..."
-            className="flex-1 p-2 rounded-md bg-[#1a1a1a] border border-gray-700 text-white focus:outline-none resize-none"
+            className="flex-1 px-3 py-2 rounded bg-[#1a1a1a] text-white border border-gray-600 focus:outline-none"
           />
           <button
             onClick={handleSend}
-            className="bg-white text-black px-4 py-2 rounded-md"
+            className="bg-white text-black font-bold px-4 py-2 rounded"
           >
-            ➤
+            ▶
           </button>
         </div>
       </div>
