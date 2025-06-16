@@ -141,10 +141,19 @@ function AIChat() {
           <div
             key={i}
             className={`whitespace-pre-wrap px-2 ${
-              msg.role === "user" ? "text-white text-right self-end" : "text-white text-left self-start"
+              msg.role === "user" ? "text-white text-right self-end" : "text-left self-start"
             }`}
           >
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                img: ({ node, ...props }) => (
+                  <img {...props} alt="Generated" className="max-w-xs rounded-lg my-2" />
+                ),
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
           </div>
         ))}
         {typing && <div className="text-gray-500">Typing{typingDots}</div>}
