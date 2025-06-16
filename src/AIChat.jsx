@@ -30,15 +30,13 @@ function AIChat() {
     setIsLoading(true);
 
     try {
-      const res = await axios.post("/chat", { prompt: input });
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        prompt: input,
+        videoMode: videoMode,
+        voiceMode: audioOn,
+      });
       const reply = res.data.reply;
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-
-      if (audioOn) {
-        const audioRes = await axios.post("/speak", { text: reply });
-        const audio = new Audio(audioRes.data.url);
-        audio.play();
-      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -72,10 +70,9 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">
-          💬 AI Chat <span className="text-purple-400">(Droxion)</span>
+          💬 <span className="text-white">AI Chat (Droxion)</span>
         </div>
         <div className="flex items-center gap-4 text-white text-md">
           <FaClock title="History" className="cursor-pointer" />
@@ -89,19 +86,20 @@ function AIChat() {
           )}
           <FaVideo
             title="Avatar Mode"
-            className={`cursor-pointer ${videoMode ? "text-green-500" : ""}`}
+            className={`cursor-pointer ${videoMode ? "text-gray-400" : ""}`}
             onClick={toggleVideoMode}
           />
         </div>
       </div>
 
-      {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {messages.map((msg, index) => (
           <div
             key={index}
             className={`max-w-[75%] px-4 py-3 rounded-xl shadow 
-              ${msg.role === "user" ? "bg-white text-black ml-auto" : "bg-[#1f1f1f] text-white mr-auto"}`}
+              ${msg.role === "user"
+                ? "bg-white text-black ml-auto"
+                : "bg-[#1f1f1f] text-white mr-auto"}`}
           >
             {msg.content}
           </div>
@@ -110,7 +108,6 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      {/* Input area */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center gap-2">
           <textarea
@@ -123,7 +120,7 @@ function AIChat() {
           />
           <button
             onClick={handleSend}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+            className="bg-white hover:bg-gray-200 text-black font-bold py-2 px-4 rounded"
           >
             ➤
           </button>
