@@ -1,41 +1,42 @@
-import React, { useState, useEffect, useRef } from "react";
+// ✅ Final AIChat.jsx with toggle icons, video mode, real-time understanding
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Mic, ImageIcon, Download, Volume2, VolumeX, Plus, Clock3 } from "lucide-react";
+import remarkGfm from "remark-gfm";
+import { Mic, SendHorizonal, ImageIcon, Download, Trash2, Plus, Clock, Volume2, VolumeX } from "lucide-react";
 
-const API = import.meta.env.VITE_API_URL ||
-  (window.location.hostname === "localhost"
-    ? "http://127.0.0.1:5000"
-    : "https://droxion-backend.onrender.com");
+const API = "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [prompt, setPrompt] = useState("");
   const [chat, setChat] = useState(() => JSON.parse(localStorage.getItem("chat-history")) || []);
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [videoMode, setVideoMode] = useState(true);
   const fileInputRef = useRef();
   const scrollRef = useRef();
+
+  useEffect(() => {
+    localStorage.setItem("chat-history", JSON.stringify(chat));
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat]);
 
   const handleVoiceInput = () => {
     const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.lang = "en-US";
     recognition.start();
-    recognition.onresult = (event) => setPrompt(event.results[0][0].transcript);
+    recognition.onresult = (e) => setPrompt(e.results[0][0].transcript);
   };
 
   const handleSend = async () => {
     if (!prompt.trim() && !image) return;
+    const newMsg = { role: "user", content: prompt };
+    if (image) newMsg.imageUrl = URL.createObjectURL(image);
 
-    const userMessage = { role: "user", content: prompt };
-    if (image) userMessage.imageUrl = URL.createObjectURL(image);
-
-    const updatedChat = [...chat, userMessage];
+    const updatedChat = [...chat, newMsg];
     setChat(updatedChat);
     setPrompt("");
-    setImage(null);
     setLoading(true);
 
     try {
@@ -45,114 +46,126 @@ function AIChat() {
         formData.append("image", image);
         formData.append("prompt", prompt);
         res = await axios.post(`${API}/analyze-image`, formData);
-      } else if (prompt.toLowerCase().includes("google")) {
-        updatedChat.push({ role: "assistant", content: "🌐 [Click here to search](https://www.google.com/search?q=" + encodeURIComponent(prompt) + ")" });
-        setChat(updatedChat);
-        localStorage.setItem("chat-history", JSON.stringify(updatedChat));
-        setLoading(false);
-        return;
+        updatedChat.push({ role: "assistant", content: res.data.reply });
       } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().startsWith("/yt")) {
-        const search = prompt.replace("/yt", "").trim();
+        const search = prompt.replace("/yt", "").replace("youtube", "").trim();
         res = await axios.post(`${API}/search-youtube`, { prompt: search });
         updatedChat.push({
           role: "assistant",
           content: `🎬 [${res.data.title}](${res.data.url})`
         });
-        setChat(updatedChat);
-        setLoading(false);
-        return;
-      } else if (prompt.toLowerCase().includes("create image") || prompt.toLowerCase().startsWith("/img")) {
-        res = await axios.post(`${API}/generate-image`, { prompt });
+      } else if (prompt.toLowerCase().includes("news") || prompt.toLowerCase().startsWith("/news")) {
+        const search = prompt.replace("/news", "").trim();
+        res = await axios.post(`${API}/news`, { prompt: search });
         updatedChat.push({
           role: "assistant",
-          content: `🖼️ ![Generated Image](${res.data.image_url})`
+          content: res.data.headlines.map(h => `📰 ${h}`).join("\n\n")
         });
-        setChat(updatedChat);
-        setLoading(false);
-        return;
+      } else if (prompt.toLowerCase().includes("image") || prompt.startsWith("/img")) {
+        res = await axios.post(`${API}/generate-image`, { prompt });
+        updatedChat.push({ role: "assistant", content: `![Generated](${res.data.image_url})` });
       } else {
         res = await axios.post(`${API}/chat`, { prompt });
+        updatedChat.push({ role: "assistant", content: res.data.reply });
       }
 
-      updatedChat.push({ role: "assistant", content: res.data.reply });
       setChat(updatedChat);
-      localStorage.setItem("chat-history", JSON.stringify(updatedChat));
-    } catch (err) {
-      updatedChat.push({ role: "assistant", content: "❌ Error: Something went wrong." });
-      setChat(updatedChat);
+    } catch {
+      setChat([...updatedChat, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     }
-
+    setImage(null);
     setLoading(false);
   };
 
   const downloadChat = () => {
-    const content = chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
-    const blob = new Blob([content], { type: "text/plain" });
+    const blob = new Blob([
+      chat.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n")
+    ], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "chat.txt";
     a.click();
   };
 
-  const toggleVoiceMode = () => setVoiceMode(!voiceMode);
-  const handleImageSelect = (e) => setImage(e.target.files[0]);
+  const clearChat = () => {
+    setChat([]);
+    localStorage.removeItem("chat-history");
+  };
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat]);
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) setImage(file);
+  };
 
   return (
     <div className="w-full h-screen flex flex-col bg-black text-white">
       <div className="p-3 border-b border-gray-700 flex justify-between items-center">
-        <div className="text-xl font-bold flex gap-2 items-center">
-          <span>💬</span>
-          <span>AI Chat</span>
-          <span className="text-purple-400">(Droxion)</span>
-          <Clock3 className="ml-2" />
-        </div>
+        <div className="text-xl font-bold">💬 AI Chat <span className="text-purple-400">(Droxion)</span></div>
         <div className="flex gap-4 items-center">
-          {voiceMode ? <Volume2 onClick={toggleVoiceMode} className="cursor-pointer" /> : <VolumeX onClick={toggleVoiceMode} className="cursor-pointer" />}
-          <Download onClick={downloadChat} className="cursor-pointer" />
-          <Plus className="cursor-pointer" onClick={() => { setChat([]); localStorage.removeItem("chat-history"); }} />
+          <Clock className="cursor-pointer" title="Chat History" />
+          <Plus onClick={clearChat} className="cursor-pointer" title="New Chat" />
+          <Trash2 onClick={clearChat} className="cursor-pointer" title="Clear All" />
+          {videoMode ? (
+            <Volume2 onClick={() => setVideoMode(false)} className="cursor-pointer" title="Avatar Mode ON" />
+          ) : (
+            <VolumeX onClick={() => setVideoMode(true)} className="cursor-pointer" title="Avatar Mode OFF" />
+          )}
+          <Download onClick={downloadChat} className="cursor-pointer" title="Download Chat" />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
         {chat.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`p-3 rounded-xl max-w-[75%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
-              {msg.imageUrl && <img src={msg.imageUrl} alt="Uploaded" className="rounded-lg max-w-xs mb-2" />}
+            <div className={`p-3 rounded-xl max-w-[80%] whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
+              {msg.imageUrl && <img src={msg.imageUrl} alt="uploaded" className="rounded max-w-[200px] mb-2" />}
               <ReactMarkdown
                 children={msg.content}
-                remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
+                remarkPlugins={[remarkGfm]}
                 components={{
-                  a: ({ node, ...props }) => <a {...props} className="text-blue-400 underline" target="_blank" rel="noopener noreferrer" />,
-                  code: ({ node, inline, className, children, ...props }) => <pre className="bg-gray-900 p-2 rounded text-green-300 overflow-x-auto"><code {...props}>{children}</code></pre>
+                  a: ({ node, ...props }) => (
+                    <div className="mt-2">
+                      {videoMode && props.href?.includes("youtube.com") ? (
+                        <iframe
+                          src={props.href.replace("watch?v=", "embed/")}
+                          title="YouTube"
+                          className="rounded w-full aspect-video"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        ></iframe>
+                      ) : (
+                        <a {...props} className="text-blue-400 underline" target="_blank" rel="noopener noreferrer" />
+                      )}
+                    </div>
+                  ),
+                  code: ({ inline, className, children, ...props }) => (
+                    <pre className="bg-gray-900 p-2 rounded text-green-300 overflow-x-auto">
+                      <code {...props}>{children}</code>
+                    </pre>
+                  )
                 }}
               />
             </div>
           </div>
         ))}
-        {loading && <div className="text-left text-sm text-gray-500 px-4">Typing...</div>}
+        {loading && <div className="text-sm text-gray-400">⏳ Typing...</div>}
         <div ref={scrollRef}></div>
       </div>
 
       <div className="border-t border-gray-700 p-3 flex items-center gap-2">
-        <button onClick={handleVoiceInput}><Mic className="text-white" /></button>
-        <button onClick={() => fileInputRef.current.click()}><ImageIcon className="text-white" /></button>
+        <button onClick={handleVoiceInput}><Mic /></button>
+        <button onClick={() => fileInputRef.current.click()}><ImageIcon /></button>
         <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" hidden />
         <input
           type="text"
-          placeholder='Type a message or "/yt Messi" or "/img lion"'
-          className="flex-1 p-2 rounded-lg bg-zinc-800 text-white outline-none"
+          placeholder="Type or say anything..."
+          className="flex-1 p-2 rounded bg-zinc-800 text-white"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSend()}
         />
-        <button onClick={handleSend}>
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-        </button>
+        <button onClick={handleSend}><SendHorizonal /></button>
       </div>
     </div>
   );
