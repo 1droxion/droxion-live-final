@@ -1,118 +1,121 @@
-// ✅ Droxion AIChat.jsx - Final Fixed Version (Black & White Theme)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { FaTrash, FaDownload, FaClock, FaPlus, FaVolumeUp, FaVolumeMute, FaVideo } from "react-icons/fa";
 
-export default function AIChat() {
+function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [audioOn, setAudioOn] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const bottomRef = useRef(null);
-
-  const speak = (text) => {
-    if (!voiceMode) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.lang = "en-US";
-    speechSynthesis.speak(utterance);
-  };
+  const chatRef = useRef(null);
 
   const scrollToBottom = () => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const sendMessage = async () => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
-    const userInput = input;
-    setMessages((prev) => [...prev, { role: "user", content: userInput }]);
+    const userMessage = { role: "user", content: input };
+    setMessages([...messages, userMessage]);
     setInput("");
     setIsLoading(true);
 
     try {
-      let res = await axios.post("/chat", { prompt: userInput });
-      let reply = res.data.reply;
-
-      // YouTube search
-      if (videoMode) {
-        const yt = await axios.post("/search-youtube", { prompt: userInput });
-        if (yt.data.url) {
-          setMessages((prev) => [...prev, { role: "assistant", content: reply }, { role: "youtube", url: yt.data.url }]);
-          setIsLoading(false);
-          return;
-        }
-      }
-
+      const res = await axios.post("/chat", { prompt: input });
+      const reply = res.data.reply;
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      speak(reply);
+
+      if (audioOn) {
+        const audioRes = await axios.post("/speak", { text: reply });
+        const audio = new Audio(audioRes.data.url);
+        audio.play();
+      }
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "error", content: "Something went wrong." }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
-  const handleKeyPress = (e) => {
+  const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   };
 
-  useEffect(scrollToBottom, [messages]);
+  const toggleAudio = () => setAudioOn(!audioOn);
+  const toggleVideoMode = () => setVideoMode(!videoMode);
+
+  const downloadChat = () => {
+    const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+    const blob = new Blob([text], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "chat.txt";
+    link.click();
+  };
+
+  const clearChat = () => setMessages([]);
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white">
-      {/* Topbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/20">
-        <div className="text-xl font-bold">
-          <span className="text-white">AI </span><span className="text-purple-400">Chat</span>
-          <span className="text-purple-300 ml-1">(Droxion)</span>
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className="text-lg font-bold">
+          <span className="text-white">💬 AI Chat </span>
+          <span className="text-purple-400">(Droxion)</span>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => setVideoMode(!videoMode)} className="text-white text-lg">🎥</button>
-          <button onClick={() => setVoiceMode(!voiceMode)} className="text-white text-lg">
-            {voiceMode ? "🔊" : "🔇"}
-          </button>
-          <button onClick={() => window.location.reload()} className="text-white text-lg">➕</button>
+        <div className="flex space-x-4">
+          <FaClock title="History" className="cursor-pointer" />
+          <FaPlus title="New Chat" className="cursor-pointer" onClick={clearChat} />
+          <FaTrash title="Clear" className="cursor-pointer" onClick={clearChat} />
+          <FaDownload title="Download" className="cursor-pointer" onClick={downloadChat} />
+          {audioOn ? (
+            <FaVolumeUp title="Voice On" className="cursor-pointer" onClick={toggleAudio} />
+          ) : (
+            <FaVolumeMute title="Voice Off" className="cursor-pointer" onClick={toggleAudio} />
+          )}
+          <FaVideo title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={toggleVideoMode} />
         </div>
       </div>
 
-      {/* Chat Body */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div key={i} className={`mb-3 ${msg.role === "user" ? "text-right" : "text-left"}`}>
-            {msg.role === "youtube" ? (
-              <iframe
-                width="100%"
-                height="300"
-                src={msg.url.replace("watch?v=", "embed/")}
-                title="YouTube video"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="rounded-lg"
-              ></iframe>
-            ) : (
-              <div className={`inline-block px-4 py-2 rounded-lg ${msg.role === "user" ? "bg-white text-black" : msg.role === "error" ? "bg-red-600" : "bg-gray-800 text-white"}`}>
-                {msg.content}
-              </div>
-            )}
+          <div
+            key={i}
+            className={`rounded-lg p-3 whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black self-end" : "bg-gray-800 text-white self-start"}`}
+          >
+            {msg.content}
           </div>
         ))}
-        {isLoading && <div className="text-sm text-white">Typing...</div>}
-        <div ref={bottomRef}></div>
+        {isLoading && <div className="text-gray-500">Typing...</div>}
+        <div ref={chatRef} />
       </div>
 
-      {/* Input */}
-      <div className="p-3 border-t border-white/10">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyPress}
-          placeholder="Type or say anything..."
-          rows={1}
-          className="w-full bg-black text-white border border-white/30 rounded-md px-3 py-2 focus:outline-none"
-        />
+      <div className="p-3 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            className="flex-1 p-2 rounded bg-gray-900 text-white border border-gray-600 focus:outline-none"
+            placeholder="Type or say anything..."
+          />
+          <button
+            onClick={handleSend}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+
+export default AIChat;
