@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
 import {
   FaTrash,
   FaDownload,
@@ -30,6 +31,7 @@ function AIChat() {
     setIsLoading(true);
 
     try {
+      // GPT-4 Chat reply
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
         videoMode: videoMode,
@@ -37,6 +39,19 @@ function AIChat() {
       });
       const reply = res.data.reply;
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+
+      // YouTube Preview if question includes "video" or "watch"
+      if (input.toLowerCase().includes("video") || input.toLowerCase().includes("watch")) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
+          prompt: input,
+        });
+
+        if (yt.data?.url) {
+          const videoLink = `▶️ [Watch on YouTube](${yt.data.url})`;
+          setMessages((prev) => [...prev, { role: "assistant", content: videoLink }]);
+        }
+      }
+
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -101,7 +116,7 @@ function AIChat() {
                 ? "bg-white text-black ml-auto"
                 : "bg-[#1f1f1f] text-white mr-auto"}`}
           >
-            {msg.content}
+            <ReactMarkdown>{msg.content}</ReactMarkdown>
           </div>
         ))}
         {isLoading && <div className="text-gray-500">Typing...</div>}
