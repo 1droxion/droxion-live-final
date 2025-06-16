@@ -34,7 +34,7 @@ function AIChat() {
     if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
-    synth.cancel(); // stop previous
+    synth.cancel();
     synth.speak(utterance);
   };
 
@@ -55,7 +55,6 @@ function AIChat() {
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       speak(reply);
 
-      // YouTube smart preview
       const keywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       if (keywords.some((k) => input.toLowerCase().includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
@@ -65,13 +64,12 @@ function AIChat() {
             ...prev,
             {
               role: "assistant",
-              content: `[🎬 Watch on YouTube](${yt.data.url})\n\n<iframe width="100%" height="200" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`
+              content: `\n\n<iframe width=\"100%\" height=\"200\" src=\"https://www.youtube.com/embed/${videoId}\" frameborder=\"0\" allowfullscreen class='rounded-xl border border-gray-700'></iframe>`
             },
           ]);
         }
       }
 
-      // Image smart preview
       if (input.toLowerCase().startsWith("/img")) {
         const prompt = input.replace("/img", "").trim();
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
@@ -80,7 +78,7 @@ function AIChat() {
             ...prev,
             {
               role: "assistant",
-              content: `🖼️\n\n![result](${imgRes.data.image_url})`
+              content: `![result](${imgRes.data.image_url})`
             }
           ]);
         }
@@ -140,11 +138,25 @@ function AIChat() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div key={i} className={`rounded-lg p-3 whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black self-end" : "bg-gray-800 text-white self-start"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+          <div
+            key={i}
+            className={`rounded-xl px-4 py-2 text-sm whitespace-pre-wrap max-w-[85%] ${
+              msg.role === "user" ? "bg-white text-black self-end" : "bg-[#1e1e1e] text-white self-start"
+            }`}
+          >
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                img: ({ node, ...props }) => (
+                  <img {...props} alt="ai-img" className="mt-2 rounded-lg max-w-xs border border-gray-600" />
+                ),
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
           </div>
         ))}
-        {typing && <div className="text-gray-500">Typing{typingDots}</div>}
+        {typing && <div className="text-gray-400">Typing{typingDots}</div>}
         <div ref={chatRef} />
       </div>
 
@@ -155,7 +167,7 @@ function AIChat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
             className="flex-1 p-2 rounded bg-gray-900 text-white border border-gray-600 focus:outline-none"
-            placeholder="Type or say anything..."
+            placeholder="Type your message..."
           />
           <button
             onClick={handleSend}
