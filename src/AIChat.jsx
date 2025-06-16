@@ -140,15 +140,17 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`rounded-xl px-4 py-2 text-sm whitespace-pre-wrap max-w-[85%] ${
-              msg.role === "user" ? "bg-white text-black self-end" : "bg-[#1e1e1e] text-white self-start"
+            className={`rounded-xl px-4 py-2 text-sm whitespace-pre-wrap max-w-[80%] ${
+              msg.role === "user"
+                ? "bg-black text-white self-end text-right border border-gray-600"
+                : "bg-black text-white self-start border border-gray-600"
             }`}
           >
             <ReactMarkdown
               rehypePlugins={[rehypeRaw]}
               components={{
                 img: ({ node, ...props }) => (
-                  <img {...props} alt="ai-img" className="mt-2 rounded-lg max-w-xs border border-gray-600" />
+                  <img {...props} alt="ai-img" className="mt-2 rounded-lg max-w-xs border border-gray-700" />
                 ),
               }}
             >
@@ -160,14 +162,15 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      <div className="p-3 border-t border-gray-700">
+      <div className="p-2 border-t border-gray-700">
         <div className="flex items-center space-x-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            className="flex-1 p-2 rounded bg-gray-900 text-white border border-gray-600 focus:outline-none"
+            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none text-sm"
             placeholder="Type your message..."
+            rows={1}
           />
           <button
             onClick={handleSend}
