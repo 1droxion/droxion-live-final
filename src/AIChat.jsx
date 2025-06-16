@@ -34,7 +34,7 @@ function AIChat() {
     if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
-    synth.cancel(); // stop previous
+    synth.cancel();
     synth.speak(utterance);
   };
 
@@ -55,7 +55,6 @@ function AIChat() {
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       speak(reply);
 
-      // YouTube smart preview
       const keywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       if (keywords.some((k) => input.toLowerCase().includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
@@ -71,7 +70,6 @@ function AIChat() {
         }
       }
 
-      // Image smart preview
       if (input.toLowerCase().startsWith("/img")) {
         const prompt = input.replace("/img", "").trim();
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
@@ -140,7 +138,12 @@ function AIChat() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div key={i} className={`rounded-lg p-3 whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black self-end" : "bg-gray-800 text-white self-start"}`}>
+          <div
+            key={i}
+            className={`whitespace-pre-wrap px-2 ${
+              msg.role === "user" ? "text-white text-right self-end" : "text-white text-left self-start"
+            }`}
+          >
             <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
           </div>
         ))}
