@@ -1,12 +1,3 @@
-// ✅ Final fixed AIChat.jsx with original style preserved
-// - user text on right
-// - AI text on left
-// - black background
-// - no borders on messages
-// - perfect YouTube preview
-// - perfect image preview
-// - small input bar + blinking "Typing..." dots
-
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -23,10 +14,12 @@ function AIChat() {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTypingText((prev) => (prev.length < 10 ? prev + "." : "Typing"));
-    }, 300);
-    return () => clearInterval(timer);
+    const interval = setInterval(() => {
+      setTypingText((prev) =>
+        prev === "Typing..." ? "Typing" : prev + "."
+      );
+    }, 400);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -53,10 +46,10 @@ function AIChat() {
 
       let content = reply;
       if (videoURL) {
-        content += `\n\n<iframe width='100%' height='240' src='${videoURL.replace("watch?v=", "embed/")}' frameborder='0' allowfullscreen></iframe>`;
+        content += `\n\n<iframe width="100%" height="240" src="${videoURL.replace("watch?v=", "embed/")}" frameborder="0" allowfullscreen></iframe>`;
       }
       if (imageURL) {
-        content += `\n\n<img src='${imageURL}' style='max-width:100%; border-radius:12px;' alt='result'/>`;
+        content += `\n\n<img src="${imageURL}" style="max-width:100%; border-radius:12px;" alt="result"/>`;
       }
 
       setMessages((prev) => [...prev, { role: "assistant", content }]);
@@ -67,7 +60,10 @@ function AIChat() {
         audio.play();
       }
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "❌ Error: Something went wrong.",
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +78,7 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col p-4">
-      <div className="text-xl font-bold text-white mb-4">
+      <div className="text-xl font-bold mb-4">
         <span className="text-purple-300">💬 AI Chat </span>
         <span className="text-white">(Droxion)</span>
       </div>
@@ -91,12 +87,12 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`max-w-xl px-3 py-2 rounded-lg whitespace-pre-wrap break-words ${
+            className={`max-w-xl text-sm whitespace-pre-wrap break-words ${
               msg.role === "user"
                 ? "self-end text-right ml-auto"
                 : "self-start text-left mr-auto"
             }`}
-            style={{ backgroundColor: "transparent" }}
+            style={{ background: "none" }}
           >
             <ReactMarkdown
               children={msg.content}
@@ -104,19 +100,19 @@ function AIChat() {
               rehypePlugins={[rehypeRaw]}
               components={{
                 iframe: ({ node, ...props }) => (
-                  <div className="mt-2 rounded-xl overflow-hidden border border-gray-700">
-                    <iframe {...props} className="w-full h-[200px]" />
+                  <div className="mt-2 overflow-hidden rounded-xl">
+                    <iframe {...props} className="w-full h-[200px] rounded-lg" />
                   </div>
                 ),
                 img: ({ node, ...props }) => (
-                  <img {...props} className="mt-3 rounded-xl max-w-xs" />
+                  <img {...props} className="mt-2 rounded-lg max-w-xs" />
                 ),
               }}
             />
           </div>
         ))}
         {isLoading && (
-          <div className="text-gray-400 text-sm animate-pulse ml-2">{typingText}</div>
+          <div className="text-gray-400 text-sm ml-2 animate-pulse">{typingText}</div>
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -127,21 +123,22 @@ function AIChat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKey}
           placeholder="Type your message..."
-          className="flex-1 p-2 rounded bg-gray-900 text-white border border-gray-700 focus:outline-none"
+          className="flex-1 text-sm p-2 rounded bg-gray-900 text-white border border-gray-700 focus:outline-none"
+          rows={1}
         />
         <button
           onClick={handleSend}
-          className="bg-white text-black px-4 py-2 rounded font-semibold"
+          className="bg-white text-black px-3 py-2 rounded font-bold"
         >
           ➤
         </button>
       </div>
 
-      <div className="flex justify-end space-x-2 mt-2">
-        <button onClick={() => setVoiceMode(!voiceMode)} className="text-sm">
+      <div className="flex justify-end space-x-3 text-sm mt-2">
+        <button onClick={() => setVoiceMode(!voiceMode)}>
           🔊 {voiceMode ? "On" : "Off"}
         </button>
-        <button onClick={() => setVideoMode(!videoMode)} className="text-sm">
+        <button onClick={() => setVideoMode(!videoMode)}>
           🎥 {videoMode ? "On" : "Off"}
         </button>
       </div>
