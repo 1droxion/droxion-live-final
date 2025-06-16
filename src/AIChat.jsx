@@ -31,58 +31,57 @@ function AIChat() {
         videoMode: videoMode,
         voiceMode: audioOn,
       });
+
       const reply = res.data.reply;
       const voiceEnabled = res.data.voiceMode;
       const videoEnabled = res.data.videoMode;
 
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
 
+      // 🔊 Voice playback
       if (voiceEnabled) {
         const audioRes = await axios.post("https://droxion-backend.onrender.com/speak", {
           text: reply,
         });
-        const audio = new Audio(audioRes.data.url);
-        audio.play();
+        if (audioRes.data?.url) {
+          const audio = new Audio(audioRes.data.url);
+          audio.play();
+        }
       }
 
+      // 🎥 Avatar video
       if (videoEnabled) {
         const avatar = await axios.post("https://droxion-backend.onrender.com/talk-avatar", {
           prompt: reply,
-        }, {
-          headers: { "Content-Type": "application/json" },
         });
-        if (avatar.data.video_url) {
+        if (avatar.data?.video_url) {
           const videoEmbed = `<video src="${avatar.data.video_url}" controls autoplay muted class="rounded-lg w-full max-w-md" />`;
           setMessages((prev) => [...prev, { role: "assistant", content: videoEmbed }]);
         }
       }
 
+      // 🖼 Image generation
       if (input.toLowerCase().includes("image")) {
         const image = await axios.post("https://droxion-backend.onrender.com/generate-image", {
           prompt: input,
         });
-        if (image.data.image_url) {
+        if (image.data?.image_url) {
           const imageEmbed = `🖼 ![image](${image.data.image_url})`;
           setMessages((prev) => [...prev, { role: "assistant", content: imageEmbed }]);
         }
       }
 
+      // 📺 YouTube preview with clickable title
       if (input.toLowerCase().includes("video") || input.toLowerCase().includes("watch")) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
           prompt: input,
         });
 
-        if (yt.data?.url) {
+        if (yt.data?.url && yt.data?.title) {
           const videoId = yt.data.url.split("v=")[1];
-          const ytEmbed = `
-<iframe width="100%" height="315" 
-  src="https://www.youtube.com/embed/${videoId}" 
-  title="YouTube video" 
-  frameborder="0" 
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-  allowfullscreen></iframe>
-          `;
-          setMessages((prev) => [...prev, { role: "assistant", content: ytEmbed }]);
+          const videoTitle = yt.data.title;
+          const fullEmbed = `🔗 [Watch "${videoTitle}"](${yt.data.url})\n\n<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
+          setMessages((prev) => [...prev, { role: "assistant", content: fullEmbed }]);
         }
       }
 
@@ -119,9 +118,7 @@ function AIChat() {
     <div className="bg-black text-white min-h-screen flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">
-          💬 <span className="text-white">AI Chat (Droxion)</span>
-        </div>
+        <div className="text-lg font-bold">💬 <span className="text-white">AI Chat (Droxion)</span></div>
         <div className="flex items-center gap-4 text-white text-md">
           <FaClock title="History" className="cursor-pointer" />
           <FaPlus title="New Chat" className="cursor-pointer" onClick={clearChat} />
@@ -134,13 +131,13 @@ function AIChat() {
           )}
           <FaVideo
             title="Avatar Mode"
-            className={`cursor-pointer ${videoMode ? "text-gray-400" : ""}`}
+            className={`cursor-pointer ${videoMode ? "text-green-400" : ""}`}
             onClick={toggleVideoMode}
           />
         </div>
       </div>
 
-      {/* Chat messages */}
+      {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {messages.map((msg, index) => (
           <div
@@ -177,7 +174,7 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      {/* Input area */}
+      {/* Input Area */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center gap-2 flex-wrap">
           <textarea
