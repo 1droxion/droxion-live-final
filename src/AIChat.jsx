@@ -1,105 +1,144 @@
-import React, { useEffect, useRef, useState } from "react";
+// AIChat.jsx - Final with voice toggle, avatar mode, smart response
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import { Download, History, Plus, Trash, Volume2 } from "lucide-react";
 
 export default function AIChat() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([
+    { type: "ai", text: "Hello! How can I assist you today?" },
+  ]);
   const [input, setInput] = useState("");
-  const [videoMode, setVideoMode] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const fileInputRef = useRef();
-  const bottomRef = useRef(null);
+  const fileRef = useRef();
+  const chatRef = useRef();
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const scrollToBottom = () => {
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const speak = (text) => {
     if (!videoMode) return;
-    const synth = window.speechSynthesis;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.onstart = () => setIsSpeaking(true);
+    utterance.lang = "en-US";
+    setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
-    synth.speak(utterance);
+    window.speechSynthesis.speak(utterance);
   };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-    const userMessage = { type: "user", text: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const userMsg = { type: "user", text: input };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    setLoading(true);
+
+    const formData = new FormData();
+    const isImage = fileRef.current?.files[0];
+
+    if (isImage) {
+      formData.append("image", fileRef.current.files[0]);
+      formData.append("prompt", input);
+      try {
+        const res = await axios.post("/analyze-image", formData);
+        const aiMsg = { type: "ai", text: res.data.reply };
+        setMessages((prev) => [...prev, aiMsg]);
+        speak(res.data.reply);
+      } catch (e) {
+        setMessages((prev) => [...prev, { type: "error", text: "Something went wrong." }]);
+      }
+      setLoading(false);
+      return;
+    }
 
     try {
-      const res = await axios.post("/chat", { prompt: userMessage.text });
-      const reply = res.data.reply || "Error: No response";
-      const aiMessage = { type: "ai", text: reply };
-      setMessages((prev) => [...prev, aiMessage]);
-      speak(reply);
-    } catch (err) {
+      const classify = await axios.post("/classify", { prompt: input });
+      const intent = classify.data.intent;
+
+      if (intent === "image") {
+        const res = await axios.post("/generate-image", { prompt: input });
+        setMessages((prev) => [...prev, { type: "image", url: res.data.image_url }]);
+      } else if (intent === "youtube") {
+        const res = await axios.post("/search-youtube", { prompt: input });
+        setMessages((prev) => [
+          ...prev,
+          { type: "video", url: res.data.url, title: res.data.title },
+        ]);
+      } else if (intent === "news") {
+        const res = await axios.post("/news", { prompt: input });
+        const text = res.data.headlines.join("\n- ");
+        setMessages((prev) => [...prev, { type: "ai", text }]);
+        speak(text);
+      } else {
+        const res = await axios.post("/chat", { prompt: input });
+        const reply = res.data.reply;
+        setMessages((prev) => [...prev, { type: "ai", text: reply }]);
+        speak(reply);
+      }
+    } catch {
       setMessages((prev) => [...prev, { type: "error", text: "Something went wrong." }]);
     }
+
+    setLoading(false);
   };
 
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
+  useEffect(scrollToBottom, [messages]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-white">
-      <div className="flex items-center justify-between p-4 text-lg font-bold border-b border-white/10">
-        <span className="flex items-center gap-2">
-          <span className="text-purple-300">💬 AI Chat</span>
-          <span className="text-fuchsia-400">(Droxion)</span>
+    <div className="p-4 text-white min-h-screen bg-black">
+      <div className="text-2xl font-bold mb-3">
+        <span className="text-purple-300">💬 AI Chat </span>
+        <span className="text-pink-400">(Droxion)</span>
+        <span
+          className="ml-2 cursor-pointer"
+          title="Toggle Avatar Mode"
+          onClick={() => setVideoMode(!videoMode)}
+        >
+          {videoMode ? "🔊" : "🔈"}
         </span>
-        <div className="flex gap-4">
-          <Volume2
-            className={`cursor-pointer ${videoMode ? "text-white" : "text-white/30"}`}
-            onClick={() => setVideoMode((v) => !v)}
-          />
-          <History className="cursor-pointer" />
-          <Plus className="cursor-pointer" />
-          <Trash className="cursor-pointer" />
-          <Download className="cursor-pointer" />
-        </div>
+        <span className="ml-2 cursor-pointer" onClick={() => fileRef.current?.click()}>
+          ➕
+        </span>
+        <input ref={fileRef} type="file" accept="image/*" hidden />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`my-2 p-3 rounded-lg max-w-xl whitespace-pre-wrap ${
-              msg.type === "user"
-                ? "bg-white text-black ml-auto"
-                : msg.type === "error"
-                ? "bg-red-800 text-white"
-                : "bg-gray-900 text-white"
-            }`}
-          >
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
+      <div className="space-y-2">
+        {messages.map((m, i) => (
+          <div key={i} className={`rounded-xl px-4 py-2 max-w-xl ${m.type === "user" ? "bg-white text-black ml-auto" : m.type === "ai" ? "bg-gray-800" : m.type === "image" ? "" : m.type === "video" ? "bg-blue-900" : "bg-red-900"}`}>
+            {m.type === "image" && (
+              <img src={m.url} alt="result" className="w-full max-w-xs rounded-lg" />
+            )}
+            {m.type === "video" && (
+              <div>
+                <iframe
+                  width="300"
+                  height="180"
+                  src={m.url.replace("watch?v=", "embed/")}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title="YouTube video"
+                  className="rounded-lg"
+                ></iframe>
+                <p className="text-sm text-white mt-1">{m.title}</p>
+              </div>
+            )}
+            {m.type !== "image" && m.type !== "video" && m.text}
           </div>
         ))}
-        <div ref={bottomRef} />
+        {loading && <div className="text-gray-400">Typing...</div>}
+        <div ref={chatRef}></div>
       </div>
 
-      <div className="p-4 border-t border-white/10 flex gap-2">
+      <div className="flex items-center mt-4">
         <input
-          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKey}
           placeholder="Type or say anything..."
-          className="flex-1 bg-black border border-white/20 p-3 rounded-md text-white"
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          className="flex-1 bg-white text-black p-2 rounded-l-lg"
         />
-        <button
-          onClick={sendMessage}
-          className="bg-purple-600 px-4 py-2 rounded-md hover:bg-purple-700"
-        >
-          Send
+        <button onClick={sendMessage} className="bg-purple-600 px-4 py-2 rounded-r-lg">
+          ➤
         </button>
       </div>
     </div>
