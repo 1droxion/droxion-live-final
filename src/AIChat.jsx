@@ -1,166 +1,140 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 
 function AIChat() {
-  const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(false);
-  const chatEndRef = useRef(null);
-
-  const speak = (text) => {
-    if (!audioEnabled) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    speechSynthesis.speak(utterance);
-  };
-
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [avatarMode, setAvatarMode] = useState(false);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [imageUrl, setImageUrl] = useState(null);
+  const fileInputRef = useRef();
+  const bottomRef = useRef();
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    const newMessage = { role: "user", content: input };
-    setMessages((prev) => [...prev, newMessage]);
+    const userMessage = { sender: "user", text: input };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
+    setLoading(true);
 
     try {
-      const formData = new FormData();
-      let fileAttached = false;
-      let imgPrompt = "";
+      const response = await axios.post("/chat", { prompt: input });
+      const reply = response.data.reply;
 
-      if (input.includes("/img")) {
-        imgPrompt = input.replace("/img", "").trim();
-        const res = await axios.post("/generate-image", { prompt: imgPrompt });
-        setMessages((prev) => [...prev, { role: "ai", type: "image", content: res.data.image_url }]);
-      } else if (input.includes("/yt")) {
-        const ytPrompt = input.replace("/yt", "").trim();
-        const res = await axios.post("/search-youtube", { prompt: ytPrompt });
+      const classification = await axios.post("/classify", { prompt: input });
+      const type = classification.data.type;
+
+      if (type === "youtube") {
+        const yt = await axios.post("/search-youtube", { prompt: input });
+        const url = yt.data.url;
+        const title = yt.data.title;
         setMessages((prev) => [
           ...prev,
-          { role: "ai", type: "video", content: res.data.url, title: res.data.title },
+          { sender: "ai", text: reply },
+          { sender: "yt", text: title, url }
         ]);
-      } else if (input.includes("/news")) {
-        const res = await axios.post("/news", { prompt: input });
-        setMessages((prev) => [
-          ...prev,
-          { role: "ai", type: "text", content: res.data.headlines.join("\n") },
-        ]);
-      } else if (input.includes("/google")) {
-        const query = input.replace("/google", "").trim();
-        const link = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        setMessages((prev) => [
-          ...prev,
-          { role: "ai", type: "link", content: link, title: query },
-        ]);
-      } else {
-        const res = await axios.post("/chat", { prompt: input });
-        const reply = res.data.reply;
-        setMessages((prev) => [...prev, { role: "ai", type: "text", content: reply }]);
-        speak(reply);
+        setVideoUrl(url);
+        if (voiceMode && avatarMode) handleVoice(reply);
+        return;
       }
-    } catch (err) {
-      setMessages((prev) => [...prev, { role: "ai", type: "error", content: "Something went wrong." }]);
+
+      if (type === "image") {
+        const img = await axios.post("/generate-image", { prompt: input });
+        const url = img.data.image_url;
+        setMessages((prev) => [
+          ...prev,
+          { sender: "ai", text: reply },
+          { sender: "img", url }
+        ]);
+        setImageUrl(url);
+        if (voiceMode && avatarMode) handleVoice(reply);
+        return;
+      }
+
+      setMessages((prev) => [...prev, { sender: "ai", text: reply }]);
+      if (voiceMode && avatarMode) handleVoice(reply);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { sender: "ai", text: "❌ Error: Something went wrong." }
+      ]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  const handleVoice = async (text) => {
+    try {
+      const res = await axios.post("/talk-avatar", 
+        Object.assign(new FormData(), {
+          image: fileInputRef.current.files[0],
+          prompt: text
+        }),
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      setMessages((prev) => [...prev, { sender: "avatar", url: res.data.video_url }]);
+    } catch (e) {
+      console.error("Voice error", e);
     }
+  };
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") handleSend();
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex items-center justify-between px-4 py-3 bg-black text-white text-lg font-bold shadow">
-        <div>
-          <span role="img" aria-label="chat">💬</span> AI <span className="text-purple-400">(Droxion)</span>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => setVideoMode(!videoMode)}>{videoMode ? "📽️" : "🕒"}</button>
-          <button onClick={() => setAudioEnabled(!audioEnabled)}>{audioEnabled ? "🔊" : "🔇"}</button>
-          <button onClick={() => window.location.reload()}>➕</button>
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <div className="px-4 py-2 border-b border-gray-800 text-lg font-bold flex items-center">
+        <span className="text-2xl mr-2">💬</span> AI Chat <span className="text-purple-400 ml-2">(Droxion)</span>
+        <div className="ml-auto flex gap-2">
+          <button onClick={() => setVoiceMode(!voiceMode)}>{voiceMode ? "🔊" : "🔇"}</button>
+          <button onClick={() => setAvatarMode(!avatarMode)}>{avatarMode ? "🎭" : "👤"}</button>
+          <input type="file" accept="image/*" hidden ref={fileInputRef} />
+          <button onClick={() => fileInputRef.current.click()}>➕</button>
         </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#0e0e10]">
+      <div className="flex-1 overflow-y-auto p-4">
         {messages.map((msg, i) => (
-          <div key={i} className={
-            msg.role === "user" ? "text-right" : "text-left"
-          }>
-            {msg.type === "text" && (
-              <div className={
-                msg.role === "user"
-                  ? "inline-block bg-white text-black px-4 py-2 rounded-xl"
-                  : "inline-block bg-gray-800 text-white px-4 py-2 rounded-xl"
-              }>{msg.content}</div>
+          <div key={i} className={`mb-4 ${msg.sender === "user" ? "text-right" : "text-left"}`}>
+            {msg.sender === "yt" && (
+              <div className="bg-purple-700 text-white p-2 rounded-lg inline-block">
+                <a href={msg.url} target="_blank" rel="noopener noreferrer">📺 {msg.text}</a>
+              </div>
             )}
-            {msg.type === "image" && (
-              <img
-                src={msg.content}
-                alt="Generated"
-                className="max-w-xs rounded-xl border border-gray-600"
-              />
+            {msg.sender === "img" && <img src={msg.url} alt="Result" className="w-72 rounded-lg" />}
+            {msg.sender === "avatar" && (
+              <video src={msg.url} controls className="w-80 rounded-lg" />
             )}
-            {msg.type === "video" && (
-              videoMode ? (
-                <iframe
-                  className="w-full max-w-md rounded-xl"
-                  height="250"
-                  src={msg.content.replace("watch?v=", "embed/")}
-                  title="YouTube Video"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              ) : (
-                <a
-                  href={msg.content}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block px-4 py-2 rounded-xl bg-blue-900 text-white underline"
-                >📺 {msg.title}</a>
-              )
-            )}
-            {msg.type === "link" && (
-              <a
-                href={msg.content}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block px-4 py-2 rounded-xl bg-green-700 text-white underline"
-              >🔗 Google: {msg.title}</a>
-            )}
-            {msg.type === "error" && (
-              <div className="inline-block bg-red-700 text-white px-4 py-2 rounded-xl">
-                ❌ {msg.content}
+            {msg.sender !== "yt" && msg.sender !== "img" && msg.sender !== "avatar" && (
+              <div className={`inline-block px-4 py-2 rounded-lg ${msg.sender === "user" ? "bg-white text-black" : "bg-gray-800 text-white"}`}>
+                {msg.text}
               </div>
             )}
           </div>
         ))}
-        <div ref={chatEndRef}></div>
+        {loading && <div className="text-gray-500">⏳ Droxion is thinking...</div>}
+        <div ref={bottomRef}></div>
       </div>
-
-      <div className="p-4 bg-black flex gap-2">
+      <div className="p-2 border-t border-gray-800 flex">
         <input
+          className="flex-1 bg-black text-white p-2 rounded border border-gray-700"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyPress}
+          onKeyDown={handleKeyDown}
           placeholder="Type or say anything..."
-          className="flex-1 px-4 py-2 rounded-full bg-white text-black"
         />
         <button
+          className="ml-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded"
           onClick={handleSend}
-          className="bg-purple-600 text-white px-4 py-2 rounded-full"
-        >Send</button>
+        >
+          ➤
+        </button>
       </div>
     </div>
   );
