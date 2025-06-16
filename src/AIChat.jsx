@@ -55,8 +55,11 @@ function AIChat() {
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       speak(reply);
 
-      const keywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-      if (keywords.some((k) => input.toLowerCase().includes(k))) {
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+
+      if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
         if (yt.data?.url && yt.data?.title) {
           const videoId = yt.data.url.split("v=")[1];
@@ -64,15 +67,27 @@ function AIChat() {
             ...prev,
             {
               role: "assistant",
-              content: `[🎬 Watch on YouTube](${yt.data.url})\n\n<iframe width="100%" height="200" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`
+              content: `
+🎬 [Watch on YouTube](${yt.data.url})
+
+<div style="margin-top: 10px; border-radius: 8px; overflow: hidden; max-width: 500px;">
+  <iframe 
+    width="100%" 
+    height="180" 
+    src="https://www.youtube.com/embed/${videoId}" 
+    frameborder="0" 
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+    allowfullscreen>
+  </iframe>
+</div>
+              `
             },
           ]);
         }
       }
 
-      if (input.toLowerCase().startsWith("/img")) {
-        const prompt = input.replace("/img", "").trim();
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
+      if (imgKeywords.some((k) => lower.includes(k))) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
         if (imgRes.data?.image_url) {
           setMessages((prev) => [
             ...prev,
@@ -83,6 +98,7 @@ function AIChat() {
           ]);
         }
       }
+
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
