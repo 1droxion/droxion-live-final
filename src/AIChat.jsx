@@ -1,75 +1,63 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 
-function AIChat() {
+export default function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [typingText, setTypingText] = useState("Typing");
-  const messagesEndRef = useRef(null);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTypingText((prev) =>
-        prev === "Typing..." ? "Typing" : prev + "."
-      );
-    }, 400);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const [isTyping, setIsTyping] = useState(false);
+  const bottomRef = useRef(null);
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    const newMessages = [...messages, { role: "user", content: input }];
-    setMessages(newMessages);
+    const userMessage = { role: "user", content: input.trim() };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
+    setIsTyping(true);
 
     try {
-      const res = await axios.post("/chat", {
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
         voiceMode,
         videoMode,
       });
 
       const reply = res.data.reply;
-      const videoURL = res.data.url;
-      const imageURL = res.data.image;
+      const voice = res.data.voiceUrl;
+      const video = res.data.videoUrl;
+      const image = res.data.imageUrl;
+      const youtube = res.data.youtube;
 
-      let content = reply;
-      if (videoURL) {
-        content += `\n\n<iframe width="100%" height="240" src="${videoURL.replace("watch?v=", "embed/")}" frameborder="0" allowfullscreen></iframe>`;
-      }
-      if (imageURL) {
-        content += `\n\n<img src="${imageURL}" style="max-width:100%; border-radius:12px;" alt="result"/>`;
-      }
-
-      setMessages((prev) => [...prev, { role: "assistant", content }]);
-
-      if (voiceMode) {
-        const audioRes = await axios.post("/speak", { text: reply });
-        const audio = new Audio(audioRes.data.url);
-        audio.play();
-      }
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: reply,
+          voice,
+          video,
+          image,
+          youtube,
+        },
+      ]);
     } catch (err) {
-      setMessages((prev) => [...prev, {
-        role: "assistant",
-        content: "❌ Error: Something went wrong.",
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "❌ Error: Something went wrong." },
+      ]);
     } finally {
-      setIsLoading(false);
+      setIsTyping(false);
     }
   };
 
-  const handleKey = (e) => {
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -77,73 +65,79 @@ function AIChat() {
   };
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col p-4">
-      <div className="text-xl font-bold mb-4">
-        <span className="text-purple-300">💬 AI Chat </span>
-        <span className="text-white">(Droxion)</span>
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <div className="flex items-center p-4 text-xl font-bold">
+        <span className="text-purple-300 text-2xl mr-2">💬</span> AI Chat <span className="text-white ml-1">(Droxion)</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4">
+      <div className="flex-grow px-4 overflow-y-auto">
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`max-w-xl text-sm whitespace-pre-wrap break-words ${
-              msg.role === "user"
-                ? "self-end text-right ml-auto"
-                : "self-start text-left mr-auto"
-            }`}
-            style={{ background: "none" }}
+            className={`my-2 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <ReactMarkdown
-              children={msg.content}
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              components={{
-                iframe: ({ node, ...props }) => (
-                  <div className="mt-2 overflow-hidden rounded-xl">
-                    <iframe {...props} className="w-full h-[200px] rounded-lg" />
-                  </div>
-                ),
-                img: ({ node, ...props }) => (
-                  <img {...props} className="mt-2 rounded-lg max-w-xs" />
-                ),
-              }}
-            />
+            <div className={`max-w-[90%] px-4 py-2 text-sm whitespace-pre-wrap`}>
+              <ReactMarkdown
+                children={msg.content}
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                className="prose prose-invert"
+              />
+              {msg.image && (
+                <img
+                  src={msg.image}
+                  alt="Generated"
+                  className="rounded-lg mt-2 max-w-xs"
+                />
+              )}
+              {msg.youtube && msg.youtube.url && (
+                <div className="mt-4 border border-gray-700 rounded-md overflow-hidden">
+                  <div className="px-3 py-2 text-sm font-medium">🎬 Watch on YouTube</div>
+                  <iframe
+                    className="w-full aspect-video"
+                    src={`https://www.youtube.com/embed/${msg.youtube.url.split("v=")[1]}`}
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
+                </div>
+              )}
+            </div>
           </div>
         ))}
-        {isLoading && (
-          <div className="text-gray-400 text-sm ml-2 animate-pulse">{typingText}</div>
+
+        {isTyping && (
+          <div className="text-sm text-gray-400 px-4 py-2">Typing<span className="animate-pulse">...</span></div>
         )}
-        <div ref={messagesEndRef} />
+
+        <div ref={bottomRef} />
       </div>
 
-      <div className="mt-4 flex items-center space-x-2">
+      <div className="flex items-center p-2 border-t border-gray-800">
         <textarea
+          rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKey}
+          onKeyDown={handleKeyDown}
           placeholder="Type your message..."
-          className="flex-1 text-sm p-2 rounded bg-gray-900 text-white border border-gray-700 focus:outline-none"
-          rows={1}
+          className="flex-grow rounded bg-[#0f172a] p-3 resize-none outline-none"
         />
         <button
           onClick={handleSend}
-          className="bg-white text-black px-3 py-2 rounded font-bold"
+          className="ml-2 bg-white text-black font-semibold px-4 py-2 rounded"
         >
-          ➤
+          Send
         </button>
       </div>
 
-      <div className="flex justify-end space-x-3 text-sm mt-2">
-        <button onClick={() => setVoiceMode(!voiceMode)}>
+      <div className="absolute bottom-2 right-3 text-xs space-x-3">
+        <span className="cursor-pointer" onClick={() => setVoiceMode(!voiceMode)}>
           🔊 {voiceMode ? "On" : "Off"}
-        </button>
-        <button onClick={() => setVideoMode(!videoMode)}>
-          🎥 {videoMode ? "On" : "Off"}
-        </button>
+        </span>
+        <span className="cursor-pointer" onClick={() => setVideoMode(!videoMode)}>
+          🧑‍🎤 {videoMode ? "On" : "Off"}
+        </span>
       </div>
     </div>
   );
 }
-
-export default AIChat;
