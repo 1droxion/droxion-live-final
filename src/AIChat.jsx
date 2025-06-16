@@ -3,7 +3,7 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import {
   FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone
 } from "react-icons/fa";
 
 function AIChat() {
@@ -14,75 +14,100 @@ function AIChat() {
   const [videoMode, setVideoMode] = useState(false);
   const [lang, setLang] = useState("en");
   const chatRef = useRef(null);
+  const typingInterval = useRef(null);
+  const [typingText, setTypingText] = useState("Typing");
+
+  useEffect(() => {
+    if (isLoading) {
+      let dots = 0;
+      typingInterval.current = setInterval(() => {
+        setTypingText("Typing" + ".".repeat(dots % 4));
+        dots++;
+      }, 500);
+    } else {
+      clearInterval(typingInterval.current);
+    }
+    return () => clearInterval(typingInterval.current);
+  }, [isLoading]);
 
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleMicInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return alert("Speech recognition not supported.");
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      const speech = event.results[0][0].transcript;
+      setInput(speech);
+    };
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
-
     const userMessage = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
     try {
-      const command = input.trim().toLowerCase();
+      const lower = input.toLowerCase();
 
-      // 🌐 Language switch
-      if (command.startsWith("/lang")) {
-        const code = command.split(" ")[1];
-        setLang(code || "en");
+      if (lower.startsWith("/lang")) {
+        const code = lower.split(" ")[1] || "en";
+        setLang(code);
         setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `🌐 Language set to: ${code || "en"}`
+          role: "assistant", content: `🌐 Language set to: ${code}`
         }]);
         setIsLoading(false);
         return;
       }
 
-      // 🔗 YouTube
-      if (command.startsWith("/yt")) {
-        const query = input.replace("/yt", "").trim();
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: query });
-        if (yt.data?.url) {
-          const videoId = yt.data.url.split("v=")[1];
-          const markdown = `🎬 **${yt.data.title}**  
-🔗 [Watch on YouTube](${yt.data.url})  
-<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
-          setMessages((prev) => [...prev, { role: "assistant", content: markdown }]);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      // 🖼 Image Generator
-      if (command.startsWith("/img")) {
+      if (lower.startsWith("/img")) {
         const prompt = input.replace("/img", "").trim();
         const image = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
         if (image.data?.image_url) {
-          const markdown = `🖼 ![image](${image.data.image_url})`;
+          const markdown = `🖼\n\n![image](${image.data.image_url})`;
           setMessages((prev) => [...prev, { role: "assistant", content: markdown }]);
         }
         setIsLoading(false);
         return;
       }
 
-      // 🔊 Voice only
-      if (command.startsWith("/voice")) {
+      if (lower.startsWith("/voice")) {
         const text = input.replace("/voice", "").trim();
         const audioRes = await axios.post("https://droxion-backend.onrender.com/speak", { text });
         if (audioRes.data?.url) {
           const audio = new Audio(audioRes.data.url);
           audio.play();
-          setMessages((prev) => [...prev, { role: "assistant", content: `🔊 Speaking: "${text}"` }]);
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `🔊 Speaking: "${text}"`
+          }]);
         }
         setIsLoading(false);
         return;
       }
 
-      // 🧠 GPT Chat
+      // YouTube smart trigger
+      if (lower.includes("video") || lower.includes("watch") || lower.includes("song") || lower.includes("trailer")) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
+        if (yt.data?.url && yt.data?.title) {
+          const videoId = yt.data.url.split("v=")[1];
+          const markdown = `🎬 **${yt.data.title}**  
+🔗 [Watch on YouTube](${yt.data.url})  
+<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
+          setMessages((prev) => [...prev, { role: "assistant", content: markdown }]);
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
         videoMode: videoMode,
@@ -91,30 +116,13 @@ function AIChat() {
       });
 
       const reply = res.data.reply;
-      const voiceEnabled = res.data.voiceMode;
-      const videoEnabled = res.data.videoMode;
-
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
 
-      // 🔊 Voice reply
-      if (voiceEnabled) {
-        const audioRes = await axios.post("https://droxion-backend.onrender.com/speak", {
-          text: reply,
-        });
+      if (audioOn) {
+        const audioRes = await axios.post("https://droxion-backend.onrender.com/speak", { text: reply });
         if (audioRes.data?.url) {
           const audio = new Audio(audioRes.data.url);
           audio.play();
-        }
-      }
-
-      // 🎥 Avatar reply
-      if (videoEnabled) {
-        const avatar = await axios.post("https://droxion-backend.onrender.com/talk-avatar", {
-          prompt: reply,
-        });
-        if (avatar.data?.video_url) {
-          const markdown = `<video src="${avatar.data.video_url}" controls autoplay muted class="rounded-lg w-full max-w-md" />`;
-          setMessages((prev) => [...prev, { role: "assistant", content: markdown }]);
         }
       }
 
@@ -146,39 +154,26 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">
-          💬 <span className="text-white">AI Chat (Droxion)</span>
-        </div>
+        <div className="text-lg font-bold">💬 <span className="text-white">AI Chat (Droxion)</span></div>
         <div className="flex items-center gap-4 text-white text-md">
-          <FaClock title="History" className="cursor-pointer" />
-          <FaPlus title="New Chat" className="cursor-pointer" onClick={clearChat} />
-          <FaTrash title="Clear Chat" className="cursor-pointer" onClick={clearChat} />
-          <FaDownload title="Download Chat" className="cursor-pointer" onClick={downloadChat} />
+          <FaClock title="History" />
+          <FaPlus title="New" onClick={clearChat} />
+          <FaTrash title="Clear" onClick={clearChat} />
+          <FaDownload title="Download" onClick={downloadChat} />
+          <FaMicrophone title="Mic Input" onClick={handleMicInput} />
           {audioOn ? (
-            <FaVolumeUp title="Voice On" className="cursor-pointer" onClick={toggleAudio} />
+            <FaVolumeUp title="Voice On" onClick={toggleAudio} />
           ) : (
-            <FaVolumeMute title="Voice Off" className="cursor-pointer" onClick={toggleAudio} />
+            <FaVolumeMute title="Voice Off" onClick={toggleAudio} />
           )}
-          <FaVideo
-            title="Avatar Mode"
-            className={`cursor-pointer ${videoMode ? "text-green-400" : ""}`}
-            onClick={toggleVideoMode}
-          />
+          <FaVideo title="Video" onClick={toggleVideoMode} />
         </div>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`max-w-[90%] px-4 py-3 rounded-xl shadow 
-              ${msg.role === "user"
-                ? "bg-white text-black ml-auto"
-                : "bg-[#1f1f1f] text-white mr-auto"}`}
-          >
+        {messages.map((msg, i) => (
+          <div key={i} className={`max-w-[90%] px-4 py-3 rounded-xl shadow ${msg.role === "user" ? "bg-white text-black ml-auto" : "bg-[#1f1f1f] text-white mr-auto"}`}>
             <ReactMarkdown
               components={{
                 iframe: ({ node, ...props }) => (
@@ -186,13 +181,8 @@ function AIChat() {
                     <iframe {...props} className="w-full max-w-md rounded-lg" />
                   </div>
                 ),
-                video: ({ node, ...props }) => (
-                  <div className="my-2">
-                    <video {...props} controls className="w-full max-w-md rounded-lg" />
-                  </div>
-                ),
                 img: ({ node, ...props }) => (
-                  <img {...props} className="rounded-lg my-2 max-w-full h-auto" />
+                  <img {...props} className="rounded-lg my-2 w-[180px] h-auto" />
                 ),
               }}
             >
@@ -201,19 +191,18 @@ function AIChat() {
           </div>
         ))}
         {isLoading && (
-          <div className="text-gray-500 italic animate-pulse px-4 py-2">Typing...</div>
+          <div className="text-gray-500 italic px-4 py-2">{typingText}</div>
         )}
         <div ref={chatRef} />
       </div>
 
-      {/* Input */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center gap-2 flex-wrap">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Type or say anything... (e.g., /yt Messi or /lang hi)"
+            placeholder="Type or say anything..."
             className="flex-1 min-w-[250px] bg-[#1a1a1a] text-white p-3 rounded-lg border border-gray-600 focus:outline-none resize-none"
             rows={1}
           />
