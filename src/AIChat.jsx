@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { FaTrash, FaDownload, FaClock, FaPlus, FaVolumeUp, FaVolumeMute, FaVideo } from "react-icons/fa";
+import {
+  FaTrash,
+  FaDownload,
+  FaClock,
+  FaPlus,
+  FaVolumeUp,
+  FaVolumeMute,
+  FaVideo,
+} from "react-icons/fa";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
@@ -10,18 +18,14 @@ function AIChat() {
   const [videoMode, setVideoMode] = useState(false);
   const chatRef = useRef(null);
 
-  const scrollToBottom = () => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMessage = { role: "user", content: input };
-    setMessages([...messages, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
@@ -36,7 +40,10 @@ function AIChat() {
         audio.play();
       }
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "❌ Error: Something went wrong." },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -51,44 +58,50 @@ function AIChat() {
 
   const toggleAudio = () => setAudioOn(!audioOn);
   const toggleVideoMode = () => setVideoMode(!videoMode);
-
   const downloadChat = () => {
-    const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+    const text = messages
+      .map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`)
+      .join("\n\n");
     const blob = new Blob([text], { type: "text/plain" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "chat.txt";
     link.click();
   };
-
   const clearChat = () => setMessages([]);
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
+      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">
-          <span className="text-white">💬 AI Chat </span>
-          <span className="text-purple-400">(Droxion)</span>
+          💬 AI Chat <span className="text-purple-400">(Droxion)</span>
         </div>
-        <div className="flex space-x-4">
+        <div className="flex items-center gap-4 text-white text-md">
           <FaClock title="History" className="cursor-pointer" />
           <FaPlus title="New Chat" className="cursor-pointer" onClick={clearChat} />
-          <FaTrash title="Clear" className="cursor-pointer" onClick={clearChat} />
-          <FaDownload title="Download" className="cursor-pointer" onClick={downloadChat} />
+          <FaTrash title="Clear Chat" className="cursor-pointer" onClick={clearChat} />
+          <FaDownload title="Download Chat" className="cursor-pointer" onClick={downloadChat} />
           {audioOn ? (
             <FaVolumeUp title="Voice On" className="cursor-pointer" onClick={toggleAudio} />
           ) : (
             <FaVolumeMute title="Voice Off" className="cursor-pointer" onClick={toggleAudio} />
           )}
-          <FaVideo title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={toggleVideoMode} />
+          <FaVideo
+            title="Avatar Mode"
+            className={`cursor-pointer ${videoMode ? "text-green-500" : ""}`}
+            onClick={toggleVideoMode}
+          />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
+      {/* Chat messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+        {messages.map((msg, index) => (
           <div
-            key={i}
-            className={`rounded-lg p-3 whitespace-pre-wrap ${msg.role === "user" ? "bg-white text-black self-end" : "bg-gray-800 text-white self-start"}`}
+            key={index}
+            className={`max-w-[75%] px-4 py-3 rounded-xl shadow 
+              ${msg.role === "user" ? "bg-white text-black ml-auto" : "bg-[#1f1f1f] text-white mr-auto"}`}
           >
             {msg.content}
           </div>
@@ -97,20 +110,22 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
+      {/* Input area */}
       <div className="p-3 border-t border-gray-700">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            className="flex-1 p-2 rounded bg-gray-900 text-white border border-gray-600 focus:outline-none"
             placeholder="Type or say anything..."
+            className="flex-1 bg-[#1a1a1a] text-white p-3 rounded-lg border border-gray-600 focus:outline-none resize-none"
+            rows={1}
           />
           <button
             onClick={handleSend}
             className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
           >
-            Send
+            ➤
           </button>
         </div>
       </div>
