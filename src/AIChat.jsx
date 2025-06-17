@@ -170,11 +170,12 @@ function AIChat() {
           💬 <span className="text-white">AI Chat </span>
           <span className="text-white">(Droxion)</span>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 items-center">
           <select
             value={selectedVoice}
             onChange={(e) => setSelectedVoice(e.target.value)}
-            className="text-black rounded px-2"
+            className="text-black text-xs px-2 py-1 rounded"
+            title="Select Voice"
           >
             <option value="">Default</option>
             {availableVoices.map((voice, idx) => (
