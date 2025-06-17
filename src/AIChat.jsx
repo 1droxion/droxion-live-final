@@ -46,18 +46,27 @@ function AIChat() {
     setTyping(true);
 
     try {
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
         voiceMode,
         videoMode,
       });
-      const reply = res.data.reply;
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      speak(reply);
 
-      const lower = input.toLowerCase();
-      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+      const reply = res.data.reply;
+      let showReply = true;
+
+      if (imgKeywords.some((k) => lower.includes(k))) {
+        showReply = false;
+      }
+
+      if (showReply) {
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+        speak(reply);
+      }
 
       if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
@@ -70,10 +79,10 @@ function AIChat() {
               content: `
 🎬 [Watch on YouTube](${yt.data.url})
 
-<div style="margin-top: 10px; border-radius: 8px; overflow: hidden; max-width: 500px;">
+<div style="margin-top: 10px; border-radius: 10px; overflow: hidden; max-width: 480px; box-shadow: 0 0 10px rgba(0,0,0,0.4);">
   <iframe 
     width="100%" 
-    height="180" 
+    height="200" 
     src="https://www.youtube.com/embed/${videoId}" 
     frameborder="0" 
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
