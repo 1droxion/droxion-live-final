@@ -1,57 +1,29 @@
-// ✅ Final AIChat.jsx file with:
-// - Memory (chat history)
-// - Real voice selector
-// - Bookmark replies
-// - Tap-to-speak per AI reply (mobile-safe)
-// - Image + YouTube preview
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
-  FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
-  FaStar, FaPlay
+  FaTrash, FaDownload, FaClock, FaPlus, FaVolumeUp,
+  FaVolumeMute, FaVideo, FaMicrophone, FaBookmark, FaPlay
 } from "react-icons/fa";
 
 function AIChat() {
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem("chat_history");
-    return saved ? JSON.parse(saved) : [];
+  const [sessions, setSessions] = useState(() => {
+    const saved = localStorage.getItem("droxion_sessions");
+    return saved ? JSON.parse(saved) : { default: [] };
   });
+  const [currentSession, setCurrentSession] = useState("default");
+  const [messages, setMessages] = useState(sessions["default"]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState("");
-  const [bookmarks, setBookmarks] = useState(() => {
-    const saved = localStorage.getItem("bookmarked_messages");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [availableVoices, setAvailableVoices] = useState([]);
+  const [typingDots, setTypingDots] = useState(".");
+  const [bookmarks, setBookmarks] = useState([]);
+  const [voices, setVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(null);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
-  const [typingDots, setTypingDots] = useState(".");
-
-  useEffect(() => {
-    const loadVoices = () => {
-      const voices = synth.getVoices();
-      setAvailableVoices(voices);
-    };
-    if (synth.onvoiceschanged !== undefined) {
-      synth.onvoiceschanged = loadVoices;
-    }
-    loadVoices();
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("chat_history", JSON.stringify(messages));
-  }, [messages]);
-
-  useEffect(() => {
-    localStorage.setItem("bookmarked_messages", JSON.stringify(bookmarks));
-  }, [bookmarks]);
 
   useEffect(() => {
     if (typing) {
@@ -66,73 +38,54 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const v = synth.getVoices();
+    setVoices(v);
+    setSelectedVoice(v.find((voice) => voice.name.includes("Female")) || v[0]);
+  }, []);
+
   const speak = (text) => {
-    if (!text) return;
+    if (!voiceMode || !text || !selectedVoice) return;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    if (selectedVoice) {
-      utterance.voice = synth.getVoices().find((v) => v.name === selectedVoice);
-    }
+    utterance.voice = selectedVoice;
+    utterance.lang = selectedVoice.lang;
     synth.cancel();
     synth.speak(utterance);
+  };
+
+  const updateSessionMessages = (msgs) => {
+    const updated = { ...sessions, [currentSession]: msgs };
+    setSessions(updated);
+    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMsg = { role: "user", content: input };
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    updateSessionMessages(newMessages);
     setInput("");
     setTyping(true);
 
     try {
+      const context = messages[0]?.content || input;
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
+        context,
         voiceMode,
         videoMode,
-        history: updatedMessages,
       });
-
       const reply = res.data.reply;
-      const aiMsg = { role: "assistant", content: reply };
-      setMessages((prev) => [...prev, aiMsg]);
-
-      const lower = input.toLowerCase();
-      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
-      if (ytKeywords.some((k) => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
-        if (yt.data?.url && yt.data?.title) {
-          const videoId = yt.data.url.split("v=")[1];
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: `
-🎬 [Watch on YouTube](${yt.data.url})
-<div style="margin-top: 10px; border-radius: 10px; overflow: hidden; max-width: 480px; box-shadow: 0 0 10px rgba(0,0,0,0.4);">
-  <iframe width="100%" height="200" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-</div>`
-            }
-          ]);
-        }
-      }
-
-      if (imgKeywords.some((k) => lower.includes(k))) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
-        if (imgRes.data?.image_url) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: `🖼️\n\n![result](${imgRes.data.image_url})`
-            }
-          ]);
-        }
-      }
+      const botMsg = { role: "assistant", content: reply };
+      const updatedMessages = [...newMessages, botMsg];
+      setMessages(updatedMessages);
+      updateSessionMessages(updatedMessages);
     } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      const err = { role: "assistant", content: "❌ Error: Something went wrong." };
+      const updatedMessages = [...messages, err];
+      setMessages(updatedMessages);
+      updateSessionMessages(updatedMessages);
     } finally {
       setTyping(false);
     }
@@ -141,7 +94,6 @@ function AIChat() {
   const handleMic = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Mic not supported");
-
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.start();
@@ -155,73 +107,84 @@ function AIChat() {
     }
   };
 
-  const toggleBookmark = (msg) => {
-    const already = bookmarks.find((b) => b.content === msg.content);
-    const updated = already ? bookmarks.filter((b) => b.content !== msg.content) : [...bookmarks, msg];
-    setBookmarks(updated);
+  const createSession = () => {
+    const name = prompt("Session name?");
+    if (!name || sessions[name]) return;
+    const updated = { ...sessions, [name]: [] };
+    setSessions(updated);
+    setCurrentSession(name);
+    setMessages([]);
+    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
   };
 
-  const isBookmarked = (msg) => bookmarks.some((b) => b.content === msg.content);
+  const renameSession = () => {
+    const newName = prompt("New name?");
+    if (!newName || sessions[newName]) return;
+    const updated = {};
+    Object.keys(sessions).forEach((key) => {
+      updated[key === currentSession ? newName : key] = sessions[key];
+    });
+    setSessions(updated);
+    setCurrentSession(newName);
+    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
+  };
+
+  const deleteSession = () => {
+    if (!window.confirm("Delete this chat?")) return;
+    const updated = { ...sessions };
+    delete updated[currentSession];
+    const next = Object.keys(updated)[0] || "default";
+    if (!updated[next]) updated[next] = [];
+    setSessions(updated);
+    setCurrentSession(next);
+    setMessages(updated[next]);
+    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
+  };
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">
-          💬 <span className="text-white">AI Chat </span>
-          <span className="text-white">(Droxion)</span>
+          💬 <span className="text-white">AI Chat (Droxion)</span>
         </div>
         <div className="flex space-x-2 items-center">
           <select
-            value={selectedVoice}
-            onChange={(e) => setSelectedVoice(e.target.value)}
+            onChange={(e) => setSelectedVoice(voices.find(v => v.name === e.target.value))}
             className="text-black text-xs px-2 py-1 rounded"
-            title="Select Voice"
           >
-            <option value="">Default</option>
-            {availableVoices.map((voice, idx) => (
-              <option key={idx} value={voice.name}>{voice.name}</option>
+            {voices.map((v, i) => (
+              <option key={i} value={v.name}>{v.name}</option>
             ))}
           </select>
-          <FaClock className="cursor-pointer" />
-          <FaPlus className="cursor-pointer" onClick={() => setMessages([])} />
-          <FaTrash className="cursor-pointer" onClick={() => setMessages([])} />
-          <FaDownload className="cursor-pointer" onClick={() => {
+          <FaClock title="History" onClick={renameSession} className="cursor-pointer" />
+          <FaPlus title="New Chat" onClick={createSession} className="cursor-pointer" />
+          <FaTrash title="Delete Chat" onClick={deleteSession} className="cursor-pointer" />
+          <FaDownload title="Download" className="cursor-pointer" onClick={() => {
             const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
             const blob = new Blob([text], { type: "text/plain" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = "chat.txt";
+            link.download = `${currentSession}.txt`;
             link.click();
           }} />
-          <FaMicrophone className="cursor-pointer" onClick={handleMic} />
-          {voiceMode ? <FaVolumeUp className="cursor-pointer" onClick={() => setVoiceMode(false)} /> : <FaVolumeMute className="cursor-pointer" onClick={() => setVoiceMode(true)} />}
-          <FaVideo className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={() => setVideoMode(!videoMode)} />
+          <FaMicrophone title="Mic" onClick={handleMic} className="cursor-pointer" />
+          {voiceMode ? (
+            <FaVolumeUp onClick={() => setVoiceMode(false)} title="Speaker On" className="cursor-pointer" />
+          ) : (
+            <FaVolumeMute onClick={() => setVoiceMode(true)} title="Speaker Off" className="cursor-pointer" />
+          )}
+          <FaVideo onClick={() => setVideoMode(!videoMode)} title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`whitespace-pre-wrap px-2 relative ${msg.role === "user" ? "text-white text-right self-end" : "text-left self-start"}`}
-          >
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{ img: ({ node, ...props }) => (<img {...props} alt="Generated" className="max-w-xs rounded-lg my-2" />) }}>
-              {msg.content}
-            </ReactMarkdown>
+          <div key={i} className={`rounded-lg px-3 py-2 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "bg-white text-black ml-auto" : "bg-gray-800 text-white mr-auto"}`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
             {msg.role === "assistant" && (
-              <div className="flex items-center gap-2 mt-1">
-                <FaStar
-                  className={`cursor-pointer ${isBookmarked(msg) ? "text-yellow-400" : "text-gray-500"}`}
-                  title="Bookmark"
-                  onClick={() => toggleBookmark(msg)}
-                />
-                {voiceMode && (
-                  <FaPlay
-                    className="cursor-pointer text-green-400"
-                    title="Tap to speak"
-                    onClick={() => speak(msg.content)}
-                  />
-                )}
+              <div className="flex space-x-2 mt-1">
+                <FaPlay onClick={() => speak(msg.content)} className="text-green-400 cursor-pointer" title="Tap to Speak" />
+                <FaBookmark onClick={() => setBookmarks([...bookmarks, msg])} className="text-yellow-300 cursor-pointer" title="Bookmark" />
               </div>
             )}
           </div>
