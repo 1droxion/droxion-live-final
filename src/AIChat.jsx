@@ -1,8 +1,9 @@
 // ✅ Final AIChat.jsx file with:
 // - Memory (chat history)
-// - Voice selector (real browser voices)
+// - Real voice selector
 // - Bookmark replies
-// - Clean layout + image + YouTube preview working
+// - Tap-to-speak per AI reply (mobile-safe)
+// - Image + YouTube preview
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -11,7 +12,7 @@ import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus,
   FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
-  FaStar
+  FaStar, FaPlay
 } from "react-icons/fa";
 
 function AIChat() {
@@ -66,7 +67,7 @@ function AIChat() {
   }, [messages]);
 
   const speak = (text) => {
-    if (!voiceMode || !text) return;
+    if (!text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
     if (selectedVoice) {
@@ -95,7 +96,6 @@ function AIChat() {
       const reply = res.data.reply;
       const aiMsg = { role: "assistant", content: reply };
       setMessages((prev) => [...prev, aiMsg]);
-      speak(reply);
 
       const lower = input.toLowerCase();
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
@@ -209,11 +209,20 @@ function AIChat() {
               {msg.content}
             </ReactMarkdown>
             {msg.role === "assistant" && (
-              <FaStar
-                className={`absolute top-0 right-0 cursor-pointer ${isBookmarked(msg) ? "text-yellow-400" : "text-gray-500"}`}
-                title="Bookmark"
-                onClick={() => toggleBookmark(msg)}
-              />
+              <div className="flex items-center gap-2 mt-1">
+                <FaStar
+                  className={`cursor-pointer ${isBookmarked(msg) ? "text-yellow-400" : "text-gray-500"}`}
+                  title="Bookmark"
+                  onClick={() => toggleBookmark(msg)}
+                />
+                {voiceMode && (
+                  <FaPlay
+                    className="cursor-pointer text-green-400"
+                    title="Tap to speak"
+                    onClick={() => speak(msg.content)}
+                  />
+                )}
+              </div>
             )}
           </div>
         ))}
