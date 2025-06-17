@@ -1,3 +1,9 @@
+// ✅ Final AIChat.jsx file with:
+// - Memory (chat history)
+// - Voice selector (real browser voices)
+// - Bookmark replies
+// - Clean layout + image + YouTube preview working
+
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -17,14 +23,26 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState("default");
+  const [selectedVoice, setSelectedVoice] = useState("");
   const [bookmarks, setBookmarks] = useState(() => {
     const saved = localStorage.getItem("bookmarked_messages");
     return saved ? JSON.parse(saved) : [];
   });
+  const [availableVoices, setAvailableVoices] = useState([]);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const [typingDots, setTypingDots] = useState(".");
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = synth.getVoices();
+      setAvailableVoices(voices);
+    };
+    if (synth.onvoiceschanged !== undefined) {
+      synth.onvoiceschanged = loadVoices;
+    }
+    loadVoices();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("chat_history", JSON.stringify(messages));
@@ -51,10 +69,8 @@ function AIChat() {
     if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
-    if (selectedVoice !== "default") {
-      utterance.voice = synth.getVoices().find((v) =>
-        v.name.toLowerCase().includes(selectedVoice)
-      );
+    if (selectedVoice) {
+      utterance.voice = synth.getVoices().find((v) => v.name === selectedVoice);
     }
     synth.cancel();
     synth.speak(utterance);
@@ -63,30 +79,27 @@ function AIChat() {
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMsg = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput("");
     setTyping(true);
 
     try {
-      const lower = input.toLowerCase();
-      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
         voiceMode,
         videoMode,
+        history: updatedMessages,
       });
 
       const reply = res.data.reply;
-      let showReply = true;
+      const aiMsg = { role: "assistant", content: reply };
+      setMessages((prev) => [...prev, aiMsg]);
+      speak(reply);
 
-      if (imgKeywords.some((k) => lower.includes(k))) showReply = false;
-
-      if (showReply) {
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-        speak(reply);
-      }
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
       if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
@@ -98,19 +111,10 @@ function AIChat() {
               role: "assistant",
               content: `
 🎬 [Watch on YouTube](${yt.data.url})
-
 <div style="margin-top: 10px; border-radius: 10px; overflow: hidden; max-width: 480px; box-shadow: 0 0 10px rgba(0,0,0,0.4);">
-  <iframe 
-    width="100%" 
-    height="200" 
-    src="https://www.youtube.com/embed/${videoId}" 
-    frameborder="0" 
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-    allowfullscreen>
-  </iframe>
-</div>
-              `
-            },
+  <iframe width="100%" height="200" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+</div>`
+            }
           ]);
         }
       }
@@ -153,14 +157,11 @@ function AIChat() {
 
   const toggleBookmark = (msg) => {
     const already = bookmarks.find((b) => b.content === msg.content);
-    const updated = already
-      ? bookmarks.filter((b) => b.content !== msg.content)
-      : [...bookmarks, msg];
+    const updated = already ? bookmarks.filter((b) => b.content !== msg.content) : [...bookmarks, msg];
     setBookmarks(updated);
   };
 
-  const isBookmarked = (msg) =>
-    bookmarks.some((b) => b.content === msg.content);
+  const isBookmarked = (msg) => bookmarks.some((b) => b.content === msg.content);
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
@@ -175,14 +176,15 @@ function AIChat() {
             onChange={(e) => setSelectedVoice(e.target.value)}
             className="text-black rounded px-2"
           >
-            <option value="default">Default</option>
-            <option value="female">Female</option>
-            <option value="male">Male</option>
+            <option value="">Default</option>
+            {availableVoices.map((voice, idx) => (
+              <option key={idx} value={voice.name}>{voice.name}</option>
+            ))}
           </select>
-          <FaClock title="History" className="cursor-pointer" />
-          <FaPlus title="New Chat" className="cursor-pointer" onClick={() => setMessages([])} />
-          <FaTrash title="Clear" className="cursor-pointer" onClick={() => setMessages([])} />
-          <FaDownload title="Download" className="cursor-pointer" onClick={() => {
+          <FaClock className="cursor-pointer" />
+          <FaPlus className="cursor-pointer" onClick={() => setMessages([])} />
+          <FaTrash className="cursor-pointer" onClick={() => setMessages([])} />
+          <FaDownload className="cursor-pointer" onClick={() => {
             const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
             const blob = new Blob([text], { type: "text/plain" });
             const link = document.createElement("a");
@@ -190,13 +192,9 @@ function AIChat() {
             link.download = "chat.txt";
             link.click();
           }} />
-          <FaMicrophone title="Mic" className="cursor-pointer" onClick={handleMic} />
-          {voiceMode ? (
-            <FaVolumeUp title="Speaker On" className="cursor-pointer" onClick={() => setVoiceMode(false)} />
-          ) : (
-            <FaVolumeMute title="Speaker Off" className="cursor-pointer" onClick={() => setVoiceMode(true)} />
-          )}
-          <FaVideo title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={() => setVideoMode(!videoMode)} />
+          <FaMicrophone className="cursor-pointer" onClick={handleMic} />
+          {voiceMode ? <FaVolumeUp className="cursor-pointer" onClick={() => setVoiceMode(false)} /> : <FaVolumeMute className="cursor-pointer" onClick={() => setVoiceMode(true)} />}
+          <FaVideo className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={() => setVideoMode(!videoMode)} />
         </div>
       </div>
 
@@ -204,25 +202,14 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`whitespace-pre-wrap px-2 relative ${
-              msg.role === "user" ? "text-white text-right self-end" : "text-left self-start"
-            }`}
+            className={`whitespace-pre-wrap px-2 relative ${msg.role === "user" ? "text-white text-right self-end" : "text-left self-start"}`}
           >
-            <ReactMarkdown
-              rehypePlugins={[rehypeRaw]}
-              components={{
-                img: ({ node, ...props }) => (
-                  <img {...props} alt="Generated" className="max-w-xs rounded-lg my-2" />
-                ),
-              }}
-            >
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{ img: ({ node, ...props }) => (<img {...props} alt="Generated" className="max-w-xs rounded-lg my-2" />) }}>
               {msg.content}
             </ReactMarkdown>
             {msg.role === "assistant" && (
               <FaStar
-                className={`absolute top-0 right-0 cursor-pointer ${
-                  isBookmarked(msg) ? "text-yellow-400" : "text-gray-500"
-                }`}
+                className={`absolute top-0 right-0 cursor-pointer ${isBookmarked(msg) ? "text-yellow-400" : "text-gray-500"}`}
                 title="Bookmark"
                 onClick={() => toggleBookmark(msg)}
               />
