@@ -179,8 +179,17 @@ function AIChat() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div key={i} className={`rounded-lg px-3 py-2 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "bg-white text-black ml-auto" : "bg-gray-800 text-white mr-auto"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end" : "text-left self-start"}`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+              img: ({ node, ...props }) => (
+                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
+              ),
+              iframe: ({ node, ...props }) => (
+                <div className="my-2">
+                  <iframe {...props} className="w-full h-48 rounded-lg" />
+                </div>
+              )
+            }}>{msg.content}</ReactMarkdown>
             {msg.role === "assistant" && (
               <div className="flex space-x-2 mt-1">
                 <FaPlay onClick={() => speak(msg.content)} className="text-green-400 cursor-pointer" title="Tap to Speak" />
