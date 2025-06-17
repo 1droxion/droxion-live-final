@@ -4,18 +4,35 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
+  FaStar
 } from "react-icons/fa";
 
 function AIChat() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("chat_history");
+    return saved ? JSON.parse(saved) : [];
+  });
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState("default");
+  const [bookmarks, setBookmarks] = useState(() => {
+    const saved = localStorage.getItem("bookmarked_messages");
+    return saved ? JSON.parse(saved) : [];
+  });
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const [typingDots, setTypingDots] = useState(".");
+
+  useEffect(() => {
+    localStorage.setItem("chat_history", JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem("bookmarked_messages", JSON.stringify(bookmarks));
+  }, [bookmarks]);
 
   useEffect(() => {
     if (typing) {
@@ -34,6 +51,11 @@ function AIChat() {
     if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
+    if (selectedVoice !== "default") {
+      utterance.voice = synth.getVoices().find((v) =>
+        v.name.toLowerCase().includes(selectedVoice)
+      );
+    }
     synth.cancel();
     synth.speak(utterance);
   };
@@ -59,9 +81,7 @@ function AIChat() {
       const reply = res.data.reply;
       let showReply = true;
 
-      if (imgKeywords.some((k) => lower.includes(k))) {
-        showReply = false;
-      }
+      if (imgKeywords.some((k) => lower.includes(k))) showReply = false;
 
       if (showReply) {
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -107,7 +127,6 @@ function AIChat() {
           ]);
         }
       }
-
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -132,6 +151,17 @@ function AIChat() {
     }
   };
 
+  const toggleBookmark = (msg) => {
+    const already = bookmarks.find((b) => b.content === msg.content);
+    const updated = already
+      ? bookmarks.filter((b) => b.content !== msg.content)
+      : [...bookmarks, msg];
+    setBookmarks(updated);
+  };
+
+  const isBookmarked = (msg) =>
+    bookmarks.some((b) => b.content === msg.content);
+
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
@@ -139,7 +169,16 @@ function AIChat() {
           💬 <span className="text-white">AI Chat </span>
           <span className="text-white">(Droxion)</span>
         </div>
-        <div className="flex space-x-4">
+        <div className="flex space-x-2">
+          <select
+            value={selectedVoice}
+            onChange={(e) => setSelectedVoice(e.target.value)}
+            className="text-black rounded px-2"
+          >
+            <option value="default">Default</option>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+          </select>
           <FaClock title="History" className="cursor-pointer" />
           <FaPlus title="New Chat" className="cursor-pointer" onClick={() => setMessages([])} />
           <FaTrash title="Clear" className="cursor-pointer" onClick={() => setMessages([])} />
@@ -165,7 +204,7 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`whitespace-pre-wrap px-2 ${
+            className={`whitespace-pre-wrap px-2 relative ${
               msg.role === "user" ? "text-white text-right self-end" : "text-left self-start"
             }`}
           >
@@ -179,6 +218,15 @@ function AIChat() {
             >
               {msg.content}
             </ReactMarkdown>
+            {msg.role === "assistant" && (
+              <FaStar
+                className={`absolute top-0 right-0 cursor-pointer ${
+                  isBookmarked(msg) ? "text-yellow-400" : "text-gray-500"
+                }`}
+                title="Bookmark"
+                onClick={() => toggleBookmark(msg)}
+              />
+            )}
           </div>
         ))}
         {typing && <div className="text-gray-500">Typing{typingDots}</div>}
