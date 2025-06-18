@@ -15,16 +15,6 @@ function AIChat() {
   const [videoMode, setVideoMode] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
-  const [typingDots, setTypingDots] = useState(".");
-
-  useEffect(() => {
-    if (typing) {
-      const interval = setInterval(() => {
-        setTypingDots((dots) => (dots.length === 3 ? "." : dots + "."));
-      }, 400);
-      return () => clearInterval(interval);
-    }
-  }, [typing]);
 
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -150,7 +140,9 @@ function AIChat() {
           </div>
         ))}
         {typing && (
-          <div className="text-left text-white ml-4 animate-pulse">Typing<span className="inline-block">{typingDots}</span></div>
+          <div className="text-left ml-4">
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-ping"></span>
+          </div>
         )}
         <div ref={chatRef} />
       </div>
