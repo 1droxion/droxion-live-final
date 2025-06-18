@@ -73,7 +73,7 @@ function AIChat() {
         prompt: input,
         context,
         voiceMode,
-        videoMode: false // force videoMode off
+        videoMode: false
       });
       const reply = res.data.reply;
       const botMsg = { role: "assistant", content: reply };
