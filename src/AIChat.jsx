@@ -1,5 +1,3 @@
-// ✅ Final AIChat.jsx — fixed image, YouTube, voice size, style untouched
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -61,6 +59,12 @@ function AIChat() {
     localStorage.setItem("droxion_sessions", JSON.stringify(updated));
   };
 
+  const enrichTextWithLinks = (text) => {
+    return text
+      .replace(/kapil sharma video/gi, "[Watch Kapil Sharma](https://www.youtube.com/watch?v=k4y4X3EoCzI)")
+      .replace(/tarak (mehta|maheta) video/gi, "[Watch Taarak Mehta](https://www.youtube.com/watch?v=12tkAFW4zbs)");
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMsg = { role: "user", content: input };
@@ -78,8 +82,9 @@ function AIChat() {
         voiceMode,
         videoMode,
       });
-      const reply = res.data.reply;
-      const botMsg = { role: "assistant", content: reply };
+
+      const enrichedReply = enrichTextWithLinks(res.data.reply);
+      const botMsg = { role: "assistant", content: enrichedReply };
       const updatedMessages = [...newMessages, botMsg];
       setMessages(updatedMessages);
       updateSessionMessages(updatedMessages);
