@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus, FaVolumeUp,
-  FaVolumeMute, FaMicrophone, FaBookmark, FaPlay
+  FaVolumeMute, FaVideo, FaMicrophone, FaBookmark, FaPlay
 } from "react-icons/fa";
 
 function AIChat() {
@@ -17,6 +17,7 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
   const [typingDots, setTypingDots] = useState(".");
   const [bookmarks, setBookmarks] = useState([]);
   const [voices, setVoices] = useState([]);
@@ -73,7 +74,7 @@ function AIChat() {
         prompt: input,
         context,
         voiceMode,
-        videoMode: false
+        videoMode,
       });
       const reply = res.data.reply;
       const botMsg = { role: "assistant", content: reply };
@@ -149,7 +150,7 @@ function AIChat() {
         <div className="flex space-x-2 items-center">
           <select
             onChange={(e) => setSelectedVoice(voices.find(v => v.name === e.target.value))}
-            className="text-black text-xs px-2 py-1 rounded"
+            className="text-black text-[10px] px-1 py-0.5 rounded"
           >
             {voices.map((v, i) => (
               <option key={i} value={v.name}>{v.name}</option>
@@ -172,6 +173,7 @@ function AIChat() {
           ) : (
             <FaVolumeMute onClick={() => setVoiceMode(true)} title="Speaker Off" className="cursor-pointer" />
           )}
+          <FaVideo onClick={() => setVideoMode(!videoMode)} title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} />
         </div>
       </div>
 
@@ -180,7 +182,7 @@ function AIChat() {
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end" : "text-left self-start"}`}>
             <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
               img: ({ node, ...props }) => (
-                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
+                <img {...props} alt="Image" className="rounded-lg my-2 max-w-xs" />
               ),
               iframe: ({ node, ...props }) => (
                 <div className="my-2">
