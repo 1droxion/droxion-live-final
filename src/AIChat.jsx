@@ -39,7 +39,7 @@ function AIChat() {
   const saveToMemory = (text) => {
     if (text.toLowerCase().includes("my name is")) {
       const name = text.split("my name is")[1].trim().split(" ")[0];
-      const updated = [...memoryData, `User's name is ${name}`];
+      const updated = [...memoryData, `The user's name is ${name}.`];
       setMemoryData(updated);
       localStorage.setItem("droxion_memory_data", JSON.stringify(updated));
     }
@@ -84,16 +84,17 @@ function AIChat() {
       }
 
       if (!handled) {
-        const systemPrompt = memoryEnabled && memoryData.length
-          ? `Use this memory about user: ${memoryData.join(" | ")}`
-          : "";
+        const memoryPrompt = memoryEnabled && memoryData.length
+          ? `You are an AI assistant with the following memory about the user: ${memoryData.join(" ")}`
+          : "You are an AI assistant.";
 
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: input,
           voiceMode,
           videoMode,
-          systemPrompt
+          systemPrompt: memoryPrompt
         });
+
         const reply = res.data.reply;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
