@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus, FaVolumeUp,
-  FaVolumeMute, FaVideo, FaMicrophone, FaBookmark, FaPlay
+  FaVolumeMute, FaMicrophone, FaBookmark, FaPlay
 } from "react-icons/fa";
 
 function AIChat() {
@@ -17,7 +17,6 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
   const [typingDots, setTypingDots] = useState(".");
   const [bookmarks, setBookmarks] = useState([]);
   const [voices, setVoices] = useState([]);
@@ -74,7 +73,7 @@ function AIChat() {
         prompt: input,
         context,
         voiceMode,
-        videoMode,
+        videoMode: false // force videoMode off
       });
       const reply = res.data.reply;
       const botMsg = { role: "assistant", content: reply };
@@ -173,7 +172,6 @@ function AIChat() {
           ) : (
             <FaVolumeMute onClick={() => setVoiceMode(true)} title="Speaker Off" className="cursor-pointer" />
           )}
-          <FaVideo onClick={() => setVideoMode(!videoMode)} title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} />
         </div>
       </div>
 
@@ -186,9 +184,25 @@ function AIChat() {
               ),
               iframe: ({ node, ...props }) => (
                 <div className="my-2">
-                  <iframe {...props} className="w-full h-48 rounded-lg" />
+                  <iframe {...props} className="w-full h-48 rounded-lg" allowFullScreen />
                 </div>
-              )
+              ),
+              a: ({ node, ...props }) => {
+                const href = props.href || "";
+                if (href.includes("youtube.com") || href.includes("youtu.be")) {
+                  const videoId = href.includes("watch?v=")
+                    ? new URLSearchParams(href.split("?")[1]).get("v")
+                    : href.split("/").pop();
+                  return (
+                    <iframe
+                      className="w-full h-48 rounded-lg my-2"
+                      src={`https://www.youtube.com/embed/${videoId}`}
+                      allowFullScreen
+                    />
+                  );
+                }
+                return <a {...props} className="text-blue-400 underline" />;
+              }
             }}>{msg.content}</ReactMarkdown>
             {msg.role === "assistant" && (
               <div className="flex space-x-2 mt-1">
