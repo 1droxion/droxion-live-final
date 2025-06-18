@@ -1,3 +1,5 @@
+// ✅ Final AIChat.jsx — fixed image, YouTube, voice size, style untouched
+
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -144,9 +146,7 @@ function AIChat() {
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">
-          💬 <span className="text-white">AI Chat (Droxion)</span>
-        </div>
+        <div className="text-lg font-bold">💬 <span className="text-white">AI Chat (Droxion)</span></div>
         <div className="flex space-x-2 items-center">
           <select
             onChange={(e) => setSelectedVoice(voices.find(v => v.name === e.target.value))}
@@ -169,9 +169,9 @@ function AIChat() {
           }} />
           <FaMicrophone title="Mic" onClick={handleMic} className="cursor-pointer" />
           {voiceMode ? (
-            <FaVolumeUp onClick={() => setVoiceMode(false)} title="Speaker On" className="cursor-pointer" />
+            <FaVolumeUp onClick={() => setVoiceMode(false)} title="Speaker On" className="cursor-pointer text-xs" />
           ) : (
-            <FaVolumeMute onClick={() => setVoiceMode(true)} title="Speaker Off" className="cursor-pointer" />
+            <FaVolumeMute onClick={() => setVoiceMode(true)} title="Speaker Off" className="cursor-pointer text-xs" />
           )}
           <FaVideo onClick={() => setVideoMode(!videoMode)} title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} />
         </div>
