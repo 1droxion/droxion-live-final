@@ -60,9 +60,21 @@ function AIChat() {
   };
 
   const enrichTextWithLinks = (text) => {
-    return text
-      .replace(/kapil sharma video/gi, "[Watch Kapil Sharma](https://www.youtube.com/watch?v=k4y4X3EoCzI)")
-      .replace(/tarak (mehta|maheta) video/gi, "[Watch Taarak Mehta](https://www.youtube.com/watch?v=12tkAFW4zbs)");
+    const lower = text.toLowerCase();
+
+    if (lower.includes("kapil sharma video")) {
+      return `<iframe src="https://www.youtube.com/embed/k4y4X3EoCzI" class="w-full h-48 rounded-lg my-2" allowfullscreen></iframe>`;
+    }
+
+    if (lower.includes("tarak mehta") || lower.includes("tarak maheta")) {
+      return `<iframe src="https://www.youtube.com/embed/12tkAFW4zbs" class="w-full h-48 rounded-lg my-2" allowfullscreen></iframe>`;
+    }
+
+    if (lower.includes("car image")) {
+      return `<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Toyota_GR_Supra_Genf_2019_1Y7A5683.jpg/640px-Toyota_GR_Supra_Genf_2019_1Y7A5683.jpg" alt="Car" class="rounded-lg my-2 max-w-xs" />`;
+    }
+
+    return text;
   };
 
   const handleSend = async () => {
