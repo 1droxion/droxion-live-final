@@ -149,7 +149,9 @@ function AIChat() {
             }}>{msg.content}</ReactMarkdown>
           </div>
         ))}
-        {typing && <div className="text-right text-gray-500 mr-6">Typing{typingDots}</div>}
+        {typing && (
+          <div className="text-left text-white ml-4 animate-pulse">Typing<span className="inline-block">{typingDots}</span></div>
+        )}
         <div ref={chatRef} />
       </div>
 
