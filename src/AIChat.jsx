@@ -141,7 +141,7 @@ function AIChat() {
         ))}
         {typing && (
           <div className="text-left ml-4">
-            <span className="inline-block w-2 h-2 bg-white rounded-full animate-ping"></span>
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_1.5s_ease-in-out_infinite]"></span>
           </div>
         )}
         <div ref={chatRef} />
