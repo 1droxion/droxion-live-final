@@ -60,10 +60,6 @@ function AIChat() {
       let showReply = true;
 
       if (imgKeywords.some((k) => lower.includes(k))) showReply = false;
-      if (showReply) {
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-        speak(reply);
-      }
 
       if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
@@ -71,14 +67,7 @@ function AIChat() {
           const videoId = yt.data.url.split("v=")[1];
           setMessages((prev) => [...prev, {
             role: "assistant",
-            content: `
-<div class='my-2'>
-<iframe
-  class='w-full h-48 rounded-lg'
-  src='https://www.youtube.com/embed/${videoId}'
-  allowfullscreen>
-</iframe>
-</div>`
+            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
           }]);
         }
       }
@@ -91,6 +80,11 @@ function AIChat() {
             content: `![Generated Image](${imgRes.data.image_url})`
           }]);
         }
+      }
+
+      if (showReply) {
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+        speak(reply);
       }
 
     } catch {
@@ -150,9 +144,7 @@ function AIChat() {
                 <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
               ),
               iframe: ({ node, ...props }) => (
-                <div className="my-2">
-                  <iframe {...props} className="w-full h-48 rounded-lg" allowFullScreen />
-                </div>
+                <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
               )
             }}>{msg.content}</ReactMarkdown>
           </div>
