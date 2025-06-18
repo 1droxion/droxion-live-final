@@ -3,27 +3,19 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
-  FaTrash, FaDownload, FaClock, FaPlus, FaVolumeUp,
-  FaVolumeMute, FaVideo, FaMicrophone, FaBookmark, FaPlay
+  FaTrash, FaDownload, FaClock, FaPlus,
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone
 } from "react-icons/fa";
 
 function AIChat() {
-  const [sessions, setSessions] = useState(() => {
-    const saved = localStorage.getItem("droxion_sessions");
-    return saved ? JSON.parse(saved) : { default: [] };
-  });
-  const [currentSession, setCurrentSession] = useState("default");
-  const [messages, setMessages] = useState(sessions["default"]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [typingDots, setTypingDots] = useState(".");
-  const [bookmarks, setBookmarks] = useState([]);
-  const [voices, setVoices] = useState([]);
-  const [selectedVoice, setSelectedVoice] = useState(null);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
+  const [typingDots, setTypingDots] = useState(".");
 
   useEffect(() => {
     if (typing) {
@@ -38,73 +30,71 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => {
-    const v = synth.getVoices();
-    setVoices(v);
-    setSelectedVoice(v.find((voice) => voice.name.includes("Female")) || v[0]);
-  }, []);
-
   const speak = (text) => {
-    if (!voiceMode || !text || !selectedVoice) return;
+    if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = selectedVoice;
-    utterance.lang = selectedVoice.lang;
+    utterance.lang = "en-US";
     synth.cancel();
     synth.speak(utterance);
-  };
-
-  const updateSessionMessages = (msgs) => {
-    const updated = { ...sessions, [currentSession]: msgs };
-    setSessions(updated);
-    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
-  };
-
-  const enrichTextWithLinks = (text) => {
-    const lower = text.toLowerCase();
-
-    if (lower.includes("kapil sharma video")) {
-      return `<iframe src="https://www.youtube.com/embed/k4y4X3EoCzI" class="w-full h-48 rounded-lg my-2" allowfullscreen></iframe>`;
-    }
-
-    if (lower.includes("tarak mehta") || lower.includes("tarak maheta")) {
-      return `<iframe src="https://www.youtube.com/embed/12tkAFW4zbs" class="w-full h-48 rounded-lg my-2" allowfullscreen></iframe>`;
-    }
-
-    if (lower.includes("car image")) {
-      return `<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Toyota_GR_Supra_Genf_2019_1Y7A5683.jpg/640px-Toyota_GR_Supra_Genf_2019_1Y7A5683.jpg" alt="Car" class="rounded-lg my-2 max-w-xs" />`;
-    }
-
-    return text;
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMsg = { role: "user", content: input };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    updateSessionMessages(newMessages);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
 
     try {
-      const context = messages[0]?.content || input;
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
-        context,
         voiceMode,
         videoMode,
       });
 
-      const enrichedReply = enrichTextWithLinks(res.data.reply);
-      const botMsg = { role: "assistant", content: enrichedReply };
-      const updatedMessages = [...newMessages, botMsg];
-      setMessages(updatedMessages);
-      updateSessionMessages(updatedMessages);
+      const reply = res.data.reply;
+      let showReply = true;
+
+      if (imgKeywords.some((k) => lower.includes(k))) showReply = false;
+      if (showReply) {
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+        speak(reply);
+      }
+
+      if (ytKeywords.some((k) => lower.includes(k))) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
+        if (yt.data?.url && yt.data?.title) {
+          const videoId = yt.data.url.split("v=")[1];
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `
+<div class='my-2'>
+<iframe
+  class='w-full h-48 rounded-lg'
+  src='https://www.youtube.com/embed/${videoId}'
+  allowfullscreen>
+</iframe>
+</div>`
+          }]);
+        }
+      }
+
+      if (imgKeywords.some((k) => lower.includes(k))) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
+        if (imgRes.data?.image_url) {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `![Generated Image](${imgRes.data.image_url})`
+          }]);
+        }
+      }
+
     } catch {
-      const err = { role: "assistant", content: "❌ Error: Something went wrong." };
-      const updatedMessages = [...messages, err];
-      setMessages(updatedMessages);
-      updateSessionMessages(updatedMessages);
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
       setTyping(false);
     }
@@ -126,71 +116,29 @@ function AIChat() {
     }
   };
 
-  const createSession = () => {
-    const name = prompt("Session name?");
-    if (!name || sessions[name]) return;
-    const updated = { ...sessions, [name]: [] };
-    setSessions(updated);
-    setCurrentSession(name);
-    setMessages([]);
-    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
-  };
-
-  const renameSession = () => {
-    const newName = prompt("New name?");
-    if (!newName || sessions[newName]) return;
-    const updated = {};
-    Object.keys(sessions).forEach((key) => {
-      updated[key === currentSession ? newName : key] = sessions[key];
-    });
-    setSessions(updated);
-    setCurrentSession(newName);
-    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
-  };
-
-  const deleteSession = () => {
-    if (!window.confirm("Delete this chat?")) return;
-    const updated = { ...sessions };
-    delete updated[currentSession];
-    const next = Object.keys(updated)[0] || "default";
-    if (!updated[next]) updated[next] = [];
-    setSessions(updated);
-    setCurrentSession(next);
-    setMessages(updated[next]);
-    localStorage.setItem("droxion_sessions", JSON.stringify(updated));
-  };
-
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">💬 <span className="text-white">AI Chat (Droxion)</span></div>
+        <div className="text-lg font-bold">💬 <span>AI Chat (Droxion)</span></div>
         <div className="flex space-x-2 items-center">
-          <select
-            onChange={(e) => setSelectedVoice(voices.find(v => v.name === e.target.value))}
-            className="text-black text-[10px] px-1 py-0.5 rounded"
-          >
-            {voices.map((v, i) => (
-              <option key={i} value={v.name}>{v.name}</option>
-            ))}
-          </select>
-          <FaClock title="History" onClick={renameSession} className="cursor-pointer" />
-          <FaPlus title="New Chat" onClick={createSession} className="cursor-pointer" />
-          <FaTrash title="Delete Chat" onClick={deleteSession} className="cursor-pointer" />
+          <FaClock title="History" className="cursor-pointer" />
+          <FaPlus title="New Chat" className="cursor-pointer" onClick={() => setMessages([])} />
+          <FaTrash title="Clear" className="cursor-pointer" onClick={() => setMessages([])} />
           <FaDownload title="Download" className="cursor-pointer" onClick={() => {
             const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
             const blob = new Blob([text], { type: "text/plain" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `${currentSession}.txt`;
+            link.download = "chat.txt";
             link.click();
           }} />
-          <FaMicrophone title="Mic" onClick={handleMic} className="cursor-pointer" />
+          <FaMicrophone title="Mic" className="cursor-pointer" onClick={handleMic} />
           {voiceMode ? (
-            <FaVolumeUp onClick={() => setVoiceMode(false)} title="Speaker On" className="cursor-pointer text-xs" />
+            <FaVolumeUp title="Speaker On" className="cursor-pointer text-xs" onClick={() => setVoiceMode(false)} />
           ) : (
-            <FaVolumeMute onClick={() => setVoiceMode(true)} title="Speaker Off" className="cursor-pointer text-xs" />
+            <FaVolumeMute title="Speaker Off" className="cursor-pointer text-xs" onClick={() => setVoiceMode(true)} />
           )}
-          <FaVideo onClick={() => setVideoMode(!videoMode)} title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} />
+          <FaVideo title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={() => setVideoMode(!videoMode)} />
         </div>
       </div>
 
@@ -199,36 +147,14 @@ function AIChat() {
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end" : "text-left self-start"}`}>
             <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
               img: ({ node, ...props }) => (
-                <img {...props} alt="Image" className="rounded-lg my-2 max-w-xs" />
+                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
               ),
               iframe: ({ node, ...props }) => (
                 <div className="my-2">
                   <iframe {...props} className="w-full h-48 rounded-lg" allowFullScreen />
                 </div>
-              ),
-              a: ({ node, ...props }) => {
-                const href = props.href || "";
-                if (href.includes("youtube.com") || href.includes("youtu.be")) {
-                  const videoId = href.includes("watch?v=")
-                    ? new URLSearchParams(href.split("?")[1]).get("v")
-                    : href.split("/").pop();
-                  return (
-                    <iframe
-                      className="w-full h-48 rounded-lg my-2"
-                      src={`https://www.youtube.com/embed/${videoId}`}
-                      allowFullScreen
-                    />
-                  );
-                }
-                return <a {...props} className="text-blue-400 underline" />;
-              }
+              )
             }}>{msg.content}</ReactMarkdown>
-            {msg.role === "assistant" && (
-              <div className="flex space-x-2 mt-1">
-                <FaPlay onClick={() => speak(msg.content)} className="text-green-400 cursor-pointer" title="Tap to Speak" />
-                <FaBookmark onClick={() => setBookmarks([...bookmarks, msg])} className="text-yellow-300 cursor-pointer" title="Bookmark" />
-              </div>
-            )}
           </div>
         ))}
         {typing && <div className="text-gray-500">Typing{typingDots}</div>}
