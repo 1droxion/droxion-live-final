@@ -40,16 +40,7 @@ function AIChat() {
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-        prompt: input,
-        voiceMode,
-        videoMode,
-      });
-
-      const reply = res.data.reply;
-      let showReply = true;
-
-      if (imgKeywords.some((k) => lower.includes(k))) showReply = false;
+      let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
@@ -59,6 +50,7 @@ function AIChat() {
             role: "assistant",
             content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
           }]);
+          handled = true;
         }
       }
 
@@ -69,10 +61,17 @@ function AIChat() {
             role: "assistant",
             content: `![Generated Image](${imgRes.data.image_url})`
           }]);
+          handled = true;
         }
       }
 
-      if (showReply) {
+      if (!handled) {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+          prompt: input,
+          voiceMode,
+          videoMode,
+        });
+        const reply = res.data.reply;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
       }
@@ -141,7 +140,7 @@ function AIChat() {
         ))}
         {typing && (
           <div className="text-left ml-4">
-            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_1.5s_ease-in-out_infinite]"></span>
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]"></span>
           </div>
         )}
         <div ref={chatRef} />
