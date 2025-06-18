@@ -28,7 +28,7 @@ function AIChat() {
 
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, typing]);
 
   const speak = (text) => {
     if (!voiceMode || !text) return;
@@ -138,7 +138,7 @@ function AIChat() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end" : "text-left self-start"}`}>
+          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
             <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
               img: ({ node, ...props }) => (
                 <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
@@ -149,7 +149,7 @@ function AIChat() {
             }}>{msg.content}</ReactMarkdown>
           </div>
         ))}
-        {typing && <div className="text-gray-500">Typing{typingDots}</div>}
+        {typing && <div className="text-right text-gray-500 mr-6">Typing{typingDots}</div>}
         <div ref={chatRef} />
       </div>
 
