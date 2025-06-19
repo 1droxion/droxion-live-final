@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — logs every action to /track (DAU/WAU/MAU enabled)
+// ✅ AIChat.jsx — fixed useRef bug for user ID tracking
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -19,14 +19,16 @@ function AIChat() {
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
 
-  const userId = useRef(() => {
+  const userId = useRef("");
+
+  useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
       id = "user-" + Math.random().toString(36).substring(2, 10);
       localStorage.setItem("droxion_uid", id);
     }
-    return id;
-  })();
+    userId.current = id;
+  }, []);
 
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -35,7 +37,7 @@ function AIChat() {
   const logAction = async (action, inputText) => {
     try {
       await axios.post("https://droxion-backend.onrender.com/track", {
-        user_id: userId,
+        user_id: userId.current,
         action,
         input: inputText,
         timestamp: new Date().toISOString()
