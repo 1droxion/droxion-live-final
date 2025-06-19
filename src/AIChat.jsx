@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — Plus white only, dropdown icons black & white / text-only
+// ✅ AIChat.jsx - GPT-4 Vision Integration (Image Upload → AI Description)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -109,11 +109,11 @@ function AIChat() {
     setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
     setTyping(true);
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/describe-image", formData, {
+      const res = await axios.post("https://droxion-backend.onrender.com/analyze-image", formData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      const description = res.data.description || "No description found.";
-      setMessages((prev) => [...prev, { role: "assistant", content: description }]);
+      const reply = res.data.reply || "No response from AI.";
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Couldn't analyze the image." }]);
     } finally {
