@@ -1,4 +1,4 @@
-// ✅ Updated AIChat.jsx — icons are now black & white only
+// ✅ Final AIChat.jsx (Black/White icons + Working Upload + Image Description)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -101,9 +101,23 @@ function AIChat() {
     }
   };
 
-  const handleFileInput = (e) => {
-    const file = e.target.files[0];
-    if (file) alert("Image selected: " + file.name);
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("image", file);
+    setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
+    setTyping(true);
+    try {
+      const res = await axios.post("https://droxion-backend.onrender.com/describe-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      const description = res.data.description || "No description found.";
+      setMessages((prev) => [...prev, { role: "assistant", content: description }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Couldn't analyze the image." }]);
+    } finally {
+      setTyping(false);
+    }
   };
 
   const iconStyle = "text-white hover:text-white";
@@ -148,7 +162,7 @@ function AIChat() {
         ))}
         {typing && (
           <div className="text-left ml-4">
-            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]"></span>
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" />
           </div>
         )}
         <div ref={chatRef} />
@@ -159,9 +173,9 @@ function AIChat() {
           <div className="absolute bottom-14 left-2 bg-gray-800 text-white p-2 rounded space-y-1 z-10">
             <div className="cursor-pointer" onClick={handleMic}>🎤 Mic</div>
             <div className="cursor-pointer" onClick={() => document.getElementById('fileUpload').click()}>📁 Upload</div>
+            <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
             <div className="cursor-pointer" onClick={() => alert("📸 Take Photo")}>📸 Take Photo</div>
             <div className="cursor-pointer" onClick={() => alert("🖥️ Screenshot")}>🖥️ Screenshot</div>
-            <input type="file" id="fileUpload" hidden onChange={handleFileInput} />
           </div>
         )}
         <div className="flex items-center space-x-2">
