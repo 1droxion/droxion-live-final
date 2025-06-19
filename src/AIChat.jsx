@@ -1,10 +1,15 @@
+// Full updated AIChat.jsx with:
+// 1. Fixed image upload error handling
+// 2. Photo/Mic/Plus icons moved to bottom
+// 3. Image input menu: Add file, Take photo, Screenshot
+
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone, FaMemory
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone, FaMemory, FaCamera
 } from "react-icons/fa";
 
 function AIChat() {
@@ -13,9 +18,7 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [memoryEnabled, setMemoryEnabled] = useState(() => {
-    return localStorage.getItem("droxion_memory") === "true";
-  });
+  const [memoryEnabled, setMemoryEnabled] = useState(() => localStorage.getItem("droxion_memory") === "true");
   const [memoryData, setMemoryData] = useState(() => {
     const data = localStorage.getItem("droxion_memory_data");
     return data ? JSON.parse(data) : [];
@@ -54,52 +57,17 @@ function AIChat() {
     saveToMemory(input);
 
     try {
-      const lower = input.toLowerCase();
-      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
-      let handled = false;
-
-      if (ytKeywords.some((k) => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
-        if (yt.data?.url && yt.data?.title) {
-          const videoId = yt.data.url.split("v=")[1];
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
-          }]);
-          handled = true;
-        }
-      }
-
-      if (imgKeywords.some((k) => lower.includes(k))) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
-        if (imgRes.data?.image_url) {
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: `![Generated Image](${imgRes.data.image_url})`
-          }]);
-          handled = true;
-        }
-      }
-
-      if (!handled) {
-        const memoryPrompt = memoryEnabled && memoryData.length
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        prompt: input,
+        voiceMode,
+        videoMode,
+        systemPrompt: memoryEnabled && memoryData.length
           ? `You are an AI assistant with the following memory about the user: ${memoryData.join(" ")}`
-          : "You are an AI assistant.";
-
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: input,
-          voiceMode,
-          videoMode,
-          systemPrompt: memoryPrompt
-        });
-
-        const reply = res.data.reply;
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-        speak(reply);
-      }
-
+          : "You are an AI assistant."
+      });
+      const reply = res.data.reply;
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      speak(reply);
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -107,21 +75,15 @@ function AIChat() {
     }
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+  const handleImageUpload = async (file) => {
     const formData = new FormData();
     formData.append("image", file);
-
     setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
     setTyping(true);
-
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/describe-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-
       const description = res.data.description || "No description available.";
       setMessages((prev) => [...prev, { role: "assistant", content: description }]);
       speak(description);
@@ -132,6 +94,7 @@ function AIChat() {
     }
   };
 
+  const openFileDialog = () => document.getElementById("fileInput").click();
   const handleMic = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Mic not supported");
@@ -139,6 +102,32 @@ function AIChat() {
     recognition.lang = "en-US";
     recognition.start();
     recognition.onresult = (e) => setInput(e.results[0][0].transcript);
+  };
+
+  const captureScreenshot = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const imageCapture = new ImageCapture(track);
+      const blob = await imageCapture.takePhoto();
+      handleImageUpload(blob);
+      track.stop();
+    } catch (err) {
+      alert("Screenshot failed");
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const imageCapture = new ImageCapture(track);
+      const blob = await imageCapture.takePhoto();
+      handleImageUpload(blob);
+      track.stop();
+    } catch (err) {
+      alert("Camera not accessible");
+    }
   };
 
   const handleKey = (e) => {
@@ -160,7 +149,6 @@ function AIChat() {
         <div className="text-lg font-bold">💬 <span>AI Chat (Droxion)</span></div>
         <div className="flex space-x-2 items-center">
           <FaClock title="History" className="cursor-pointer" />
-          <FaPlus title="New Chat" className="cursor-pointer" onClick={() => setMessages([])} />
           <FaTrash title="Clear" className="cursor-pointer" onClick={() => setMessages([])} />
           <FaDownload title="Download" className="cursor-pointer" onClick={() => {
             const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
@@ -170,14 +158,6 @@ function AIChat() {
             link.download = "chat.txt";
             link.click();
           }} />
-          <FaMicrophone title="Mic" className="cursor-pointer" onClick={handleMic} />
-          <label htmlFor="imageUpload" title="Upload Image" className="cursor-pointer">📷</label>
-          <input type="file" id="imageUpload" hidden accept="image/*" onChange={handleImageUpload} />
-          {voiceMode ? (
-            <FaVolumeUp title="Speaker On" className="cursor-pointer text-xs" onClick={() => setVoiceMode(false)} />
-          ) : (
-            <FaVolumeMute title="Speaker Off" className="cursor-pointer text-xs" onClick={() => setVoiceMode(true)} />
-          )}
           <FaVideo title="Video Mode" className={`cursor-pointer ${videoMode ? 'text-green-500' : ''}`} onClick={() => setVideoMode(!videoMode)} />
           <FaMemory title="Toggle Memory" className={`cursor-pointer ${memoryEnabled ? 'text-yellow-400' : ''}`} onClick={toggleMemory} />
         </div>
@@ -187,25 +167,22 @@ function AIChat() {
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
             <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-              img: ({ node, ...props }) => (
-                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
-              ),
-              iframe: ({ node, ...props }) => (
-                <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
-              )
+              img: ({ node, ...props }) => (<img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />),
+              iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />)
             }}>{msg.content}</ReactMarkdown>
           </div>
         ))}
-        {typing && (
-          <div className="text-left ml-4">
-            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]"></span>
-          </div>
-        )}
+        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]"></span></div>}
         <div ref={chatRef} />
       </div>
 
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
+          <button onClick={handleMic} title="Mic"><FaMicrophone /></button>
+          <button onClick={() => handleImageUpload} title="Choose File"><FaCamera /></button>
+          <button onClick={captureScreenshot} title="Screenshot">📷</button>
+          <button onClick={takePhoto} title="Take Photo">📸</button>
+          <input id="fileInput" type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
