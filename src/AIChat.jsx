@@ -1,11 +1,12 @@
-// ✅ Final AIChat.jsx (Black/White icons + Working Upload + Image Description)
+// ✅ AIChat.jsx — Plus white only, dropdown icons black & white / text-only
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
+  FaUpload, FaCamera, FaDesktop
 } from "react-icons/fa";
 
 function AIChat() {
@@ -170,12 +171,12 @@ function AIChat() {
 
       <div className="p-3 border-t border-gray-700 relative">
         {toolsOpen && (
-          <div className="absolute bottom-14 left-2 bg-gray-800 text-white p-2 rounded space-y-1 z-10">
-            <div className="cursor-pointer" onClick={handleMic}>🎤 Mic</div>
-            <div className="cursor-pointer" onClick={() => document.getElementById('fileUpload').click()}>📁 Upload</div>
+          <div className="absolute bottom-14 left-2 bg-gray-800 text-white p-2 rounded space-y-2 z-10 min-w-[140px]">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={handleMic}><FaMicrophone /> Mic</div>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => document.getElementById('fileUpload').click()}><FaUpload /> Upload</div>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => alert("Take Photo")}> <FaCamera /> Take Photo</div>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => alert("Screenshot")}> <FaDesktop /> Screenshot</div>
             <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
-            <div className="cursor-pointer" onClick={() => alert("📸 Take Photo")}>📸 Take Photo</div>
-            <div className="cursor-pointer" onClick={() => alert("🖥️ Screenshot")}>🖥️ Screenshot</div>
           </div>
         )}
         <div className="flex items-center space-x-2">
