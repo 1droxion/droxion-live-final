@@ -107,6 +107,31 @@ function AIChat() {
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
+    setTyping(true);
+
+    try {
+      const res = await axios.post("https://droxion-backend.onrender.com/describe-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const description = res.data.description || "No description available.";
+      setMessages((prev) => [...prev, { role: "assistant", content: description }]);
+      speak(description);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Couldn't process the image." }]);
+    } finally {
+      setTyping(false);
+    }
+  };
+
   const handleMic = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Mic not supported");
@@ -146,6 +171,8 @@ function AIChat() {
             link.click();
           }} />
           <FaMicrophone title="Mic" className="cursor-pointer" onClick={handleMic} />
+          <label htmlFor="imageUpload" title="Upload Image" className="cursor-pointer">📷</label>
+          <input type="file" id="imageUpload" hidden accept="image/*" onChange={handleImageUpload} />
           {voiceMode ? (
             <FaVolumeUp title="Speaker On" className="cursor-pointer text-xs" onClick={() => setVoiceMode(false)} />
           ) : (
