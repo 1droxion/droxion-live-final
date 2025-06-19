@@ -1,7 +1,7 @@
 // Full updated AIChat.jsx with:
-// 1. Fixed image upload error handling
-// 2. Photo/Mic/Plus icons moved to bottom
-// 3. Image input menu: Add file, Take photo, Screenshot
+// - Title changed to "Droxion"
+// - Plus ➕ icon opens dropdown inside input bar
+// - Mic, upload, photo, screenshot options inside dropdown
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -23,6 +23,7 @@ function AIChat() {
     const data = localStorage.getItem("droxion_memory_data");
     return data ? JSON.parse(data) : [];
   });
+  const [showTools, setShowTools] = useState(false);
 
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
@@ -94,7 +95,6 @@ function AIChat() {
     }
   };
 
-  const openFileDialog = () => document.getElementById("fileInput").click();
   const handleMic = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return alert("Mic not supported");
@@ -146,7 +146,7 @@ function AIChat() {
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">💬 <span>AI Chat (Droxion)</span></div>
+        <div className="text-lg font-bold">Droxion</div>
         <div className="flex space-x-2 items-center">
           <FaClock title="History" className="cursor-pointer" />
           <FaTrash title="Clear" className="cursor-pointer" onClick={() => setMessages([])} />
@@ -176,13 +176,18 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      <div className="p-3 border-t border-gray-700">
+      <div className="p-3 border-t border-gray-700 relative">
+        {showTools && (
+          <div className="absolute bottom-14 left-3 bg-gray-800 p-2 rounded shadow space-y-2 z-10">
+            <button onClick={handleMic} className="block text-white text-sm">🎤 Mic</button>
+            <button onClick={() => document.getElementById('fileInput').click()} className="block text-white text-sm">📁 Upload</button>
+            <button onClick={takePhoto} className="block text-white text-sm">📸 Take Photo</button>
+            <button onClick={captureScreenshot} className="block text-white text-sm">🖥️ Screenshot</button>
+            <input id="fileInput" type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
+          </div>
+        )}
         <div className="flex items-center space-x-2">
-          <button onClick={handleMic} title="Mic"><FaMicrophone /></button>
-          <button onClick={() => handleImageUpload} title="Choose File"><FaCamera /></button>
-          <button onClick={captureScreenshot} title="Screenshot">📷</button>
-          <button onClick={takePhoto} title="Take Photo">📸</button>
-          <input id="fileInput" type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
+          <button onClick={() => setShowTools(!showTools)} className="text-white font-bold">➕</button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
