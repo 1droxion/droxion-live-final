@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx - GPT-4 Vision Integration (Image Upload → AI Description)
+// ✅ AIChat.jsx — logs every action to /track (DAU/WAU/MAU enabled)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -19,9 +19,31 @@ function AIChat() {
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
 
+  const userId = useRef(() => {
+    let id = localStorage.getItem("droxion_uid");
+    if (!id) {
+      id = "user-" + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem("droxion_uid", id);
+    }
+    return id;
+  })();
+
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
+
+  const logAction = async (action, inputText) => {
+    try {
+      await axios.post("https://droxion-backend.onrender.com/track", {
+        user_id: userId,
+        action,
+        input: inputText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn("Tracking failed", e);
+    }
+  };
 
   const speak = (text) => {
     if (!voiceMode || !text) return;
@@ -37,6 +59,7 @@ function AIChat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
+    logAction("message", input);
 
     try {
       const lower = input.toLowerCase();
@@ -108,6 +131,7 @@ function AIChat() {
     formData.append("image", file);
     setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
     setTyping(true);
+    logAction("upload_image", file.name);
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/analyze-image", formData, {
         headers: { "Content-Type": "multipart/form-data" }
