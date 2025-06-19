@@ -1,4 +1,3 @@
-// ✅ AIChat.jsx — fixed useRef bug for user ID tracking
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -153,24 +152,30 @@ function AIChat() {
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
-        <div className="flex space-x-2 items-center">
-          <FaClock title="History" className={`cursor-pointer ${iconStyle}`} />
-          <FaPlus title="New Chat" className={`cursor-pointer ${iconStyle}`} onClick={() => setMessages([])} />
-          <FaTrash title="Clear" className={`cursor-pointer ${iconStyle}`} onClick={() => setMessages([])} />
-          <FaDownload title="Download" className={`cursor-pointer ${iconStyle}`} onClick={() => {
-            const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
-            const blob = new Blob([text], { type: "text/plain" });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = "chat.txt";
-            link.click();
-          }} />
-          {voiceMode ? (
-            <FaVolumeUp title="Speaker On" className={`cursor-pointer ${iconStyle}`} onClick={() => setVoiceMode(false)} />
-          ) : (
-            <FaVolumeMute title="Speaker Off" className={`cursor-pointer ${iconStyle}`} onClick={() => setVoiceMode(true)} />
+        <div className="relative">
+          <FaPlus
+            title="Tools"
+            onClick={() => setToolsOpen(!toolsOpen)}
+            className={`cursor-pointer ${iconStyle}`}
+          />
+          {toolsOpen && (
+            <div className="absolute right-0 mt-2 w-44 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setMessages([])}><FaTrash /> Clear</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+                const blob = new Blob([text], { type: "text/plain" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "chat.txt";
+                link.click();
+              }}><FaDownload /> Download</div>
+              <div className="flex items-center gap-2 cursor-pointer"><FaClock /> History</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setVoiceMode(!voiceMode)}>
+                {voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}
+              </div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setVideoMode(!videoMode)}><FaVideo /> Video Mode</div>
+            </div>
           )}
-          <FaVideo title="Video Mode" className={`cursor-pointer ${iconStyle} ${videoMode ? 'text-white' : ''}`} onClick={() => setVideoMode(!videoMode)} />
         </div>
       </div>
 
