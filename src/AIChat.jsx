@@ -14,7 +14,7 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  const [topToolsOpen, setTopToolsOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
 
@@ -155,12 +155,15 @@ function AIChat() {
         <div className="relative">
           <FaPlus
             title="Tools"
-            onClick={() => setToolsOpen(!toolsOpen)}
+            onClick={() => setTopToolsOpen(!topToolsOpen)}
             className={`cursor-pointer ${iconStyle}`}
           />
-          {toolsOpen && (
-            <div className="absolute right-0 mt-2 w-44 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
-              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setMessages([])}><FaTrash /> Clear</div>
+          {topToolsOpen && (
+            <div className="absolute right-0 mt-2 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setMessages([]);
+                setTopToolsOpen(false);
+              }}><FaTrash /> Clear</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
                 const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
                 const blob = new Blob([text], { type: "text/plain" });
@@ -168,12 +171,36 @@ function AIChat() {
                 link.href = URL.createObjectURL(blob);
                 link.download = "chat.txt";
                 link.click();
+                setTopToolsOpen(false);
               }}><FaDownload /> Download</div>
-              <div className="flex items-center gap-2 cursor-pointer"><FaClock /> History</div>
-              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setVoiceMode(!voiceMode)}>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTopToolsOpen(false)}><FaClock /> History</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setVoiceMode(!voiceMode);
+                setTopToolsOpen(false);
+              }}>
                 {voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}
               </div>
-              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setVideoMode(!videoMode)}><FaVideo /> Video Mode</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setVideoMode(!videoMode);
+                setTopToolsOpen(false);
+              }}><FaVideo /> Video Mode</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                handleMic();
+                setTopToolsOpen(false);
+              }}><FaMicrophone /> Mic</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                document.getElementById('fileUpload').click();
+                setTopToolsOpen(false);
+              }}><FaUpload /> Upload</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Take Photo");
+                setTopToolsOpen(false);
+              }}><FaCamera /> Take Photo</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Screenshot");
+                setTopToolsOpen(false);
+              }}><FaDesktop /> Screenshot</div>
+              <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
             </div>
           )}
         </div>
@@ -200,23 +227,13 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      <div className="p-3 border-t border-gray-700 relative">
-        {toolsOpen && (
-          <div className="absolute bottom-14 left-2 bg-gray-800 text-white p-2 rounded space-y-2 z-10 min-w-[140px]">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={handleMic}><FaMicrophone /> Mic</div>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => document.getElementById('fileUpload').click()}><FaUpload /> Upload</div>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => alert("Take Photo")}> <FaCamera /> Take Photo</div>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => alert("Screenshot")}> <FaDesktop /> Screenshot</div>
-            <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
-          </div>
-        )}
+      <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
-          <button onClick={() => setToolsOpen(!toolsOpen)} className="text-white font-bold">➕</button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            className="flex-1 p-2 rounded bg-gray-900 text-white border border-gray-600 focus:outline-none"
+            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
             placeholder="Type or say anything..."
           />
           <button
