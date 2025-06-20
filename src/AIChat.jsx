@@ -1,211 +1,190 @@
-// ✅ FULL FIXED AIChat.jsx
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import {
-  FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
-  FaUpload, FaCamera, FaDesktop
-} from "react-icons/fa";
+from flask import Flask, request, jsonify, render_template_string, make_response
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os, requests, json, time
+from datetime import datetime
+from collections import Counter
+from dateutil import parser
+import pytz
 
-function AIChat() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
-  const [stylePrompt, setStylePrompt] = useState("");
-  const [selectedStyle, setSelectedStyle] = useState("Pixar");
-  const [styleImage, setStyleImage] = useState(null);
-  const chatRef = useRef(null);
-  const synth = window.speechSynthesis;
-  const userId = useRef("");
+load_dotenv()
 
-  useEffect(() => {
-    let id = localStorage.getItem("droxion_uid");
-    if (!id) {
-      id = "user-" + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem("droxion_uid", id);
-    }
-    userId.current = id;
-  }, []);
+app = Flask(__name__)
+CORS(app, origins="*", supports_credentials=True)
 
-  useEffect(() => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
+LOG_FILE = "user_logs.json"
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "droxion2025")
 
-  const speak = (text) => {
-    if (!voiceMode || !text) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    synth.cancel();
-    synth.speak(utterance);
-  };
+@app.after_request
+def add_cors_headers(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    return response
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMsg = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setTyping(true);
+@app.route("/<path:path>", methods=["OPTIONS"])
+def handle_options(path):
+    response = make_response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    return response
 
-    try {
-      const lower = input.toLowerCase();
-      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-      let handled = false;
+@app.route("/")
+def home():
+    return "✅ Droxion API is live."
 
-      if (ytKeywords.some((k) => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
-        if (yt.data?.url && yt.data?.title) {
-          const videoId = yt.data.url.split("v=")[1];
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
-          }]);
-          handled = true;
+@app.route("/chat", methods=["POST"])
+def chat():
+    try:
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"reply": "❗ Prompt is required."}), 400
+
+        user_id = data.get("user_id", "anonymous")
+        voice_mode = data.get("voiceMode", False)
+        video_mode = data.get("videoMode", False)
+
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+            "Content-Type": "application/json"
         }
-      }
 
-      if (imgKeywords.some((k) => lower.includes(k))) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
-        if (imgRes.data?.image_url) {
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: `![Generated Image](${imgRes.data.image_url})`
-          }]);
-          handled = true;
+        payload = {
+            "model": "gpt-4",
+            "messages": [
+                {"role": "system", "content": "You are Droxion AI Assistant."},
+                {"role": "user", "content": prompt}
+            ]
         }
-      }
 
-      if (!handled) {
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: input,
-          voiceMode,
-          videoMode,
-        });
-        const reply = res.data.reply;
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-        speak(reply);
-      }
+        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        reply = res.json()["choices"][0]["message"]["content"]
+        return jsonify({
+            "reply": reply,
+            "voiceMode": voice_mode,
+            "videoMode": video_mode
+        })
+    except Exception as e:
+        return jsonify({"reply": f"❌ Error: {str(e)}"}), 500
 
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
-    } finally {
-      setTyping(false);
-    }
-  };
+@app.route("/generate-image", methods=["POST"])
+def generate_image():
+    try:
+        prompt = request.json.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"error": "Prompt is required"}), 400
 
-  const handleStyleSubmit = async () => {
-    if (!styleImage || !stylePrompt.trim()) return alert("Upload image and enter prompt");
-    const form = new FormData();
-    form.append("file", styleImage); // ✅ Fixed field name
-    form.append("prompt", stylePrompt);
-    form.append("style", selectedStyle);
-    form.append("user_id", userId.current);
+        headers = {
+            "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
+            "Content-Type": "application/json"
+        }
 
-    setTyping(true);
-    setMessages((prev) => [...prev, { role: "user", content: `[Style Photo] ${stylePrompt}` }]);
+        payload = {
+            "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+            "input": {
+                "prompt": prompt,
+                "width": 768,
+                "height": 768
+            }
+        }
 
-    try {
-      const res = await axios.post("https://droxion-backend.onrender.com/style-photo", form);
-      if (res.data?.image_url) {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `![Styled Image](${res.data.image_url})`
-        }]);
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: `❌ Failed: ${res.data?.error || "Unknown error"}` }]);
-      }
-    } catch (err) {
-      const errorMsg = err?.response?.data?.error || "Style API error.";
-      setMessages((prev) => [...prev, { role: "assistant", content: `❌ ${errorMsg}` }]);
-    } finally {
-      setTyping(false);
-      setStylePrompt("");
-      setStyleImage(null);
-    }
-  };
+        r = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload).json()
+        poll_url = r["urls"]["get"]
 
-  const styles = ["Pixar", "Anime", "Cinematic", "Oil Painting", "Cyberpunk", "Sketch"];
+        while True:
+            poll = requests.get(poll_url, headers=headers).json()
+            if poll["status"] == "succeeded":
+                return jsonify({"image_url": poll["output"]})
+            elif poll["status"] == "failed":
+                return jsonify({"error": "Image generation failed"}), 500
+            time.sleep(1)
+    except Exception as e:
+        return jsonify({"error": f"Image error: {str(e)}"}), 500
 
-  return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-              img: ({ node, ...props }) => (
-                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
-              ),
-              iframe: ({ node, ...props }) => (
-                <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
-              )
-            }}>{msg.content}</ReactMarkdown>
-          </div>
-        ))}
-        {typing && (
-          <div className="text-left ml-4">
-            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" />
-          </div>
-        )}
-        <div ref={chatRef} />
-      </div>
+@app.route("/search-youtube", methods=["POST"])
+def search_youtube():
+    try:
+        prompt = request.json.get("prompt", "")
+        url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            "part": "snippet",
+            "q": prompt,
+            "type": "video",
+            "maxResults": 1,
+            "key": os.getenv("YOUTUBE_API_KEY")
+        }
+        res = requests.get(url, params=params).json()
+        item = res["items"][0]
+        video_id = item["id"]["videoId"]
+        return jsonify({
+            "title": item["snippet"]["title"],
+            "url": f"https://www.youtube.com/watch?v={video_id}"
+        })
+    except Exception as e:
+        return jsonify({"error": f"YouTube error: {str(e)}"}), 500
 
-      <div className="p-3 border-t border-gray-700">
-        <div className="flex items-center space-x-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
-            placeholder="Type or say anything..."
-          />
-          <button
-            onClick={handleSend}
-            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-          >
-            ➤
-          </button>
-        </div>
+@app.route("/style-photo", methods=["POST"])
+def style_photo():
+    try:
+        image_file = request.files.get("file")
+        prompt = request.form.get("prompt", "").strip()
+        style = request.form.get("style", "Pixar").strip()
 
-        <div className="mt-4 border-t border-gray-600 pt-4">
-          <h4 className="text-sm mb-2">🎨 Style My Photo</h4>
-          <div className="flex flex-col md:flex-row md:items-center md:space-x-3 space-y-2 md:space-y-0">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setStyleImage(e.target.files[0])}
-              className="bg-gray-800 text-white p-1 rounded"
-            />
-            <input
-              type="text"
-              value={stylePrompt}
-              onChange={(e) => setStylePrompt(e.target.value)}
-              placeholder="Describe your style (e.g. me as Iron Man)"
-              className="flex-1 p-2 bg-gray-900 border border-gray-600 rounded"
-            />
-            <select
-              value={selectedStyle}
-              onChange={(e) => setSelectedStyle(e.target.value)}
-              className="p-2 bg-gray-900 border border-gray-600 rounded text-white"
-            >
-              {styles.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <button
-              onClick={handleStyleSubmit}
-              className="bg-white text-black px-4 py-2 rounded hover:bg-gray-300"
-            >
-              Generate
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        if not image_file:
+            return jsonify({"error": "Missing image file"}), 400
+        if not prompt:
+            return jsonify({"error": "Missing prompt"}), 400
 
-export default AIChat;
+        imgbb_key = os.getenv("IMGBB_API_KEY")
+        replicate_token = os.getenv("REPLICATE_API_TOKEN")
+
+        if not imgbb_key or not replicate_token:
+            return jsonify({"error": "Missing API keys"}), 500
+
+        upload = requests.post(
+            "https://api.imgbb.com/1/upload",
+            params={"key": imgbb_key},
+            files={"image": image_file}
+        ).json()
+
+        if "data" not in upload or "url" not in upload["data"]:
+            return jsonify({"error": "Image upload failed", "details": upload}), 500
+
+        image_url = upload["data"]["url"]
+
+        headers = {
+            "Authorization": f"Token {replicate_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "version": "db21e45bfa89e5bb1e0e0047c8e5d5a905c91265cfb3ba78f80b6a0cad16c173",
+            "input": {
+                "prompt": f"{prompt}, {style}, portrait, 4k, ultra realistic",
+                "image": image_url,
+                "strength": 0.5,
+                "guidance_scale": 7.5
+            }
+        }
+
+        response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload).json()
+        if "urls" not in response or "get" not in response["urls"]:
+            return jsonify({"error": "Replicate API failed", "details": response}), 500
+
+        poll_url = response["urls"]["get"]
+
+        while True:
+            poll = requests.get(poll_url, headers=headers).json()
+            if poll["status"] == "succeeded":
+                return jsonify({"image_url": poll["output"][0]})
+            elif poll["status"] == "failed":
+                return jsonify({"error": "Image generation failed", "details": poll}), 500
+            time.sleep(1)
+
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
