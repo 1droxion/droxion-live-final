@@ -243,6 +243,15 @@ function AIChat() {
             ➤
           </button>
         </div>
+
+        <div className="mt-3 text-sm text-center">
+          <button
+            onClick={() => alert("Style My Photo feature coming soon")}
+            className="text-white underline hover:text-gray-300"
+          >
+            🎨 Style My Photo
+          </button>
+        </div>
       </div>
     </div>
   );
