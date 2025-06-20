@@ -1,3 +1,4 @@
+// ✅ FULL FIXED AIChat.jsx
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -14,7 +15,6 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [topToolsOpen, setTopToolsOpen] = useState(false);
   const [stylePrompt, setStylePrompt] = useState("");
   const [selectedStyle, setSelectedStyle] = useState("Pixar");
   const [styleImage, setStyleImage] = useState(null);
@@ -35,19 +35,6 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  const logAction = async (action, inputText) => {
-    try {
-      await axios.post("https://droxion-backend.onrender.com/track", {
-        user_id: userId.current,
-        action,
-        input: inputText,
-        timestamp: new Date().toISOString()
-      });
-    } catch (e) {
-      console.warn("Tracking failed", e);
-    }
-  };
-
   const speak = (text) => {
     if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
@@ -62,7 +49,6 @@ function AIChat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
-    logAction("message", input);
 
     try {
       const lower = input.toLowerCase();
@@ -111,26 +97,10 @@ function AIChat() {
     }
   };
 
-  const handleMic = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return alert("Mic not supported");
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.start();
-    recognition.onresult = (e) => setInput(e.results[0][0].transcript);
-  };
-
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const handleStyleSubmit = async () => {
     if (!styleImage || !stylePrompt.trim()) return alert("Upload image and enter prompt");
     const form = new FormData();
-    form.append("file", styleImage); // ✅ fixed
+    form.append("file", styleImage); // ✅ Fixed field name
     form.append("prompt", stylePrompt);
     form.append("style", selectedStyle);
     form.append("user_id", userId.current);
@@ -146,10 +116,11 @@ function AIChat() {
           content: `![Styled Image](${res.data.image_url})`
         }]);
       } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: "❌ Failed to style image." }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: `❌ Failed: ${res.data?.error || "Unknown error"}` }]);
       }
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Style API error." }]);
+      const errorMsg = err?.response?.data?.error || "Style API error.";
+      setMessages((prev) => [...prev, { role: "assistant", content: `❌ ${errorMsg}` }]);
     } finally {
       setTyping(false);
       setStylePrompt("");
@@ -161,7 +132,6 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* CHAT AREA */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
@@ -183,14 +153,12 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      {/* INPUT + STYLE SECTION */}
       <div className="p-3 border-t border-gray-700">
-        {/* Message input */}
         <div className="flex items-center space-x-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
             placeholder="Type or say anything..."
           />
@@ -202,7 +170,6 @@ function AIChat() {
           </button>
         </div>
 
-        {/* Style My Photo */}
         <div className="mt-4 border-t border-gray-600 pt-4">
           <h4 className="text-sm mb-2">🎨 Style My Photo</h4>
           <div className="flex flex-col md:flex-row md:items-center md:space-x-3 space-y-2 md:space-y-0">
