@@ -1,310 +1,232 @@
-from flask import Flask, request, jsonify, render_template_string, make_response
-from flask_cors import CORS
-from dotenv import load_dotenv
-import os, requests, json, time
-from datetime import datetime
-from collections import Counter
-from dateutil import parser
-import pytz
+// ✅ Full AIChat.jsx with enhanced Style Photo UI
+import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import {
+  FaTrash, FaDownload, FaClock, FaPlus,
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
+  FaUpload, FaCamera, FaDesktop
+} from "react-icons/fa";
 
-load_dotenv()
+function AIChat() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
+  const [topToolsOpen, setTopToolsOpen] = useState(false);
+  const [styleImage, setStyleImage] = useState(null);
+  const [stylePrompt, setStylePrompt] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState("Pixar");
+  const chatRef = useRef(null);
+  const synth = window.speechSynthesis;
+  const userId = useRef("");
 
-app = Flask(__name__)
-CORS(app, origins="*", supports_credentials=True)
-
-LOG_FILE = "user_logs.json"
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "droxion2025")
-
-@app.after_request
-def add_cors_headers(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
-    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-    return response
-
-@app.route("/<path:path>", methods=["OPTIONS"])
-def handle_options(path):
-    response = make_response()
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    return response
-
-def get_location_from_ip(ip):
-    try:
-        main_ip = ip.split(",")[0].strip()
-        res = requests.get(f"http://ip-api.com/json/{main_ip}")
-        data = res.json()
-        if data["status"] == "success":
-            return f"{data['city']}, {data['countryCode']}"
-        return ""
-    except:
-        return ""
-
-def get_client_ip():
-    return request.headers.get("X-Forwarded-For", request.remote_addr)
-
-def log_user_action(user_id, action, input_text, ip):
-    now = datetime.utcnow().isoformat() + "Z"
-    location = get_location_from_ip(ip)
-    new_entry = {
-        "timestamp": now,
-        "user_id": user_id,
-        "action": action,
-        "input": input_text,
-        "ip": ip,
-        "location": location
+  useEffect(() => {
+    let id = localStorage.getItem("droxion_uid");
+    if (!id) {
+      id = "user-" + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem("droxion_uid", id);
     }
-    logs = []
-    if os.path.exists(LOG_FILE):
-        try:
-            with open(LOG_FILE, "r") as f:
-                logs = json.load(f)
-        except:
-            logs = []
-    logs.append(new_entry)
-    with open(LOG_FILE, "w") as f:
-        json.dump(logs, f, indent=2)
+    userId.current = id;
+  }, []);
 
-def parse_logs(file_path, user_filter=None, days=7):
-    now = datetime.utcnow().replace(tzinfo=pytz.UTC)
-    dau_set, wau_set, mau_set = set(), set(), set()
-    hour_count = Counter()
-    input_count = Counter()
-    user_count = Counter()
-    location_count = Counter()
-    logs = []
+  useEffect(() => {
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, typing]);
 
-    if os.path.exists(file_path):
-        with open(file_path) as f:
-            data = json.load(f)
-        for entry in data:
-            try:
-                ts = parser.isoparse(entry["timestamp"]).replace(tzinfo=pytz.UTC)
-                if (now - ts).days <= days:
-                    uid = entry.get("user_id", "anonymous")
-                    logs.append(entry)
-                    dau_set.add(uid)
-                    wau_set.add(uid)
-                    mau_set.add(uid)
-                    hour = ts.hour
-                    hour_count[hour] += 1
-                    input_count[entry.get("input", "").strip()] += 1
-                    user_count[uid] += 1
-                    location_count[entry.get("location", "")] += 1
-            except:
-                continue
-    return {
-        "dau": len(dau_set),
-        "wau": len(wau_set),
-        "mau": len(mau_set),
-        "peak_hour": hour_count.most_common(1)[0][0] if hour_count else 0,
-        "top_users": dict(user_count.most_common(3)),
-        "top_inputs": dict(input_count.most_common(5)),
-        "top_locations": dict(location_count.most_common(3)),
-        "logs": logs[-100:]
+  const logAction = async (action, inputText) => {
+    try {
+      await axios.post("https://droxion-backend.onrender.com/track", {
+        user_id: userId.current,
+        action,
+        input: inputText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn("Tracking failed", e);
     }
+  };
 
-@app.route("/")
-def home():
-    return "✅ Droxion API is live."
+  const speak = (text) => {
+    if (!voiceMode || !text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    synth.cancel();
+    synth.speak(utterance);
+  };
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    try:
-        data = request.json
-        prompt = data.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"reply": "❗ Prompt is required."}), 400
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setTyping(true);
+    logAction("message", input);
 
-        ip = get_client_ip()
-        user_id = data.get("user_id", "anonymous")
-        voice_mode = data.get("voiceMode", False)
-        video_mode = data.get("videoMode", False)
+    try {
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
-        log_user_action(user_id, "message", prompt, ip)
+      let handled = false;
 
-        headers = {
-            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-            "Content-Type": "application/json"
+      if (ytKeywords.some((k) => lower.includes(k))) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
+        if (yt.data?.url && yt.data?.title) {
+          const videoId = yt.data.url.split("v=")[1];
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
+          }]);
+          handled = true;
         }
+      }
 
-        payload = {
-            "model": "gpt-4",
-            "messages": [
-                {"role": "system", "content": "You are Droxion AI Assistant."},
-                {"role": "user", "content": prompt}
-            ]
+      if (imgKeywords.some((k) => lower.includes(k))) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
+        if (imgRes.data?.image_url) {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `![Generated Image](${imgRes.data.image_url})`
+          }]);
+          handled = true;
         }
+      }
 
-        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-        reply = res.json()["choices"][0]["message"]["content"]
-        return jsonify({
-            "reply": reply,
-            "voiceMode": voice_mode,
-            "videoMode": video_mode
-        })
-    except Exception as e:
-        return jsonify({"reply": f"❌ Error: {str(e)}"}), 500
+      if (!handled) {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+          prompt: input,
+          voiceMode,
+          videoMode,
+        });
+        const reply = res.data.reply;
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+        speak(reply);
+      }
 
-@app.route("/generate-image", methods=["POST"])
-def generate_image():
-    try:
-        prompt = request.json.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"error": "Prompt is required"}), 400
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+    } finally {
+      setTyping(false);
+    }
+  };
 
-        headers = {
-            "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
-            "Content-Type": "application/json"
-        }
+  const handleStyleSubmit = async () => {
+    if (!styleImage || !stylePrompt) return;
+    setTyping(true);
+    const formData = new FormData();
+    formData.append("image", styleImage);
+    formData.append("prompt", stylePrompt);
+    formData.append("style", selectedStyle);
 
-        payload = {
-            "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
-            "input": {
-                "prompt": prompt,
-                "width": 768,
-                "height": 768
-            }
-        }
+    try {
+      const res = await axios.post("https://droxion-backend.onrender.com/style-photo", formData);
+      if (res.data.image_url) {
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: `![Styled Image](${res.data.image_url})`
+        }]);
+      } else {
+        throw new Error("Style API error");
+      }
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Style API error." }]);
+    } finally {
+      setTyping(false);
+    }
+  };
 
-        r = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload).json()
-        poll_url = r["urls"]["get"]
+  const handleKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
-        while True:
-            poll = requests.get(poll_url, headers=headers).json()
-            if poll["status"] == "succeeded":
-                return jsonify({"image_url": poll["output"]})
-            elif poll["status"] == "failed":
-                return jsonify({"error": "Image generation failed"}), 500
-            time.sleep(1)
-    except Exception as e:
-        return jsonify({"error": f"Image error: {str(e)}"}), 500
+  return (
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className="text-lg font-bold">Droxion</div>
+      </div>
 
-@app.route("/search-youtube", methods=["POST"])
-def search_youtube():
-    try:
-        prompt = request.json.get("prompt", "")
-        url = "https://www.googleapis.com/youtube/v3/search"
-        params = {
-            "part": "snippet",
-            "q": prompt,
-            "type": "video",
-            "maxResults": 1,
-            "key": os.getenv("YOUTUBE_API_KEY")
-        }
-        res = requests.get(url, params=params).json()
-        item = res["items"][0]
-        video_id = item["id"]["videoId"]
-        return jsonify({
-            "title": item["snippet"]["title"],
-            "url": f"https://www.youtube.com/watch?v={video_id}"
-        })
-    except Exception as e:
-        return jsonify({"error": f"YouTube error: {str(e)}"}), 500
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((msg, i) => (
+          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+              img: ({ node, ...props }) => (
+                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
+              ),
+              iframe: ({ node, ...props }) => (
+                <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
+              )
+            }}>{msg.content}</ReactMarkdown>
+          </div>
+        ))}
+        {typing && (
+          <div className="text-left ml-4">
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" />
+          </div>
+        )}
+        <div ref={chatRef} />
+      </div>
 
-@app.route("/style-photo", methods=["POST"])
-def style_photo():
-    try:
-        image_file = request.files.get("image")
-        prompt = request.form.get("prompt", "")
-        style = request.form.get("style", "Pixar")
+      <div className="p-3 border-t border-gray-700">
+        {/* Input */}
+        <div className="flex items-center space-x-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Type or say anything..."
+            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
+          />
+          <button
+            onClick={handleSend}
+            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
+          >
+            ➤
+          </button>
+        </div>
 
-        if not image_file or not prompt:
-            print("❌ Missing image or prompt")
-            return jsonify({"error": "Missing image or prompt"}), 400
+        {/* Style Photo */}
+        <div className="mt-6 space-y-3">
+          <div className="text-sm text-pink-400 font-semibold">🎨 Style My Photo</div>
+          <div className="flex flex-col md:flex-row gap-2">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setStyleImage(e.target.files[0])}
+              className="bg-gray-900 text-white p-2 rounded border border-gray-600"
+            />
+            <input
+              type="text"
+              value={stylePrompt}
+              onChange={(e) => setStylePrompt(e.target.value)}
+              placeholder="Describe your style (e.g. me as Iron Man)"
+              className="flex-1 p-2 rounded bg-gray-900 border border-gray-600 text-white"
+            />
+            <select
+              value={selectedStyle}
+              onChange={(e) => setSelectedStyle(e.target.value)}
+              className="p-2 bg-gray-900 text-white rounded border border-gray-600"
+            >
+              {["Pixar", "Anime", "Cinematic", "Oil Painting", "Cyberpunk", "Sketch"].map((style) => (
+                <option key={style}>{style}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleStyleSubmit}
+              className="bg-white text-black font-bold px-4 py-2 rounded hover:bg-gray-300"
+            >
+              Generate
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        print("✅ Received prompt:", prompt)
-        print("✅ Style:", style)
-
-        upload = requests.post(
-            "https://api.imgbb.com/1/upload",
-            params={"key": os.getenv("IMGBB_API_KEY")},
-            files={"image": image_file}
-        )
-
-        upload_json = upload.json()
-        print("🖼️ Upload response:", upload_json)
-
-        if "data" not in upload_json or "url" not in upload_json["data"]:
-            return jsonify({"error": "Image upload failed"}), 500
-
-        image_url = upload_json["data"]["url"]
-
-        replicate_token = os.getenv("REPLICATE_API_TOKEN")
-        headers = {
-            "Authorization": f"Token {replicate_token}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "version": "a20f088c2aa35e26cf78fc7fc87b2c7a57684a8a797237c6e9bc9fc81f9f010e",
-            "input": {
-                "image": image_url,
-                "prompt": f"{prompt}, style {style}"
-            }
-        }
-
-        res = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload).json()
-        print("📦 Replicate response:", res)
-
-        poll_url = res["urls"]["get"]
-
-        while True:
-            poll = requests.get(poll_url, headers=headers).json()
-            print("⏳ Poll:", poll["status"])
-            if poll["status"] == "succeeded":
-                return jsonify({"image_url": poll["output"]})
-            elif poll["status"] == "failed":
-                return jsonify({"error": "Image styling failed"}), 500
-            time.sleep(1)
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"Style Photo error: {str(e)}"}), 500
-
-@app.route("/dashboard")
-def dashboard():
-    token = request.args.get("token", "")
-    if token != ADMIN_TOKEN:
-        return "❌ Unauthorized", 401
-    user_filter = request.args.get("user")
-    days = int(request.args.get("days", 7))
-    stats = parse_logs(LOG_FILE, user_filter, days)
-
-    html = """
-    <style>
-        body { background:#000; color:#fff; font-family:Arial; padding:20px; }
-        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-        th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-        th { background-color: #222; }
-        tr:nth-child(even) { background-color: #111; }
-        h2, h4 { color: #0ff; }
-    </style>
-    <h2>📊 Droxion Dashboard</h2>
-    <div>DAU: {{stats['dau']}} | WAU: {{stats['wau']}} | MAU: {{stats['mau']}}</div>
-    <div>Peak Hour: {{stats['peak_hour']}}</div>
-    <div>Top Users: {{stats['top_users']}}</div>
-    <div>Top Inputs: {{stats['top_inputs']}}</div>
-    <div>Top Locations: {{stats['top_locations']}}</div>
-    <hr>
-    <h4>User Activity Logs</h4>
-    <table>
-        <tr><th>Time</th><th>User</th><th>Action</th><th>Input</th><th>IP</th><th>Location</th></tr>
-        {% for log in stats['logs'] %}
-        <tr>
-            <td>{{log["timestamp"]}}</td>
-            <td>{{log["user_id"]}}</td>
-            <td>{{log["action"]}}</td>
-            <td>{{log["input"]}}</td>
-            <td>{{log["ip"]}}</td>
-            <td>{{log["location"]}}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    """
-    return render_template_string(html, stats=stats)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+export default AIChat;
