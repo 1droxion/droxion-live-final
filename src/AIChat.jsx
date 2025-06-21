@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react"; 
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -14,11 +14,10 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const [stylePrompt, setStylePrompt] = useState("");
-  const [selectedStyle, setSelectedStyle] = useState("Pixar");
-  const [styleImage, setStyleImage] = useState(null);
+  const [topToolsOpen, setTopToolsOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
+
   const userId = useRef("");
 
   useEffect(() => {
@@ -34,6 +33,19 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
+  const logAction = async (action, inputText) => {
+    try {
+      await axios.post("https://droxion-backend.onrender.com/track", {
+        user_id: userId.current,
+        action,
+        input: inputText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn("Tracking failed", e);
+    }
+  };
+
   const speak = (text) => {
     if (!voiceMode || !text) return;
     const utterance = new SpeechSynthesisUtterance(text);
@@ -48,11 +60,13 @@ function AIChat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
+    logAction("message", input);
 
     try {
       const lower = input.toLowerCase();
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
@@ -83,7 +97,6 @@ function AIChat() {
           prompt: input,
           voiceMode,
           videoMode,
-          user_id: userId.current
         });
         const reply = res.data.reply;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -113,40 +126,63 @@ function AIChat() {
     }
   };
 
-  const handleStyleSubmit = async () => {
-    if (!styleImage || !stylePrompt.trim()) return alert("Upload image and enter prompt");
-    const form = new FormData();
-    form.append("file", styleImage);
-    form.append("prompt", stylePrompt);
-    form.append("style", selectedStyle);
-    form.append("user_id", userId.current);
-
-    setTyping(true);
-    setMessages((prev) => [...prev, { role: "user", content: `[Style Photo] ${stylePrompt}` }]);
-
-    try {
-      const res = await axios.post("https://droxion-backend.onrender.com/style-photo", form);
-      if (res.data?.image_url) {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `![Styled Image](${res.data.image_url})`
-        }]);
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: "❌ Failed to style image." }]);
-      }
-    } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Style API error." }]);
-    } finally {
-      setTyping(false);
-      setStylePrompt("");
-      setStyleImage(null);
-    }
-  };
-
-  const styles = ["Pixar", "Anime", "Cinematic", "Oil Painting", "Cyberpunk", "Sketch"];
+  const iconStyle = "text-white hover:text-white";
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className="text-lg font-bold">Droxion</div>
+        <div className="relative">
+          <FaPlus
+            title="Tools"
+            onClick={() => setTopToolsOpen(!topToolsOpen)}
+            className={`cursor-pointer ${iconStyle}`}
+          />
+          {topToolsOpen && (
+            <div className="absolute right-0 mt-2 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setMessages([]);
+                setTopToolsOpen(false);
+              }}><FaTrash /> Clear</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+                const blob = new Blob([text], { type: "text/plain" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "chat.txt";
+                link.click();
+                setTopToolsOpen(false);
+              }}><FaDownload /> Download</div>
+              <div className="flex items-center gap-2 cursor-pointer"><FaClock /> History</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setVoiceMode(!voiceMode);
+                setTopToolsOpen(false);
+              }}>{voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setVideoMode(!videoMode);
+                setTopToolsOpen(false);
+              }}><FaVideo /> Video Mode</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                handleMic();
+                setTopToolsOpen(false);
+              }}><FaMicrophone /> Mic</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Upload coming soon");
+                setTopToolsOpen(false);
+              }}><FaUpload /> Upload</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Take Photo coming soon");
+                setTopToolsOpen(false);
+              }}><FaCamera /> Take Photo</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Screenshot coming soon");
+                setTopToolsOpen(false);
+              }}><FaDesktop /> Screenshot</div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
@@ -183,40 +219,6 @@ function AIChat() {
           >
             ➤
           </button>
-        </div>
-
-        <div className="mt-4 border-t border-gray-600 pt-4">
-          <h4 className="text-sm mb-2">🎨 Style My Photo</h4>
-          <div className="flex flex-col md:flex-row md:items-center md:space-x-3 space-y-2 md:space-y-0">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setStyleImage(e.target.files[0])}
-              className="bg-gray-800 text-white p-1 rounded"
-            />
-            <input
-              type="text"
-              value={stylePrompt}
-              onChange={(e) => setStylePrompt(e.target.value)}
-              placeholder="Describe your style (e.g. me as Iron Man)"
-              className="flex-1 p-2 bg-gray-900 border border-gray-600 rounded"
-            />
-            <select
-              value={selectedStyle}
-              onChange={(e) => setSelectedStyle(e.target.value)}
-              className="p-2 bg-gray-900 border border-gray-600 rounded text-white"
-            >
-              {styles.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <button
-              onClick={handleStyleSubmit}
-              className="bg-white text-black px-4 py-2 rounded hover:bg-gray-300"
-            >
-              Generate
-            </button>
-          </div>
         </div>
       </div>
     </div>
