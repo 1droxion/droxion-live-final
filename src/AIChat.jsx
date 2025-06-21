@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react"; 
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -17,7 +17,6 @@ function AIChat() {
   const [topToolsOpen, setTopToolsOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
-
   const userId = useRef("");
 
   useEffect(() => {
@@ -97,6 +96,7 @@ function AIChat() {
           prompt: input,
           voiceMode,
           videoMode,
+          user_id: userId.current
         });
         const reply = res.data.reply;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
