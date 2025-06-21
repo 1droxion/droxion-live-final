@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <title>Veo3 Local Generator</title>
 </head>
@@ -14,11 +14,12 @@
   <script>
     async function generateVideo() {
       const prompt = document.getElementById("prompt").value;
-      const res = await fetch("/generate", {
+      const res = await fetch("https://YOUR-BACKEND-URL.onrender.com/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt })
       });
+
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -26,7 +27,7 @@
         video.src = url;
         video.style.display = "block";
       } else {
-        alert("Failed to generate video.");
+        alert("Video generation failed.");
       }
     }
   </script>
