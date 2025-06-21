@@ -1,180 +1,228 @@
-from flask import Flask, request, jsonify, make_response, render_template_string
-from flask_cors import CORS
-from dotenv import load_dotenv
-import os, requests, json, time, traceback, sys
-from datetime import datetime
+import React, { useState, useEffect, useRef } from "react"; 
+import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import {
+  FaTrash, FaDownload, FaClock, FaPlus,
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
+  FaUpload, FaCamera, FaDesktop
+} from "react-icons/fa";
 
-load_dotenv()
+function AIChat() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
+  const [topToolsOpen, setTopToolsOpen] = useState(false);
+  const chatRef = useRef(null);
+  const synth = window.speechSynthesis;
 
-app = Flask(__name__)
-CORS(app, origins="*", supports_credentials=True)
+  const userId = useRef("");
 
-ROUTER_KEY = os.getenv("ROUTER_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+  useEffect(() => {
+    let id = localStorage.getItem("droxion_uid");
+    if (!id) {
+      id = "user-" + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem("droxion_uid", id);
+    }
+    userId.current = id;
+  }, []);
 
-@app.after_request
-def add_cors_headers(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
-    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-    return response
+  useEffect(() => {
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, typing]);
 
-@app.route("/")
-def home():
-    return "✅ Droxion API is live."
+  const logAction = async (action, inputText) => {
+    try {
+      await axios.post("https://droxion-backend.onrender.com/track", {
+        user_id: userId.current,
+        action,
+        input: inputText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn("Tracking failed", e);
+    }
+  };
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    try:
-        data = request.json
-        prompt = data.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"reply": "❗ Prompt is required."}), 400
+  const speak = (text) => {
+    if (!voiceMode || !text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    synth.cancel();
+    synth.speak(utterance);
+  };
 
-        headers = {
-            "Authorization": f"Bearer {ROUTER_KEY}",
-            "Content-Type": "application/json"
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setTyping(true);
+    logAction("message", input);
+
+    try {
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+
+      let handled = false;
+
+      if (ytKeywords.some((k) => lower.includes(k))) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
+        if (yt.data?.url && yt.data?.title) {
+          const videoId = yt.data.url.split("v=")[1];
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
+          }]);
+          handled = true;
         }
+      }
 
-        payload = {
-            "model": "gpt-4",
-            "messages": [
-                {"role": "system", "content": "You are Droxion AI Assistant."},
-                {"role": "user", "content": prompt}
-            ]
+      if (imgKeywords.some((k) => lower.includes(k))) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
+        if (imgRes.data?.image_url) {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `![Generated Image](${imgRes.data.image_url})`
+          }]);
+          handled = true;
         }
+      }
 
-        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-        response_data = res.json()
+      if (!handled) {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+          prompt: input,
+          voiceMode,
+          videoMode,
+        });
+        const reply = res.data.reply;
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+        speak(reply);
+      }
 
-        if "choices" not in response_data:
-            return jsonify({"reply": f"❌ OpenAI Error: {response_data.get('error', {}).get('message', 'No response')}"}), 500
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+    } finally {
+      setTyping(false);
+    }
+  };
 
-        reply = response_data["choices"][0]["message"]["content"]
-        return jsonify({"reply": reply})
+  const handleMic = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return alert("Mic not supported");
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.start();
+    recognition.onresult = (e) => setInput(e.results[0][0].transcript);
+  };
 
-    except Exception as e:
-        print("[Chat Error]", traceback.format_exc(), file=sys.stdout, flush=True)
-        return jsonify({"reply": f"❌ Server Error: {str(e)}"}), 500
+  const handleKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
-@app.route("/search-youtube", methods=["POST"])
-def search_youtube():
-    try:
-        prompt = request.json.get("prompt", "")
-        url = "https://www.googleapis.com/youtube/v3/search"
-        params = {
-            "part": "snippet",
-            "q": prompt,
-            "type": "video",
-            "maxResults": 1,
-            "key": YOUTUBE_API_KEY
-        }
-        res = requests.get(url, params=params).json()
-        item = res["items"][0]
-        video_id = item["id"]["videoId"]
-        return jsonify({
-            "title": item["snippet"]["title"],
-            "url": f"https://www.youtube.com/watch?v={video_id}"
-        })
-    except Exception as e:
-        return jsonify({"error": f"YouTube error: {str(e)}"}), 500
+  const iconStyle = "text-white hover:text-white";
 
-@app.route("/generate-image", methods=["POST"])
-def generate_image():
-    try:
-        prompt = request.json.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"error": "Prompt is required"}), 400
+  return (
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className="text-lg font-bold">Droxion</div>
+        <div className="relative">
+          <FaPlus
+            title="Tools"
+            onClick={() => setTopToolsOpen(!topToolsOpen)}
+            className={`cursor-pointer ${iconStyle}`}
+          />
+          {topToolsOpen && (
+            <div className="absolute right-0 mt-2 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setMessages([]);
+                setTopToolsOpen(false);
+              }}><FaTrash /> Clear</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+                const blob = new Blob([text], { type: "text/plain" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "chat.txt";
+                link.click();
+                setTopToolsOpen(false);
+              }}><FaDownload /> Download</div>
+              <div className="flex items-center gap-2 cursor-pointer"><FaClock /> History</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setVoiceMode(!voiceMode);
+                setTopToolsOpen(false);
+              }}>{voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                setVideoMode(!videoMode);
+                setTopToolsOpen(false);
+              }}><FaVideo /> Video Mode</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                handleMic();
+                setTopToolsOpen(false);
+              }}><FaMicrophone /> Mic</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Upload coming soon");
+                setTopToolsOpen(false);
+              }}><FaUpload /> Upload</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Take Photo coming soon");
+                setTopToolsOpen(false);
+              }}><FaCamera /> Take Photo</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                alert("Screenshot coming soon");
+                setTopToolsOpen(false);
+              }}><FaDesktop /> Screenshot</div>
+            </div>
+          )}
+        </div>
+      </div>
 
-        headers = {
-            "Authorization": f"Token {REPLICATE_API_TOKEN}",
-            "Content-Type": "application/json"
-        }
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((msg, i) => (
+          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+              img: ({ node, ...props }) => (
+                <img {...props} alt="Generated" className="rounded-lg my-2 max-w-xs" />
+              ),
+              iframe: ({ node, ...props }) => (
+                <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
+              )
+            }}>{msg.content}</ReactMarkdown>
+          </div>
+        ))}
+        {typing && (
+          <div className="text-left ml-4">
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" />
+          </div>
+        )}
+        <div ref={chatRef} />
+      </div>
 
-        payload = {
-            "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
-            "input": {
-                "prompt": prompt,
-                "width": 768,
-                "height": 768
-            }
-        }
+      <div className="p-3 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
+            placeholder="Type or say anything..."
+          />
+          <button
+            onClick={handleSend}
+            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
+          >
+            ➤
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        r = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload).json()
-        poll_url = r["urls"]["get"]
-
-        while True:
-            poll = requests.get(poll_url, headers=headers).json()
-            if poll["status"] == "succeeded":
-                return jsonify({"image_url": poll["output"]})
-            elif poll["status"] == "failed":
-                return jsonify({"error": "Image generation failed"}), 500
-            time.sleep(1)
-
-    except Exception as e:
-        return jsonify({"error": f"Image error: {str(e)}"}), 500
-
-@app.route("/style-photo", methods=["POST"])
-def style_photo():
-    try:
-        image_file = request.files.get("file")
-        prompt = request.form.get("prompt", "").strip()
-        style = request.form.get("style", "Pixar").strip()
-
-        if not image_file:
-            return jsonify({"error": "Missing image file"}), 400
-        if not prompt:
-            return jsonify({"error": "Missing prompt"}), 400
-
-        upload = requests.post(
-            "https://api.imgbb.com/1/upload",
-            params={"key": IMGBB_API_KEY},
-            files={"image": image_file}
-        ).json()
-
-        print("[IMGBB Upload Response]", upload, file=sys.stdout, flush=True)
-
-        if "data" not in upload or "url" not in upload["data"]:
-            return jsonify({"error": "Image upload failed", "details": upload}), 500
-
-        image_url = upload["data"]["url"]
-
-        headers = {
-            "Authorization": f"Token {REPLICATE_API_TOKEN}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "version": "8ef2637dcd8b451b7f6f12e423d5a551d13a6501503681c60236e2c1825f3d10",
-            "input": {
-                "image": image_url,
-                "prompt": f"{prompt}, {style}"
-            }
-        }
-
-        response = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload).json()
-        print("[Replicate API Response]", response, file=sys.stdout, flush=True)
-
-        if "urls" not in response or "get" not in response["urls"]:
-            return jsonify({"error": "Replicate API failed", "details": response}), 500
-
-        poll_url = response["urls"]["get"]
-
-        while True:
-            poll = requests.get(poll_url, headers=headers).json()
-            print("[Polling Result]", poll, file=sys.stdout, flush=True)
-            if poll["status"] == "succeeded":
-                return jsonify({"image_url": poll["output"][0]})
-            elif poll["status"] == "failed":
-                return jsonify({"error": "Image generation failed", "details": poll}), 500
-            time.sleep(1)
-
-    except Exception as e:
-        print("[Style Photo Error]", traceback.format_exc(), file=sys.stdout, flush=True)
-        return jsonify({"error": f"Server exception: {str(e)}"}), 500
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+export default AIChat;
