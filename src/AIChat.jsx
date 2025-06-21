@@ -17,6 +17,7 @@ function AIChat() {
   const [topToolsOpen, setTopToolsOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
+
   const userId = useRef("");
 
   useEffect(() => {
@@ -96,9 +97,8 @@ function AIChat() {
           prompt: input,
           voiceMode,
           videoMode,
-          user_id: userId.current
         });
-        const reply = res.data.reply || "❌ No response from AI.";
+        const reply = res.data.reply;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
       }
@@ -123,6 +123,26 @@ function AIChat() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("image", file);
+    setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
+    setTyping(true);
+    logAction("upload_image", file.name);
+    try {
+      const res = await axios.post("https://droxion-backend.onrender.com/analyze-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      const reply = res.data.reply || "No response from AI.";
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Couldn't analyze the image." }]);
+    } finally {
+      setTyping(false);
     }
   };
 
@@ -153,11 +173,13 @@ function AIChat() {
                 link.click();
                 setTopToolsOpen(false);
               }}><FaDownload /> Download</div>
-              <div className="flex items-center gap-2 cursor-pointer"><FaClock /> History</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTopToolsOpen(false)}><FaClock /> History</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
                 setVoiceMode(!voiceMode);
                 setTopToolsOpen(false);
-              }}>{voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}</div>
+              }}>
+                {voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}
+              </div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
                 setVideoMode(!videoMode);
                 setTopToolsOpen(false);
@@ -167,17 +189,18 @@ function AIChat() {
                 setTopToolsOpen(false);
               }}><FaMicrophone /> Mic</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
-                alert("Upload coming soon");
+                document.getElementById('fileUpload').click();
                 setTopToolsOpen(false);
               }}><FaUpload /> Upload</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
-                alert("Take Photo coming soon");
+                alert("Take Photo");
                 setTopToolsOpen(false);
               }}><FaCamera /> Take Photo</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
-                alert("Screenshot coming soon");
+                alert("Screenshot");
                 setTopToolsOpen(false);
               }}><FaDesktop /> Screenshot</div>
+              <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
             </div>
           )}
         </div>
