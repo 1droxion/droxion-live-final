@@ -1,35 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>Veo3 Local Generator</title>
-</head>
-<body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:50px;">
-  <h1>Veo3-Style AI Video (Local)</h1>
-  <input type="text" id="prompt" placeholder="Enter prompt..." style="width:60%;padding:10px;font-size:16px;" />
-  <br/><br/>
-  <button onclick="generateVideo()" style="padding:10px 20px;font-size:18px;">Generate Video</button>
-  <br/><br/>
-  <video id="video" controls width="600" style="display:none;"></video>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0e0e10" />
+    <meta name="description" content="Droxion – AI-powered creative tools for content, images, and video." />
+    
+    <!-- App title -->
+    <title>Droxion</title>
 
-  <script>
-    async function generateVideo() {
-      const prompt = document.getElementById("prompt").value;
-      const res = await fetch("https://YOUR-BACKEND-URL.onrender.com/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt })
-      });
+    <!-- ✅ Manifest -->
+    <link rel="manifest" href="/manifest.json" />
 
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const video = document.getElementById("video");
-        video.src = url;
-        video.style.display = "block";
-      } else {
-        alert("Video generation failed.");
-      }
-    }
-  </script>
-</body>
+    <!-- ✅ Icons -->
+    <link rel="icon" type="image/png" href="/icon-192x192.png" />
+    <link rel="apple-touch-icon" href="/icon-192x192.png" />
+
+    <!-- Vite will inject compiled JS/CSS -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
