@@ -39,7 +39,15 @@ function AIImage() {
       return;
     }
 
-    // ✅ Skip coin check if isDhruv
+    const plan = localStorage.getItem("droxion_plan") || "Starter";
+    const imageUsage = parseInt(localStorage.getItem("image_usage") || "0", 10);
+
+    // ✅ Limit for Starter users
+    if (!isDhruv && plan === "Starter" && imageUsage >= 1) {
+      alert("🖼️ You've used your 1 free image. Upgrade to Pro for unlimited image generation.");
+      return;
+    }
+
     if (!isDhruv && coins < 3) {
       if (window.confirm("❌ You don’t have enough coins. Go to Plans page to buy more?")) {
         window.location.href = "/plans";
@@ -61,7 +69,10 @@ function AIImage() {
       const url = response.data.image_url;
       setImageUrl(url);
 
-      if (!isDhruv) setCoins(prev => prev - 3); // ✅ Only deduct if not Dhruv
+      if (!isDhruv) setCoins(prev => prev - 3);
+      if (!isDhruv && plan === "Starter") {
+        localStorage.setItem("image_usage", String(imageUsage + 1));
+      }
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
       alert("Image generation failed. Try again.");
