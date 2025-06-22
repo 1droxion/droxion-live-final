@@ -1,9 +1,3 @@
-// ✅ Full AIChat.jsx with:
-// - Memory system (name, location, etc.)
-// - Smart formatting (steps, tables, box)
-// - Style sidebar moved to top of input bar
-// - Prompts black & white only
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -93,21 +87,33 @@ function AIChat() {
     if (!input.trim()) return;
     const userMsg = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
+    memory.current.last = input;
     setInput("");
     setTyping(true);
     logAction("message", input);
 
     const lower = input.toLowerCase();
-    if (/my name is (.+)/i.test(lower)) {
-      const name = input.match(/my name is (.+)/i)[1];
+
+    const nameMatch = input.match(/(?:my name is|my name|i am|i’m|i am called|this is|ye my name)(?: is)?\s+([a-zA-Z]+)/i);
+    if (nameMatch) {
+      const name = nameMatch[1];
       memory.current.name = name;
-      setMessages(prev => [...prev, { role: "assistant", content: `Okay, I’ll remember your name is ${name}.` }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `Got it. Your name is ${name}.` }]);
       setTyping(false);
       return;
     }
-    if (/what is my name/i.test(lower)) {
+    if (/what.*my name/i.test(lower)) {
       const name = memory.current.name;
-      setMessages(prev => [...prev, { role: "assistant", content: name ? `You told me your name is ${name}.` : "You haven't told me yet." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: name ? `You told me your name is ${name}.` : "You haven't told me your name yet." }]);
+      setTyping(false);
+      return;
+    }
+    if (/what did i just say|my last message/i.test(lower)) {
+      const last = memory.current.last;
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: last ? `You said: "${last}"` : "I don’t remember yet."
+      }]);
       setTyping(false);
       return;
     }
@@ -146,16 +152,10 @@ function AIChat() {
         if (/step by step|steps|guide/.test(lower)) {
           reply = reply.replace(/\n/g, "\n1. ");
           reply = "1. " + reply;
-        } else if (/chart|table/.test(lower)) {
-          reply = reply.replace(/\|/g, "| "); // clean up formatting
+        } else if (/chart|table|compare/.test(lower)) {
+          reply = `| Topic | AI | Human |\n|-------|-----|--------|\n| Speed | Fast | Slower |\n| Error | Low | Higher |\n| Work  | 24/7 | Needs rest |`;
         } else if (/box|highlight/.test(lower)) {
-          reply = `\
-\
-\
-${reply}\
-\
-\
-`;
+          reply = `\n\n\`\`\`\n${reply}\n\`\`\`\n\n`;
         }
 
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -217,7 +217,6 @@ ${reply}\
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-
       {/* Topbar */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
@@ -265,7 +264,7 @@ ${reply}\
         <div ref={chatRef} />
       </div>
 
-      {/* Top of Input: Style buttons */}
+      {/* Style buttons top of input */}
       <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
         {styles.map((s) => (
           <button
@@ -276,7 +275,7 @@ ${reply}\
         ))}
       </div>
 
-      {/* Input Bar */}
+      {/* Input */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
           <textarea
