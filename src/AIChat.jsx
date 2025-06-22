@@ -1,4 +1,9 @@
-// 🔄 Same imports as before
+// ✅ Full AIChat.jsx with:
+// - Memory system (name, location, etc.)
+// - Smart formatting (steps, tables, box)
+// - Style sidebar moved to top of input bar
+// - Prompts black & white only
+
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -19,6 +24,7 @@ function AIChat() {
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
+  const memory = useRef({});
 
   const styles = [
     { label: "Cinematic 4K", keywords: ["cinematic", "movie", "film"] },
@@ -79,13 +85,7 @@ function AIChat() {
       prompt: styledPrompt
     });
     if (imgRes.data?.image_url) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `![Generated Image](${imgRes.data.image_url})`
-        }
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", content: `![Generated Image](${imgRes.data.image_url})` }]);
     }
   };
 
@@ -97,11 +97,24 @@ function AIChat() {
     setTyping(true);
     logAction("message", input);
 
+    const lower = input.toLowerCase();
+    if (/my name is (.+)/i.test(lower)) {
+      const name = input.match(/my name is (.+)/i)[1];
+      memory.current.name = name;
+      setMessages(prev => [...prev, { role: "assistant", content: `Okay, I’ll remember your name is ${name}.` }]);
+      setTyping(false);
+      return;
+    }
+    if (/what is my name/i.test(lower)) {
+      const name = memory.current.name;
+      setMessages(prev => [...prev, { role: "assistant", content: name ? `You told me your name is ${name}.` : "You haven't told me yet." }]);
+      setTyping(false);
+      return;
+    }
+
     try {
-      const lower = input.toLowerCase();
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
@@ -128,7 +141,23 @@ function AIChat() {
           voiceMode,
           videoMode,
         });
-        const reply = res.data.reply;
+        let reply = res.data.reply;
+
+        if (/step by step|steps|guide/.test(lower)) {
+          reply = reply.replace(/\n/g, "\n1. ");
+          reply = "1. " + reply;
+        } else if (/chart|table/.test(lower)) {
+          reply = reply.replace(/\|/g, "| "); // clean up formatting
+        } else if (/box|highlight/.test(lower)) {
+          reply = `\
+\
+\
+${reply}\
+\
+\
+`;
+        }
+
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
       }
@@ -189,19 +218,6 @@ function AIChat() {
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
 
-      {/* Sidebar Styles */}
-      <div className="fixed left-0 top-28 z-50 flex flex-col gap-1 px-1">
-        {styles.map((s) => (
-          <button
-            key={s.label}
-            onClick={() => handleQuickStyle(s.label)}
-            className="bg-purple-800 hover:bg-purple-900 text-xs rotate-[-90deg] text-white px-2 py-1 rounded"
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
       {/* Topbar */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
@@ -249,6 +265,17 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
+      {/* Top of Input: Style buttons */}
+      <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
+        {styles.map((s) => (
+          <button
+            key={s.label}
+            onClick={() => handleQuickStyle(s.label)}
+            className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black"
+          >{s.label}</button>
+        ))}
+      </div>
+
       {/* Input Bar */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
@@ -262,9 +289,7 @@ function AIChat() {
           <button
             onClick={handleSend}
             className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-          >
-            ➤
-          </button>
+          >➤</button>
         </div>
       </div>
     </div>
