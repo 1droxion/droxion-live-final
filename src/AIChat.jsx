@@ -184,7 +184,11 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="relative">
-          <FaPlus title="Tools" onClick={() => setTopToolsOpen(!topToolsOpen)} className={`cursor-pointer ${iconStyle}`} />
+          <FaPlus
+            title="Tools"
+            onClick={() => setTopToolsOpen(prev => !prev)}
+            className={`cursor-pointer ${iconStyle}`}
+          />
           {topToolsOpen && (
             <div className="absolute right-0 mt-2 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setMessages([]); setTopToolsOpen(false); }}><FaTrash /> Clear</div>
