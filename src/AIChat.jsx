@@ -1,3 +1,4 @@
+// 🔄 Same imports as before
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -18,6 +19,17 @@ function AIChat() {
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
+
+  const styles = [
+    { label: "Cinematic 4K", keywords: ["cinematic", "movie", "film"] },
+    { label: "Anime", keywords: ["anime", "manga", "japan"] },
+    { label: "Realistic", keywords: ["real", "photo", "photograph"] },
+    { label: "Pixel Art", keywords: ["pixel", "8bit", "retro"] },
+    { label: "Fantasy Landscape", keywords: ["fantasy", "castle", "magic"] },
+    { label: "3D Render", keywords: ["3d", "model", "render"] },
+    { label: "Cyberpunk", keywords: ["cyberpunk", "neon", "future"] },
+    { label: "Watercolor", keywords: ["watercolor", "paint", "brush"] },
+  ];
 
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
@@ -53,6 +65,30 @@ function AIChat() {
     synth.speak(utterance);
   };
 
+  const getStyleFromPrompt = (text) => {
+    const lower = text.toLowerCase();
+    for (const style of styles) {
+      if (style.keywords.some((k) => lower.includes(k))) return style.label;
+    }
+    return null;
+  };
+
+  const generateStyledImage = async (originalPrompt, style) => {
+    const styledPrompt = `${originalPrompt}, in ${style} style`;
+    const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", {
+      prompt: styledPrompt
+    });
+    if (imgRes.data?.image_url) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `![Generated Image](${imgRes.data.image_url})`
+        }
+      ]);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
     const userMsg = { role: "user", content: input };
@@ -80,15 +116,10 @@ function AIChat() {
         }
       }
 
-      if (imgKeywords.some((k) => lower.includes(k))) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
-        if (imgRes.data?.image_url) {
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: `![Generated Image](${imgRes.data.image_url})`
-          }]);
-          handled = true;
-        }
+      if (!handled && imgKeywords.some((k) => lower.includes(k))) {
+        const matchedStyle = getStyleFromPrompt(lower) || "Realistic";
+        await generateStyledImage(input, matchedStyle);
+        handled = true;
       }
 
       if (!handled) {
@@ -107,6 +138,14 @@ function AIChat() {
     } finally {
       setTyping(false);
     }
+  };
+
+  const handleQuickStyle = async (styleLabel) => {
+    const basePrompt = "A futuristic red car";
+    setMessages((prev) => [...prev, { role: "user", content: basePrompt }]);
+    setTyping(true);
+    await generateStyledImage(basePrompt, styleLabel);
+    setTyping(false);
   };
 
   const handleMic = () => {
@@ -149,6 +188,21 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
+
+      {/* Sidebar Styles */}
+      <div className="fixed left-0 top-28 z-50 flex flex-col gap-1 px-1">
+        {styles.map((s) => (
+          <button
+            key={s.label}
+            onClick={() => handleQuickStyle(s.label)}
+            className="bg-purple-800 hover:bg-purple-900 text-xs rotate-[-90deg] text-white px-2 py-1 rounded"
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Topbar */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="relative">
@@ -181,6 +235,7 @@ function AIChat() {
         </div>
       </div>
 
+      {/* Chat Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
@@ -194,6 +249,7 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
+      {/* Input Bar */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
           <textarea
