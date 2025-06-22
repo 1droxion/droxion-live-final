@@ -74,7 +74,7 @@ function AIChat() {
         if (!imgKeywords.some((k) => lower.includes(k)) && chatUsage >= 3) {
           setMessages((prev) => [...prev, {
             role: "assistant",
-            content: "⚠️ You’ve used 3 free messages. Upgrade to Pro for unlimited access."
+            content: "**🔒 Free Limit Reached!**\n[🚀 Upgrade to Pro](/plans) for unlimited access and premium features."
           }]);
           setTyping(false);
           return;
@@ -83,7 +83,7 @@ function AIChat() {
         if (imgKeywords.some((k) => lower.includes(k)) && imageUsage >= 1) {
           setMessages((prev) => [...prev, {
             role: "assistant",
-            content: "🖼️ Free plan includes 1 image generation only. Upgrade to Pro to unlock more."
+            content: "**🖼️ Image Limit Reached!**\n[✨ Unlock Pro Plan](/plans) to generate more images."
           }]);
           setTyping(false);
           return;
