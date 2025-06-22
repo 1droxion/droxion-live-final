@@ -159,7 +159,7 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Your chat layout goes here */}
+      {/* your existing return layout remains here */}
     </div>
   );
 }
