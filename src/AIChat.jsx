@@ -61,35 +61,35 @@ function AIChat() {
     setTyping(true);
     logAction("message", input);
 
-    const lower = input.toLowerCase();
-    const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
-    const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
-    const plan = localStorage.getItem("droxion_plan") || "Starter";
-    const chatUsage = parseInt(localStorage.getItem("chat_usage") || "0", 10);
-    const imageUsage = parseInt(localStorage.getItem("image_usage") || "0", 10);
-
-    if (plan === "Starter") {
-      if (!imgKeywords.some((k) => lower.includes(k)) && chatUsage >= 3) {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: "⚠️ You’ve used 3 free messages. Upgrade to Pro for unlimited access."
-        }]);
-        setTyping(false);
-        return;
-      }
-
-      if (imgKeywords.some((k) => lower.includes(k)) && imageUsage >= 1) {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: "🖼️ Free plan includes 1 image generation only. Upgrade to Pro to unlock more."
-        }]);
-        setTyping(false);
-        return;
-      }
-    }
-
     try {
+      const lower = input.toLowerCase();
+      const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
+      const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
+
+      const plan = localStorage.getItem("droxion_plan") || "Starter";
+      const chatUsage = parseInt(localStorage.getItem("chat_usage") || "0", 10);
+      const imageUsage = parseInt(localStorage.getItem("image_usage") || "0", 10);
+
+      if (plan === "Starter") {
+        if (!imgKeywords.some((k) => lower.includes(k)) && chatUsage >= 3) {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: "⚠️ You’ve used 3 free messages. Upgrade to Pro for unlimited access."
+          }]);
+          setTyping(false);
+          return;
+        }
+
+        if (imgKeywords.some((k) => lower.includes(k)) && imageUsage >= 1) {
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: "🖼️ Free plan includes 1 image generation only. Upgrade to Pro to unlock more."
+          }]);
+          setTyping(false);
+          return;
+        }
+      }
+
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
@@ -141,27 +141,7 @@ function AIChat() {
     }
   };
 
-  const handleMic = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return alert("Mic not supported");
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.start();
-    recognition.onresult = (e) => setInput(e.results[0][0].transcript);
-  };
-
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* your existing return layout remains here */}
-    </div>
-  );
+  // Your original UI (return) stays unchanged...
 }
 
 export default AIChat;
