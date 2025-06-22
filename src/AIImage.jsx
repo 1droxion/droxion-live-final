@@ -19,7 +19,7 @@ function AIImage() {
     "Watercolor",
   ];
 
-  const isDhruv = true; // ✅ Allow free use for you
+  const isDhruv = true; // ✅ Allow full free use
 
   useEffect(() => {
     axios
@@ -39,14 +39,7 @@ function AIImage() {
       return;
     }
 
-    const plan = localStorage.getItem("droxion_plan") || "Starter";
-    const imageUsage = parseInt(localStorage.getItem("image_usage") || "0", 10);
-
-    if (plan === "Starter" && imageUsage >= 1 && !isDhruv) {
-      alert("🖼️ Starter plan includes 1 image generation only. Upgrade to Pro for unlimited access.");
-      return;
-    }
-
+    // ✅ Limit check removed for full free access
     setLoading(true);
     setImageUrl("");
 
@@ -61,11 +54,7 @@ function AIImage() {
       const url = response.data.image_url;
       setImageUrl(url);
 
-      if (plan === "Starter" && !isDhruv) {
-        localStorage.setItem("image_usage", String(imageUsage + 1));
-      }
-
-      if (!isDhruv) setCoins(prev => prev - 3); // ✅ Only deduct if not Dhruv
+      if (!isDhruv) setCoins(prev => prev - 3); // Optional coin logic
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
       alert("Image generation failed. Try again.");
