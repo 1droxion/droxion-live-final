@@ -33,18 +33,20 @@ function AIImage() {
       });
   }, []);
 
-  const generateImage = async () => {
-    if (!prompt.trim()) {
+  const generateImage = async (customPrompt = null, customStyle = null) => {
+    const finalPrompt = customPrompt ?? prompt;
+    const finalStyle = customStyle ?? selectedStyle;
+
+    if (!finalPrompt.trim()) {
       alert("⚠️ Please enter a prompt.");
       return;
     }
 
-    // ✅ Limit check removed for full free access
     setLoading(true);
     setImageUrl("");
 
     try {
-      const styledPrompt = `${prompt}, in ${selectedStyle} style`;
+      const styledPrompt = `${finalPrompt}, in ${finalStyle} style`;
 
       const response = await axios.post(
         `${import.meta.env.VITE_BACKEND_URL}/generate-image`,
@@ -54,7 +56,7 @@ function AIImage() {
       const url = response.data.image_url;
       setImageUrl(url);
 
-      if (!isDhruv) setCoins(prev => prev - 3); // Optional coin logic
+      if (!isDhruv) setCoins(prev => prev - 3);
     } catch (err) {
       console.error("❌ Error:", err.response?.data || err.message);
       alert("Image generation failed. Try again.");
@@ -63,8 +65,29 @@ function AIImage() {
     }
   };
 
+  const handleQuickStyle = (styleName) => {
+    const basePrompt = "A futuristic red sports car";
+    setSelectedStyle(styleName);
+    setPrompt(basePrompt);
+    generateImage(basePrompt, styleName);
+  };
+
   return (
-    <div className="min-h-screen px-6 py-10 bg-gradient-to-br from-black via-[#0f0f23] to-black text-white flex flex-col items-center justify-center">
+    <div className="min-h-screen px-6 py-10 bg-gradient-to-br from-black via-[#0f0f23] to-black text-white flex flex-col items-center justify-center relative">
+
+      {/* Vertical Rolling Style Buttons */}
+      <div className="fixed left-2 top-24 flex flex-col gap-2 z-10">
+        {styles.map((style) => (
+          <button
+            key={style}
+            onClick={() => handleQuickStyle(style)}
+            className="bg-purple-700 hover:bg-purple-900 text-white text-xs px-2 py-1 rounded rotate-[-90deg] origin-left shadow"
+          >
+            🎨 {style}
+          </button>
+        ))}
+      </div>
+
       {/* Header */}
       <div className="flex justify-between w-full max-w-5xl mb-6">
         <h1 className="text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 animate-pulse">
@@ -84,7 +107,7 @@ function AIImage() {
         className="w-full max-w-xl p-4 mb-4 rounded-lg text-black shadow-inner border-2 border-blue-500 focus:outline-none focus:ring-4 focus:ring-purple-600 transition-all"
       />
 
-      {/* Style selector */}
+      {/* Style dropdown */}
       <select
         value={selectedStyle}
         onChange={(e) => setSelectedStyle(e.target.value)}
@@ -99,7 +122,7 @@ function AIImage() {
 
       {/* Generate Button */}
       <button
-        onClick={generateImage}
+        onClick={() => generateImage()}
         disabled={loading}
         className={`px-8 py-3 font-bold text-lg rounded-xl transition-all bg-gradient-to-r from-green-400 via-cyan-400 to-blue-500 hover:from-pink-500 hover:to-yellow-500 ${
           loading ? "opacity-50 cursor-not-allowed" : ""
