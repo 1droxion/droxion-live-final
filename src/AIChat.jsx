@@ -66,30 +66,6 @@ function AIChat() {
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
-      const plan = localStorage.getItem("droxion_plan") || "Starter";
-      const chatUsage = parseInt(localStorage.getItem("chat_usage") || "0", 10);
-      const imageUsage = parseInt(localStorage.getItem("image_usage") || "0", 10);
-
-      if (plan === "Starter") {
-        if (!imgKeywords.some((k) => lower.includes(k)) && chatUsage >= 3) {
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: "**🔒 Free Limit Reached!**\n[🚀 Upgrade to Pro](/plans) for unlimited access and premium features."
-          }]);
-          setTyping(false);
-          return;
-        }
-
-        if (imgKeywords.some((k) => lower.includes(k)) && imageUsage >= 1) {
-          setMessages((prev) => [...prev, {
-            role: "assistant",
-            content: "**🖼️ Image Limit Reached!**\n[✨ Unlock Pro Plan](/plans) to generate more images."
-          }]);
-          setTyping(false);
-          return;
-        }
-      }
-
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
@@ -124,14 +100,6 @@ function AIChat() {
         const reply = res.data.reply;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
-      }
-
-      if (plan === "Starter") {
-        if (!imgKeywords.some((k) => lower.includes(k))) {
-          localStorage.setItem("chat_usage", String(chatUsage + 1));
-        } else {
-          localStorage.setItem("image_usage", String(imageUsage + 1));
-        }
       }
 
     } catch {
