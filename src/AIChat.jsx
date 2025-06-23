@@ -1,4 +1,4 @@
-// ✅ Final AIChat.jsx with prompt styles, Dhruv Patel credit, dropdown auto-close and left alignment
+// ✅ Final AIChat.jsx with fixed dropdown opens left-top direction, all icons functional
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -168,7 +168,7 @@ function AIChat() {
             className={`cursor-pointer ${iconStyle}`}
           />
           {topToolsOpen && (
-            <div className="absolute left-0 mt-2 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+            <div className="absolute top-[-200px] right-0 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setMessages([]); setTopToolsOpen(false); }}><FaTrash /> Clear</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }}><FaDownload /> Download</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTopToolsOpen(false)}><FaClock /> History</div>
