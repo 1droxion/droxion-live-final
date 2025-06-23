@@ -1,124 +1,168 @@
-from flask import Flask, request, jsonify, render_template_string, make_response
-from flask_cors import CORS
-from dotenv import load_dotenv
-import os, requests, json, time
-from datetime import datetime
-from collections import Counter
-from dateutil import parser
-import pytz
+// ✅ AIChat.jsx with world data support + dashboard link + credit
+// Built by Dhruv Patel | Droxion AI
 
-load_dotenv()
+import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import {
+  FaTrash, FaDownload, FaClock, FaPlus,
+  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
+  FaUpload, FaCamera, FaDesktop
+} from "react-icons/fa";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-app = Flask(__name__)
-CORS(app, origins="*", supports_credentials=True)
+function AIChat() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
+  const [topToolsOpen, setTopToolsOpen] = useState(false);
+  const chatRef = useRef(null);
+  const synth = window.speechSynthesis;
+  const userId = useRef("");
+  const memory = useRef({});
 
-LOG_FILE = "user_logs.json"
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "droxion2025")
+  const styles = [
+    "Cinematic 4K", "Anime", "Realistic", "Pixel Art",
+    "Fantasy Landscape", "3D Render", "Cyberpunk", "Watercolor"
+  ];
 
-with open("world_knowledge.json") as f:
-    WORLD_DATA = json.load(f)
+  useEffect(() => {
+    let id = localStorage.getItem("droxion_uid");
+    if (!id) {
+      id = "user-" + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem("droxion_uid", id);
+    }
+    userId.current = id;
+  }, []);
 
-MEMORY_FILE = "user_memory.json"
-if os.path.exists(MEMORY_FILE):
-    with open(MEMORY_FILE) as f:
-        USER_MEMORY = json.load(f)
-else:
-    USER_MEMORY = {}
+  useEffect(() => {
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, typing]);
 
-def save_user_memory():
-    with open(MEMORY_FILE, "w") as f:
-        json.dump(USER_MEMORY, f, indent=2)
+  const speak = (text) => {
+    if (!voiceMode || !text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    synth.cancel();
+    synth.speak(utterance);
+  };
 
-def update_memory(user_id, prompt):
-    q = prompt.lower()
-    if "my name is" in q:
-        name = prompt.split("my name is")[-1].strip().split()[0]
-        USER_MEMORY.setdefault(user_id, {})["name"] = name
-        save_user_memory()
-        return f"Nice to meet you, {name}!"
-    if "i live in" in q or "i am from" in q:
-        for phrase in ["i live in", "i am from"]:
-            if phrase in q:
-                loc = prompt.split(phrase)[-1].strip().split()[0]
-                USER_MEMORY.setdefault(user_id, {})["location"] = loc
-                save_user_memory()
-                return f"Got it, you live in {loc}."
-    return None
+  const handleSend = async (customInput) => {
+    const message = customInput || input;
+    if (!message.trim()) return;
+    setMessages((prev) => [...prev, { role: "user", content: message }]);
+    memory.current.last = message;
+    setInput("");
+    setTyping(true);
+    const lower = message.toLowerCase();
 
-def recall_memory(user_id, prompt):
-    q = prompt.lower()
-    user_data = USER_MEMORY.get(user_id, {})
-    if "what's my name" in q or "what is my name" in q:
-        return f"You said your name is {user_data.get('name', 'not saved yet')}."
-    if "where do i live" in q:
-        return f"You said you live in {user_data.get('location', 'an unknown place')}."
-    return None
+    // Detect simple chart: Jan 100, Feb 200
+    if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
+      try {
+        const data = message.split(":")[1].split(",").map(pair => {
+          const [label, value] = pair.trim().split(/ +/);
+          return { name: label, value: Number(value) };
+        });
+        setMessages(prev => [...prev, { role: "assistant", content: "<chart>" }]);
+        setMessages(prev => [...prev, { role: "chart", content: data }]);
+        setTyping(false);
+        return;
+      } catch (err) {
+        console.error("chart parse error", err);
+      }
+    }
 
-def get_world_answer(prompt):
-    q = prompt.lower()
-    for c, d in WORLD_DATA.get("countries", {}).items():
-        if c.lower() in q:
-            if "capital" in q:
-                return f"The capital of {c} is {d['capital']}."
-            elif "currency" in q:
-                return f"The currency of {c} is {d['currency']}.",
-            elif "population" in q:
-                return f"The population of {c} is {d['population']}."
-    for planet, d in WORLD_DATA.get("planets", {}).items():
-        if planet.lower() in q:
-            return f"{planet} is the {d['position']} planet from the sun and is a {d['type']}."
-    for code, name in WORLD_DATA.get("currencies", {}).items():
-        if code.lower() in q or name.lower() in q:
-            return f"{code} stands for {name}."
-    for lang, regions in WORLD_DATA.get("languages", {}).items():
-        if lang.lower() in q:
-            return f"{lang} is spoken in {', '.join(regions)}."
-    if "ai company" in q or "top ai" in q:
-        return f"Top AI companies are: {', '.join(WORLD_DATA['tech']['top_ai_companies'])}."
-    if "gpt" in q:
-        return f"Available GPT models are: {', '.join(WORLD_DATA['tech']['gpt_models'])}."
-    return None
+    try {
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        prompt: message,
+        user_id: userId.current,
+        voiceMode,
+        videoMode
+      });
+      const reply = res.data.reply;
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    try:
-        data = request.json
-        prompt = data.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"reply": "❗ Prompt is required."}), 400
+      let formatted = reply;
+      if (/```/.test(reply)) {
+        formatted = reply;
+      } else if (/box|highlight/.test(lower)) {
+        formatted = `\\`\\`\\`\n${reply}\n\\`\\`\\``;
+      }
 
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-        user_id = data.get("user_id", "anonymous")
-        voice_mode = data.get("voiceMode", False)
-        video_mode = data.get("videoMode", False)
+      setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
+      speak(reply);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+    } finally {
+      setTyping(false);
+    }
+  };
 
-        reply = update_memory(user_id, prompt)
-        if reply:
-            return jsonify({"reply": reply, "voiceMode": voice_mode, "videoMode": video_mode})
+  const handleKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
-        reply = recall_memory(user_id, prompt)
-        if reply:
-            return jsonify({"reply": reply, "voiceMode": voice_mode, "videoMode": video_mode})
+  return (
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className="text-lg font-bold">Droxion</div>
+        <div className="flex items-center space-x-3">
+          <a href="https://droxion-backend.onrender.com/dashboard?token=droxion2025" target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-400">Dashboard</a>
+          <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
+        </div>
+      </div>
 
-        reply = get_world_answer(prompt)
-        if reply:
-            return jsonify({"reply": reply, "voiceMode": voice_mode, "videoMode": video_mode})
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((msg, i) => (
+          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+            {msg.role === "chart" ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={msg.content}>
+                  <XAxis dataKey="name" stroke="#fff" />
+                  <YAxis stroke="#fff" />
+                  <Tooltip wrapperClassName="text-black" />
+                  <Bar dataKey="value" fill="#8884d8" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+            )}
+          </div>
+        ))}
+        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" /></div>}
+        <div ref={chatRef} />
+      </div>
 
-        headers = {
-            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-            "Content-Type": "application/json"
-        }
+      <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
+        {styles.map((style) => (
+          <button key={style} onClick={() => handleSend(`A futuristic red car in ${style} style`)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">
+            {style}
+          </button>
+        ))}
+      </div>
 
-        payload = {
-            "model": "gpt-4",
-            "messages": [
-                {"role": "system", "content": "You are Droxion AI Assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        }
+      <div className="p-3 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            rows={2}
+            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none resize-none"
+            placeholder="Type or say anything..."
+          />
+          <button onClick={() => handleSend()} className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">
+            ➤
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-        reply = res.json()["choices"][0]["message"]["content"]
-        return jsonify({"reply": reply, "voiceMode": voice_mode, "videoMode": video_mode})
-    except Exception as e:
-        return jsonify({"reply": f"❌ Error: {str(e)}"}), 500
+export default AIChat;
