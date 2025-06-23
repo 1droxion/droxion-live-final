@@ -1,5 +1,6 @@
-// ✅ AIChat.jsx FINAL+ with LIVE CHART SUPPORT
-// Detects "chart"/"plot" prompts and shows BarChart inline
+// ✅ AIChat.jsx with world data support
+// Works with updated Flask backend
+// All features enabled: memory, images, charts, formatting, styles
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -24,7 +25,10 @@ function AIChat() {
   const userId = useRef("");
   const memory = useRef({});
 
-  const styles = ["Cinematic 4K", "Anime", "Realistic", "Pixel Art", "Fantasy Landscape", "3D Render", "Cyberpunk", "Watercolor"];
+  const styles = [
+    "Cinematic 4K", "Anime", "Realistic", "Pixel Art",
+    "Fantasy Landscape", "3D Render", "Cyberpunk", "Watercolor"
+  ];
 
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
@@ -47,43 +51,50 @@ function AIChat() {
     synth.speak(utterance);
   };
 
-  const handleSend = async () => {
-    const message = input;
+  const handleSend = async (customInput) => {
+    const message = customInput || input;
     if (!message.trim()) return;
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     memory.current.last = message;
     setInput("");
     setTyping(true);
-
     const lower = message.toLowerCase();
 
-    // Detect simple "chart: key1 value1, key2 value2" pattern
-    if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/i.test(message)) {
+    // Detect simple chart: Jan 100, Feb 200
+    if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
       try {
         const data = message.split(":")[1].split(",").map(pair => {
-          const [label, value] = pair.trim().split(/\s+/);
+          const [label, value] = pair.trim().split(/ +/);
           return { name: label, value: Number(value) };
         });
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: "<chart>"
-        }]);
-        setMessages(prev => [...prev, {
-          role: "chart",
-          content: data
-        }]);
+        setMessages(prev => [...prev, { role: "assistant", content: "<chart>" }]);
+        setMessages(prev => [...prev, { role: "chart", content: data }]);
         setTyping(false);
         return;
       } catch (err) {
-        console.error("Chart parse error", err);
+        console.error("chart parse error", err);
       }
     }
 
-    // Fallback AI call
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt: message });
-      setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
-      speak(res.data.reply);
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        prompt: message,
+        user_id: userId.current,
+        voiceMode,
+        videoMode
+      });
+      const reply = res.data.reply;
+
+      // handle box format
+      let formatted = reply;
+      if (/```/.test(reply)) {
+        formatted = reply;
+      } else if (/box|highlight/.test(lower)) {
+        formatted = `\`\`\`\n${reply}\n\`\`\``;
+      }
+
+      setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
+      speak(reply);
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -126,6 +137,16 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
+      {/* Style Buttons */}
+      <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
+        {styles.map((style) => (
+          <button key={style} onClick={() => handleSend(`A futuristic red car in ${style} style`)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">
+            {style}
+          </button>
+        ))}
+      </div>
+
+      {/* Input */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
           <textarea
@@ -136,7 +157,7 @@ function AIChat() {
             className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none resize-none"
             placeholder="Type or say anything..."
           />
-          <button onClick={handleSend} className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">
+          <button onClick={() => handleSend()} className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">
             ➤
           </button>
         </div>
