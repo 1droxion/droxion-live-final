@@ -88,7 +88,7 @@ function AIChat() {
       if (/```/.test(reply)) {
         formatted = reply;
       } else if (/box|highlight/.test(lower)) {
-        formatted = `\\`\\`\\`\n${reply}\n\\`\\`\\``;
+        formatted = `\`\`\`\n${reply}\n\`\`\``;
       }
 
       setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
