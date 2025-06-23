@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with world data support + dashboard hidden unless admin + credit
+// ✅ AIChat.jsx with image/video fix, style buttons, and all features
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -57,22 +57,6 @@ function AIChat() {
     memory.current.last = message;
     setInput("");
     setTyping(true);
-    const lower = message.toLowerCase();
-
-    if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
-      try {
-        const data = message.split(":")[1].split(",").map(pair => {
-          const [label, value] = pair.trim().split(/ +/);
-          return { name: label, value: Number(value) };
-        });
-        setMessages(prev => [...prev, { role: "assistant", content: "<chart>" }]);
-        setMessages(prev => [...prev, { role: "chart", content: data }]);
-        setTyping(false);
-        return;
-      } catch (err) {
-        console.error("chart parse error", err);
-      }
-    }
 
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
@@ -81,17 +65,19 @@ function AIChat() {
         voiceMode,
         videoMode
       });
-      const reply = res.data.reply;
 
-      let formatted = reply;
-      if (/```/.test(reply)) {
-        formatted = reply;
-      } else if (/box|highlight/.test(lower)) {
-        formatted = "```\n" + reply + "\n```";
+      if (res.data.imagePrompt) {
+        setMessages((prev) => [...prev, { role: "assistant", content: `🖼️ Generating image for "${res.data.imagePrompt}"...` }]);
+        setMessages((prev) => [...prev, { role: "image", url: `https://source.unsplash.com/featured/?${encodeURIComponent(res.data.imagePrompt)}` }]);
+      } else if (res.data.videoUrl) {
+        setMessages((prev) => [...prev, { role: "assistant", content: "📺 Here's a video you might enjoy:" }]);
+        setMessages((prev) => [...prev, { role: "video", url: res.data.videoUrl }]);
+      } else {
+        const reply = res.data.reply || "No reply.";
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+        speak(reply);
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
-      speak(reply);
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -121,7 +107,20 @@ function AIChat() {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-            {msg.role === "chart" ? (
+            {msg.role === "image" ? (
+              <img src={msg.url} alt="Generated" className="rounded shadow max-w-xs" />
+            ) : msg.role === "video" ? (
+              <iframe
+                width="300"
+                height="180"
+                className="rounded"
+                src={`https://www.youtube.com/embed/${msg.url.split("v=")[1]}`}
+                title="YouTube video"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            ) : msg.role === "chart" ? (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={msg.content}>
                   <XAxis dataKey="name" stroke="#fff" />
@@ -135,7 +134,7 @@ function AIChat() {
             )}
           </div>
         ))}
-        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" /></div>}
+        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
         <div ref={chatRef} />
       </div>
 
