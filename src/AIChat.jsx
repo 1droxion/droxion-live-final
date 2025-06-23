@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with image/video fix, style buttons, and all features
+// ✅ AIChat.jsx with full media + prompt buttons + dashboard access
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -17,12 +17,9 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
-  const [topToolsOpen, setTopToolsOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
-  const memory = useRef({});
 
   const styles = [
     "Cinematic 4K", "Anime", "Realistic", "Pixel Art",
@@ -54,7 +51,6 @@ function AIChat() {
     const message = customInput || input;
     if (!message.trim()) return;
     setMessages((prev) => [...prev, { role: "user", content: message }]);
-    memory.current.last = message;
     setInput("");
     setTyping(true);
 
@@ -62,12 +58,11 @@ function AIChat() {
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: message,
         user_id: userId.current,
-        voiceMode,
-        videoMode
+        voiceMode
       });
 
       if (res.data.imagePrompt) {
-        setMessages((prev) => [...prev, { role: "assistant", content: `🖼️ Generating image for "${res.data.imagePrompt}"...` }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: `🖼️ Generating image for \"${res.data.imagePrompt}\"...` }]);
         setMessages((prev) => [...prev, { role: "image", url: `https://source.unsplash.com/featured/?${encodeURIComponent(res.data.imagePrompt)}` }]);
       } else if (res.data.videoUrl) {
         setMessages((prev) => [...prev, { role: "assistant", content: "📺 Here's a video you might enjoy:" }]);
@@ -100,7 +95,7 @@ function AIChat() {
           {userId.current === "user-admin" && (
             <a href="https://droxion-backend.onrender.com/dashboard?token=droxion2025" target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-400">Dashboard</a>
           )}
-          <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
+          <FaPlus onClick={() => setTyping(!typing)} className="cursor-pointer text-white" />
         </div>
       </div>
 
@@ -120,15 +115,6 @@ function AIChat() {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
-            ) : msg.role === "chart" ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={msg.content}>
-                  <XAxis dataKey="name" stroke="#fff" />
-                  <YAxis stroke="#fff" />
-                  <Tooltip wrapperClassName="text-black" />
-                  <Bar dataKey="value" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
             ) : (
               <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
             )}
