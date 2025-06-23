@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with horizontal toolbar (black/white icons) including Mic & Speaker
+// ✅ AIChat.jsx – fixed send button and typing issue
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -56,23 +56,24 @@ function AIChat() {
     synth.speak(utterance);
   };
 
-  const handleSend = async (promptText = input) => {
-    if (!promptText.trim()) return;
-    const userMsg = { role: "user", content: promptText };
-    setMessages((prev) => [...prev, userMsg]);
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const userPrompt = input;
     setInput("");
+    const userMsg = { role: "user", content: userPrompt };
+    setMessages((prev) => [...prev, userMsg]);
     setTyping(true);
-    logAction("message", promptText);
+    logAction("message", userPrompt);
 
     try {
-      const lower = promptText.toLowerCase();
+      const lower = userPrompt.toLowerCase();
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: promptText });
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: userPrompt });
         if (yt.data?.url && yt.data?.title) {
           const videoId = yt.data.url.split("v=")[1];
           setMessages((prev) => [...prev, {
@@ -83,8 +84,8 @@ function AIChat() {
         }
       }
 
-      if (imgKeywords.some((k) => lower.includes(k))) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: promptText });
+      if (!handled && imgKeywords.some((k) => lower.includes(k))) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: userPrompt });
         if (imgRes.data?.image_url) {
           setMessages((prev) => [...prev, {
             role: "assistant",
@@ -96,12 +97,12 @@ function AIChat() {
 
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: promptText,
+          prompt: userPrompt,
           voiceMode,
           videoMode,
         });
         let reply = res.data.reply;
-        if (/who.*(made|created|owner|built).*you/i.test(promptText)) {
+        if (/who.*(made|created|owner|built).*you/i.test(userPrompt)) {
           reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
         }
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -115,8 +116,7 @@ function AIChat() {
   };
 
   const handlePromptClick = (style) => {
-    const styledPrompt = `Generate an image in ${style} style.`;
-    handleSend(styledPrompt);
+    handleSend(`${style} style image`);
   };
 
   const handleMic = () => {
@@ -135,58 +135,8 @@ function AIChat() {
     }
   };
 
-  const handleImageUpload = async (file) => {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("image", file);
-    setMessages((prev) => [...prev, { role: "user", content: "[Image uploaded]" }]);
-    setTyping(true);
-    logAction("upload_image", file.name);
-    try {
-      const res = await axios.post("https://droxion-backend.onrender.com/analyze-image", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-      const reply = res.data.reply || "No response from AI.";
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Couldn't analyze the image." }]);
-    } finally {
-      setTyping(false);
-    }
-  };
-
-  const iconStyle = "text-white hover:text-white";
-
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-gray-700 relative">
-        <div className="text-lg font-bold">Droxion</div>
-        <div className="relative flex items-center">
-          {topToolsOpen && (
-            <div className="flex gap-4 mr-2 bg-black border border-gray-700 px-2 py-1 rounded z-20 text-sm items-center">
-              <FaTrash onClick={() => { setMessages([]); setTopToolsOpen(false); }} className="cursor-pointer" title="Clear" />
-              <FaDownload onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Download" />
-              <FaClock onClick={() => setTopToolsOpen(false)} className="cursor-pointer" title="History" />
-              <FaMicrophone onClick={() => { handleMic(); setTopToolsOpen(false); }} className="cursor-pointer" title="Mic" />
-              {voiceMode ? (
-                <FaVolumeUp onClick={() => { setVoiceMode(false); setTopToolsOpen(false); }} className="cursor-pointer" title="Speaker On" />
-              ) : (
-                <FaVolumeMute onClick={() => { setVoiceMode(true); setTopToolsOpen(false); }} className="cursor-pointer" title="Speaker Off" />
-              )}
-              <FaUpload onClick={() => { document.getElementById('fileUpload').click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Upload" />
-              <FaCamera onClick={() => { alert("Take Photo"); setTopToolsOpen(false); }} className="cursor-pointer" title="Take Photo" />
-              <FaDesktop onClick={() => { alert("Screenshot"); setTopToolsOpen(false); }} className="cursor-pointer" title="Screenshot" />
-              <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
-            </div>
-          )}
-          <FaPlus
-            title="Tools"
-            onClick={() => setTopToolsOpen((prev) => !prev)}
-            className={`cursor-pointer text-white ml-2`}
-          />
-        </div>
-      </div>
-
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
@@ -221,7 +171,10 @@ function AIChat() {
             className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
             placeholder="Type or say anything..."
           />
-          <button onClick={handleSend} className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">➤</button>
+          <button
+            onClick={handleSend}
+            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
+          >➤</button>
         </div>
       </div>
     </div>
