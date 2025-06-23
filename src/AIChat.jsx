@@ -1,4 +1,4 @@
-fix that but dont change anthing else ok // ✅ AIChat.jsx with world data support + dashboard link + credit
+// ✅ AIChat.jsx with world data support + dashboard link + credit
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -59,7 +59,7 @@ function AIChat() {
     setTyping(true);
     const lower = message.toLowerCase();
 
-    // Detect simple chart: Jan 100, Feb 200
+    // Chart detection
     if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
       try {
         const data = message.split(":")[1].split(",").map(pair => {
@@ -75,6 +75,26 @@ function AIChat() {
       }
     }
 
+    // Image generation if style selected
+    if (styles.some(s => message.toLowerCase().includes(s.toLowerCase()))) {
+      try {
+        const res = await axios.post("https://droxion-backend.onrender.com/image", {
+          prompt: message,
+          user_id: userId.current
+        });
+        const imageUrl = res.data.url;
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `<img src="${imageUrl}" alt="generated" style="max-width:100%;border-radius:12px"/>`
+        }]);
+      } catch {
+        setMessages(prev => [...prev, { role: "assistant", content: "❌ Image generation failed." }]);
+      } finally {
+        setTyping(false);
+      }
+      return;
+    }
+
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: message,
@@ -85,10 +105,14 @@ function AIChat() {
       const reply = res.data.reply;
 
       let formatted = reply;
-      if (/```/.test(reply)) {
-        formatted = reply;
+
+      // YouTube auto-preview
+      const ytMatch = reply.match(/https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
+      if (ytMatch) {
+        const videoId = ytMatch[2];
+        formatted = `${reply}<br/><iframe width="100%" height="215" style="margin-top:12px;border-radius:10px" src="https://www.youtube.com/embed/${videoId}" frameBorder="0" allowFullScreen></iframe>`;
       } else if (/box|highlight/.test(lower)) {
-        formatted = `\\`\\`\\`\n${reply}\n\\`\\`\\``;
+        formatted = `\`\`\`\n${reply}\n\`\`\``;
       }
 
       setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
