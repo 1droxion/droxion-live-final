@@ -1,10 +1,5 @@
-// ✅ AIChat.jsx FINAL with:
-// - 🔁 Memory loop (name, last input)
-// - 🧠 Flexible memory commands (/remember, /forget)
-// - 📊 Improved chart/table output
-// - 🔢 Number range detection (1-50, 51-100)
-// - 🧱 Box styling
-// - 📝 Multiline input
+// ✅ AIChat.jsx – Final Version
+// Includes memory system, box/chart formatting, cleaned image prompts, multiline input, style buttons
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -29,7 +24,8 @@ function AIChat() {
   const memory = useRef({});
 
   const styles = [
-    "Cinematic 4K", "Anime", "Realistic", "Pixel Art", "Fantasy Landscape", "3D Render", "Cyberpunk", "Watercolor"
+    "Cinematic 4K", "Anime", "Realistic", "Pixel Art",
+    "Fantasy Landscape", "3D Render", "Cyberpunk", "Watercolor"
   ];
 
   useEffect(() => {
@@ -66,36 +62,35 @@ function AIChat() {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMsg = { role: "user", content: input };
+  const handleSend = async (customInput) => {
+    const message = customInput || input;
+    if (!message.trim()) return;
+    const userMsg = { role: "user", content: message };
     setMessages((prev) => [...prev, userMsg]);
-    memory.current.last = input;
+    memory.current.last = message;
     setInput("");
     setTyping(true);
-    logAction("message", input);
-    const lower = input.toLowerCase();
+    logAction("message", message);
+    const lower = message.toLowerCase();
 
-    // Flexible memory commands
-    if (/\/remember (.+?) is (.+)/i.test(input)) {
-      const [, key, value] = input.match(/\/remember (.+?) is (.+)/i);
+    // /remember key is value
+    if (/\/remember (.+?) is (.+)/i.test(message)) {
+      const [, key, value] = message.match(/\/remember (.+?) is (.+)/i);
       memory.current[key.trim()] = value.trim();
       setMessages(prev => [...prev, { role: "assistant", content: `Got it. I’ll remember ${key.trim()} is ${value.trim()}.` }]);
       setTyping(false); return;
     }
-    if (/\/forget (.+)/i.test(input)) {
-      const [, key] = input.match(/\/forget (.+)/i);
+
+    // /forget key
+    if (/\/forget (.+)/i.test(message)) {
+      const [, key] = message.match(/\/forget (.+)/i);
       delete memory.current[key.trim()];
       setMessages(prev => [...prev, { role: "assistant", content: `Forgot ${key.trim()} from memory.` }]);
       setTyping(false); return;
     }
-    if (/what did i just say|my last message/i.test(lower)) {
-      const last = memory.current.last;
-      setMessages(prev => [...prev, { role: "assistant", content: last ? `You said: "${last}"` : "I don’t remember yet." }]);
-      setTyping(false); return;
-    }
 
-    const nameMatch = input.match(/(?:my name is|my name|i am|i’m|i am called|this is|ye my name)(?: is)?\s+([a-zA-Z]+)/i);
+    // name recognition
+    const nameMatch = message.match(/(?:my name is|my name|i am|i’m|this is|ye my name)(?: is)?\s+([a-zA-Z]+)/i);
     if (nameMatch) {
       const name = nameMatch[1];
       memory.current.name = name;
@@ -104,27 +99,36 @@ function AIChat() {
     }
     if (/what.*my name/i.test(lower)) {
       const name = memory.current.name;
-      setMessages(prev => [...prev, { role: "assistant", content: name ? `You told me your name is ${name}.` : "You haven't told me yet." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: name ? `You told me your name is ${name}.` : "You haven't told me your name yet." }]);
+      setTyping(false); return;
+    }
+    if (/what did i just say|my last message/i.test(lower)) {
+      const last = memory.current.last;
+      setMessages(prev => [...prev, { role: "assistant", content: last ? `You said: "${last}"` : "I don’t remember yet." }]);
       setTyping(false); return;
     }
 
     try {
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
       let handled = false;
 
-      if (ytKeywords.some((k) => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
+      if (ytKeywords.some(k => lower.includes(k))) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: message });
         if (yt.data?.url && yt.data?.title) {
           const videoId = yt.data.url.split("v=")[1];
-          setMessages((prev) => [...prev, { role: "assistant", content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>` }]);
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${videoId}' allowfullscreen></iframe>`
+          }]);
           handled = true;
         }
       }
 
-      if (!handled && imgKeywords.some((k) => lower.includes(k))) {
-        const styledPrompt = `${input}, in Realistic style`;
+      // Auto-clean image prompt
+      if (!handled && imgKeywords.some(k => lower.includes(k))) {
+        const cleaned = message.replace(/image|draw|picture|photo|create|generate/gi, '').trim();
+        const styledPrompt = `${cleaned}, in Realistic style`;
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: styledPrompt });
         if (imgRes.data?.image_url) {
           setMessages((prev) => [...prev, { role: "assistant", content: `![Generated Image](${imgRes.data.image_url})` }]);
@@ -134,25 +138,49 @@ function AIChat() {
 
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: input,
+          prompt: message,
           voiceMode,
           videoMode
         });
+
         let reply = res.data.reply;
 
-        // Enhanced Formatting
-        if (/1\s?to\s?50|50\s?to\s?100/i.test(lower)) {
-          reply = `\n\n**Number Range:**\n\n| Range     | Values                      |\n|-----------|-----------------------------|\n| 1 to 50   | 1, 2, 3, ..., 50            |\n| 51 to 100 | 51, 52, 53, ..., 100        |\n\n✅ These are number groupings often used for data bins or scores.`;
-        }
-        if (/box|highlight/.test(lower)) {
-          reply = `\n\n\
-\
-${reply}\n\n\
-\
-`;
-        }
+        // Table formatting
         if (/chart|table|compare/.test(lower)) {
-          reply = `\n\n**AI vs Human Comparison**\n\n| Feature       | AI                         | Human                   |\n|---------------|----------------------------|--------------------------|\n| Speed         | Nanoseconds                | Milliseconds             |\n| Error Rate    | Very Low                   | Medium to High           |\n| Work Hours    | 24/7                       | 6-10 hrs/day             |\n| Learning      | Data-driven, fast          | Conceptual, adaptive     |\n| Creativity    | Simulated patterns         | Original, innovative     |\n| Memory        | Unlimited logs             | Selective recall         |`;
+          reply = `
+**AI vs Human Comparison**
+
+\`\`\`
+| Feature     | AI                  | Human               |
+|-------------|---------------------|----------------------|
+| Speed       | Nanoseconds         | Milliseconds         |
+| Error Rate  | Very Low            | Medium to High       |
+| Work Hours  | 24/7                | 6–10 hrs/day         |
+| Learning    | Data-driven, fast   | Conceptual, adaptive |
+| Creativity  | Simulated patterns  | Original, innovative |
+| Memory      | Unlimited logs      | Selective recall     |
+\`\`\`
+          `;
+        }
+
+        // Number range chart
+        if (/1\s?to\s?50|50\s?to\s?100/i.test(lower)) {
+          reply = `
+**Number Range**
+
+\`\`\`
+| Range     | Values                |
+|-----------|------------------------|
+| 1 to 50   | 1, 2, 3, ..., 50       |
+| 51 to 100 | 51, 52, ..., 100       |
+\`\`\`
+✅ These are number bins often used for scoring or sorting.
+          `;
+        }
+
+        // Box formatting
+        if (/box|highlight/.test(lower)) {
+          reply = `\`\`\`\n${reply}\n\`\`\``;
         }
 
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -160,7 +188,7 @@ ${reply}\n\n\
       }
 
     } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
       setTyping(false);
     }
@@ -195,14 +223,14 @@ ${reply}\n\n\
         <div ref={chatRef} />
       </div>
 
-      {/* Prompt Style Buttons */}
       <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
         {styles.map((style) => (
-          <button key={style} onClick={() => handleSend(`A futuristic red car, in ${style} style`)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">{style}</button>
+          <button key={style} onClick={() => handleSend(`A futuristic red car in ${style} style`)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">
+            {style}
+          </button>
         ))}
       </div>
 
-      {/* Input */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
           <textarea
@@ -213,10 +241,9 @@ ${reply}\n\n\
             className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none resize-none"
             placeholder="Type or say anything..."
           />
-          <button
-            onClick={handleSend}
-            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-          >➤</button>
+          <button onClick={() => handleSend()} className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">
+            ➤
+          </button>
         </div>
       </div>
     </div>
