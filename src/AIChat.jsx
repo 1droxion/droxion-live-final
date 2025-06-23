@@ -1,222 +1,60 @@
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import {
-  FaPlus, FaMicrophone, FaVolumeUp, FaVolumeMute,
-  FaVideo, FaCamera, FaUpload, FaTrash, FaDownload, FaClock
-} from "react-icons/fa";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-
-function AIChat() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
-  const [topToolsOpen, setTopToolsOpen] = useState(false);
-  const [usageCount, setUsageCount] = useState(0);
-  const [imageUsed, setImageUsed] = useState(false);
-  const chatRef = useRef(null);
-  const synth = window.speechSynthesis;
-  const userId = useRef("");
-  const memory = useRef({});
-
-  const styles = [
-    "Cinematic 4K", "Anime", "Realistic", "Pixel Art",
-    "Fantasy Landscape", "3D Render", "Cyberpunk", "Watercolor"
-  ];
-
-  useEffect(() => {
-    let id = localStorage.getItem("droxion_uid");
-    if (!id) {
-      id = "user-" + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem("droxion_uid", id);
-    }
-    userId.current = id;
-
-    const usage = parseInt(localStorage.getItem("droxion_usage") || "0");
-    const imageDone = localStorage.getItem("droxion_image_used") === "true";
-    setUsageCount(usage);
-    setImageUsed(imageDone);
-  }, []);
-
-  useEffect(() => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
-
-  const speak = (text) => {
-    if (!voiceMode || !text) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    synth.cancel();
-    synth.speak(utterance);
-  };
-
-  const handleSend = async (customInput) => {
-    const message = customInput || input;
-    if (!message.trim()) return;
-
-    if (usageCount >= 3) {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "**⚠️ Free message limit reached. Upgrade to continue.**"
-      }]);
-      return;
-    }
-
-    setMessages(prev => [...prev, { role: "user", content: message }]);
-    memory.current.last = message;
-    setInput("");
-    setTyping(true);
-    const lower = message.toLowerCase();
-
-    if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
-      try {
-        const data = message.split(":")[1].split(",").map(pair => {
-          const [label, value] = pair.trim().split(/ +/);
-          return { name: label, value: Number(value) };
-        });
-        setMessages(prev => [...prev, { role: "assistant", content: "<chart>" }]);
-        setMessages(prev => [...prev, { role: "chart", content: data }]);
-        setTyping(false);
-        const newUsage = usageCount + 1;
-        setUsageCount(newUsage);
-        localStorage.setItem("droxion_usage", newUsage);
-        return;
-      } catch (err) {
-        console.error("chart parse error", err);
-      }
-    }
-
-    try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-        prompt: message,
-        user_id: userId.current,
-        voiceMode,
-        videoMode
-      });
-      const reply = res.data.reply;
-
-      let formatted = reply;
-      if (/```/.test(reply)) {
-        formatted = reply;
-      } else if (/box|highlight/.test(lower)) {
-        formatted = `\`\`\`\n${reply}\n\`\`\``;
-      }
-
-      setMessages(prev => [...prev, { role: "assistant", content: formatted }]);
-      speak(reply);
-
-      const newUsage = usageCount + 1;
-      setUsageCount(newUsage);
-      localStorage.setItem("droxion_usage", newUsage);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
-    } finally {
-      setTyping(false);
-    }
-  };
-
-  const handleStyleClick = async (style) => {
-    if (imageUsed) {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "**⚠️ Free image limit reached. Upgrade to use more styles.**"
-      }]);
-      return;
-    }
-
-    const prompt = `A futuristic red car in ${style} style`;
-    setMessages(prev => [...prev, { role: "user", content: prompt }]);
-    setTyping(true);
-
-    try {
-      const res = await axios.post("https://droxion-backend.onrender.com/image", {
-        prompt,
-        user_id: userId.current
-      });
-      const imageUrl = res.data.url;
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: `<img src="${imageUrl}" alt="generated" style="max-width:100%;border-radius:12px"/>`
-      }]);
-      setImageUsed(true);
-      localStorage.setItem("droxion_image_used", "true");
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "❌ Image generation failed." }]);
-    } finally {
-      setTyping(false);
-    }
-  };
-
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">Droxion</div>
-        <div className="flex items-center space-x-3">
-          <FaMicrophone />
-          <FaCamera />
-          <FaVideo />
-          <FaUpload />
-          <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-            {msg.role === "chart" ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={msg.content}>
-                  <XAxis dataKey="name" stroke="#fff" />
-                  <YAxis stroke="#fff" />
-                  <Tooltip wrapperClassName="text-black" />
-                  <Bar dataKey="value" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
-            )}
-          </div>
-        ))}
-        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" /></div>}
-        <div ref={chatRef} />
-      </div>
-
-      <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
-        {styles.map((style) => (
-          <button key={style} onClick={() => handleStyleClick(style)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">
-            {style}
-          </button>
-        ))}
-      </div>
-
-      <div className="p-3 border-t border-gray-700">
-        <div className="flex items-center space-x-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            rows={2}
-            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none resize-none"
-            placeholder="Type or say anything..."
-          />
-          <button onClick={() => handleSend()} className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">
-            ➤
-          </button>
-        </div>
-        <div className="text-xs text-gray-500 mt-2 text-center">Built by Dhruv Patel | Droxion AI</div>
-      </div>
-    </div>
-  );
-}
-
-export default AIChat;
+[10:38:29.118] Running build in Washington, D.C., USA (East) – iad1
+[10:38:29.118] Build machine configuration: 2 cores, 8 GB
+[10:38:29.132] Cloning github.com/1droxion/droxion-live-final (Branch: main, Commit: fe26a9d)
+[10:38:57.202] Warning: Failed to fetch one or more git submodules
+[10:38:57.203] Cloning completed: 28.071s
+[10:38:58.176] Found .vercelignore
+[10:38:58.986] Removed 11568 ignored files defined in .vercelignore
+[10:38:58.987]   /node_modules/.bin/browserslist
+[10:38:58.987]   /node_modules/.bin/browserslist.cmd
+[10:38:58.987]   /node_modules/.bin/browserslist.ps1
+[10:38:58.987]   /node_modules/.bin/esbuild
+[10:38:58.987]   /node_modules/.bin/esbuild.cmd
+[10:38:58.987]   /node_modules/.bin/esbuild.ps1
+[10:38:58.987]   /node_modules/.bin/jsesc
+[10:38:58.987]   /node_modules/.bin/jsesc.cmd
+[10:38:58.987]   /node_modules/.bin/jsesc.ps1
+[10:38:58.987]   /node_modules/.bin/json5
+[10:38:59.372] Restored build cache from previous deployment (8cRaQvcqNyowZDdXJhVdpPjsTkkg)
+[10:38:59.984] Running "vercel build"
+[10:39:00.421] Vercel CLI 43.3.0
+[10:39:00.960] Installing dependencies...
+[10:39:42.483] npm warn deprecated sourcemap-codec@1.4.8: Please use @jridgewell/sourcemap-codec instead
+[10:39:43.536] npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+[10:39:44.214] npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+[10:39:48.167] 
+[10:39:48.168] changed 733 packages in 47s
+[10:39:48.169] 
+[10:39:48.169] 315 packages are looking for funding
+[10:39:48.169]   run `npm fund` for details
+[10:39:48.591] [36mvite v4.5.14 [32mbuilding for production...[36m[39m
+[10:39:48.820] transforming...
+[10:39:48.983] [32m✓[39m 19 modules transformed.
+[10:39:48.984] [31m[vite-plugin-pwa:build] Transform failed with 1 error:
+[10:39:48.985] /vercel/path0/src/AIChat.jsx:91:25: ERROR: Syntax error "\"[39m
+[10:39:48.985] file: [36m/vercel/path0/src/AIChat.jsx:91:25[39m
+[10:39:48.985] [33m
+[10:39:48.985] [33mSyntax error "\"[33m
+[10:39:48.985] 89 |          formatted = reply;
+[10:39:48.985] 90 |        } else if (/box|highlight/.test(lower)) {
+[10:39:48.985] 91 |          formatted = `\\`\\`\\`\n${reply}\n\\`\\`\\``;
+[10:39:48.985]    |                           ^
+[10:39:48.985] 92 |        }
+[10:39:48.986] 93 |  
+[10:39:48.986] [39m
+[10:39:48.986] [31merror during build:
+[10:39:48.986] Error: Transform failed with 1 error:
+[10:39:48.986] /vercel/path0/src/AIChat.jsx:91:25: ERROR: Syntax error "\"
+[10:39:48.986]     at failureErrorWithLog (/vercel/path0/node_modules/esbuild/lib/main.js:1649:15)
+[10:39:48.986]     at /vercel/path0/node_modules/esbuild/lib/main.js:847:29
+[10:39:48.986]     at responseCallbacks.<computed> (/vercel/path0/node_modules/esbuild/lib/main.js:703:9)
+[10:39:48.986]     at handleIncomingPacket (/vercel/path0/node_modules/esbuild/lib/main.js:762:9)
+[10:39:48.987]     at Socket.readFromStdout (/vercel/path0/node_modules/esbuild/lib/main.js:679:7)
+[10:39:48.987]     at Socket.emit (node:events:518:28)
+[10:39:48.987]     at addChunk (node:internal/streams/readable:561:12)
+[10:39:48.987]     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+[10:39:48.987]     at Readable.push (node:internal/streams/readable:392:5)
+[10:39:48.987]     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+[10:39:48.998] Error: Command "vite build" exited with 1
+[10:39:49.306] 
+[10:39:52.104] Exiting build container
