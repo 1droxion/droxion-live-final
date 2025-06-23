@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with world data support + credit only
+// ✅ AIChat.jsx with world data support + dashboard link + credit
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -53,14 +53,13 @@ function AIChat() {
   const handleSend = async (customInput) => {
     const message = customInput || input;
     if (!message.trim()) return;
-
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     memory.current.last = message;
     setInput("");
     setTyping(true);
     const lower = message.toLowerCase();
 
-    // Chart detection
+    // Detect simple chart: Jan 100, Feb 200
     if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
       try {
         const data = message.split(":")[1].split(",").map(pair => {
@@ -76,34 +75,6 @@ function AIChat() {
       }
     }
 
-    // Image generation
-    if (styles.some(s => message.toLowerCase().includes(s.toLowerCase()))) {
-      try {
-        const res = await axios.post("https://droxion-backend.onrender.com/image", {
-          prompt: message,
-          user_id: userId.current
-        });
-
-        const imageUrl = res.data.url;
-        if (imageUrl) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `<img src="${imageUrl}" alt="generated" style="max-width:100%;border-radius:12px"/>`
-          }]);
-        } else {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: "⚠️ No image returned. Try again or use another style."
-          }]);
-        }
-      } catch {
-        setMessages(prev => [...prev, { role: "assistant", content: "❌ Image generation failed." }]);
-      } finally {
-        setTyping(false);
-      }
-      return;
-    }
-
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: message,
@@ -114,14 +85,10 @@ function AIChat() {
       const reply = res.data.reply;
 
       let formatted = reply;
-
-      // YouTube link preview
-      const ytMatch = reply.match(/https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
-      if (ytMatch) {
-        const videoId = ytMatch[2];
-        formatted = `${reply}<br/><iframe width="100%" height="215" style="margin-top:12px;border-radius:10px" src="https://www.youtube.com/embed/${videoId}" frameBorder="0" allowFullScreen></iframe>`;
+      if (/```/.test(reply)) {
+        formatted = reply;
       } else if (/box|highlight/.test(lower)) {
-        formatted = `\`\`\`\n${reply}\n\`\`\``;
+        formatted = `\\`\\`\\`\n${reply}\n\\`\\`\\``;
       }
 
       setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
@@ -145,7 +112,7 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="flex items-center space-x-3">
-          {/* Dashboard hidden */}
+          <a href="https://droxion-backend.onrender.com/dashboard?token=droxion2025" target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-400">Dashboard</a>
           <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
         </div>
       </div>
@@ -193,7 +160,6 @@ function AIChat() {
             ➤
           </button>
         </div>
-        <div className="text-xs text-gray-500 mt-2 text-center">Built by Dhruv Patel | Droxion AI</div>
       </div>
     </div>
   );
