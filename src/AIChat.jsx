@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx – fixed send button and typing issue
+// ✅ AIChat.jsx – fixed style prompt buttons to trigger image instantly
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -56,24 +56,23 @@ function AIChat() {
     synth.speak(utterance);
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userPrompt = input;
-    setInput("");
-    const userMsg = { role: "user", content: userPrompt };
+  const handleSend = async (textToSend = input) => {
+    if (!textToSend.trim()) return;
+    const userMsg = { role: "user", content: textToSend };
     setMessages((prev) => [...prev, userMsg]);
+    setInput("");
     setTyping(true);
-    logAction("message", userPrompt);
+    logAction("message", textToSend);
 
     try {
-      const lower = userPrompt.toLowerCase();
+      const lower = textToSend.toLowerCase();
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: userPrompt });
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: textToSend });
         if (yt.data?.url && yt.data?.title) {
           const videoId = yt.data.url.split("v=")[1];
           setMessages((prev) => [...prev, {
@@ -85,7 +84,7 @@ function AIChat() {
       }
 
       if (!handled && imgKeywords.some((k) => lower.includes(k))) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: userPrompt });
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: textToSend });
         if (imgRes.data?.image_url) {
           setMessages((prev) => [...prev, {
             role: "assistant",
@@ -97,12 +96,12 @@ function AIChat() {
 
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: userPrompt,
+          prompt: textToSend,
           voiceMode,
           videoMode,
         });
         let reply = res.data.reply;
-        if (/who.*(made|created|owner|built).*you/i.test(userPrompt)) {
+        if (/who.*(made|created|owner|built).*you/i.test(textToSend)) {
           reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
         }
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -116,7 +115,7 @@ function AIChat() {
   };
 
   const handlePromptClick = (style) => {
-    handleSend(`${style} style image`);
+    handleSend(`Generate an image in ${style} style.`);
   };
 
   const handleMic = () => {
@@ -172,7 +171,7 @@ function AIChat() {
             placeholder="Type or say anything..."
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend(input)}
             className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
           >➤</button>
         </div>
