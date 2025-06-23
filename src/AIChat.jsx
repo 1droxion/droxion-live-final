@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with world data, memory, charts, dashboard link
+// ✅ AIChat.jsx with world data support + dashboard hidden unless admin + credit
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -59,7 +59,6 @@ function AIChat() {
     setTyping(true);
     const lower = message.toLowerCase();
 
-    // detect chart data like "chart: Jan 100, Feb 200"
     if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
       try {
         const data = message.split(":")[1].split(",").map(pair => {
@@ -112,9 +111,9 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="flex items-center space-x-3">
-          <a href="https://droxion-backend.onrender.com/dashboard?token=droxion2025" target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-400">
-            Dashboard
-          </a>
+          {userId.current === "user-admin" && (
+            <a href="https://droxion-backend.onrender.com/dashboard?token=droxion2025" target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-400">Dashboard</a>
+          )}
           <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
         </div>
       </div>
