@@ -1,4 +1,4 @@
-// ✅ Final AIChat.jsx with prompt styles, Dhruv Patel credit, compact UI
+// ✅ Final AIChat.jsx with prompt styles, Dhruv Patel credit, dropdown auto-close and left alignment
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -162,8 +162,25 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="relative">
-          <FaPlus title="Tools" onClick={() => setTopToolsOpen(!topToolsOpen)} className={`cursor-pointer ${iconStyle}`} />
-          {/* dropdown remains same */}
+          <FaPlus
+            title="Tools"
+            onClick={() => setTopToolsOpen((prev) => !prev)}
+            className={`cursor-pointer ${iconStyle}`}
+          />
+          {topToolsOpen && (
+            <div className="absolute left-0 mt-2 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setMessages([]); setTopToolsOpen(false); }}><FaTrash /> Clear</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }}><FaDownload /> Download</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTopToolsOpen(false)}><FaClock /> History</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setVoiceMode(!voiceMode); setTopToolsOpen(false); }}>{voiceMode ? <FaVolumeUp /> : <FaVolumeMute />} {voiceMode ? "Speaker On" : "Speaker Off"}</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setVideoMode(!videoMode); setTopToolsOpen(false); }}><FaVideo /> Video Mode</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { handleMic(); setTopToolsOpen(false); }}><FaMicrophone /> Mic</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { document.getElementById('fileUpload').click(); setTopToolsOpen(false); }}><FaUpload /> Upload</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { alert("Take Photo"); setTopToolsOpen(false); }}><FaCamera /> Take Photo</div>
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => { alert("Screenshot"); setTopToolsOpen(false); }}><FaDesktop /> Screenshot</div>
+              <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -180,7 +197,6 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      {/* PROMPT BUTTONS */}
       <div className="px-3 pb-1">
         <div className="flex gap-2 flex-wrap">
           {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((style) => (
