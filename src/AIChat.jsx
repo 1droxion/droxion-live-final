@@ -3,9 +3,8 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
-  FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
-  FaUpload, FaCamera, FaDesktop
+  FaPlus, FaMicrophone, FaVolumeUp, FaVolumeMute,
+  FaVideo, FaCamera, FaUpload, FaTrash, FaDownload, FaClock
 } from "react-icons/fa";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -163,6 +162,10 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="flex items-center space-x-3">
+          <FaMicrophone />
+          <FaCamera />
+          <FaVideo />
+          <FaUpload />
           <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
         </div>
       </div>
@@ -210,6 +213,7 @@ function AIChat() {
             ➤
           </button>
         </div>
+        <div className="text-xs text-gray-500 mt-2 text-center">Built by Dhruv Patel | Droxion AI</div>
       </div>
     </div>
   );
