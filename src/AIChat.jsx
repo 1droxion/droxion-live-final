@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with world data support + dashboard link + credit
+// ✅ AIChat.jsx with world data support + credit only
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -53,6 +53,7 @@ function AIChat() {
   const handleSend = async (customInput) => {
     const message = customInput || input;
     if (!message.trim()) return;
+
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     memory.current.last = message;
     setInput("");
@@ -75,18 +76,26 @@ function AIChat() {
       }
     }
 
-    // Image generation if style selected
+    // Image generation
     if (styles.some(s => message.toLowerCase().includes(s.toLowerCase()))) {
       try {
         const res = await axios.post("https://droxion-backend.onrender.com/image", {
           prompt: message,
           user_id: userId.current
         });
+
         const imageUrl = res.data.url;
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `<img src="${imageUrl}" alt="generated" style="max-width:100%;border-radius:12px"/>`
-        }]);
+        if (imageUrl) {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `<img src="${imageUrl}" alt="generated" style="max-width:100%;border-radius:12px"/>`
+          }]);
+        } else {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: "⚠️ No image returned. Try again or use another style."
+          }]);
+        }
       } catch {
         setMessages(prev => [...prev, { role: "assistant", content: "❌ Image generation failed." }]);
       } finally {
@@ -106,7 +115,7 @@ function AIChat() {
 
       let formatted = reply;
 
-      // YouTube auto-preview
+      // YouTube link preview
       const ytMatch = reply.match(/https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
       if (ytMatch) {
         const videoId = ytMatch[2];
@@ -136,7 +145,7 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="flex items-center space-x-3">
-          <a href="https://droxion-backend.onrender.com/dashboard?token=droxion2025" target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-400">Dashboard</a>
+          {/* Dashboard hidden */}
           <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer text-white" />
         </div>
       </div>
@@ -184,6 +193,7 @@ function AIChat() {
             ➤
           </button>
         </div>
+        <div className="text-xs text-gray-500 mt-2 text-center">Built by Dhruv Patel | Droxion AI</div>
       </div>
     </div>
   );
