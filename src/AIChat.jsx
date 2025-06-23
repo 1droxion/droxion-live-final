@@ -1,6 +1,3 @@
-// ✅ AIChat.jsx with world data support + credit only
-// Built by Dhruv Patel | Droxion AI
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -19,6 +16,8 @@ function AIChat() {
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
   const [topToolsOpen, setTopToolsOpen] = useState(false);
+  const [usageCount, setUsageCount] = useState(0);
+  const [imageUsed, setImageUsed] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
@@ -36,6 +35,11 @@ function AIChat() {
       localStorage.setItem("droxion_uid", id);
     }
     userId.current = id;
+
+    const usage = parseInt(localStorage.getItem("droxion_usage") || "0");
+    const imageDone = localStorage.getItem("droxion_image_used") === "true";
+    setUsageCount(usage);
+    setImageUsed(imageDone);
   }, []);
 
   useEffect(() => {
@@ -53,13 +57,21 @@ function AIChat() {
   const handleSend = async (customInput) => {
     const message = customInput || input;
     if (!message.trim()) return;
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
+
+    if (usageCount >= 3) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "**⚠️ Free message limit reached. Upgrade to continue.**"
+      }]);
+      return;
+    }
+
+    setMessages(prev => [...prev, { role: "user", content: message }]);
     memory.current.last = message;
     setInput("");
     setTyping(true);
     const lower = message.toLowerCase();
 
-    // Detect simple chart: Jan 100, Feb 200
     if (/chart|plot|graph/.test(lower) && /:\s*([\w\s]+\s+\d+)/.test(message)) {
       try {
         const data = message.split(":")[1].split(",").map(pair => {
@@ -69,6 +81,9 @@ function AIChat() {
         setMessages(prev => [...prev, { role: "assistant", content: "<chart>" }]);
         setMessages(prev => [...prev, { role: "chart", content: data }]);
         setTyping(false);
+        const newUsage = usageCount + 1;
+        setUsageCount(newUsage);
+        localStorage.setItem("droxion_usage", newUsage);
         return;
       } catch (err) {
         console.error("chart parse error", err);
@@ -91,10 +106,46 @@ function AIChat() {
         formatted = `\`\`\`\n${reply}\n\`\`\``;
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", content: formatted }]);
+      setMessages(prev => [...prev, { role: "assistant", content: formatted }]);
       speak(reply);
+
+      const newUsage = usageCount + 1;
+      setUsageCount(newUsage);
+      localStorage.setItem("droxion_usage", newUsage);
     } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+    } finally {
+      setTyping(false);
+    }
+  };
+
+  const handleStyleClick = async (style) => {
+    if (imageUsed) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "**⚠️ Free image limit reached. Upgrade to use more styles.**"
+      }]);
+      return;
+    }
+
+    const prompt = `A futuristic red car in ${style} style`;
+    setMessages(prev => [...prev, { role: "user", content: prompt }]);
+    setTyping(true);
+
+    try {
+      const res = await axios.post("https://droxion-backend.onrender.com/image", {
+        prompt,
+        user_id: userId.current
+      });
+      const imageUrl = res.data.url;
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: `<img src="${imageUrl}" alt="generated" style="max-width:100%;border-radius:12px"/>`
+      }]);
+      setImageUsed(true);
+      localStorage.setItem("droxion_image_used", "true");
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", content: "❌ Image generation failed." }]);
     } finally {
       setTyping(false);
     }
@@ -139,7 +190,7 @@ function AIChat() {
 
       <div className="flex flex-wrap justify-center px-2 py-2 gap-2 border-t border-gray-700">
         {styles.map((style) => (
-          <button key={style} onClick={() => handleSend(`A futuristic red car in ${style} style`)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">
+          <button key={style} onClick={() => handleStyleClick(style)} className="text-white border border-white text-xs px-3 py-1 rounded hover:bg-white hover:text-black">
             {style}
           </button>
         ))}
