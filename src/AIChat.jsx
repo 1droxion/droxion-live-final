@@ -1,4 +1,4 @@
-// ✅ Final AIChat.jsx with fixed dropdown opens left-top direction, all icons functional
+// ✅ Final AIChat.jsx with black dropdown aligned to left under Droxion
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -159,7 +159,7 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+      <div className="flex items-center justify-between p-3 border-b border-gray-700 relative">
         <div className="text-lg font-bold">Droxion</div>
         <div className="relative">
           <FaPlus
@@ -168,7 +168,7 @@ function AIChat() {
             className={`cursor-pointer ${iconStyle}`}
           />
           {topToolsOpen && (
-            <div className="absolute top-[-200px] right-0 w-52 bg-gray-900 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
+            <div className="absolute left-0 top-full mt-2 bg-black border border-gray-700 w-52 text-white p-2 rounded shadow-lg space-y-2 z-20 text-sm">
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setMessages([]); setTopToolsOpen(false); }}><FaTrash /> Clear</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }}><FaDownload /> Download</div>
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => setTopToolsOpen(false)}><FaClock /> History</div>
