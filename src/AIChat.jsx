@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with smart prompts, Dhruv credit, and fixed UI
+// ✅ AIChat.jsx with Dhruv Patel credit + compact prompt bar (unchanged layout)
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -43,7 +43,6 @@ function AIChat() {
       });
 
       let reply = res.data.reply;
-      // Detect "who made you" like queries
       if (/who.*(made|created|owner|built).*you/i.test(prompt)) {
         reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
       }
@@ -86,7 +85,8 @@ function AIChat() {
       {typing && <div className="text-gray-500">Typing...</div>}
       <div ref={chatRef} />
 
-      <div className="flex gap-2 mt-4 flex-wrap">
+      {/* 👇 Prompt buttons just above input box */}
+      <div className="flex gap-2 mt-4 mb-2 flex-wrap justify-start">
         {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((style) => (
           <button
             key={style}
@@ -98,7 +98,8 @@ function AIChat() {
         ))}
       </div>
 
-      <div className="flex items-center mt-4">
+      {/* 👇 Chat input bar and plus icon */}
+      <div className="flex items-center">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
