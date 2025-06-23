@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx with horizontal dropdown to the left of plus icon
+// ✅ AIChat.jsx with horizontal toolbar (black/white icons) including Mic & Speaker
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -163,10 +163,20 @@ function AIChat() {
         <div className="text-lg font-bold">Droxion</div>
         <div className="relative flex items-center">
           {topToolsOpen && (
-            <div className="flex gap-2 mr-2 bg-black border border-gray-700 px-2 py-1 rounded z-20 text-sm">
-              <div className="cursor-pointer" onClick={() => { setMessages([]); setTopToolsOpen(false); }}>🗑 Clear</div>
-              <div className="cursor-pointer" onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }}>⬇️ Download</div>
-              <div className="cursor-pointer" onClick={() => setTopToolsOpen(false)}>🕒 History</div>
+            <div className="flex gap-4 mr-2 bg-black border border-gray-700 px-2 py-1 rounded z-20 text-sm items-center">
+              <FaTrash onClick={() => { setMessages([]); setTopToolsOpen(false); }} className="cursor-pointer" title="Clear" />
+              <FaDownload onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Download" />
+              <FaClock onClick={() => setTopToolsOpen(false)} className="cursor-pointer" title="History" />
+              <FaMicrophone onClick={() => { handleMic(); setTopToolsOpen(false); }} className="cursor-pointer" title="Mic" />
+              {voiceMode ? (
+                <FaVolumeUp onClick={() => { setVoiceMode(false); setTopToolsOpen(false); }} className="cursor-pointer" title="Speaker On" />
+              ) : (
+                <FaVolumeMute onClick={() => { setVoiceMode(true); setTopToolsOpen(false); }} className="cursor-pointer" title="Speaker Off" />
+              )}
+              <FaUpload onClick={() => { document.getElementById('fileUpload').click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Upload" />
+              <FaCamera onClick={() => { alert("Take Photo"); setTopToolsOpen(false); }} className="cursor-pointer" title="Take Photo" />
+              <FaDesktop onClick={() => { alert("Screenshot"); setTopToolsOpen(false); }} className="cursor-pointer" title="Screenshot" />
+              <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
             </div>
           )}
           <FaPlus
