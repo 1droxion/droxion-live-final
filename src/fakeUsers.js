@@ -1,0 +1,61 @@
+// src/fakeUsers.js
+
+const fakeUsers = [
+  // === Girls (with mixed quality images) ===
+  { name: "Sofia", gender: "girl", country: "us", photo: "https://i.imgur.com/VY1q0D4.jpg" },
+  { name: "Aanya", gender: "girl", country: "in", photo: "https://i.imgur.com/HGz5Z5A.jpg" },
+  { name: "Luna", gender: "girl", country: "br", photo: "https://i.imgur.com/ZkmFlj7.jpg" },
+  { name: "Camila", gender: "girl", country: "mx", photo: "https://i.imgur.com/I3aZcMg.jpg" },
+  { name: "Irina", gender: "girl", country: "ru", photo: "https://i.imgur.com/fI04g6s.jpg" },
+  { name: "Chloe", gender: "girl", country: "us", photo: "https://i.imgur.com/sv7tNYa.jpg" },
+  { name: "Priya", gender: "girl", country: "in", photo: "https://i.imgur.com/vuvNmjS.jpg" },
+  { name: "Tatiana", gender: "girl", country: "ru", photo: "https://i.imgur.com/g8kjLcu.jpg" },
+  { name: "Lucia", gender: "girl", country: "mx", photo: "https://i.imgur.com/HBLMy7b.jpg" },
+  { name: "Blurry1", gender: "girl", country: "in", photo: "https://i.imgur.com/szFy9yZ.jpg" },
+  { name: "Blurry2", gender: "girl", country: "br", photo: "https://i.imgur.com/YQ3q8Qj.jpg" },
+  { name: "NoImage1", gender: "girl", country: "ru", photo: "" },
+  { name: "Glitch1", gender: "girl", country: "us", photo: "broken-link" },
+  { name: "Maya", gender: "girl", country: "us", photo: "https://i.imgur.com/BYwH0EZ.jpg" },
+  { name: "Ximena", gender: "girl", country: "mx", photo: "https://i.imgur.com/1ZKjOc3.jpg" },
+  { name: "Valentina", gender: "girl", country: "br", photo: "https://i.imgur.com/sVtbCDh.jpg" },
+  { name: "Nisha", gender: "girl", country: "in", photo: "https://i.imgur.com/yJ1cu7Q.jpg" },
+  { name: "Ana", gender: "girl", country: "mx", photo: "https://i.imgur.com/xGHOSmF.jpg" },
+  { name: "Ekaterina", gender: "girl", country: "ru", photo: "https://i.imgur.com/ZL4hEdb.jpg" },
+  { name: "NoImage2", gender: "girl", country: "us", photo: "" },
+  { name: "Mila", gender: "girl", country: "ru", photo: "https://i.imgur.com/yWLtFkw.jpg" },
+  { name: "Giulia", gender: "girl", country: "br", photo: "https://i.imgur.com/zWch9zO.jpg" },
+  { name: "Isabella", gender: "girl", country: "mx", photo: "https://i.imgur.com/N2LoG6f.jpg" },
+  { name: "Fernanda", gender: "girl", country: "br", photo: "https://i.imgur.com/lMQxzjT.jpg" },
+  { name: "Saanvi", gender: "girl", country: "in", photo: "https://i.imgur.com/AvSw43p.jpg" },
+  { name: "NoImage3", gender: "girl", country: "in", photo: "" },
+  { name: "Tatya", gender: "girl", country: "ru", photo: "https://i.imgur.com/JSkMnTu.jpg" },
+  { name: "Anika", gender: "girl", country: "in", photo: "https://i.imgur.com/NzEzPbP.jpg" },
+  { name: "BlurGirl", gender: "girl", country: "us", photo: "https://i.imgur.com/TflKpQg.jpg" },
+  { name: "Svetlana", gender: "girl", country: "ru", photo: "https://i.imgur.com/kMxlaRZ.jpg" },
+
+  // === Boys (10) ===
+  { name: "Liam", gender: "boy", country: "us", photo: "https://i.imgur.com/ViMKbmi.jpg" },
+  { name: "Rohan", gender: "boy", country: "in", photo: "https://i.imgur.com/gnCwUtD.jpg" },
+  { name: "Lucas", gender: "boy", country: "br", photo: "https://i.imgur.com/ux7Qo5X.jpg" },
+  { name: "Ivan", gender: "boy", country: "ru", photo: "https://i.imgur.com/m7gz34W.jpg" },
+  { name: "Diego", gender: "boy", country: "mx", photo: "https://i.imgur.com/kEBHspK.jpg" },
+  { name: "Noah", gender: "boy", country: "us", photo: "https://i.imgur.com/4L2uzY0.jpg" },
+  { name: "Matheus", gender: "boy", country: "br", photo: "https://i.imgur.com/wk0sNMe.jpg" },
+  { name: "Nikolai", gender: "boy", country: "ru", photo: "https://i.imgur.com/XX5V6Xu.jpg" },
+  { name: "Pablo", gender: "boy", country: "mx", photo: "https://i.imgur.com/hYd8w3Y.jpg" },
+  { name: "David", gender: "boy", country: "us", photo: "https://i.imgur.com/YPZnkNz.jpg" },
+
+  // === Extras / Mixed (10) ===
+  { name: "Alex", gender: "boy", country: "us", photo: "https://i.imgur.com/ZloP2vY.jpg" },
+  { name: "Isha", gender: "girl", country: "in", photo: "https://i.imgur.com/rB5RW5B.jpg" },
+  { name: "Bruno", gender: "boy", country: "br", photo: "https://i.imgur.com/fqF8eVJ.jpg" },
+  { name: "Maria", gender: "girl", country: "mx", photo: "https://i.imgur.com/HjUl7Kg.jpg" },
+  { name: "Carol", gender: "girl", country: "br", photo: "https://i.imgur.com/T8PRHKU.jpg" },
+  { name: "Mystery", gender: "girl", country: "any", photo: "" },
+  { name: "Blurred", gender: "girl", country: "any", photo: "https://i.imgur.com/RYvdzqp.jpg" },
+  { name: "Ghost", gender: "boy", country: "in", photo: "" },
+  { name: "Stella", gender: "girl", country: "mx", photo: "https://i.imgur.com/Sz0F7Xe.jpg" },
+  { name: "Echo", gender: "boy", country: "ru", photo: "broken-link" },
+];
+
+export default fakeUsers;
