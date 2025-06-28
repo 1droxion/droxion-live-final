@@ -1,0 +1,142 @@
+/* === Global Styles === */
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
+  background-size: 300% 300%;
+  animation: gradientFlow 20s ease infinite;
+  color: white;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+@keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.winkly {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* === Sidebar === */
+.sidebar {
+  width: 80px;
+  background: #ffcc70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 20px;
+}
+
+.sidebar button {
+  background: none;
+  border: none;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+/* === Main Panel === */
+.main-panel {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.selectors {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.selectors select {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #000;
+  color: #fff;
+  border: none;
+  font-size: 1rem;
+}
+
+/* === Video Preview === */
+.video-box {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.preview {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  border-radius: 18px;
+  border: 3px solid #ffd700;
+  box-shadow: 0 0 30px #ffd70055;
+  background: black;
+}
+
+/* === Chat / Message Box === */
+.chat-box {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.chat-box div {
+  margin-top: 10px;
+  padding: 10px 16px;
+  background: #2c2c2c;
+  border-radius: 10px;
+  color: #ccc;
+  display: inline-block;
+  font-size: 0.95rem;
+}
+
+/* === Error Message === */
+.error {
+  color: #ff6b6b;
+  font-weight: bold;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+/* === Responsive Fixes === */
+@media screen and (max-width: 768px) {
+  .winkly {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+    height: 60px;
+    padding: 10px;
+  }
+
+  .main-panel {
+    padding: 16px;
+  }
+
+  .selectors {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .selectors select {
+    width: 90%;
+    max-width: 280px;
+  }
+
+  .preview {
+    max-width: 100%;
+  }
+
+  .chat-box div {
+    width: 90%;
+    max-width: 320px;
+  }
+}
