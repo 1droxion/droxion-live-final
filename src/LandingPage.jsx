@@ -1,39 +1,38 @@
-// LandingPage.jsx
 import React from "react";
 import "./Landing.css";
 import { Link } from "react-router-dom";
 
 export default function LandingPage() {
   return (
-    <div className="landing-container">
-      <div className="card-glow">
+    <div className="landing">
+      <div className="glass-box">
         <h1>
-          Welcome to <span className="droxion-gradient">Droxion</span>
+          Welcome to <span className="highlight">Droxion</span>
         </h1>
-        <p className="tagline">
-          The <span className="highlight-green">#1 AI Assistant</span> — From Image, Chat, and Video Generator in Seconds.
+        <p className="subtitle">
+          The <span className="tagline">#1 AI Assistant</span> — From Image, Chat, and Video Generator in Seconds.
         </p>
 
-        <div className="button-row">
-          <Link to="/chatboard" className="button neon-pink">
+        <div className="buttons">
+          <Link to="/chatboard" className="primary-button">
             💬 Try AI Chat
           </Link>
-          <Link to="/plans" className="button white-btn">
+          <Link to="/plans" className="secondary-button">
             🚀 Upgrade Plan
           </Link>
         </div>
 
-        <div className="feature-list">
-          <div>✨ What You Can Do With Droxion</div>
-          <div>💬 Chat with AI powered by GPT-4</div>
-          <div>🎨 Generate Images Instantly</div>
-          <div>📺 Embed YouTube Videos</div>
-          <div>🔓 No login needed. Start now.</div>
-        </div>
+        <ul className="features">
+          <li>💡 What You Can Do With Droxion</li>
+          <li>🧠 Chat with AI powered by GPT-4</li>
+          <li>🎨 Generate Images Instantly</li>
+          <li>📺 Embed YouTube Videos</li>
+          <li>🔓 No login needed. Start now.</li>
+        </ul>
 
-        <div className="footer-note">
-          Built by <strong>Dhruv Patel</strong> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
-        </div>
+        <footer>
+          Built by <b>Dhruv Patel</b> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+        </footer>
       </div>
     </div>
   );
