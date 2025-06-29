@@ -1,108 +1,131 @@
+/* Landing.css – Futuristic Neon Glow UI */
 body {
   margin: 0;
   padding: 0;
   font-family: 'Poppins', sans-serif;
-  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
   background-size: 300% 300%;
-  animation: bgWave 20s ease infinite;
+  animation: gradientWave 20s ease infinite;
   color: #fff;
   overflow-x: hidden;
   min-height: 100vh;
 }
 
-@keyframes bgWave {
+@keyframes gradientWave {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
 
-.landing-container {
+.container {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 3rem 1rem;
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(20px);
-  padding: 2.5rem;
-  border-radius: 20px;
+  flex-direction: column;
+  height: 100vh;
   text-align: center;
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
-  max-width: 600px;
-  width: 100%;
+  padding: 1rem;
 }
 
-.main-title {
-  font-size: 2.2rem;
+.card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 2.5rem;
+  box-shadow: 0 0 40px rgba(0, 255, 255, 0.2);
+  backdrop-filter: blur(12px);
+  max-width: 720px;
+  width: 100%;
+  animation: fadeIn 1.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+h1 {
+  font-size: 2.8rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  background: linear-gradient(90deg, #ff8af4, #b388ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .highlight {
-  color: #c084fc;
-}
-
-.green {
-  color: #4ade80;
+  color: #00ffc3;
   font-weight: bold;
 }
 
-.subtitle {
-  font-size: 1rem;
-  color: #cbd5e1;
+.description {
+  color: #c5c5c5;
   margin-bottom: 2rem;
+  font-size: 1.05rem;
 }
 
 .buttons {
   display: flex;
-  justify-content: center;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  justify-content: center;
+  margin-bottom: 2rem;
 }
 
-.chat-btn, .plan-btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  font-size: 1rem;
-  font-weight: bold;
+.buttons a {
+  padding: 0.8rem 1.5rem;
   border-radius: 12px;
-  cursor: pointer;
-  transition: 0.3s ease;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .chat-btn {
-  background: linear-gradient(to right, #a855f7, #ec4899);
+  background: linear-gradient(90deg, #c471f5, #fa71cd);
   color: white;
+  box-shadow: 0 0 15px rgba(255, 0, 200, 0.4);
 }
 
 .chat-btn:hover {
-  transform: scale(1.05);
+  filter: brightness(1.1);
 }
 
-.plan-btn {
+.upgrade-btn {
   background: white;
-  color: black;
+  color: #000;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
 }
 
-.plan-btn:hover {
-  background: #f1f1f1;
+.upgrade-btn:hover {
+  background: #eee;
 }
 
 .features {
-  font-size: 0.95rem;
   text-align: left;
-  color: #e2e8f0;
-  margin-bottom: 1.5rem;
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  font-size: 0.98rem;
+  color: #d6d6d6;
+  line-height: 1.6;
 }
 
-footer {
-  font-size: 0.9rem;
-  color: #94a3b8;
+.features div::before {
+  content: "✨ ";
+  color: #f0f;
 }
 
-.email {
-  color: #93c5fd;
+.footer {
+  font-size: 0.85rem;
+  color: #bbb;
+}
+
+.footer a {
+  color: #00ffe7;
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
 }
