@@ -1,131 +1,40 @@
-/* Landing.css – Futuristic Neon Glow UI */
-body {
-  margin: 0;
-  padding: 0;
-  font-family: 'Poppins', sans-serif;
-  background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
-  background-size: 300% 300%;
-  animation: gradientWave 20s ease infinite;
-  color: #fff;
-  overflow-x: hidden;
-  min-height: 100vh;
-}
+import React from "react";
+import "./Landing.css";
+import { Link } from "react-router-dom";
 
-@keyframes gradientWave {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
+export default function LandingPage() {
+  return (
+    <div className="landing">
+      <div className="glass-box">
+        <h1>
+          Welcome to <span className="highlight">Droxion</span>
+        </h1>
+        <p className="subtitle">
+          The <span className="tagline">#1 AI Assistant</span> — From Image, Chat, and Video
+          Generator in Seconds.
+        </p>
 
-.container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-direction: column;
-  height: 100vh;
-  text-align: center;
-  padding: 1rem;
-}
+        <div className="buttons">
+          <Link to="/chatboard" className="primary-button">
+            💬 Try AI Chat
+          </Link>
+          <Link to="/plans" className="secondary-button">
+            🚀 Upgrade Plan
+          </Link>
+        </div>
 
-.card {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
-  padding: 2.5rem;
-  box-shadow: 0 0 40px rgba(0, 255, 255, 0.2);
-  backdrop-filter: blur(12px);
-  max-width: 720px;
-  width: 100%;
-  animation: fadeIn 1.2s ease;
-}
+        <ul className="features">
+          <li>💡 What You Can Do With Droxion</li>
+          <li>💬 Chat with AI powered by GPT-4</li>
+          <li>🎨 Generate Images Instantly</li>
+          <li>📺 Embed YouTube Videos</li>
+          <li>🔒 No login needed. Start now.</li>
+        </ul>
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-h1 {
-  font-size: 2.8rem;
-  font-weight: 700;
-  background: linear-gradient(90deg, #ff8af4, #b388ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.highlight {
-  color: #00ffc3;
-  font-weight: bold;
-}
-
-.description {
-  color: #c5c5c5;
-  margin-bottom: 2rem;
-  font-size: 1.05rem;
-}
-
-.buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: center;
-  margin-bottom: 2rem;
-}
-
-.buttons a {
-  padding: 0.8rem 1.5rem;
-  border-radius: 12px;
-  font-weight: 600;
-  font-size: 1rem;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-btn {
-  background: linear-gradient(90deg, #c471f5, #fa71cd);
-  color: white;
-  box-shadow: 0 0 15px rgba(255, 0, 200, 0.4);
-}
-
-.chat-btn:hover {
-  filter: brightness(1.1);
-}
-
-.upgrade-btn {
-  background: white;
-  color: #000;
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
-}
-
-.upgrade-btn:hover {
-  background: #eee;
-}
-
-.features {
-  text-align: left;
-  max-width: 600px;
-  margin: 0 auto 2rem;
-  font-size: 0.98rem;
-  color: #d6d6d6;
-  line-height: 1.6;
-}
-
-.features div::before {
-  content: "✨ ";
-  color: #f0f;
-}
-
-.footer {
-  font-size: 0.85rem;
-  color: #bbb;
-}
-
-.footer a {
-  color: #00ffe7;
-  text-decoration: none;
-}
-
-.footer a:hover {
-  text-decoration: underline;
+        <footer>
+          Built by <b>Dhruv Patel</b> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+        </footer>
+      </div>
+    </div>
+  );
 }
