@@ -1,34 +1,37 @@
+// LandingPage.jsx
 import React from "react";
-import { useNavigate } from "react-router-dom";
 import "./Landing.css";
+import { Link } from "react-router-dom";
 
 export default function LandingPage() {
-  const navigate = useNavigate();
-
   return (
-    <div className="landing-v2-container">
-      <div className="neon-glass-box">
-        <h1 className="neon-title">
-          Welcome to <span className="glow-text">Droxion</span>
+    <div className="landing-container">
+      <div className="card-glow">
+        <h1>
+          Welcome to <span className="droxion-gradient">Droxion</span>
         </h1>
-        <p className="neon-sub">
-          The <span className="ai-green">#1 AI Assistant</span> — From Image, Chat, and Video Generator in Seconds.
+        <p className="tagline">
+          The <span className="highlight-green">#1 AI Assistant</span> — From Image, Chat, and Video Generator in Seconds.
         </p>
 
-        <div className="neon-buttons">
-          <button className="neon-chat" onClick={() => navigate("/chatboard")}>💬 Try AI Chat</button>
-          <button className="neon-plan" onClick={() => navigate("/plans")}>🚀 Upgrade Plan</button>
+        <div className="button-row">
+          <Link to="/chatboard" className="button neon-pink">
+            💬 Try AI Chat
+          </Link>
+          <Link to="/plans" className="button white-btn">
+            🚀 Upgrade Plan
+          </Link>
         </div>
 
-        <div className="neon-list">
-          <p>✨ What You Can Do With Droxion</p>
-          <p>💬 Chat with AI powered by GPT-4</p>
-          <p>🎨 Generate Images Instantly</p>
-          <p>📺 Embed YouTube Videos</p>
-          <p>🔐 No login needed. Start now.</p>
+        <div className="feature-list">
+          <div>✨ What You Can Do With Droxion</div>
+          <div>💬 Chat with AI powered by GPT-4</div>
+          <div>🎨 Generate Images Instantly</div>
+          <div>📺 Embed YouTube Videos</div>
+          <div>🔓 No login needed. Start now.</div>
         </div>
 
-        <div className="neon-footer">
+        <div className="footer-note">
           Built by <strong>Dhruv Patel</strong> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
         </div>
       </div>
