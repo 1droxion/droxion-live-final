@@ -1,78 +1,103 @@
-/* === Landing.css === */
-.landing-container {
-  min-height: 100vh;
-  background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
+/* === Landing.css v2 – Futuristic + Clean === */
+
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(135deg, #090d1f, #1a1a40, #2b2b6a);
+  background-size: 400% 400%;
+  animation: futuristicFlow 20s ease infinite;
   color: white;
-  animation: backgroundFlow 20s ease infinite;
-  background-size: 300% 300%;
+  overflow-x: hidden;
+  min-height: 100vh;
 }
 
-@keyframes backgroundFlow {
+@keyframes futuristicFlow {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
 
-.landing-box {
-  background: rgba(255, 255, 255, 0.05);
+.landing-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 2rem;
-  border-radius: 20px;
+}
+
+.landing-box {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2.5rem;
+  border-radius: 24px;
   text-align: center;
-  box-shadow: 0 0 25px rgba(255, 255, 255, 0.05);
-  max-width: 600px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  max-width: 700px;
   width: 100%;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .landing-title {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
+  font-size: 2.75rem;
   font-weight: bold;
+  margin-bottom: 1rem;
+  background: linear-gradient(to right, #fff, #b48cff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .landing-sub {
   font-size: 1.1rem;
-  margin-bottom: 1.8rem;
-  color: #ccc;
+  margin-bottom: 2rem;
+  color: #cccccc;
 }
 
 .landing-buttons {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 1.2rem;
+  margin-bottom: 2rem;
 }
 
 .landing-btn {
-  padding: 0.75rem 1.5rem;
-  font-weight: bold;
-  border-radius: 12px;
-  border: none;
+  padding: 0.9rem 1.8rem;
+  font-weight: 600;
   font-size: 1rem;
+  border-radius: 14px;
+  border: none;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  background: #2d2dff;
+  color: white;
+  box-shadow: 0 0 12px rgba(128, 128, 255, 0.5);
+  transition: all 0.25s ease;
 }
 
 .landing-btn:hover {
-  transform: scale(1.05);
+  transform: scale(1.06);
+  background: #4040ff;
+  box-shadow: 0 0 20px rgba(128, 128, 255, 0.7);
 }
 
-.btn-purple {
-  background: linear-gradient(90deg, #f81ce5, #7928ca);
-  color: white;
-}
-
-.btn-white {
-  background: white;
-  color: black;
+.landing-features {
+  text-align: left;
+  max-width: 500px;
+  margin: 0 auto;
+  font-size: 0.95rem;
+  color: #eaeaea;
+  line-height: 1.6;
 }
 
 .landing-footer {
   margin-top: 2rem;
   font-size: 0.85rem;
-  color: #bbb;
+  color: #aaa;
+  text-align: center;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 1rem;
+}
+
+.landing-footer b {
+  color: white;
 }
