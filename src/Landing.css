@@ -1,57 +1,132 @@
-import React, { useEffect } from "react";
-import "./Landing.css";
-import { useNavigate } from "react-router-dom";
+/* === Futuristic Droxion Landing Styles === */
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: "Poppins", sans-serif;
+  background: linear-gradient(135deg, #050505, #0f0c29, #1a1a40);
+  background-size: 400% 400%;
+  animation: pulseBG 20s ease infinite;
+  color: white;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
 
-export default function LandingPage() {
-  const navigate = useNavigate();
+@keyframes pulseBG {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
 
-  useEffect(() => {
-    const isPaid = localStorage.getItem("paid");
-    if (isPaid === "true") {
-      navigate("/chatboard");
-    }
-  }, [navigate]);
+.landing {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  min-height: 100vh;
+}
 
-  const handlePayment = () => {
-    window.location.href = "https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03";
-  };
+.glass-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 2.5rem;
+  max-width: 700px;
+  width: 100%;
+  text-align: center;
+}
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("paid") === "1") {
-      localStorage.setItem("paid", "true");
-      navigate("/chatboard");
-    }
-  }, []);
+h1 {
+  font-size: 2.8rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
 
-  return (
-    <div className="landing">
-      <div className="glass-box">
-        <h1>
-          Welcome to <span className="highlight">Droxion</span>
-        </h1>
-        <p className="subtitle">
-          The <span className="tagline">#1 AI Assistant</span> — Build Apps, Games, Images, Code, and More Instantly.
-        </p>
+.highlight {
+  background: linear-gradient(to right, #aa7ff0, #d47fff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-        <div className="buttons">
-          <button onClick={handlePayment} className="primary-button">
-            🔓 Unlock All for $1.99/month
-          </button>
-        </div>
+.subtitle {
+  font-size: 1.1rem;
+  margin-bottom: 2rem;
+  color: #cccccc;
+}
 
-        <ul className="features">
-          <li>✅ Unlimited AI Chat (GPT-4)</li>
-          <li>🎨 100+ Image Styles (Coding Prompts)</li>
-          <li>💻 Make Apps, Games, Tools via AI</li>
-          <li>📺 Watch Code YouTube Videos In-App</li>
-          <li>🔥 All Features Unlocked After Payment</li>
-        </ul>
+.tagline {
+  color: #00ffaf;
+  font-weight: 600;
+}
 
-        <footer>
-          Built by <b>Dhruv Patel</b> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
-        </footer>
-      </div>
-    </div>
-  );
+.buttons {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.primary-button,
+.secondary-button {
+  padding: 0.8rem 1.6rem;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.primary-button {
+  background: linear-gradient(to right, #ff4b99, #c44fff);
+  color: white;
+  box-shadow: 0 4px 20px rgba(255, 79, 184, 0.4);
+}
+
+.primary-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(255, 79, 184, 0.6);
+}
+
+.secondary-button {
+  background: white;
+  color: #000;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
+
+.secondary-button:hover {
+  transform: translateY(-2px);
+  background: #f1f1f1;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #d0d0d0;
+  text-align: left;
+  max-width: 450px;
+  margin-inline: auto;
+}
+
+.features li {
+  margin: 0.5rem 0;
+}
+
+footer {
+  font-size: 0.9rem;
+  color: #999;
+}
+
+footer a {
+  color: #87f2ff;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
 }
