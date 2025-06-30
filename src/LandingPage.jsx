@@ -1,32 +1,34 @@
-import React, { useEffect } from "react";
-import "./Landing.css";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import "./Landing.css";
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+  const [isPaid, setIsPaid] = useState(false);
 
   useEffect(() => {
-    // If user already paid, redirect to chatboard
-    const isPaid = localStorage.getItem("paid");
-    if (isPaid === "true") {
-      navigate("/chatboard");
-    }
+    const user_id = localStorage.getItem("droxion_uid");
+    if (!user_id) return;
+
+    fetch("https://droxion-backend.onrender.com/check-paid", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.paid) {
+          setIsPaid(true);
+          navigate("/chatboard"); // ✅ Auto-redirect
+        } else {
+          setChecking(false); // unpaid, stay on landing
+        }
+      })
+      .catch(() => {
+        setChecking(false); // error fallback
+      });
   }, [navigate]);
-
-  const handlePayment = () => {
-    // Redirect to Stripe payment page
-    window.location.href = "https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03";
-  };
-
-  // After payment, user will return to site manually or auto — so handle check from somewhere
-  useEffect(() => {
-    // Example: add ?paid=1 to the URL after Stripe success redirect
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("paid") === "1") {
-      localStorage.setItem("paid", "true");
-      navigate("/chatboard");
-    }
-  }, []);
 
   return (
     <div className="landing">
@@ -38,11 +40,14 @@ export default function LandingPage() {
           The <span className="tagline">#1 AI Assistant</span> — Build Apps, Games, Images, Code, and More Instantly.
         </p>
 
-        <div className="buttons">
-          <button onClick={handlePayment} className="primary-button">
+        {!checking && !isPaid && (
+          <a
+            href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
+            className="primary-button"
+          >
             🔓 Unlock All for $1.99/month
-          </button>
-        </div>
+          </a>
+        )}
 
         <ul className="features">
           <li>✅ Unlimited AI Chat (GPT-4)</li>
