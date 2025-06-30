@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx – Stripe Paid Flow + Tools
+// ✅ AIChat.jsx – fixed missing plus icon and dropdown
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -22,10 +22,18 @@ function AIChat() {
   const synth = window.speechSynthesis;
   const userId = useRef("");
 
-  // ✅ Unlock access after Stripe redirect
+  // ✅ Stripe Unlock Logic
   useEffect(() => {
-    if (localStorage.getItem("paid") !== "true") {
+    const url = window.location.href;
+    const isFromStripe = url.includes("/chatboard");
+
+    if (isFromStripe && localStorage.getItem("paid") !== "true") {
       localStorage.setItem("paid", "true");
+    }
+
+    if (localStorage.getItem("paid") !== "true") {
+      alert("Please subscribe to unlock Droxion.");
+      window.location.href = "/";
     }
   }, []);
 
@@ -149,7 +157,15 @@ function AIChat() {
           {topToolsOpen && (
             <div className="flex gap-4 mr-2 bg-black border border-gray-700 px-2 py-1 rounded z-20 text-sm items-center">
               <FaTrash onClick={() => { setMessages([]); setTopToolsOpen(false); }} className="cursor-pointer" title="Clear" />
-              <FaDownload onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Download" />
+              <FaDownload onClick={() => {
+                const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+                const blob = new Blob([text], { type: "text/plain" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "chat.txt";
+                link.click();
+                setTopToolsOpen(false);
+              }} className="cursor-pointer" title="Download" />
               <FaClock onClick={() => setTopToolsOpen(false)} className="cursor-pointer" title="History" />
               <FaMicrophone onClick={() => { handleMic(); setTopToolsOpen(false); }} className="cursor-pointer" title="Mic" />
               {voiceMode ? (
