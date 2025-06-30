@@ -22,18 +22,18 @@ function Plans() {
     },
     {
       name: "Pro",
-      price: "$19/mo",
-      description: "Perfect for solo creators & influencers.",
+      price: "$1.99/mo",
+      description: "Unlock full access to AI Chat, Images, Coding & Video Tools.",
       features: [
-        "Unlimited reels",
-        "Premium templates",
-        "Multi-language voices",
-        "Priority support",
-        "🪙 150 coins",
+        "Unlimited AI tools",
+        "Image generator unlocked",
+        "Video & chat assistant",
+        "Smart YouTube analysis",
+        "🪙 All features included",
       ],
-      color: "bg-gradient-to-br from-blue-800 to-indigo-900",
-      badge: "Popular",
-      link: "https://buy.stripe.com/test_3cI4gz7YN4sR1oGfo77ss01",
+      color: "bg-gradient-to-br from-purple-700 to-pink-700",
+      badge: "Best Deal",
+      link: "https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03", // ✅ Real Stripe link
       plan: "pro",
     },
     {
@@ -48,8 +48,8 @@ function Plans() {
         "🪙 400 coins",
       ],
       color: "bg-gradient-to-br from-yellow-600 to-orange-600",
-      badge: "Best Value",
-      link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02",
+      badge: "Premium",
+      link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02", // You can update this too
       plan: "business",
     },
   ];
