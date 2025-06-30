@@ -33,7 +33,7 @@ function Plans() {
       ],
       color: "bg-gradient-to-br from-purple-700 to-pink-700",
       badge: "Best Deal",
-      link: "https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03", // ✅ Real Stripe link
+      link: "https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03",
       plan: "pro",
     },
     {
@@ -49,12 +49,14 @@ function Plans() {
       ],
       color: "bg-gradient-to-br from-yellow-600 to-orange-600",
       badge: "Premium",
-      link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02", // You can update this too
+      link: "https://buy.stripe.com/test_9B6aEX5QF4sRgjA0td7ss02",
       plan: "business",
     },
   ];
 
-  const handleClick = (plan) => {
+  const handleClick = async (plan) => {
+    const user_id = localStorage.getItem("droxion_uid");
+
     if (plan.link === "starter") {
       localStorage.setItem("droxion_plan", "Starter");
 
@@ -67,8 +69,23 @@ function Plans() {
         alert("✅ You're now on the free Starter plan.");
       }
     } else {
-      localStorage.setItem("droxion_plan", plan.name);
-      window.open(plan.link, "_blank");
+      try {
+        const res = await fetch("https://droxion-backend.onrender.com/check-paid", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id }),
+        });
+        const data = await res.json();
+
+        if (data.paid) {
+          window.location.href = "/chatboard";
+        } else {
+          localStorage.setItem("droxion_plan", plan.name);
+          window.open(plan.link, "_blank");
+        }
+      } catch {
+        alert("⚠️ Server error. Try again later.");
+      }
     }
   };
 
