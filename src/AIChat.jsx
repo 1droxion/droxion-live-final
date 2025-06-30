@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx – fixed missing plus icon and dropdown
+// ✅ AIChat.jsx – secured with Stripe + backend check
 // Built by Dhruv Patel | Droxion AI
 
 import React, { useState, useEffect, useRef } from "react";
@@ -22,21 +22,7 @@ function AIChat() {
   const synth = window.speechSynthesis;
   const userId = useRef("");
 
-  // ✅ Stripe Unlock Logic
-  useEffect(() => {
-    const url = window.location.href;
-    const isFromStripe = url.includes("/chatboard");
-
-    if (isFromStripe && localStorage.getItem("paid") !== "true") {
-      localStorage.setItem("paid", "true");
-    }
-
-    if (localStorage.getItem("paid") !== "true") {
-      alert("Please subscribe to unlock Droxion.");
-      window.location.href = "/";
-    }
-  }, []);
-
+  // ✅ Generate + store user ID
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
@@ -44,6 +30,29 @@ function AIChat() {
       localStorage.setItem("droxion_uid", id);
     }
     userId.current = id;
+  }, []);
+
+  // ✅ Stripe + Backend unlock check
+  useEffect(() => {
+    const user_id = localStorage.getItem("droxion_uid");
+
+    if (!user_id) {
+      alert("Missing user ID. Please refresh.");
+      return;
+    }
+
+    axios
+      .post("https://droxion-backend.onrender.com/check-paid", { user_id })
+      .then((res) => {
+        if (!res.data.paid) {
+          alert("Please complete payment to unlock Droxion.");
+          window.location.href = "/";
+        }
+      })
+      .catch(() => {
+        alert("Server error. Try again later.");
+        window.location.href = "/";
+      });
   }, []);
 
   useEffect(() => {
