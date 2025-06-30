@@ -1,3 +1,8 @@
+useEffect(() => {
+  if (localStorage.getItem("paid") !== "true") {
+    localStorage.setItem("paid", "true");
+  }
+}, []);
 // ✅ AIChat.jsx – fixed missing plus icon and dropdown
 // Built by Dhruv Patel | Droxion AI
 
