@@ -59,46 +59,23 @@ h1 {
   font-weight: 600;
 }
 
-.buttons {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.primary-button,
-.secondary-button {
+.primary-button {
+  display: inline-block;
   padding: 0.8rem 1.6rem;
-  border: none;
   border-radius: 12px;
   font-weight: 600;
   font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-decoration: none;
-}
-
-.primary-button {
   background: linear-gradient(to right, #ff4b99, #c44fff);
   color: white;
   box-shadow: 0 4px 20px rgba(255, 79, 184, 0.4);
+  text-decoration: none;
+  transition: all 0.3s ease;
+  margin-bottom: 2rem;
 }
 
 .primary-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 24px rgba(255, 79, 184, 0.6);
-}
-
-.secondary-button {
-  background: white;
-  color: #000;
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
-}
-
-.secondary-button:hover {
-  transform: translateY(-2px);
-  background: #f1f1f1;
 }
 
 .features {
