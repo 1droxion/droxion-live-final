@@ -8,7 +8,7 @@
 
 /* === Background === */
 body, html {
-  height: 10%;
+  height: 60%;
   overflow-x: hidden;
   color: white;
   background: url("/stars.gif") no-repeat center center fixed;
