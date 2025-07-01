@@ -65,10 +65,9 @@ function Start() {
 
         <ul className="feature-list">
           <li>✅ GPT-4 + Vision Support</li>
-          <li>🖼️ 100+ Styles & Prompt Templates</li>
+          <li>🎨 100+ Styles & Prompt Templates</li>
           <li>🚀 Make Apps, Shorts, Games Instantly</li>
-          <li>📺 Generate Cinematic, Anime, Futuristic, Realistic Scenes</li>
-          <li>💬 Type or Speak – Full Voice & Video Mode Built-in</li>
+          <li>📺 Cinematic, Anime, Realistic, 3D, Sci-Fi Styles</li>
         </ul>
 
         <footer>
