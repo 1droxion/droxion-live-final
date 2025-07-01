@@ -1,4 +1,4 @@
-/* === Global Reset === */
+/* === Reset === */
 * {
   margin: 0;
   padding: 0;
@@ -6,7 +6,7 @@
   font-family: 'Poppins', sans-serif;
 }
 
-/* === Fullscreen Star Background === */
+/* === Background === */
 body, html {
   height: 100%;
   overflow-x: hidden;
@@ -15,29 +15,26 @@ body, html {
   background-size: cover;
 }
 
-/* === Landing Page Wrapper – Transparent === */
+/* === Page Layout === */
 .landing-page {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: 2rem;
-  background: transparent; /* 🔥 KEY: prevent full-black center fill */
+  background: transparent;
 }
 
-/* === Center Glass Box === */
+/* === No Black Box — All Elements Float === */
 .landing-glass {
-  background: rgba(0, 0, 0, 0.75); /* semi-dark card */
-  padding: 3rem 2rem;
-  max-width: 900px;
+  max-width: 950px;
   width: 100%;
+  padding: 2rem;
   text-align: center;
-  border-radius: 20px;
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
-  z-index: 2;
+  background: transparent;
 }
 
-/* === Title with Neon Glow === */
+/* === Title Glow === */
 .main-title {
   font-size: 3rem;
   font-weight: 800;
@@ -56,9 +53,9 @@ body, html {
 
 .tagline {
   font-size: 1.2rem;
-  color: #ccc;
+  color: #eee;
   margin-bottom: 2rem;
-  text-shadow: 0 0 6px #000;
+  text-shadow: 0 0 5px #000;
 }
 
 /* === Button === */
@@ -80,20 +77,22 @@ body, html {
   box-shadow: 0 0 20px #00ffe0;
 }
 
-/* === Preview Cards === */
+/* === Preview Grid === */
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.5rem;
   margin: 2rem 0;
+  text-align: center;
 }
 
+/* === Each Preview Box — No Background === */
 .preview-box {
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 10px;
+  background: transparent;
   padding: 1rem;
-  border: 1px solid #444;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  border: none;
+  border-radius: 10px;
+  color: white;
 }
 
 .preview-box img,
@@ -104,7 +103,7 @@ body, html {
 }
 
 .preview-box pre {
-  background: #111;
+  background: #000000aa;
   color: #0f0;
   font-size: 0.85rem;
   padding: 0.75rem;
@@ -117,9 +116,9 @@ body, html {
   list-style: none;
   padding: 0;
   margin: 2rem 0;
-  color: #ddd;
   font-size: 0.95rem;
   line-height: 1.7;
+  color: #fff;
   text-shadow: 0 0 5px #000;
 }
 
