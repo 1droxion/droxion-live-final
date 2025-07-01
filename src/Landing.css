@@ -1,9 +1,10 @@
-/* === Entire Page Layout === */
+/* === Page Wrapper === */
 .landing-page {
   position: relative;
   width: 100%;
   min-height: 100vh;
   overflow-x: hidden;
+  overflow-y: auto;
   font-family: 'Poppins', sans-serif;
   color: #fff;
   display: flex;
@@ -25,22 +26,22 @@
   opacity: 1;
 }
 
-/* === Foreground Content Container === */
+/* === Main Content Box === */
 .landing-glass {
   width: 100%;
   max-width: 1100px;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.25); /* transparent, allows video to show */
   padding: 40px 30px;
   border-radius: 20px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 0 30px rgba(0, 255, 213, 0.1);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 40px rgba(0, 255, 213, 0.12);
   text-align: center;
-  z-index: 1;
+  z-index: 2;
 }
 
-/* === Headings & Text === */
+/* === Headings & Tagline === */
 .main-title {
-  font-size: 3rem;
+  font-size: 3.2rem;
   font-weight: bold;
   margin-bottom: 10px;
   color: #00ffd5;
@@ -85,6 +86,11 @@
   padding: 15px;
   backdrop-filter: blur(8px);
   box-shadow: 0 0 12px rgba(0, 255, 213, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.preview-box:hover {
+  transform: translateY(-4px);
 }
 
 .preview-box img,
@@ -125,13 +131,13 @@
 footer {
   margin-top: 20px;
   font-size: 0.9rem;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
-/* === Responsive Fix === */
+/* === Mobile Responsive === */
 @media (max-width: 768px) {
   .main-title {
-    font-size: 2.2rem;
+    font-size: 2.3rem;
   }
   .tagline {
     font-size: 1.1rem;
