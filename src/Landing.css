@@ -1,17 +1,17 @@
-/* === Page Wrapper === */
+/* === Page Container === */
 .landing-page {
   position: relative;
   width: 100%;
   min-height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
-  font-family: 'Poppins', sans-serif;
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+  background: transparent !important;
+  z-index: 0;
 }
 
 /* === Background Video === */
@@ -26,20 +26,20 @@
   opacity: 1;
 }
 
-/* === Main Content Box === */
+/* === Main Glass Content === */
 .landing-glass {
   width: 100%;
   max-width: 1100px;
-  background: rgba(0, 0, 0, 0.25); /* transparent, allows video to show */
+  background: rgba(0, 0, 0, 0.25); /* transparent glass */
   padding: 40px 30px;
   border-radius: 20px;
   backdrop-filter: blur(14px);
   box-shadow: 0 0 40px rgba(0, 255, 213, 0.12);
   text-align: center;
-  z-index: 2;
+  z-index: 1;
 }
 
-/* === Headings & Tagline === */
+/* === Heading & Tagline === */
 .main-title {
   font-size: 3.2rem;
   font-weight: bold;
@@ -70,7 +70,7 @@
   background: #0ff;
 }
 
-/* === Preview Grid === */
+/* === Preview Cards === */
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
@@ -115,7 +115,7 @@
   font-size: 0.95rem;
 }
 
-/* === Features List === */
+/* === Feature List === */
 .feature-list {
   list-style: none;
   padding: 0;
