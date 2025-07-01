@@ -2,9 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Background and Text Color ---------- */
+/* ---------- Transparent Background + Text Color ---------- */
 body {
-  @apply bg-[#0e0e10] text-white font-sans antialiased;
+  @apply text-white font-sans antialiased;
+  background: transparent !important;
 }
 
 /* ---------- Smooth Scrolling ---------- */
