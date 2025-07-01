@@ -1,111 +1,96 @@
-/* Landing.css */
+/* === Reset & Base === */
 body, html {
   margin: 0;
   padding: 0;
   font-family: 'Poppins', sans-serif;
-  background: radial-gradient(circle at center, #0d1b2a, #000);
-  color: white;
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
+  background-color: #000;
 }
 
-.landing-wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 2rem;
-}
-
-.glass-box {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  padding: 2rem;
-  backdrop-filter: blur(10px);
-  max-width: 800px;
+/* === Main Landing Section === */
+.landing {
+  position: relative;
   width: 100%;
-  box-shadow: 0 0 30px rgba(0, 255, 255, 0.1);
+  height: 100vh;
+  background: url("https://images.unsplash.com/photo-1700419869567-f7f7e6bb3e0f?auto=format&fit=crop&w=1950&q=80") no-repeat center center / cover;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
-.title {
-  font-size: 2.8rem;
-  font-weight: 800;
-  margin-bottom: 0.5rem;
+/* === Dark Overlay === */
+.overlay {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(5px);
+  z-index: 1;
 }
 
-.tagline {
-  font-size: 1.3rem;
-  margin-bottom: 1.5rem;
+/* === Content Area === */
+.content {
+  z-index: 2;
+  padding: 2rem;
+  color: white;
+}
+
+/* === Gradient Title === */
+.title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #ff00f7, #00ffe0, #ffffff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+  0% {
+    text-shadow: 0 0 10px #00ffe0;
+  }
+  100% {
+    text-shadow: 0 0 20px #ff00f7;
+  }
+}
+
+/* === Subtitle Text === */
+.subtitle {
+  font-size: 1.2rem;
+  margin-top: 1rem;
   color: #ccc;
 }
 
-.unlock-btn {
-  display: inline-block;
-  background: black;
-  color: white;
-  font-weight: bold;
-  padding: 1rem 2rem;
-  border-radius: 12px;
-  font-size: 1.1rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 0 10px #ffaa00;
-  text-decoration: none;
-  transition: all 0.3s ease;
-}
-
-.unlock-btn:hover {
-  background: #111;
-}
-
-.preview-boxes {
-  display: flex;
-  gap: 1.5rem;
-  justify-content: center;
-  margin: 2rem 0;
-  flex-wrap: wrap;
-}
-
-.preview-item {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid #333;
-  padding: 1rem;
-  border-radius: 10px;
-  width: 220px;
-  text-align: center;
-  box-shadow: 0 0 10px rgba(0,0,0,0.5);
-}
-
-.preview-item img, .preview-item video {
-  width: 100%;
-  border-radius: 10px;
-  margin-bottom: 0.5rem;
-}
-
-.code-box pre {
-  background: #1e1e1e;
-  color: #0f0;
-  padding: 0.5rem;
-  font-size: 0.85rem;
-  text-align: left;
-  overflow-x: auto;
-  border-radius: 8px;
-}
-
-.features {
-  list-style: none;
-  padding: 0;
-  margin: 2rem 0;
-  font-size: 1rem;
-  color: #eee;
-}
-
-.features li {
-  margin-bottom: 0.5rem;
-}
-
-footer {
+/* === Start Button === */
+.start-btn {
   margin-top: 2rem;
-  font-size: 0.9rem;
-  color: #888;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: black;
+  background: linear-gradient(135deg, #00ffb7, #8000ff);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.start-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 25px #00ffe0;
+}
+
+/* === Footer Info === */
+.bottom-info {
+  position: absolute;
+  bottom: 1rem;
+  width: 100%;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #aaa;
+  z-index: 2;
 }
