@@ -26,24 +26,23 @@
   opacity: 1;
 }
 
-/* === Centered Content Glass === */
+/* === Clean Glass Content Box === */
 .landing-glass {
   width: 100%;
   max-width: 950px;
-  margin: auto;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.02); /* ultra light */
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 10px rgba(0, 255, 213, 0.04);
+  border-radius: 16px;
   padding: 30px 20px;
-  border-radius: 20px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 0 30px rgba(0, 255, 213, 0.1);
+  margin: auto;
   text-align: center;
-  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* === Title === */
+/* === Glowing Title === */
 .main-title {
   font-size: 2.6rem;
   font-weight: bold;
@@ -61,7 +60,7 @@
   color: #c2f0ff;
 }
 
-/* === Glowing Button === */
+/* === Live Button === */
 .unlock-btn {
   background: linear-gradient(90deg, #00ffd5, #00bfff);
   color: black;
@@ -81,7 +80,7 @@
   box-shadow: 0 0 16px #00fff7, 0 0 30px #00ffe0;
 }
 
-/* === Previews: Now Floating Items Only === */
+/* === Previews === */
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
@@ -169,7 +168,7 @@ footer {
   }
 }
 
-/* === Responsive === */
+/* === Mobile Responsive === */
 @media (max-width: 768px) {
   .main-title {
     font-size: 2rem;
