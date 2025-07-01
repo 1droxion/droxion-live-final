@@ -1,4 +1,4 @@
-// ✅ LandingPage.jsx – Full Version with Preview & Stripe
+// Landing.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Landing.css";
@@ -17,8 +17,8 @@ export default function LandingPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id })
     })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(res => res.json())
+      .then(data => {
         if (data.paid) {
           setIsPaid(true);
           navigate("/chatboard");
@@ -26,15 +26,15 @@ export default function LandingPage() {
           setChecking(false);
         }
       })
-      .catch(() => {
-        setChecking(false);
-      });
+      .catch(() => setChecking(false));
   }, [navigate]);
 
   return (
-    <div className="landing-page">
-      <div className="landing-glass">
-        <h1 className="main-title">⚡ Droxion AI</h1>
+    <div className="landing-wrapper">
+      <div className="glass-box">
+        <h1 className="title">
+          <span role="img" aria-label="zap">⚡</span> Droxion AI
+        </h1>
         <p className="tagline">Create. Imagine. Build. All with One AI.</p>
 
         {!checking && !isPaid && (
@@ -42,35 +42,36 @@ export default function LandingPage() {
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
             className="unlock-btn"
           >
-            🔓 Unlock Full Power – $1.99/month
+            <span role="img" aria-label="lock">🔒</span> Unlock Full Power – $1.99/month
           </a>
         )}
 
-        <div className="preview-grid">
-          <div className="preview-box">
-            <img src="/examples/image1.jpg" alt="AI Art" />
-            <p>🎨 Cinematic Portrait</p>
+        <div className="preview-boxes">
+          <div className="preview-item">
+            <img src="/examples/image1.jpg" alt="Cinematic" />
+            <p>🎥 Cinematic Portrait</p>
           </div>
-          <div className="preview-box">
+          <div className="preview-item">
             <video src="/examples/video1.mp4" autoPlay muted loop />
-            <p>📺 AI Generated Video</p>
+            <p>🤖 AI Generated Video</p>
           </div>
-          <div className="preview-box">
-            <pre>{`// App UI Code\nfunction Start() {\n  return <Button title=\"Launch\" />\n}`}</pre>
+          <div className="preview-item code-box">
+            <pre>{`// App UI Code
+function Start() {
+  return <Button title="Launch" />
+}`}</pre>
             <p>💻 App Code Example</p>
           </div>
         </div>
 
-        <ul className="feature-list">
+        <ul className="features">
           <li>✅ GPT-4 + Vision Support</li>
-          <li>🖼️ 100+ Styles & Prompt Templates</li>
+          <li>📚 100+ Styles & Prompt Templates</li>
           <li>🚀 Make Apps, Shorts, Games Instantly</li>
-          <li>📺 Generate Cinematic, Anime, Futuristic, Realistic Scenes</li>
-          <li>💬 Type or Speak – Full Voice & Video Mode Built-in</li>
         </ul>
 
         <footer>
-          Made by <b>Dhruv Patel</b> • <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+          Made by <b>Dhruv Patel</b> • Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
         </footer>
       </div>
     </div>
