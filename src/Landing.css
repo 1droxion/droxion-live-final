@@ -1,146 +1,164 @@
-/* === Droxion Landing Page – Magical + Futuristic Theme === */
-
-body, html {
+/* === Landing Page Styles === */
+body {
   margin: 0;
-  padding: 0;
   font-family: "Poppins", sans-serif;
-  background: linear-gradient(135deg, #0d031f, #1c1a3b, #000000);
+  background: linear-gradient(135deg, #000000, #0f0f1c, #111827);
   background-size: 400% 400%;
-  animation: pulseBG 20s ease infinite;
+  animation: bgFlow 20s ease infinite;
   color: white;
-  min-height: 100vh;
   overflow-x: hidden;
 }
 
-@keyframes pulseBG {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+@keyframes bgFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .landing-page {
   display: flex;
-  justify-content: center;
   align-items: center;
-  padding: 2rem;
+  justify-content: center;
+  padding: 3rem 1rem;
   min-height: 100vh;
 }
 
 .landing-glass {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 40px rgba(145, 84, 255, 0.3);
-  backdrop-filter: blur(22px);
-  border-radius: 26px;
-  padding: 2.5rem;
-  max-width: 960px;
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 3rem 2rem;
+  box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+  max-width: 900px;
   width: 100%;
   text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .main-title {
   font-size: 3rem;
   font-weight: bold;
-  background: linear-gradient(to right, #ffffff, #aa7fff);
+  background: linear-gradient(90deg, #00ffff, #00ff88);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 0.5rem;
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+  0% {
+    text-shadow: 0 0 10px #00ffff;
+  }
+  50% {
+    text-shadow: 0 0 30px #00ffff;
+  }
+  100% {
+    text-shadow: 0 0 10px #00ffff;
+  }
 }
 
 .tagline {
-  color: #00ffc3;
   font-size: 1.2rem;
+  color: #aaa;
+  margin-top: 0.5rem;
   margin-bottom: 2rem;
-  font-weight: 500;
 }
 
 .unlock-btn {
   display: inline-block;
-  background: linear-gradient(to right, #ff66c4, #a855f7);
-  padding: 0.85rem 1.8rem;
+  background: #00ffcc;
+  color: black;
   font-weight: bold;
-  font-size: 1.1rem;
-  color: white;
-  border-radius: 14px;
+  padding: 0.8rem 1.5rem;
+  border-radius: 12px;
   text-decoration: none;
-  box-shadow: 0 4px 18px rgba(255, 79, 184, 0.5);
-  transition: transform 0.3s, box-shadow 0.3s;
+  transition: background 0.3s ease;
   margin-bottom: 2rem;
 }
-
 .unlock-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 26px rgba(255, 79, 184, 0.7);
+  background: #00e6b8;
 }
 
 .preview-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.2rem;
-  margin-top: 1rem;
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
   margin-bottom: 2rem;
 }
 
-@media (min-width: 768px) {
-  .preview-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
 .preview-box {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  padding: 1rem;
-  box-shadow: 0 0 16px rgba(0, 0, 0, 0.2);
+  background: #0a0a0a;
+  border: 1px solid #222;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 0.5rem;
+  width: 260px;
   text-align: center;
+  transition: transform 0.3s ease;
 }
-
+.preview-box:hover {
+  transform: scale(1.05);
+  border-color: #00ffcc;
+}
 .preview-box img,
 .preview-box video {
   width: 100%;
-  height: 180px;
-  object-fit: cover;
-  border-radius: 10px;
-  margin-bottom: 0.5rem;
+  border-radius: 12px;
 }
-
-.code-box pre {
-  text-align: left;
-  background: #111827;
-  color: #66ffda;
-  font-size: 0.9rem;
-  padding: 0.75rem;
+.preview-box pre {
+  font-size: 0.8rem;
+  background: #111;
+  padding: 1rem;
   border-radius: 10px;
   overflow-x: auto;
-  height: 180px;
+  color: #0ff;
+  text-align: left;
+}
+
+.preview-box p {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: #ccc;
 }
 
 .feature-list {
+  text-align: left;
+  max-width: 600px;
+  margin: 2rem auto 1rem;
   list-style: none;
   padding: 0;
-  margin: 2rem 0 1rem;
-  font-size: 1rem;
-  line-height: 1.8;
-  color: #d0d0d0;
-  text-align: left;
-  max-width: 500px;
-  margin-inline: auto;
 }
-
 .feature-list li {
-  margin: 0.4rem 0;
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  color: #eee;
+  display: flex;
+  align-items: center;
+}
+.feature-list li::before {
+  content: "✔";
+  color: #0ff;
+  margin-right: 0.5rem;
 }
 
 footer {
-  font-size: 0.9rem;
-  color: #999;
   margin-top: 2rem;
+  font-size: 0.85rem;
+  color: #888;
 }
-
+footer b {
+  color: #fff;
+}
 footer a {
-  color: #87f2ff;
+  color: #00ffff;
   text-decoration: none;
 }
-
 footer a:hover {
   text-decoration: underline;
 }
