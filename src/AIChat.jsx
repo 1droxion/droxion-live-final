@@ -37,20 +37,22 @@ function AIChat() {
     const user_id = localStorage.getItem("droxion_uid");
 
     if (!user_id) {
-      alert("Missing user ID. Please refresh.");
+      window.location.href = "/";
       return;
     }
+
+    // ✅ If just paid, allow access without redirect
+    const justPaid = window.location.href.includes("/chatboard");
+    if (justPaid) return;
 
     axios
       .post("https://droxion-backend.onrender.com/check-paid", { user_id })
       .then((res) => {
         if (!res.data.paid) {
-          alert("Please complete payment to unlock Droxion.");
           window.location.href = "/";
         }
       })
       .catch(() => {
-        alert("Server error. Try again later.");
         window.location.href = "/";
       });
   }, []);
@@ -125,7 +127,7 @@ function AIChat() {
           videoMode,
         });
         let reply = res.data.reply;
-        if (/who.*(made|created|owner|built).*you/i.test(textToSend)) {
+        if (/who.*(made|created|owner|built).*/i.test(textToSend)) {
           reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
         }
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -188,11 +190,7 @@ function AIChat() {
               <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
             </div>
           )}
-          <FaPlus
-            title="Tools"
-            onClick={() => setTopToolsOpen((prev) => !prev)}
-            className="cursor-pointer text-white ml-2"
-          />
+          <FaPlus title="Tools" onClick={() => setTopToolsOpen((prev) => !prev)} className="cursor-pointer text-white ml-2" />
         </div>
       </div>
 
@@ -212,11 +210,7 @@ function AIChat() {
       <div className="px-3 pb-1">
         <div className="flex gap-2 flex-wrap">
           {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((style) => (
-            <button
-              key={style}
-              onClick={() => handlePromptClick(style)}
-              className="px-3 py-1 border border-white rounded-full text-sm hover:bg-white hover:text-black"
-            >{style}</button>
+            <button key={style} onClick={() => handlePromptClick(style)} className="px-3 py-1 border border-white rounded-full text-sm hover:bg-white hover:text-black">{style}</button>
           ))}
         </div>
       </div>
