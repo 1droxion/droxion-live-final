@@ -26,11 +26,11 @@
   opacity: 1;
 }
 
-/* === Main Glass Content === */
+/* === Glass Content Box === */
 .landing-glass {
   width: 100%;
-  max-width: 1100px;
-  background: rgba(0, 0, 0, 0.25); /* transparent glass */
+  max-width: 1050px;
+  background: rgba(0, 0, 0, 0.25);
   padding: 40px 30px;
   border-radius: 20px;
   backdrop-filter: blur(14px);
@@ -39,9 +39,9 @@
   z-index: 1;
 }
 
-/* === Heading & Tagline === */
+/* === Title + Tagline === */
 .main-title {
-  font-size: 3.2rem;
+  font-size: 3rem;
   font-weight: bold;
   margin-bottom: 10px;
   color: #00ffd5;
@@ -50,24 +50,38 @@
 .tagline {
   font-size: 1.3rem;
   margin-bottom: 30px;
+  color: #ffffffcc;
 }
 
-/* === Unlock Button === */
+/* === LIVE Button Style === */
 .unlock-btn {
-  background: #00ffd5;
-  color: black;
+  background: linear-gradient(90deg, #00ffd5, #00cfff);
+  color: #000;
   font-weight: 600;
-  padding: 14px 26px;
+  padding: 14px 30px;
   font-size: 1rem;
   border: none;
   border-radius: 10px;
   text-decoration: none;
   transition: 0.3s ease;
+  box-shadow: 0 0 12px #00fff7aa;
+  animation: pulse-glow 2s infinite ease-in-out;
   display: inline-block;
   margin-bottom: 30px;
 }
 .unlock-btn:hover {
-  background: #0ff;
+  background: linear-gradient(90deg, #00f7ff, #00e0d0);
+  box-shadow: 0 0 16px #00fff7;
+}
+
+/* === Button Glow Animation === */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 12px #00fff733;
+  }
+  50% {
+    box-shadow: 0 0 22px #00fff7cc;
+  }
 }
 
 /* === Preview Cards === */
@@ -80,15 +94,14 @@
 }
 
 .preview-box {
-  width: 280px;
+  width: 220px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 15px;
-  padding: 15px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 0 12px rgba(0, 255, 213, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 8px rgba(0, 255, 213, 0.05);
   transition: transform 0.3s ease;
 }
-
 .preview-box:hover {
   transform: translateY(-4px);
 }
@@ -101,18 +114,20 @@
 
 .preview-box pre {
   background: #111;
-  color: #00ff88;
+  color: #00ffcc;
+  font-family: 'Courier New', monospace;
   text-align: left;
   padding: 10px;
   border-radius: 10px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   overflow-x: auto;
 }
 
 .preview-box p {
-  margin-top: 10px;
-  font-weight: bold;
-  font-size: 0.95rem;
+  margin-top: 8px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: #ffffffcc;
 }
 
 /* === Feature List === */
@@ -124,7 +139,8 @@
 }
 .feature-list li {
   margin: 10px 0;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  color: #ffffffcc;
 }
 
 /* === Footer === */
@@ -132,12 +148,13 @@ footer {
   margin-top: 20px;
   font-size: 0.9rem;
   opacity: 0.85;
+  color: #ffffffaa;
 }
 
 /* === Mobile Responsive === */
 @media (max-width: 768px) {
   .main-title {
-    font-size: 2.3rem;
+    font-size: 2.2rem;
   }
   .tagline {
     font-size: 1.1rem;
