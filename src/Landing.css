@@ -1,4 +1,4 @@
-/* === Base Setup === */
+/* === Global Base === */
 body, html {
   margin: 0;
   padding: 0;
@@ -7,25 +7,15 @@ body, html {
   overflow-x: hidden;
   color: white;
   background: black;
-  background-image: url("/stars.gif"); /* Galaxy stars background */
+  background-image: url("/stars.gif"); /* Galaxy background file */
   background-size: cover;
   background-repeat: repeat;
   background-attachment: fixed;
 }
 
-/* Optional: Overlay for contrast */
-.landing-page::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0;
-  height: 100%;
-  width: 100%;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(3px);
-  z-index: -1;
-}
+/* Optional Blur Overlay Removed */
+/* .landing-page::before { ... } skipped for clear stars */
 
-/* === Main Layout === */
 .landing-page {
   display: flex;
   align-items: center;
@@ -33,21 +23,21 @@ body, html {
   padding: 2rem;
   min-height: 100vh;
   position: relative;
+  z-index: 1;
 }
 
+/* === Removed glass box === */
 .landing-glass {
   max-width: 950px;
   width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  border-radius: 20px;
   padding: 3rem 2rem;
-  box-shadow: 0 0 40px rgba(0, 255, 255, 0.15);
   text-align: center;
-  z-index: 2;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
-/* === Title & Tagline === */
+/* === Main Title with glow === */
 .main-title {
   font-size: 3rem;
   font-weight: 800;
@@ -56,6 +46,7 @@ body, html {
   -webkit-text-fill-color: transparent;
   margin-bottom: 1rem;
   animation: glowText 3s ease-in-out infinite alternate;
+  text-shadow: 0 0 15px #00ffff;
 }
 
 @keyframes glowText {
@@ -63,10 +54,12 @@ body, html {
   100% { text-shadow: 0 0 20px #ad00ff; }
 }
 
+/* === Tagline & Info === */
 .tagline {
   font-size: 1.2rem;
   color: #ccc;
   margin-bottom: 2rem;
+  text-shadow: 0 0 6px #000;
 }
 
 /* === Unlock Button === */
@@ -88,7 +81,7 @@ body, html {
   box-shadow: 0 0 20px #00ffe0;
 }
 
-/* === Preview Grid === */
+/* === Preview Grid Section === */
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -98,11 +91,11 @@ body, html {
 }
 
 .preview-box {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
   padding: 1rem;
   border: 1px solid #333;
-  box-shadow: 0 0 10px rgba(0,0,0,0.3);
+  box-shadow: 0 0 10px rgba(0,0,0,0.4);
 }
 
 .preview-box img,
@@ -122,7 +115,7 @@ body, html {
   overflow-x: auto;
 }
 
-/* === Features List === */
+/* === Features === */
 .feature-list {
   list-style: none;
   padding: 0;
@@ -130,6 +123,7 @@ body, html {
   font-size: 0.95rem;
   line-height: 1.7;
   color: #ddd;
+  text-shadow: 0 0 5px #000;
 }
 
 /* === Footer === */
@@ -137,6 +131,7 @@ footer {
   margin-top: 2rem;
   font-size: 0.85rem;
   color: #aaa;
+  text-shadow: 0 0 5px #000;
 }
 footer a {
   color: #00ffee;
