@@ -31,19 +31,13 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
-      {/* ✅ Mobile-Compatible Background Video */}
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        className="bg-video"
-      >
+      {/* ✅ Background Video */}
+      <video autoPlay muted loop playsInline className="bg-video">
         <source src="/background.mp4" type="video/mp4" />
         Your browser does not support the video tag.
       </video>
 
-      {/* ✅ Main Glass Box */}
+      {/* ✅ Main Glass Container */}
       <div className="landing-glass">
         <h1 className="main-title">Droxion AI</h1>
         <p className="tagline">Create. Imagine. Build. All with One AI.</p>
@@ -57,7 +51,7 @@ export default function LandingPage() {
           </a>
         )}
 
-        {/* Toggle Button */}
+        {/* ✅ See Details Toggle Button */}
         <button
           className="unlock-btn"
           onClick={() => setShowDetails(!showDetails)}
@@ -65,7 +59,7 @@ export default function LandingPage() {
           {showDetails ? "Hide Details" : "See Details"}
         </button>
 
-        {/* Content Toggle Area */}
+        {/* ✅ Details Section */}
         {showDetails && (
           <>
             <div className="preview-grid">
@@ -73,10 +67,19 @@ export default function LandingPage() {
                 <img src="/examples/image1.jpg" alt="AI Art" />
                 <p>🎨 Cinematic Portrait</p>
               </div>
+
               <div className="preview-box">
-                <video src="/examples/video1.mp4" autoPlay muted loop playsInline />
+                <video
+                  src="/examples/video1.mp4"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="preview-video"
+                />
                 <p>📺 AI Generated Video</p>
               </div>
+
               <div className="preview-box">
                 <pre>
 {`// App UI Code
