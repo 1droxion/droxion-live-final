@@ -53,7 +53,12 @@ export default function LandingPage() {
             <p>📺 AI Generated Video</p>
           </div>
           <div className="preview-box">
-            <pre>{`// App UI Code\nfunction Start() {\n  return <Button title="Launch" />\n}`}</pre>
+            <pre>
+{`// App UI Code
+function Start() {
+  return <Button title="Launch" />;
+}`}
+            </pre>
             <p>💻 App Code Example</p>
           </div>
         </div>
