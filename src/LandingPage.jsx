@@ -20,45 +20,68 @@ export default function LandingPage() {
       .then(data => {
         if (data.paid) {
           setIsPaid(true);
-          navigate("/chatboard"); // ✅ Auto-redirect
+          navigate("/chatboard");
         } else {
-          setChecking(false); // unpaid, stay on landing
+          setChecking(false);
         }
       })
       .catch(() => {
-        setChecking(false); // error fallback
+        setChecking(false);
       });
   }, [navigate]);
 
   return (
     <div className="landing">
       <div className="glass-box">
-        <h1>
-          Welcome to <span className="highlight">Droxion</span>
+        <h1 className="title">
+          🚀 Welcome to <span className="highlight">Droxion</span>
         </h1>
         <p className="subtitle">
-          The <span className="tagline">#1 AI Assistant</span> — Build Apps, Games, Images, Code, and More Instantly.
+          Your <span className="tagline">AI Super Assistant</span> — Generate anything you imagine.
         </p>
 
         {!checking && !isPaid && (
           <a
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
-            className="primary-button"
+            className="pay-button"
           >
-            🔓 Unlock All for $1.99/month
+            🔓 Unlock Full Power for $1.99/month
           </a>
         )}
 
+        <div className="example-section">
+          <h2>🎨 AI Image Styles</h2>
+          <div className="preview-grid">
+            <img src="/examples/image1.jpg" alt="Cinematic" />
+            <img src="/examples/image2.jpg" alt="Anime" />
+            <img src="/examples/image3.jpg" alt="Fantasy" />
+          </div>
+
+          <h2>📺 YouTube AI Videos</h2>
+          <div className="video-grid">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="AI Video 1" />
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="AI Video 2" />
+          </div>
+
+          <h2>💻 Code Examples</h2>
+          <pre className="code-snippet">
+// Flutter UI
+Column(
+  children: [Text("AI App"), Button("Start")]
+)
+          </pre>
+        </div>
+
         <ul className="features">
-          <li>✅ Unlimited AI Chat (GPT-4)</li>
-          <li>🎨 100+ Image Styles (Coding Prompts)</li>
-          <li>💻 Make Apps, Games, Tools via AI</li>
-          <li>📺 Watch Code YouTube Videos In-App</li>
-          <li>🔥 All Features Unlocked After Payment</li>
+          <li>✅ Unlimited GPT-4 Chat</li>
+          <li>🎨 100+ Image Styles (1-Click)</li>
+          <li>📱 Build Apps, Tools, Games via Prompt</li>
+          <li>📺 Watch Code Videos In-App</li>
+          <li>🔥 All Features After Payment</li>
         </ul>
 
         <footer>
-          Built by <b>Dhruv Patel</b> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+          Built by <b>Dhruv Patel</b> | <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
         </footer>
       </div>
     </div>
