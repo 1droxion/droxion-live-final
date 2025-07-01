@@ -1,21 +1,18 @@
 /* === Global Reset === */
 * {
-  box-shadow: none !important;
   margin: 0;
   padding: 0;
+  box-shadow: none !important;
   font-family: 'Poppins', sans-serif;
 }
 
-/* === Body Background with Smaller Stars === */
+/* === Body with just 1 background (no overlay, no black) === */
 body, html {
-  height: ;
-  overflow-x: ;
+  height: 100%;
+  overflow-x: hidden;
   color: white;
-  background-color: ;
-  background-image: url("/stars.gif");
-  background-size: ;   /* Smaller stars */
-  background-repeat: repeat;
-  background-attachment: fixed;
+  background: url("/stars.gif") no-repeat center center fixed;
+  background-size: contain;
 }
 
 /* === Layout === */
@@ -25,7 +22,6 @@ body, html {
   justify-content: center;
   padding: 2rem;
   min-height: 100vh;
-  position: relative;
   background: transparent;
 }
 
