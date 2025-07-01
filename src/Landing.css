@@ -1,4 +1,3 @@
-/* === Reset & Base === */
 body, html {
   margin: 0;
   padding: 0;
@@ -8,7 +7,6 @@ body, html {
   background-color: #000;
 }
 
-/* === Main Landing Section === */
 .landing {
   position: relative;
   width: 100%;
@@ -21,7 +19,6 @@ body, html {
   text-align: center;
 }
 
-/* === Dark Overlay === */
 .overlay {
   position: absolute;
   top: 0; left: 0;
@@ -32,14 +29,12 @@ body, html {
   z-index: 1;
 }
 
-/* === Content Area === */
 .content {
   z-index: 2;
   padding: 2rem;
   color: white;
 }
 
-/* === Gradient Title === */
 .title {
   font-size: 3.5rem;
   font-weight: 800;
@@ -58,14 +53,12 @@ body, html {
   }
 }
 
-/* === Subtitle Text === */
 .subtitle {
   font-size: 1.2rem;
   margin-top: 1rem;
   color: #ccc;
 }
 
-/* === Start Button === */
 .start-btn {
   margin-top: 2rem;
   padding: 1rem 2rem;
@@ -84,7 +77,6 @@ body, html {
   box-shadow: 0 0 25px #00ffe0;
 }
 
-/* === Footer Info === */
 .bottom-info {
   position: absolute;
   bottom: 1rem;
