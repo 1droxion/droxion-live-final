@@ -6,27 +6,28 @@ body {
   color: white;
 }
 
-.page {
+.landing {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 2rem;
   min-height: 100vh;
-  background: linear-gradient(to bottom right, #000000, #1a1a1a);
+  background: radial-gradient(circle at top, #111, #000);
 }
 
 .card {
-  background: #111;
-  border-radius: 20px;
+  background: #121212;
+  border-radius: 24px;
   padding: 3rem 2rem;
-  max-width: 500px;
+  max-width: 600px;
   width: 100%;
   text-align: center;
   box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
 }
 
 .title {
-  font-size: 2.5rem;
+  font-size: 2.8rem;
+  font-weight: bold;
   margin-bottom: 0.5rem;
   color: white;
 }
@@ -36,8 +37,8 @@ body {
 }
 
 .subtitle {
-  font-size: 1rem;
-  color: #bbb;
+  font-size: 1.1rem;
+  color: #ccc;
   margin-bottom: 2rem;
 }
 
@@ -59,20 +60,19 @@ body {
   transition: all 0.2s ease;
 }
 
-.gradient-green {
+.gradient-btn {
   background: linear-gradient(to right, #00ff88, #00d5ff);
   color: black;
-  box-shadow: 0 0 10px #00ffcc;
+  box-shadow: 0 0 12px #00ffe0;
 }
 
-.gradient-green:hover {
+.gradient-btn:hover {
   transform: scale(1.03);
 }
 
 .white-btn {
   background: white;
   color: black;
-  border: none;
 }
 
 .white-btn:hover {
@@ -83,7 +83,7 @@ body {
   list-style: none;
   padding: 0;
   margin-top: 2rem;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #aaa;
 }
 
