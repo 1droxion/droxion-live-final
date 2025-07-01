@@ -1,4 +1,4 @@
-/* === Page Container === */
+/* === Page Wrapper === */
 .landing-page {
   position: relative;
   width: 100%;
@@ -26,84 +26,99 @@
   opacity: 1;
 }
 
-/* === Glass Content Box === */
+/* === Glass Section === */
 .landing-glass {
   width: 100%;
-  max-width: 1050px;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 40px 30px;
+  max-width: 1000px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 30px 20px;
   border-radius: 20px;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 0 40px rgba(0, 255, 213, 0.12);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 30px rgba(0, 255, 213, 0.1);
   text-align: center;
   z-index: 1;
 }
 
-/* === Title + Tagline === */
+/* === Title & Subtitle === */
 .main-title {
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: bold;
   margin-bottom: 10px;
-  color: #00ffd5;
+  background: linear-gradient(to right, #00f0ff, #00ffd5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glowText 3s ease-in-out infinite;
 }
 
 .tagline {
-  font-size: 1.3rem;
-  margin-bottom: 30px;
-  color: #ffffffcc;
+  font-size: 1.1rem;
+  margin-bottom: 25px;
+  color: #c2f0ff;
 }
 
-/* === LIVE Button Style === */
+/* === Live Button === */
 .unlock-btn {
-  background: linear-gradient(90deg, #00ffd5, #00cfff);
-  color: #000;
+  background: linear-gradient(90deg, #00ffd5, #00bfff);
+  color: black;
   font-weight: 600;
-  padding: 14px 30px;
-  font-size: 1rem;
-  border: none;
+  padding: 12px 24px;
+  font-size: 0.95rem;
   border-radius: 10px;
   text-decoration: none;
-  transition: 0.3s ease;
-  box-shadow: 0 0 12px #00fff7aa;
-  animation: pulse-glow 2s infinite ease-in-out;
+  box-shadow: 0 0 10px #00fff755, 0 0 20px #00ffe0aa;
+  transition: all 0.3s ease;
+  animation: pulseGlow 2s infinite ease-in-out;
   display: inline-block;
-  margin-bottom: 30px;
+  margin-bottom: 25px;
 }
 .unlock-btn:hover {
-  background: linear-gradient(90deg, #00f7ff, #00e0d0);
-  box-shadow: 0 0 16px #00fff7;
+  transform: scale(1.03);
+  box-shadow: 0 0 16px #00fff7, 0 0 30px #00ffe0;
 }
 
-/* === Button Glow Animation === */
-@keyframes pulse-glow {
+/* === Animated Glow Text */
+@keyframes glowText {
   0%, 100% {
-    box-shadow: 0 0 12px #00fff733;
+    text-shadow: 0 0 6px #00fff5, 0 0 12px #00ffd5;
   }
   50% {
-    box-shadow: 0 0 22px #00fff7cc;
+    text-shadow: 0 0 10px #00fff5, 0 0 20px #00ffd5;
   }
 }
 
-/* === Preview Cards === */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px #00fff733;
+  }
+  50% {
+    box-shadow: 0 0 20px #00fff7cc;
+  }
+}
+
+/* === Preview Grid === */
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 16px;
   justify-content: center;
   margin-bottom: 30px;
 }
 
+/* === Small Glowing Preview Boxes === */
 .preview-box {
-  width: 220px;
-  background: rgba(255, 255, 255, 0.04);
+  width: 180px;
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
-  padding: 12px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 0 8px rgba(0, 255, 213, 0.05);
-  transition: transform 0.3s ease;
+  padding: 10px;
+  backdrop-filter: blur(5px);
+  box-shadow: 0 0 6px rgba(0, 255, 213, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid rgba(0, 255, 213, 0.2);
+  animation: previewPulse 4s infinite ease-in-out;
 }
 .preview-box:hover {
-  transform: translateY(-4px);
+  transform: scale(1.03);
+  box-shadow: 0 0 14px rgba(0, 255, 213, 0.3);
 }
 
 .preview-box img,
@@ -113,51 +128,60 @@
 }
 
 .preview-box pre {
-  background: #111;
+  background: #0b0b0b;
   color: #00ffcc;
   font-family: 'Courier New', monospace;
-  text-align: left;
-  padding: 10px;
-  border-radius: 10px;
-  font-size: 0.8rem;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
   overflow-x: auto;
 }
 
 .preview-box p {
-  margin-top: 8px;
+  margin-top: 6px;
   font-weight: 500;
-  font-size: 0.9rem;
-  color: #ffffffcc;
+  font-size: 0.85rem;
+  color: #ccfaff;
+  text-shadow: 0 0 4px #00ffe066;
+}
+
+@keyframes previewPulse {
+  0%, 100% {
+    border-color: rgba(0, 255, 213, 0.1);
+  }
+  50% {
+    border-color: rgba(0, 255, 213, 0.4);
+  }
 }
 
 /* === Feature List === */
 .feature-list {
   list-style: none;
   padding: 0;
-  margin: 30px auto;
-  max-width: 700px;
+  margin: 25px auto;
+  max-width: 650px;
 }
 .feature-list li {
   margin: 10px 0;
   font-size: 1rem;
-  color: #ffffffcc;
+  color: #aefeff;
+  text-shadow: 0 0 4px #00ffe055;
 }
 
 /* === Footer === */
 footer {
   margin-top: 20px;
-  font-size: 0.9rem;
-  opacity: 0.85;
+  font-size: 0.85rem;
   color: #ffffffaa;
 }
 
-/* === Mobile Responsive === */
+/* === Mobile Fix === */
 @media (max-width: 768px) {
   .main-title {
-    font-size: 2.2rem;
+    font-size: 2rem;
   }
   .tagline {
-    font-size: 1.1rem;
+    font-size: 1rem;
   }
   .preview-box {
     width: 100%;
