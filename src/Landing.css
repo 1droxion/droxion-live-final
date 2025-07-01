@@ -1,4 +1,4 @@
-/* === Global Base === */
+/* === Global Styles === */
 body, html {
   margin: 0;
   padding: 0;
@@ -7,15 +7,13 @@ body, html {
   overflow-x: hidden;
   color: white;
   background: black;
-  background-image: url("/stars.gif"); /* Galaxy background file */
+  background-image: url("/stars.gif");
   background-size: cover;
   background-repeat: repeat;
   background-attachment: fixed;
 }
 
-/* Optional Blur Overlay Removed */
-/* .landing-page::before { ... } skipped for clear stars */
-
+/* Remove container glass so GIF is visible */
 .landing-page {
   display: flex;
   align-items: center;
@@ -23,10 +21,8 @@ body, html {
   padding: 2rem;
   min-height: 100vh;
   position: relative;
-  z-index: 1;
 }
 
-/* === Removed glass box === */
 .landing-glass {
   max-width: 950px;
   width: 100%;
@@ -37,7 +33,7 @@ body, html {
   box-shadow: none;
 }
 
-/* === Main Title with glow === */
+/* === Title with Glow === */
 .main-title {
   font-size: 3rem;
   font-weight: 800;
@@ -46,15 +42,14 @@ body, html {
   -webkit-text-fill-color: transparent;
   margin-bottom: 1rem;
   animation: glowText 3s ease-in-out infinite alternate;
-  text-shadow: 0 0 15px #00ffff;
+  text-shadow: 0 0 20px #00fff7;
 }
 
 @keyframes glowText {
   0% { text-shadow: 0 0 10px #00ffe0; }
-  100% { text-shadow: 0 0 20px #ad00ff; }
+  100% { text-shadow: 0 0 25px #ad00ff; }
 }
 
-/* === Tagline & Info === */
 .tagline {
   font-size: 1.2rem;
   color: #ccc;
@@ -81,7 +76,7 @@ body, html {
   box-shadow: 0 0 20px #00ffe0;
 }
 
-/* === Preview Grid Section === */
+/* === Preview Grid === */
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -91,11 +86,11 @@ body, html {
 }
 
 .preview-box {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.35); /* slightly visible frame */
   border-radius: 10px;
   padding: 1rem;
-  border: 1px solid #333;
-  box-shadow: 0 0 10px rgba(0,0,0,0.4);
+  border: 1px solid #444;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
 }
 
 .preview-box img,
