@@ -6,6 +6,7 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [isPaid, setIsPaid] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     const user_id = localStorage.getItem("droxion_uid");
@@ -30,57 +31,71 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
-      {/* ✅ Background Video */}
+      {/* Background Video */}
       <video autoPlay muted loop className="bg-video">
         <source src="/background.mp4" type="video/mp4" />
         Your browser does not support the video tag.
       </video>
 
-      {/* ✅ Main Content */}
+      {/* Main Glass Section */}
       <div className="landing-glass">
-        <h1 className="main-title">⚡ Droxion AI</h1>
+        <h1 className="main-title">Droxion AI</h1>
         <p className="tagline">Create. Imagine. Build. All with One AI.</p>
 
         {!checking && !isPaid && (
           <a
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
             className="unlock-btn"
+            style={{ marginBottom: "20px" }}
           >
             🔓 Unlock Full Power – $1.99/month
           </a>
         )}
 
-        <div className="preview-grid">
-          <div className="preview-box">
-            <img src="/examples/image1.jpg" alt="AI Art" />
-            <p>🎨 Cinematic Portrait</p>
-          </div>
-          <div className="preview-box">
-            <video src="/examples/video1.mp4" autoPlay muted loop />
-            <p>📺 AI Generated Video</p>
-          </div>
-          <div className="preview-box">
-            <pre>
+        {/* One Click Toggle Button */}
+        <button
+          className="unlock-btn"
+          onClick={() => setShowDetails(!showDetails)}
+        >
+          {showDetails ? "Hide Details" : "See Details"}
+        </button>
+
+        {/* Expanded Section */}
+        {showDetails && (
+          <>
+            <div className="preview-grid">
+              <div className="preview-box">
+                <img src="/examples/image1.jpg" alt="AI Art" />
+                <p>🎨 Cinematic Portrait</p>
+              </div>
+              <div className="preview-box">
+                <video src="/examples/video1.mp4" autoPlay muted loop />
+                <p>📺 AI Generated Video</p>
+              </div>
+              <div className="preview-box">
+                <pre>
 {`// App UI Code
 function Start() {
   return <Button title="Launch" />;
 }`}
-            </pre>
-            <p>💻 App Code Example</p>
-          </div>
-        </div>
+                </pre>
+                <p>💻 App Code Example</p>
+              </div>
+            </div>
 
-        <ul className="feature-list">
-          <li>✅ GPT-4 + Vision Support</li>
-          <li>🎨 100+ Styles & Prompt Templates</li>
-          <li>🚀 Make Apps, Shorts, Games Instantly</li>
-          <li>📺 Cinematic, Anime, Realistic, 3D, Sci-Fi Styles</li>
-        </ul>
+            <ul className="feature-list">
+              <li>✅ GPT-4 + Vision Support</li>
+              <li>🎨 100+ Styles & Prompt Templates</li>
+              <li>🚀 Make Apps, Shorts, Games Instantly</li>
+              <li>📺 Cinematic, Anime, Realistic, 3D, Sci-Fi Styles</li>
+            </ul>
 
-        <footer>
-          Made by <b>Dhruv Patel</b> •{" "}
-          <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
-        </footer>
+            <footer>
+              Made by <b>Dhruv Patel</b> •{" "}
+              <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+            </footer>
+          </>
+        )}
       </div>
     </div>
   );
