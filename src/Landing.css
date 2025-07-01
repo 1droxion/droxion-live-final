@@ -1,20 +1,17 @@
-/* === Page Wrapper === */
+/* === Page Background & Video === */
 .landing-page {
   position: relative;
   width: 100%;
   min-height: 100vh;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
+  font-family: 'Poppins', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  font-family: 'Poppins', sans-serif;
   background: transparent !important;
-  z-index: 0;
 }
 
-/* === Background Video === */
 .bg-video {
   position: fixed;
   top: 0;
@@ -26,70 +23,67 @@
   opacity: 1;
 }
 
-/* === Clean Glass Content Box === */
+/* === Glass Panel === */
 .landing-glass {
   width: 100%;
   max-width: 950px;
-  background: rgba(255, 255, 255, 0.02); /* ultra light */
-  backdrop-filter: blur(4px);
-  box-shadow: 0 0 10px rgba(0, 255, 213, 0.04);
+  background: rgba(255, 255, 255, 0.02);
   border-radius: 16px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
   padding: 30px 20px;
-  margin: auto;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* === Glowing Title === */
+/* === Title === */
 .main-title {
   font-size: 2.6rem;
   font-weight: bold;
-  margin-bottom: 4px;
-  background: linear-gradient(to right, #00f0ff, #00ffd5);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: glowText 3s ease-in-out infinite;
+  color: #ffffffdd;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
 }
 
 /* === Tagline === */
 .tagline {
   font-size: 1.1rem;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   color: #c2f0ff;
 }
 
-/* === Live Button === */
+/* === Buttons (Buy + Toggle) === */
 .unlock-btn {
-  background: linear-gradient(90deg, #00ffd5, #00bfff);
-  color: black;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
   padding: 12px 24px;
-  font-size: 0.95rem;
-  border-radius: 10px;
+  font-weight: 600;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   text-decoration: none;
-  box-shadow: 0 0 10px #00fff755, 0 0 20px #00ffe0aa;
   transition: all 0.3s ease;
-  animation: pulseGlow 2s infinite ease-in-out;
-  display: inline-block;
-  margin-bottom: 25px;
+  box-shadow: 0 0 10px rgba(0, 255, 213, 0.1);
+  margin-bottom: 20px;
+  cursor: pointer;
 }
 .unlock-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
   transform: scale(1.03);
-  box-shadow: 0 0 16px #00fff7, 0 0 30px #00ffe0;
+  box-shadow: 0 0 18px rgba(0, 255, 213, 0.3);
 }
 
-/* === Previews === */
+/* === Preview Grid === */
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 30px;
   justify-content: center;
-  margin-top: 10px;
   margin-bottom: 25px;
 }
 
+/* === Preview Boxes Floating === */
 .preview-box {
   width: 180px;
   background: none;
@@ -97,8 +91,6 @@
   padding: 0;
   backdrop-filter: none;
   box-shadow: none;
-  animation: none;
-  transition: none;
   text-align: center;
 }
 
@@ -128,11 +120,11 @@
   text-shadow: 0 0 4px #00ffe066;
 }
 
-/* === Feature List === */
+/* === Features === */
 .feature-list {
   list-style: none;
   padding: 0;
-  margin: 25px auto;
+  margin: 20px auto;
   max-width: 650px;
 }
 .feature-list li {
@@ -144,28 +136,9 @@
 
 /* === Footer === */
 footer {
-  margin-top: 30px;
+  margin-top: 20px;
   font-size: 0.85rem;
   color: #ffffffaa;
-}
-
-/* === Glow Animations === */
-@keyframes glowText {
-  0%, 100% {
-    text-shadow: 0 0 6px #00fff5, 0 0 12px #00ffd5;
-  }
-  50% {
-    text-shadow: 0 0 10px #00fff5, 0 0 20px #00ffd5;
-  }
-}
-
-@keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 10px #00fff733;
-  }
-  50% {
-    box-shadow: 0 0 20px #00fff7cc;
-  }
 }
 
 /* === Mobile Responsive === */
