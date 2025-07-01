@@ -30,6 +30,13 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
+      {/* === Background Video === */}
+      <video autoPlay muted loop className="bg-video">
+        <source src="/background.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+
+      {/* === Foreground Content === */}
       <div className="landing-glass">
         <h1 className="main-title">⚡ Droxion AI</h1>
         <p className="tagline">Create. Imagine. Build. All with One AI.</p>
