@@ -1,79 +1,87 @@
-// Landing.jsx
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import "./Landing.css";
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: 'Poppins', sans-serif;
+  height: 100%;
+  background-color: #000;
+  overflow: hidden;
+}
 
-export default function LandingPage() {
-  const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
-  const [isPaid, setIsPaid] = useState(false);
+.landing {
+  position: relative;
+  height: 100vh;
+  background: url("https://images.unsplash.com/photo-1700419869567-f7f7e6bb3e0f?auto=format&fit=crop&w=1950&q=80") no-repeat center center/cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: white;
+  text-align: center;
+}
 
-  useEffect(() => {
-    const user_id = localStorage.getItem("droxion_uid");
-    if (!user_id) return;
+.overlay {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(3px);
+  z-index: 1;
+}
 
-    fetch("https://droxion-backend.onrender.com/check-paid", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.paid) {
-          setIsPaid(true);
-          navigate("/chatboard");
-        } else {
-          setChecking(false);
-        }
-      })
-      .catch(() => setChecking(false));
-  }, [navigate]);
+.content {
+  z-index: 2;
+  padding: 2rem;
+}
 
-  return (
-    <div className="landing-wrapper">
-      <div className="glass-box">
-        <h1 className="title">
-          <span role="img" aria-label="zap">⚡</span> Droxion AI
-        </h1>
-        <p className="tagline">Create. Imagine. Build. All with One AI.</p>
+.title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #ad00ff, #00ffe0, #fff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glow 3s infinite alternate;
+}
 
-        {!checking && !isPaid && (
-          <a
-            href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
-            className="unlock-btn"
-          >
-            <span role="img" aria-label="lock">🔒</span> Unlock Full Power – $1.99/month
-          </a>
-        )}
+@keyframes glow {
+  from {
+    text-shadow: 0 0 10px #00ffe0;
+  }
+  to {
+    text-shadow: 0 0 20px #ad00ff;
+  }
+}
 
-        <div className="preview-boxes">
-          <div className="preview-item">
-            <img src="/examples/image1.jpg" alt="Cinematic" />
-            <p>🎥 Cinematic Portrait</p>
-          </div>
-          <div className="preview-item">
-            <video src="/examples/video1.mp4" autoPlay muted loop />
-            <p>🤖 AI Generated Video</p>
-          </div>
-          <div className="preview-item code-box">
-            <pre>{`// App UI Code
-function Start() {
-  return <Button title="Launch" />
-}`}</pre>
-            <p>💻 App Code Example</p>
-          </div>
-        </div>
+.subtitle {
+  font-size: 1.25rem;
+  margin-top: 1rem;
+  color: #ccc;
+}
 
-        <ul className="features">
-          <li>✅ GPT-4 + Vision Support</li>
-          <li>📚 100+ Styles & Prompt Templates</li>
-          <li>🚀 Make Apps, Shorts, Games Instantly</li>
-        </ul>
+.start-btn {
+  margin-top: 2rem;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  background: linear-gradient(135deg, #00ffb7, #8000ff);
+  border: none;
+  border-radius: 10px;
+  color: black;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
 
-        <footer>
-          Made by <b>Dhruv Patel</b> • Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
-        </footer>
-      </div>
-    </div>
-  );
+.start-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px #00ffe0;
+}
+
+.bottom-info {
+  position: absolute;
+  bottom: 1rem;
+  width: 100%;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #aaa;
+  z-index: 2;
 }
