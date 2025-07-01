@@ -31,55 +31,48 @@ export default function LandingPage() {
   }, [navigate]);
 
   return (
-    <div className="landing">
-      <div className="glass">
-        <h1 className="main-title">
-          Welcome to <span>DROXION</span>
-        </h1>
-        <p className="tagline">The Future of Creation Starts Here</p>
+    <div className="hero-bg">
+      <div className="glass-ui">
+        <h1 className="glow-title">DROXION</h1>
+        <p className="subtitle">Your Personal AI Universe</p>
+
+        <ul className="hero-list">
+          <li>💡 Generate Ideas, Apps, Images, and More</li>
+          <li>🧠 Powered by GPT-4 + Image + Video AI</li>
+          <li>🚀 No Prompt Needed — Just Click & Go</li>
+        </ul>
 
         {!checking && !isPaid && (
           <a
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
-            className="pay-btn"
+            className="glow-button"
           >
-            🔓 Unlock Everything — $1.99/month
+            🔓 Unlock AI Power — $1.99/month
           </a>
         )}
 
-        <div className="preview-section">
-          <h2>🌌 AI Image Outputs</h2>
-          <div className="image-row">
-            <img src="/examples/img1.jpg" alt="Style 1" />
-            <img src="/examples/img2.jpg" alt="Style 2" />
-            <img src="/examples/img3.jpg" alt="Style 3" />
+        <div className="grid-preview">
+          <div className="grid-item">
+            <img src="/examples/image1.jpg" alt="AI Image" />
+            <span>🎨 Cinematic Art</span>
           </div>
-
-          <h2>🎬 AI Video Previews</h2>
-          <div className="video-row">
-            <video src="/examples/vid1.mp4" controls muted />
-            <video src="/examples/vid2.mp4" controls muted />
+          <div className="grid-item">
+            <video src="/examples/video1.mp4" muted loop autoPlay />
+            <span>📺 AI Short Video</span>
           </div>
-
-          <h2>💡 Smart Code Outputs</h2>
-          <pre className="code-block">
-{`// Build a game in JS
-let score = 0;
-function play() {
-  score += 1;
-}`}
-          </pre>
+          <div className="grid-item">
+            <pre>
+{`// App UI with Flutter
+Column(
+  children: [Text("Droxion App")]
+)`}
+            </pre>
+            <span>💻 Code Output</span>
+          </div>
         </div>
 
-        <ul className="features">
-          <li>✅ Smart AI Chat (GPT-4)</li>
-          <li>🎨 100+ One-Click Image Styles</li>
-          <li>📱 Make Games, Tools, Apps Instantly</li>
-          <li>📺 Watch Code Videos In-App</li>
-        </ul>
-
         <footer>
-          Made by <b>Dhruv Patel</b> — <a href="mailto:droxionhalp@gmail.com">Contact Us</a>
+          Built by <b>Dhruv Patel</b> | <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
         </footer>
       </div>
     </div>
