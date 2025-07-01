@@ -31,48 +31,46 @@ export default function LandingPage() {
   }, [navigate]);
 
   return (
-    <div className="hero-bg">
-      <div className="glass-ui">
-        <h1 className="glow-title">DROXION</h1>
-        <p className="subtitle">Your Personal AI Universe</p>
-
-        <ul className="hero-list">
-          <li>💡 Generate Ideas, Apps, Images, and More</li>
-          <li>🧠 Powered by GPT-4 + Image + Video AI</li>
-          <li>🚀 No Prompt Needed — Just Click & Go</li>
-        </ul>
+    <div className="landing-page">
+      <div className="landing-glass">
+        <h1 className="main-title">⚡ Droxion AI</h1>
+        <p className="tagline">Create. Imagine. Build. All with One AI.</p>
 
         {!checking && !isPaid && (
           <a
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
-            className="glow-button"
+            className="unlock-btn"
           >
-            🔓 Unlock AI Power — $1.99/month
+            🔓 Unlock Full Power – $1.99/month
           </a>
         )}
 
-        <div className="grid-preview">
-          <div className="grid-item">
-            <img src="/examples/image1.jpg" alt="AI Image" />
-            <span>🎨 Cinematic Art</span>
+        <div className="preview-grid">
+          <div className="preview-box">
+            <img src="/examples/image1.jpg" alt="AI Art" />
+            <p>🎨 Cinematic Portrait</p>
           </div>
-          <div className="grid-item">
-            <video src="/examples/video1.mp4" muted loop autoPlay />
-            <span>📺 AI Short Video</span>
+          <div className="preview-box">
+            <video src="/examples/video1.mp4" autoPlay muted loop />
+            <p>📺 AI Generated Video</p>
           </div>
-          <div className="grid-item">
-            <pre>
-{`// App UI with Flutter
-Column(
-  children: [Text("Droxion App")]
-)`}
-            </pre>
-            <span>💻 Code Output</span>
+          <div className="preview-box">
+            <pre>{`// App UI Code
+function Start() {
+  return <Button title="Launch" />
+}`}</pre>
+            <p>💻 App Code Example</p>
           </div>
         </div>
 
+        <ul className="feature-list">
+          <li>✅ GPT-4 + Vision Support</li>
+          <li>🖼️ 100+ Styles & Prompt Templates</li>
+          <li>🚀 Make Apps, Shorts, Games Instantly</li>
+        </ul>
+
         <footer>
-          Built by <b>Dhruv Patel</b> | <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+          Made by <b>Dhruv Patel</b> • <a href="mailto:droxionhalp@gmail.com">Contact</a>
         </footer>
       </div>
     </div>
