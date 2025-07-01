@@ -6,7 +6,7 @@ body, html {
   height: 100%;
   overflow-x: hidden;
   color: white;
-  background: black;
+  background: transparent; /* black removed */
   background-image: url("/stars.gif");
   background-size: cover;
   background-repeat: repeat;
