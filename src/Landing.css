@@ -8,12 +8,12 @@
 
 /* === Body Background with Smaller Stars === */
 body, html {
-  height: 100%;
-  overflow-x: hidden;
+  height: ;
+  overflow-x: ;
   color: white;
-  background-color: black;
+  background-color: ;
   background-image: url("/stars.gif");
-  background-size: 300px 300px;   /* Smaller stars */
+  background-size: ;   /* Smaller stars */
   background-repeat: repeat;
   background-attachment: fixed;
 }
