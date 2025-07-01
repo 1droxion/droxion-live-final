@@ -1,164 +1,111 @@
-/* === Landing Page Styles === */
-body {
+/* Landing.css */
+body, html {
   margin: 0;
-  font-family: "Poppins", sans-serif;
-  background: linear-gradient(135deg, #000000, #0f0f1c, #111827);
-  background-size: 400% 400%;
-  animation: bgFlow 20s ease infinite;
+  padding: 0;
+  font-family: 'Poppins', sans-serif;
+  background: radial-gradient(circle at center, #0d1b2a, #000);
   color: white;
+  min-height: 100vh;
   overflow-x: hidden;
 }
 
-@keyframes bgFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.landing-page {
+.landing-wrapper {
   display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 3rem 1rem;
-  min-height: 100vh;
+  align-items: center;
+  padding: 2rem;
 }
 
-.landing-glass {
+.glass-box {
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
-  padding: 3rem 2rem;
-  box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
-  max-width: 900px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  max-width: 800px;
   width: 100%;
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.1);
   text-align: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.main-title {
-  font-size: 3rem;
-  font-weight: bold;
-  background: linear-gradient(90deg, #00ffff, #00ff88);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: glowPulse 2s ease-in-out infinite;
-}
-
-@keyframes glowPulse {
-  0% {
-    text-shadow: 0 0 10px #00ffff;
-  }
-  50% {
-    text-shadow: 0 0 30px #00ffff;
-  }
-  100% {
-    text-shadow: 0 0 10px #00ffff;
-  }
+.title {
+  font-size: 2.8rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
 }
 
 .tagline {
-  font-size: 1.2rem;
-  color: #aaa;
-  margin-top: 0.5rem;
-  margin-bottom: 2rem;
+  font-size: 1.3rem;
+  margin-bottom: 1.5rem;
+  color: #ccc;
 }
 
 .unlock-btn {
   display: inline-block;
-  background: #00ffcc;
-  color: black;
+  background: black;
+  color: white;
   font-weight: bold;
-  padding: 0.8rem 1.5rem;
+  padding: 1rem 2rem;
   border-radius: 12px;
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 0 10px #ffaa00;
   text-decoration: none;
-  transition: background 0.3s ease;
-  margin-bottom: 2rem;
-}
-.unlock-btn:hover {
-  background: #00e6b8;
+  transition: all 0.3s ease;
 }
 
-.preview-grid {
+.unlock-btn:hover {
+  background: #111;
+}
+
+.preview-boxes {
   display: flex;
   gap: 1.5rem;
-  flex-wrap: wrap;
   justify-content: center;
-  margin-bottom: 2rem;
+  margin: 2rem 0;
+  flex-wrap: wrap;
 }
 
-.preview-box {
-  background: #0a0a0a;
-  border: 1px solid #222;
-  border-radius: 16px;
-  overflow: hidden;
-  padding: 0.5rem;
-  width: 260px;
-  text-align: center;
-  transition: transform 0.3s ease;
-}
-.preview-box:hover {
-  transform: scale(1.05);
-  border-color: #00ffcc;
-}
-.preview-box img,
-.preview-box video {
-  width: 100%;
-  border-radius: 12px;
-}
-.preview-box pre {
-  font-size: 0.8rem;
-  background: #111;
+.preview-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #333;
   padding: 1rem;
   border-radius: 10px;
+  width: 220px;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+.preview-item img, .preview-item video {
+  width: 100%;
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+}
+
+.code-box pre {
+  background: #1e1e1e;
+  color: #0f0;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  text-align: left;
   overflow-x: auto;
-  color: #0ff;
-  text-align: left;
+  border-radius: 8px;
 }
 
-.preview-box p {
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
-  color: #ccc;
-}
-
-.feature-list {
-  text-align: left;
-  max-width: 600px;
-  margin: 2rem auto 1rem;
+.features {
   list-style: none;
   padding: 0;
-}
-.feature-list li {
-  margin: 0.5rem 0;
-  font-size: 0.95rem;
+  margin: 2rem 0;
+  font-size: 1rem;
   color: #eee;
-  display: flex;
-  align-items: center;
 }
-.feature-list li::before {
-  content: "✔";
-  color: #0ff;
-  margin-right: 0.5rem;
+
+.features li {
+  margin-bottom: 0.5rem;
 }
 
 footer {
   margin-top: 2rem;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: #888;
-}
-footer b {
-  color: #fff;
-}
-footer a {
-  color: #00ffff;
-  text-decoration: none;
-}
-footer a:hover {
-  text-decoration: underline;
 }
