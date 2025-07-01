@@ -1,26 +1,38 @@
+/* === Base Setup === */
 body, html {
   margin: 0;
   padding: 0;
   font-family: 'Poppins', sans-serif;
-  background: linear-gradient(145deg, #0e0e2c, #1f1f44, #0e0e2c);
-  background-size: 400% 400%;
-  animation: bgFlow 30s ease infinite;
-  color: white;
-  min-height: 100vh;
+  height: 100%;
   overflow-x: hidden;
+  color: white;
+  background: black;
+  background-image: url("/stars.gif"); /* Galaxy stars background */
+  background-size: cover;
+  background-repeat: repeat;
+  background-attachment: fixed;
 }
 
-@keyframes bgFlow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* Optional: Overlay for contrast */
+.landing-page::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(3px);
+  z-index: -1;
 }
 
+/* === Main Layout === */
 .landing-page {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
+  min-height: 100vh;
+  position: relative;
 }
 
 .landing-glass {
@@ -30,17 +42,25 @@ body, html {
   backdrop-filter: blur(12px);
   border-radius: 20px;
   padding: 3rem 2rem;
-  box-shadow: 0 0 40px rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 40px rgba(0, 255, 255, 0.15);
   text-align: center;
+  z-index: 2;
 }
 
+/* === Title & Tagline === */
 .main-title {
   font-size: 3rem;
   font-weight: 800;
-  background: linear-gradient(90deg, #ad00ff, #00ffe0, #fff);
+  background: linear-gradient(90deg, #ad00ff, #00ffe0, #ffffff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 1rem;
+  animation: glowText 3s ease-in-out infinite alternate;
+}
+
+@keyframes glowText {
+  0% { text-shadow: 0 0 10px #00ffe0; }
+  100% { text-shadow: 0 0 20px #ad00ff; }
 }
 
 .tagline {
@@ -49,6 +69,7 @@ body, html {
   margin-bottom: 2rem;
 }
 
+/* === Unlock Button === */
 .unlock-btn {
   display: inline-block;
   padding: 1rem 2rem;
@@ -67,6 +88,7 @@ body, html {
   box-shadow: 0 0 20px #00ffe0;
 }
 
+/* === Preview Grid === */
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -100,6 +122,7 @@ body, html {
   overflow-x: auto;
 }
 
+/* === Features List === */
 .feature-list {
   list-style: none;
   padding: 0;
@@ -109,10 +132,11 @@ body, html {
   color: #ddd;
 }
 
+/* === Footer === */
 footer {
   margin-top: 2rem;
   font-size: 0.85rem;
-  color: #888;
+  color: #aaa;
 }
 footer a {
   color: #00ffee;
