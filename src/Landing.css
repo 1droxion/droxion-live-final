@@ -1,122 +1,98 @@
 body {
   margin: 0;
+  padding: 0;
   font-family: 'Poppins', sans-serif;
-  background: linear-gradient(270deg, #f0f0ff, #ffffff, #ccf5ff, #ffe0ff);
-  background-size: 800% 800%;
-  animation: animatedBG 20s ease infinite;
+  background: #0a0a0a;
   color: white;
 }
 
-@keyframes animatedBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-.landing-page {
-  min-height: 100vh;
+.page {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 2rem;
+  min-height: 100vh;
+  background: linear-gradient(to bottom right, #000000, #1a1a1a);
 }
 
-.landing-glass {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 3rem 2rem;
-  border-radius: 24px;
-  width: 100%;
-  max-width: 900px;
-  text-align: center;
-  box-shadow: 0 0 60px rgba(0, 255, 255, 0.25);
-  color: #fff;
-}
-
-.main-title {
-  font-size: 3.5rem;
-  font-weight: 700;
-  background: linear-gradient(to right, #7f00ff, #00ffe0);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 20px #00ffe5;
-}
-
-.tagline {
-  font-size: 1.2rem;
-  color: #ddd;
-  margin-bottom: 2rem;
-}
-
-.unlock-btn {
-  display: inline-block;
-  padding: 1rem 2.5rem;
-  font-size: 1.2rem;
-  background: linear-gradient(90deg, #00ff87, #60efff);
-  color: #000;
-  border: none;
-  border-radius: 50px;
-  text-decoration: none;
-  box-shadow: 0 0 15px #60efff;
-  transition: transform 0.2s ease;
-  margin-bottom: 2rem;
-}
-
-.unlock-btn:hover {
-  transform: scale(1.05);
-}
-
-.preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin: 2rem 0;
-}
-
-.preview-box {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 1rem;
-  color: #fff;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
-}
-
-.preview-box img,
-.preview-box video {
-  width: 100%;
-  height: 180px;
-  object-fit: cover;
-  border-radius: 10px;
-  margin-bottom: 0.5rem;
-}
-
-.preview-box pre {
+.card {
   background: #111;
-  color: #00ffee;
-  font-family: monospace;
-  font-size: 0.85rem;
-  padding: 0.5rem;
-  height: 180px;
-  overflow: auto;
-  border-radius: 10px;
+  border-radius: 20px;
+  padding: 3rem 2rem;
+  max-width: 500px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
 }
 
-.feature-list {
+.title {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  color: white;
+}
+
+.droxion {
+  color: #b56eff;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: #bbb;
+  margin-bottom: 2rem;
+}
+
+.highlight {
+  color: #35ff88;
+  font-weight: 600;
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.gradient-green {
+  background: linear-gradient(to right, #00ff88, #00d5ff);
+  color: black;
+  box-shadow: 0 0 10px #00ffcc;
+}
+
+.gradient-green:hover {
+  transform: scale(1.03);
+}
+
+.white-btn {
+  background: white;
+  color: black;
+  border: none;
+}
+
+.white-btn:hover {
+  background: #f0f0f0;
+}
+
+.features {
   list-style: none;
   padding: 0;
-  margin-top: 1.5rem;
-  font-size: 1rem;
-  color: #ddd;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+  color: #aaa;
 }
 
-.feature-list li {
+.features li {
   margin-bottom: 0.5rem;
 }
 
 footer {
   margin-top: 2rem;
   font-size: 0.85rem;
-  color: #ccc;
+  color: #777;
 }
