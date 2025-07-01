@@ -26,7 +26,7 @@
   opacity: 1;
 }
 
-/* === Main Glass Container (Centered) === */
+/* === Centered Content Glass === */
 .landing-glass {
   width: 100%;
   max-width: 950px;
@@ -43,7 +43,7 @@
   align-items: center;
 }
 
-/* === Title & Glow === */
+/* === Title === */
 .main-title {
   font-size: 2.6rem;
   font-weight: bold;
@@ -61,7 +61,7 @@
   color: #c2f0ff;
 }
 
-/* === Live Glow Button === */
+/* === Glowing Button === */
 .unlock-btn {
   background: linear-gradient(90deg, #00ffd5, #00bfff);
   color: black;
@@ -81,37 +81,33 @@
   box-shadow: 0 0 16px #00fff7, 0 0 30px #00ffe0;
 }
 
-/* === Preview Grid (Tighter) === */
+/* === Previews: Now Floating Items Only === */
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 30px;
   justify-content: center;
   margin-top: 10px;
   margin-bottom: 25px;
 }
 
-/* === Preview Box Small + Glow === */
 .preview-box {
   width: 180px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
-  padding: 10px;
-  backdrop-filter: blur(5px);
-  box-shadow: 0 0 8px rgba(0, 255, 213, 0.1);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  border: 1px solid rgba(0, 255, 213, 0.2);
-  animation: previewPulse 4s infinite ease-in-out;
-}
-.preview-box:hover {
-  transform: scale(1.03);
-  box-shadow: 0 0 14px rgba(0, 255, 213, 0.3);
+  background: none;
+  border: none;
+  padding: 0;
+  backdrop-filter: none;
+  box-shadow: none;
+  animation: none;
+  transition: none;
+  text-align: center;
 }
 
 .preview-box img,
 .preview-box video {
   width: 100%;
   border-radius: 10px;
+  margin-bottom: 8px;
 }
 
 .preview-box pre {
@@ -122,10 +118,11 @@
   border-radius: 8px;
   font-size: 0.75rem;
   overflow-x: auto;
+  text-align: left;
+  margin-bottom: 6px;
 }
 
 .preview-box p {
-  margin-top: 6px;
   font-weight: 500;
   font-size: 0.85rem;
   color: #ccfaff;
@@ -153,7 +150,7 @@ footer {
   color: #ffffffaa;
 }
 
-/* === Glowing Animations === */
+/* === Glow Animations === */
 @keyframes glowText {
   0%, 100% {
     text-shadow: 0 0 6px #00fff5, 0 0 12px #00ffd5;
@@ -172,16 +169,7 @@ footer {
   }
 }
 
-@keyframes previewPulse {
-  0%, 100% {
-    border-color: rgba(0, 255, 213, 0.1);
-  }
-  50% {
-    border-color: rgba(0, 255, 213, 0.4);
-  }
-}
-
-/* === Mobile Fix === */
+/* === Responsive === */
 @media (max-width: 768px) {
   .main-title {
     font-size: 2rem;
