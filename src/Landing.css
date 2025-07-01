@@ -6,14 +6,14 @@ body, html {
   height: 100%;
   overflow-x: hidden;
   color: white;
-  background: transparent; /* black removed */
+  background: transparent !important;
   background-image: url("/stars.gif");
   background-size: cover;
   background-repeat: repeat;
   background-attachment: fixed;
 }
 
-/* Remove container glass so GIF is visible */
+/* Remove all black containers */
 .landing-page {
   display: flex;
   align-items: center;
@@ -21,6 +21,7 @@ body, html {
   padding: 2rem;
   min-height: 100vh;
   position: relative;
+  background: transparent !important;
 }
 
 .landing-glass {
@@ -28,9 +29,9 @@ body, html {
   width: 100%;
   padding: 3rem 2rem;
   text-align: center;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 
 /* === Title with Glow === */
@@ -86,7 +87,7 @@ body, html {
 }
 
 .preview-box {
-  background: rgba(0, 0, 0, 0.35); /* slightly visible frame */
+  background: rgba(0, 0, 0, 0.2); /* optional soft frame, can be removed */
   border-radius: 10px;
   padding: 1rem;
   border: 1px solid #444;
