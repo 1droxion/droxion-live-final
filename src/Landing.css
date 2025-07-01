@@ -1,4 +1,4 @@
-/* === Page Container === */
+/* === Page Wrapper === */
 .landing-page {
   position: relative;
   width: 100%;
@@ -26,55 +26,54 @@
   opacity: 1;
 }
 
-/* === Main Glass Container (Centered) === */
+/* === Smaller Glass Box === */
 .landing-glass {
   width: 100%;
-  max-width: 950px;
-  margin: auto;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 30px 20px;
+  max-width: 600px;
+  background: rgba(0, 0, 0, 0.25);
   border-radius: 20px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 0 30px rgba(0, 255, 213, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 255, 213, 0.08);
+  padding: 30px 24px;
+  margin: auto;
   text-align: center;
-  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* === Title & Glow === */
+/* === Glowing Title === */
 .main-title {
-  font-size: 2.6rem;
+  font-size: 2.4rem;
   font-weight: bold;
-  margin-bottom: 4px;
   background: linear-gradient(to right, #00f0ff, #00ffd5);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: glowText 3s ease-in-out infinite;
+  margin-bottom: 6px;
 }
 
 /* === Tagline === */
 .tagline {
-  font-size: 1.1rem;
-  margin-bottom: 18px;
+  font-size: 1.05rem;
+  margin-bottom: 12px;
   color: #c2f0ff;
 }
 
-/* === Glowing Buy Button === */
+/* === Buttons (Buy + Toggle) === */
 .unlock-btn {
   background: linear-gradient(90deg, #00ffd5, #00bfff);
   color: black;
   font-weight: 600;
-  padding: 12px 24px;
+  padding: 10px 20px;
   font-size: 0.95rem;
   border-radius: 10px;
   text-decoration: none;
   box-shadow: 0 0 10px #00fff755, 0 0 20px #00ffe0aa;
   transition: all 0.3s ease;
   animation: pulseGlow 2s infinite ease-in-out;
-  display: inline-block;
-  margin-bottom: 25px;
+  margin-bottom: 16px;
+  cursor: pointer;
 }
 .unlock-btn:hover {
   transform: scale(1.03);
@@ -85,33 +84,25 @@
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
   justify-content: center;
-  margin-top: 10px;
-  margin-bottom: 25px;
+  margin-bottom: 20px;
 }
 
 /* === Preview Boxes === */
 .preview-box {
   width: 180px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
-  padding: 10px;
-  backdrop-filter: blur(5px);
-  box-shadow: 0 0 8px rgba(0, 255, 213, 0.1);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  border: 1px solid rgba(0, 255, 213, 0.2);
-  animation: previewPulse 4s infinite ease-in-out;
-}
-.preview-box:hover {
-  transform: scale(1.03);
-  box-shadow: 0 0 14px rgba(0, 255, 213, 0.3);
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: center;
 }
 
 .preview-box img,
 .preview-box video {
   width: 100%;
   border-radius: 10px;
+  margin-bottom: 8px;
 }
 
 .preview-box pre {
@@ -133,15 +124,15 @@
   text-shadow: 0 0 4px #00ffe066;
 }
 
-/* === Feature List === */
+/* === Features List === */
 .feature-list {
   list-style: none;
   padding: 0;
-  margin: 25px auto;
-  max-width: 650px;
+  margin: 20px auto;
+  max-width: 550px;
 }
 .feature-list li {
-  margin: 10px 0;
+  margin: 8px 0;
   font-size: 1rem;
   color: #aefeff;
   text-shadow: 0 0 4px #00ffe055;
@@ -149,7 +140,7 @@
 
 /* === Footer === */
 footer {
-  margin-top: 30px;
+  margin-top: 20px;
   font-size: 0.85rem;
   color: #ffffffaa;
 }
@@ -170,15 +161,6 @@ footer {
   }
   50% {
     box-shadow: 0 0 20px #00fff7cc;
-  }
-}
-
-@keyframes previewPulse {
-  0%, 100% {
-    border-color: rgba(0, 255, 213, 0.1);
-  }
-  50% {
-    border-color: rgba(0, 255, 213, 0.4);
   }
 }
 
