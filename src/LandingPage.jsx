@@ -29,31 +29,40 @@ export default function LandingPage() {
   }, [navigate]);
 
   return (
-    <div className="page">
+    <div className="landing">
       <div className="card">
         <h1 className="title">Welcome to <span className="droxion">Droxion</span></h1>
-        <p className="subtitle">Your All-in-One AI Creation Studio — <span className="highlight">Generate. Chat. Create.</span></p>
+        <p className="subtitle">
+          Your All-in-One AI Creation Studio — <span className="highlight">Generate. Chat. Create.</span>
+        </p>
 
         {!checking && !isPaid && (
           <>
-            <a href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03" className="btn gradient-green">
+            <a
+              href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
+              className="btn gradient-btn"
+            >
               🎨 Try AI Image Generator
             </a>
-            <a href="/chatboard" className="btn white-btn">
+            <a
+              href="/chatboard"
+              className="btn white-btn"
+            >
               💬 Ask AI Anything
             </a>
           </>
         )}
 
         <ul className="features">
-          <li>✅ GPT-4 + Vision Chat</li>
-          <li>🖼️ 100+ Image Styles</li>
-          <li>📱 Build Games, Apps & More</li>
-          <li>📺 YouTube Code + Reels</li>
+          <li>✅ Unlimited AI Chat (GPT-4)</li>
+          <li>🎨 100+ Image Styles (Coding Prompts)</li>
+          <li>💻 Make Apps, Games, Tools via AI</li>
+          <li>📺 Watch Code YouTube Videos In-App</li>
+          <li>🔥 All Features Unlocked After Payment</li>
         </ul>
 
         <footer>
-          Made by <b>Dhruv Patel</b> • <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+          Built by <b>Dhruv Patel</b> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
         </footer>
       </div>
     </div>
