@@ -32,56 +32,54 @@ export default function LandingPage() {
 
   return (
     <div className="landing">
-      <div className="glass-box">
-        <h1 className="title">
-          🚀 Welcome to <span className="highlight">Droxion</span>
+      <div className="glass">
+        <h1 className="main-title">
+          Welcome to <span>DROXION</span>
         </h1>
-        <p className="subtitle">
-          Your <span className="tagline">AI Super Assistant</span> — Generate anything you imagine.
-        </p>
+        <p className="tagline">The Future of Creation Starts Here</p>
 
         {!checking && !isPaid && (
           <a
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
-            className="pay-button"
+            className="pay-btn"
           >
-            🔓 Unlock Full Power for $1.99/month
+            🔓 Unlock Everything — $1.99/month
           </a>
         )}
 
-        <div className="example-section">
-          <h2>🎨 AI Image Styles</h2>
-          <div className="preview-grid">
-            <img src="/examples/image1.jpg" alt="Cinematic" />
-            <img src="/examples/image2.jpg" alt="Anime" />
-            <img src="/examples/image3.jpg" alt="Fantasy" />
+        <div className="preview-section">
+          <h2>🌌 AI Image Outputs</h2>
+          <div className="image-row">
+            <img src="/examples/img1.jpg" alt="Style 1" />
+            <img src="/examples/img2.jpg" alt="Style 2" />
+            <img src="/examples/img3.jpg" alt="Style 3" />
           </div>
 
-          <h2>📺 YouTube AI Videos</h2>
-          <div className="video-grid">
-            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="AI Video 1" />
-            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="AI Video 2" />
+          <h2>🎬 AI Video Previews</h2>
+          <div className="video-row">
+            <video src="/examples/vid1.mp4" controls muted />
+            <video src="/examples/vid2.mp4" controls muted />
           </div>
 
-          <h2>💻 Code Examples</h2>
-          <pre className="code-snippet">
-// Flutter UI
-Column(
-  children: [Text("AI App"), Button("Start")]
-)
+          <h2>💡 Smart Code Outputs</h2>
+          <pre className="code-block">
+{`// Build a game in JS
+let score = 0;
+function play() {
+  score += 1;
+}`}
           </pre>
         </div>
 
         <ul className="features">
-          <li>✅ Unlimited GPT-4 Chat</li>
-          <li>🎨 100+ Image Styles (1-Click)</li>
-          <li>📱 Build Apps, Tools, Games via Prompt</li>
+          <li>✅ Smart AI Chat (GPT-4)</li>
+          <li>🎨 100+ One-Click Image Styles</li>
+          <li>📱 Make Games, Tools, Apps Instantly</li>
           <li>📺 Watch Code Videos In-App</li>
-          <li>🔥 All Features After Payment</li>
         </ul>
 
         <footer>
-          Built by <b>Dhruv Patel</b> | <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+          Made by <b>Dhruv Patel</b> — <a href="mailto:droxionhalp@gmail.com">Contact Us</a>
         </footer>
       </div>
     </div>
