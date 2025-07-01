@@ -1,23 +1,24 @@
-/* === Reset & Global === */
+/* === Global Reset === */
 * {
-  background: transparent !important;
   box-shadow: none !important;
-}
-
-body, html {
   margin: 0;
   padding: 0;
   font-family: 'Poppins', sans-serif;
+}
+
+/* === Body Background with Stars === */
+body, html {
   height: 100%;
   overflow-x: hidden;
   color: white;
+  background-color: black;
   background-image: url("/stars.gif");
   background-size: cover;
   background-repeat: repeat;
   background-attachment: fixed;
 }
 
-/* === Layout Containers === */
+/* === Layout === */
 .landing-page {
   display: flex;
   align-items: center;
@@ -25,6 +26,7 @@ body, html {
   padding: 2rem;
   min-height: 100vh;
   position: relative;
+  background: transparent;
 }
 
 .landing-glass {
@@ -32,6 +34,7 @@ body, html {
   width: 100%;
   padding: 3rem 2rem;
   text-align: center;
+  background: transparent;
 }
 
 /* === Title with Glow === */
@@ -87,7 +90,7 @@ body, html {
 }
 
 .preview-box {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.2);
   border-radius: 10px;
   padding: 1rem;
   border: 1px solid #444;
@@ -111,7 +114,7 @@ body, html {
   overflow-x: auto;
 }
 
-/* === Features List === */
+/* === Features === */
 .feature-list {
   list-style: none;
   padding: 0;
