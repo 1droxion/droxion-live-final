@@ -31,13 +31,19 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
-      {/* Background Video */}
-      <video autoPlay muted loop className="bg-video">
+      {/* ✅ Mobile-Compatible Background Video */}
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="bg-video"
+      >
         <source src="/background.mp4" type="video/mp4" />
         Your browser does not support the video tag.
       </video>
 
-      {/* Main Glass Section */}
+      {/* ✅ Main Glass Box */}
       <div className="landing-glass">
         <h1 className="main-title">Droxion AI</h1>
         <p className="tagline">Create. Imagine. Build. All with One AI.</p>
@@ -46,13 +52,12 @@ export default function LandingPage() {
           <a
             href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
             className="unlock-btn"
-            style={{ marginBottom: "20px" }}
           >
             🔓 Unlock Full Power – $1.99/month
           </a>
         )}
 
-        {/* One Click Toggle Button */}
+        {/* Toggle Button */}
         <button
           className="unlock-btn"
           onClick={() => setShowDetails(!showDetails)}
@@ -60,7 +65,7 @@ export default function LandingPage() {
           {showDetails ? "Hide Details" : "See Details"}
         </button>
 
-        {/* Expanded Section */}
+        {/* Content Toggle Area */}
         {showDetails && (
           <>
             <div className="preview-grid">
@@ -69,7 +74,7 @@ export default function LandingPage() {
                 <p>🎨 Cinematic Portrait</p>
               </div>
               <div className="preview-box">
-                <video src="/examples/video1.mp4" autoPlay muted loop />
+                <video src="/examples/video1.mp4" autoPlay muted loop playsInline />
                 <p>📺 AI Generated Video</p>
               </div>
               <div className="preview-box">
