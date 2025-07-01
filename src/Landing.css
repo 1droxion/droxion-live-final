@@ -1,4 +1,4 @@
-/* === Page Layout === */
+/* === Page Setup === */
 .landing-page {
   position: relative;
   width: 100%;
@@ -9,10 +9,11 @@
   justify-content: center;
   padding: 20px;
   background: transparent !important;
+  overflow: hidden;
   z-index: 0;
 }
 
-/* === Background Video Layer === */
+/* === Background Video (Mobile-Friendly) === */
 .bg-video {
   position: fixed;
   top: 0;
@@ -25,7 +26,7 @@
   pointer-events: none;
 }
 
-/* === Glass Container === */
+/* === Glass Container (Compact) === */
 .landing-glass {
   width: 100%;
   max-width: 480px;
@@ -58,7 +59,7 @@
   color: #c2f0ff;
 }
 
-/* === Button === */
+/* === Glowing Button (Unlock + Toggle) === */
 .unlock-btn {
   background: linear-gradient(90deg, #00ffd5, #00bfff);
   color: black;
@@ -90,9 +91,9 @@
 /* === Preview Items === */
 .preview-box {
   width: 150px;
+  text-align: center;
   background: none;
   padding: 0;
-  text-align: center;
 }
 
 .preview-box img,
@@ -161,7 +162,7 @@ footer {
   }
 }
 
-/* === Mobile Responsive === */
+/* === Mobile Fixes === */
 @media (max-width: 500px) {
   .main-title {
     font-size: 1.8rem;
