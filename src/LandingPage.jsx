@@ -1,58 +1,76 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./Landing.css";
-import { Link } from "react-router-dom";
 
 export default function LandingPage() {
-  return (
-    <div className="landing">
-      <div className="glass-box">
-        <h1>
-          Welcome to <span className="highlight">Droxion</span>
-        </h1>
-        <p className="subtitle">
-          The <span className="tagline">#1 AI Assistant</span> — From Image, Chat, and Video Generator in Seconds.
-        </p>
+  const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+  const [isPaid, setIsPaid] = useState(false);
 
-        <div className="buttons">
-          <Link to="/chatboard" className="primary-button">
-            💬 Try AI Chat
-          </Link>
-          <Link to="/plans" className="secondary-button">
-            🚀 Upgrade Plan
-          </Link>
+  useEffect(() => {
+    const user_id = localStorage.getItem("droxion_uid");
+    if (!user_id) return;
+
+    fetch("https://droxion-backend.onrender.com/check-paid", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.paid) {
+          setIsPaid(true);
+          navigate("/chatboard");
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => {
+        setChecking(false);
+      });
+  }, [navigate]);
+
+  return (
+    <div className="landing-page">
+      <div className="landing-glass">
+        <h1 className="main-title">⚡ Droxion AI</h1>
+        <p className="tagline">Create. Imagine. Build. All with One AI.</p>
+
+        {!checking && !isPaid && (
+          <a
+            href="https://buy.stripe.com/14AaEX0vr3NidTX0SS97G03"
+            className="unlock-btn"
+          >
+            🔓 Unlock Full Power – $1.99/month
+          </a>
+        )}
+
+        <div className="preview-grid">
+          <div className="preview-box">
+            <img src="/examples/image1.jpg" alt="AI Art" />
+            <p>🎨 Cinematic Portrait</p>
+          </div>
+          <div className="preview-box">
+            <video src="/examples/video1.mp4" autoPlay muted loop />
+            <p>📺 AI Generated Video</p>
+          </div>
+          <div className="preview-box code-box">
+            <pre>{`// App UI Code
+function Start() {
+  return <Button title="Launch" />
+}`}</pre>
+            <p>💻 App Code Example</p>
+          </div>
         </div>
 
-        <ul className="features">
-          <li>💡 What You Can Do With Droxion</li>
-          <li>🧠 Chat with AI powered by GPT-4</li>
-          <li>🎨 Generate Images Instantly</li>
-          <li>📺 Embed YouTube Videos</li>
-          <li>🔓 No login needed. Start now.</li>
+        <ul className="feature-list">
+          <li>✅ GPT-4 + Vision Support</li>
+          <li>🖼️ 100+ Styles & Prompt Templates</li>
+          <li>🚀 Make Apps, Shorts, Games Instantly</li>
         </ul>
 
-        {/* 🔍 Example Section */}
-        <div className="preview-section mt-10 text-left max-w-2xl mx-auto">
-          <h3 className="text-xl font-semibold mb-4">🔍 Preview What Droxion Can Do</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <img src="/preview1.jpg" alt="Generated Art" className="rounded-xl shadow-md" />
-            <iframe
-              src="https://www.youtube.com/embed/dQw4w9WgXcQ"
-              title="Droxion Video Demo"
-              className="rounded-xl shadow-md w-full h-52"
-              allowFullScreen
-            ></iframe>
-            <div className="bg-gray-900 p-3 rounded-xl shadow-md text-sm">
-              <code>// Game Example<br />function start() {'{'} console.log('Begin!') {'}'}</code>
-            </div>
-            <img src="/preview2.jpg" alt="Futuristic Scene" className="rounded-xl shadow-md" />
-          </div>
-          <p className="text-sm mt-4 text-gray-400 italic">
-            All generated using Droxion AI. Unlock full power inside.
-          </p>
-        </div>
-
         <footer>
-          Built by <b>Dhruv Patel</b> | Contact: <a href="mailto:droxionhalp@gmail.com">droxionhalp@gmail.com</a>
+          Made by <b>Dhruv Patel</b> • <a href="mailto:droxionhalp@gmail.com">Contact</a>
         </footer>
       </div>
     </div>
