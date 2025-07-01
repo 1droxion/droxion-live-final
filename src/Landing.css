@@ -8,11 +8,11 @@
 
 /* === Background === */
 body, html {
-  height: 60%;
+  height: 100%;
   overflow-x: hidden;
   color: white;
   background: url("/stars.gif") no-repeat center center fixed;
-  background-size: cover;
+  background-size: 50%;
 }
 
 /* === Main Page Layout === */
