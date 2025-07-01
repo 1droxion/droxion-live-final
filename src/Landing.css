@@ -1,51 +1,57 @@
-/* === Reset === */
+/* === Global Reset === */
 * {
   margin: 0;
   padding: 0;
-  font-family: 'Poppins', sans-serif;
   box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
 }
 
-/* === Background === */
+/* === Body Background: GIF fully visible === */
 body, html {
   height: 100%;
   overflow-x: hidden;
+  background-color: black; /* fallback */
+  background-image: url("/stars.gif");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center center;
+  background-attachment: fixed;
   color: white;
-  background: url("/stars.gif") no-repeat center center fixed;
-  background-size: 50%;
 }
 
-/* === Main Page Layout === */
+/* === Fullscreen Layout Center === */
 .landing-page {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
   min-height: 100vh;
+  padding: 2rem;
+  position: relative;
+  z-index: 1;
 }
 
-/* === Small Black Box (Floating Card) === */
+/* === Center Content Black Box === */
 .landing-glass {
-  background: rgba(0, 0, 0, 0.7); /* semi-transparent black */
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.6); /* soft black */
   padding: 3rem 2rem;
   max-width: 900px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+  border-radius: 20px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  z-index: 2;
 }
 
-/* === Title with Glow === */
+/* === Title === */
 .main-title {
   font-size: 3rem;
   font-weight: 800;
   background: linear-gradient(90deg, #ad00ff, #00ffe0, #ffffff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 1rem;
-  animation: glowText 3s ease-in-out infinite alternate;
   text-shadow: 0 0 20px #00fff7;
+  animation: glowText 3s ease-in-out infinite alternate;
+  margin-bottom: 1rem;
 }
 
 @keyframes glowText {
@@ -60,46 +66,44 @@ body, html {
   text-shadow: 0 0 6px #000;
 }
 
-/* === Unlock Button === */
+/* === Button === */
 .unlock-btn {
-  display: inline-block;
+  background: linear-gradient(135deg, #00ffb7, #8000ff);
+  color: black;
   padding: 1rem 2rem;
   font-size: 1rem;
-  font-weight: 600;
-  background: linear-gradient(135deg, #00ffb7, #8000ff);
-  border: none;
   border-radius: 12px;
-  color: black;
-  margin-bottom: 2rem;
+  font-weight: bold;
+  border: none;
   text-decoration: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-block;
+  margin-bottom: 2rem;
+  transition: all 0.3s ease;
 }
 .unlock-btn:hover {
   transform: scale(1.05);
   box-shadow: 0 0 20px #00ffe0;
 }
 
-/* === Preview Grid === */
+/* === Preview Cards === */
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.5rem;
   margin: 2rem 0;
-  text-align: left;
 }
 
 .preview-box {
   background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #333;
   border-radius: 10px;
   padding: 1rem;
-  border: 1px solid #444;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
 }
 
 .preview-box img,
 .preview-box video {
   width: 100%;
-  height: auto;
   border-radius: 8px;
   margin-bottom: 0.5rem;
 }
@@ -118,9 +122,9 @@ body, html {
   list-style: none;
   padding: 0;
   margin: 2rem 0;
+  color: #ddd;
   font-size: 0.95rem;
   line-height: 1.7;
-  color: #ddd;
   text-shadow: 0 0 5px #000;
 }
 
