@@ -37,7 +37,7 @@ export default function LandingPage() {
         Your browser does not support the video tag.
       </video>
 
-      {/* ✅ Main Glass Container */}
+      {/* ✅ Glass Container */}
       <div className="landing-glass">
         <h1 className="main-title">Droxion AI</h1>
         <p className="tagline">Create. Imagine. Build. All with One AI.</p>
@@ -51,7 +51,7 @@ export default function LandingPage() {
           </a>
         )}
 
-        {/* ✅ See Details Toggle Button */}
+        {/* ✅ Toggle Button */}
         <button
           className="unlock-btn"
           onClick={() => setShowDetails(!showDetails)}
@@ -59,7 +59,6 @@ export default function LandingPage() {
           {showDetails ? "Hide Details" : "See Details"}
         </button>
 
-        {/* ✅ Details Section */}
         {showDetails && (
           <>
             <div className="preview-grid">
@@ -70,13 +69,16 @@ export default function LandingPage() {
 
               <div className="preview-box">
                 <video
-                  src="/examples/video1.mp4"
                   autoPlay
                   muted
                   loop
                   playsInline
+                  preload="auto"
                   className="preview-video"
-                />
+                >
+                  <source src="/examples/video1.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
                 <p>📺 AI Generated Video</p>
               </div>
 
