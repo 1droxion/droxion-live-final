@@ -59,41 +59,49 @@
   color: #c2f0ff;
 }
 
-/* === Glowing Buttons === */
+/* === Multi-Universe Glowing Buttons === */
 .unlock-btn {
-  background: linear-gradient(90deg, #00ffd5, #00bfff);
+  background: linear-gradient(270deg, #00fff7, #ff00ff, #00ffae, #7f00ff);
+  background-size: 600% 600%;
+  animation: rainbowGlow 6s ease infinite;
   color: black;
   font-weight: 600;
   padding: 10px 20px;
   font-size: 0.9rem;
   border-radius: 10px;
   text-decoration: none;
-  box-shadow: 0 0 8px #00fff744, 0 0 16px #00ffe0aa;
-  transition: all 0.2s ease;
-  animation: pulseGlow 2s infinite ease-in-out;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3), 0 0 20px rgba(255, 0, 255, 0.2);
+  transition: all 0.3s ease;
   margin-bottom: 14px;
   cursor: pointer;
 }
 .unlock-btn:hover {
   transform: scale(1.03);
-  box-shadow: 0 0 14px #00fff7, 0 0 24px #00ffe0;
+  box-shadow: 0 0 14px #00fff7, 0 0 24px #ff00ff;
+}
+
+@keyframes rainbowGlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* === Preview Grid === */
 .preview-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
   justify-content: center;
-  margin-bottom: 18px;
+  margin-bottom: 24px;
 }
 
 /* === Preview Items === */
 .preview-box {
-  width: 150px;
+  width: 160px;
   background: none;
   padding: 0;
   text-align: center;
+  margin-bottom: 10px;
 }
 
 .preview-box img,
@@ -109,6 +117,7 @@
   display: block;
   max-height: 240px;
   object-fit: cover;
+  background: #000;
 }
 
 /* === Code Block === */
@@ -159,15 +168,6 @@ footer {
   }
   50% {
     text-shadow: 0 0 8px #00fff5, 0 0 16px #00ffd5;
-  }
-}
-
-@keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 8px #00fff733;
-  }
-  50% {
-    box-shadow: 0 0 16px #00fff7cc;
   }
 }
 
