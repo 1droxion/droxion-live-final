@@ -51,7 +51,6 @@ export default function LandingPage() {
           </a>
         )}
 
-        {/* ✅ Toggle Button */}
         <button
           className="unlock-btn"
           onClick={() => setShowDetails(!showDetails)}
