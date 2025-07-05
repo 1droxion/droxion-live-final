@@ -37,7 +37,7 @@ function Generator() {
 
     try {
       const res = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/generate`,
+        `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/generate-veo`,
         formData
       );
 
