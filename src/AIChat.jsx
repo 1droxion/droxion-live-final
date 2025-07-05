@@ -18,11 +18,11 @@ function AIChat() {
   const [voiceMode, setVoiceMode] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
   const [topToolsOpen, setTopToolsOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
 
-  // ✅ Generate + store user ID
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
@@ -32,29 +32,17 @@ function AIChat() {
     userId.current = id;
   }, []);
 
-  // ✅ Stripe + Backend unlock check
   useEffect(() => {
     const user_id = localStorage.getItem("droxion_uid");
-
     if (!user_id) {
       window.location.href = "/";
       return;
     }
-
-    // ✅ If just paid, allow access without redirect
     const justPaid = window.location.href.includes("/chatboard");
     if (justPaid) return;
-
-    axios
-      .post("https://droxion-backend.onrender.com/check-paid", { user_id })
-      .then((res) => {
-        if (!res.data.paid) {
-          window.location.href = "/";
-        }
-      })
-      .catch(() => {
-        window.location.href = "/";
-      });
+    axios.post("https://droxion-backend.onrender.com/check-paid", { user_id }).then((res) => {
+      if (!res.data.paid) window.location.href = "/";
+    }).catch(() => window.location.href = "/");
   }, []);
 
   useEffect(() => {
@@ -89,12 +77,12 @@ function AIChat() {
     setInput("");
     setTyping(true);
     logAction("message", textToSend);
+    setSuggestions([]);
 
     try {
       const lower = textToSend.toLowerCase();
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
-
       let handled = false;
 
       if (ytKeywords.some((k) => lower.includes(k))) {
@@ -132,6 +120,15 @@ function AIChat() {
         }
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
+
+        // Add smart suggestions
+        const q = textToSend.trim().replace(/\s+/g, "+");
+        setSuggestions([
+          { label: "Google", url: `https://www.google.com/search?q=${q}` },
+          { label: "YouTube", url: `https://www.youtube.com/results?search_query=${q}` },
+          { label: "News", url: `https://news.google.com/search?q=${q}` },
+          { label: "Wikipedia", url: `https://en.wikipedia.org/wiki/${q}` }
+        ]);
       }
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
@@ -205,6 +202,15 @@ function AIChat() {
         ))}
         {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" /></div>}
         <div ref={chatRef} />
+
+        {suggestions.length > 0 && (
+          <div className="text-xs text-right mt-2 max-w-xl ml-auto">
+            Suggestions:
+            {suggestions.map((s, i) => (
+              <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="ml-2 underline text-blue-400">{s.label}</a>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="px-3 pb-1">
