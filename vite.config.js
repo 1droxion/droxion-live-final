@@ -35,6 +35,6 @@ export default defineConfig({
     include: ['rehype-raw']
   },
   server: {
-    historyApiFallback: true  // ✅ This enables /generator support
+    historyApiFallback: true   // ✅ This is the missing piece
   }
 });
