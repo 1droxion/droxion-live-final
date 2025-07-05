@@ -2,9 +2,15 @@
   "rewrites": [
     { "source": "/(.*)", "destination": "/" }
   ],
-  "build": {
-    "env": {
-      "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
     }
-  }
+  ]
 }
