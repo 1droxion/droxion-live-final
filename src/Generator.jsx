@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import axios from "axios";
 
 function Generator() {
@@ -20,23 +20,6 @@ function Generator() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
-  const [credits, setCredits] = useState(0);
-  const [videoLimitReached, setVideoLimitReached] = useState(false);
-
-  useEffect(() => {
-    axios
-      .get(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/user-stats`)
-      .then((res) => {
-        const stats = res.data;
-        setCredits(stats.credits);
-        if (stats.videosThisMonth >= stats.plan.videoLimit) {
-          setVideoLimitReached(true);
-        }
-      })
-      .catch((err) => {
-        console.warn("⚠️ Could not fetch usage stats.", err);
-      });
-  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -44,11 +27,6 @@ function Generator() {
   };
 
   const handleGenerate = async () => {
-    if (videoLimitReached) {
-      alert("🚫 You've reached your video generation limit. Please upgrade your plan.");
-      return;
-    }
-
     if (!formData.topic.trim()) {
       alert("❗ Please enter a topic or prompt.");
       return;
@@ -62,8 +40,11 @@ function Generator() {
         `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}/generate`,
         formData
       );
+
       if (res.data.videoUrl) {
-        setVideoUrl(`${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}${res.data.videoUrl}`);
+        setVideoUrl(
+          `${import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com"}${res.data.videoUrl}`
+        );
       } else {
         alert("⚠️ No video returned.");
       }
@@ -83,12 +64,11 @@ function Generator() {
             ✨ Create Magical AI Reels
           </h1>
           <div className="bg-black px-3 py-1 rounded text-green-400 font-semibold text-sm border border-green-600">
-            💰 {credits}
+            💰 0
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-10">
-          {/* Form Panel */}
           <div className="space-y-4 backdrop-blur-md bg-white/5 p-6 rounded-xl shadow-lg border border-purple-600/30">
             <input
               name="topic"
@@ -133,7 +113,12 @@ function Generator() {
                 <option>None</option>
               </select>
 
-              <select name="subtitlePosition" value={formData.subtitlePosition} onChange={handleChange} className="input">
+              <select
+                name="subtitlePosition"
+                value={formData.subtitlePosition}
+                onChange={handleChange}
+                className="input"
+              >
                 <option>Bottom</option>
                 <option>Center</option>
                 <option>Top</option>
@@ -172,7 +157,6 @@ function Generator() {
             </div>
           </div>
 
-          {/* Preview Panel */}
           <div className="flex flex-col items-center justify-center space-y-6 text-center">
             {videoUrl ? (
               <video src={videoUrl} controls className="w-full rounded-2xl shadow-2xl border border-purple-500/30" />
@@ -184,18 +168,14 @@ function Generator() {
 
             <button
               onClick={handleGenerate}
-              disabled={isLoading || videoLimitReached}
+              disabled={isLoading}
               className={`w-full py-4 px-8 text-xl font-bold rounded-full transition-all shadow-lg ${
-                isLoading || videoLimitReached
+                isLoading
                   ? "bg-gray-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-pink-600 hover:to-purple-600"
               }`}
             >
-              {videoLimitReached
-                ? "🚫 Limit Reached"
-                : isLoading
-                ? "Creating Magic..."
-                : "✨ Generate Magical Reel"}
+              {isLoading ? "Creating Magic..." : "✨ Generate Magical Reel"}
             </button>
           </div>
         </div>
