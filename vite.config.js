@@ -32,6 +32,9 @@ export default defineConfig({
     })
   ],
   optimizeDeps: {
-    include: ['rehype-raw'] // ✅ Keep this
+    include: ['rehype-raw']
+  },
+  server: {
+    historyApiFallback: true  // ✅ This enables /generator support
   }
 });
