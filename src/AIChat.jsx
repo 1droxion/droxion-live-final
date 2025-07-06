@@ -42,9 +42,12 @@ function AIChat() {
     setTyping(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+      const backend =
+        import.meta.env.VITE_BACKEND_URL ||
+        "https://droxion-backend.onrender.com";
+      const res = await axios.post(`${backend}/chat`, {
         prompt: input,
-        user_id: userId.current
+        user_id: userId.current,
       });
       const reply = res.data.reply;
 
