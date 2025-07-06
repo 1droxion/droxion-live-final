@@ -6,38 +6,48 @@ function Sidebar({ isOpen, setIsOpen, onNewChat, voiceMode, setVoiceMode, darkMo
 
   return (
     <aside
-      className={`${isOpen ? "w-64" : "w-0"} bg-[#111] transition-all duration-300 overflow-hidden shadow-xl border-r border-gray-800 fixed md:static z-50 h-full`}
+      className={`${isOpen ? "w-20" : "w-0"} bg-black transition-all duration-300 overflow-hidden shadow-xl border-r border-gray-800 fixed md:static z-50 h-full`}
     >
-      <div className="h-full flex flex-col p-4 space-y-4">
-        <h2 className="text-xl font-bold text-green-400 mb-2">🚀 Droxion</h2>
+      <div className="h-full flex flex-col p-2 space-y-3 items-center text-white">
+        <h2 className="text-xs font-bold text-white mt-2 text-center">🚀</h2>
+
+        {/* New Chat Button */}
         <button
-          onClick={onNewChat}
-          className="flex items-center gap-2 text-sm py-2 px-3 bg-green-700 rounded text-white hover:bg-green-600"
+          onClick={() => {
+            onNewChat();
+            setIsOpen(false); // auto-close on mobile
+          }}
+          className="flex flex-col items-center gap-1 text-xs py-2 px-2 hover:bg-white hover:text-black rounded"
         >
-          <FaPlus size={12} /> New Chat
+          <FaPlus size={16} />
+          <span className="text-[10px]">New</span>
         </button>
 
-        <div className="flex items-center justify-between text-sm text-gray-300">
-          <span>Voice</span>
-          <button onClick={() => setVoiceMode(!voiceMode)}>
-            {voiceMode ? <FaVolumeUp /> : <FaVolumeMute />}
-          </button>
-        </div>
-        <div className="flex items-center justify-between text-sm text-gray-300">
-          <span>Dark Mode</span>
-          <button onClick={() => setDarkMode(!darkMode)}>
-            {darkMode ? <FaMoon /> : <FaSun />}
-          </button>
-        </div>
+        {/* Voice Toggle */}
+        <button
+          onClick={() => setVoiceMode(!voiceMode)}
+          className="flex flex-col items-center gap-1 text-xs py-2 px-2 hover:bg-white hover:text-black rounded"
+        >
+          {voiceMode ? <FaVolumeUp size={16} /> : <FaVolumeMute size={16} />}
+          <span className="text-[10px]">Voice</span>
+        </button>
 
+        {/* Dark Mode Toggle */}
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          className="flex flex-col items-center gap-1 text-xs py-2 px-2 hover:bg-white hover:text-black rounded"
+        >
+          {darkMode ? <FaMoon size={16} /> : <FaSun size={16} />}
+          <span className="text-[10px]">Theme</span>
+        </button>
+
+        {/* Recent History (Optional) */}
         {history.length > 0 && (
-          <div className="mt-4">
-            <div className="text-xs text-gray-400 mb-1">Recent</div>
-            <ul className="space-y-1">
-              {history.map((h, i) => (
-                <li key={i} className="text-gray-300 text-sm truncate">
-                  {h}
-                </li>
+          <div className="mt-4 w-full text-center">
+            <div className="text-[10px] text-gray-400 mb-1">Recent</div>
+            <ul className="space-y-1 text-[10px] text-gray-300">
+              {history.slice(0, 3).map((h, i) => (
+                <li key={i} className="truncate px-1">{h}</li>
               ))}
             </ul>
           </div>
