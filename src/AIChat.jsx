@@ -1,5 +1,3 @@
-// ✅ Final AIChat.jsx – Full Feature: Voice, Image, YouTube, Smart Suggestions, Black & White UI
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -11,6 +9,8 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [chatCount, setChatCount] = useState(0);
+  const [imageUsed, setImageUsed] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
@@ -27,11 +27,21 @@ function AIChat() {
       localStorage.setItem("droxion_uid", id);
     }
     userId.current = id;
+    setChatCount(parseInt(localStorage.getItem("chat_count") || "0"));
+    setImageUsed(localStorage.getItem("image_used") === "true");
   }, []);
 
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest(".plus-menu")) setShowMenu(false);
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
 
   const speak = (text) => {
     if (!voiceOn) return;
@@ -44,6 +54,16 @@ function AIChat() {
   const handleSend = async (customPrompt) => {
     const query = customPrompt || input;
     if (!query.trim()) return;
+    if (chatCount >= 3 && !query.toLowerCase().includes("generate")) {
+      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Free limit reached. Upgrade to continue." }]);
+      return;
+    }
+
+    if (imageUsed && query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
+      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Free image limit reached. Upgrade to continue." }]);
+      return;
+    }
+
     const userMsg = { role: "user", content: query };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -53,11 +73,13 @@ function AIChat() {
     try {
       const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
-      // 🖼️ Image generation logic
+      // Image generation
       if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
         const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
         setMessages((prev) => [...prev, { role: "assistant", content: `![image](${imageUrl})` }]);
+        setImageUsed(true);
+        localStorage.setItem("image_used", "true");
         setTyping(false);
         return;
       }
@@ -72,7 +94,7 @@ function AIChat() {
 
       const suggestionCards = suggestions.map(s => ({
         role: "assistant",
-        content: `<button onclick=\"window.droxionSend('${s}')\" class='px-2 py-1 mt-2 text-sm border border-white rounded hover:bg-white hover:text-black'>${s}</button>`
+        content: `<button onclick="window.droxionSend('${s}')" class='px-2 py-1 mt-2 text-sm border border-white rounded hover:bg-white hover:text-black'>${s}</button>`
       }));
 
       setMessages((prev) => [
@@ -83,6 +105,11 @@ function AIChat() {
       ]);
 
       speak(reply);
+      setChatCount(prev => {
+        const newCount = prev + 1;
+        localStorage.setItem("chat_count", newCount.toString());
+        return newCount;
+      });
     } catch (e) {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -103,7 +130,6 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <button onClick={() => setVoiceOn(!voiceOn)} className="text-xs border px-2 py-1 rounded hover:bg-white hover:text-black">
@@ -111,7 +137,6 @@ function AIChat() {
         </button>
       </div>
 
-      {/* Chat messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
@@ -127,7 +152,6 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      {/* Prompt Buttons */}
       <div className="flex flex-wrap gap-2 px-3 py-2 border-t border-gray-700 bg-[#0b0b0b]">
         {promptButtons.map((p, i) => (
           <button
@@ -140,8 +164,7 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Input area with plus icon */}
-      <div className="p-3 border-t border-gray-700 flex items-center space-x-2 relative">
+      <div className="p-3 border-t border-gray-700 flex items-center space-x-2 relative plus-menu">
         <div className="relative">
           <button onClick={() => setShowMenu(!showMenu)} className="text-white text-xl px-3">➕</button>
           {showMenu && (
