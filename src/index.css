@@ -2,18 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Transparent Background + Text Color ---------- */
 body {
   @apply text-white font-sans antialiased;
   background: transparent !important;
 }
 
-/* ---------- Smooth Scrolling ---------- */
 html {
   scroll-behavior: smooth;
 }
 
-/* ---------- Input Field Style ---------- */
 .input {
   @apply bg-[#2d3748] text-white p-3 rounded-lg w-full placeholder-gray-400 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 transition;
 }
@@ -21,7 +18,6 @@ html.light .input {
   @apply bg-white text-black placeholder-gray-500 border-gray-300;
 }
 
-/* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -33,7 +29,6 @@ html.light .input {
   background-color: transparent;
 }
 
-/* ---------- Animations ---------- */
 @keyframes fade-in {
   from {
     opacity: 0;
