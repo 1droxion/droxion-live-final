@@ -1,10 +1,13 @@
 {
   "name": "Droxion",
   "short_name": "Droxion",
+  "description": "AI-powered creative tools for content, images, and video.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0e0e10",
   "theme_color": "#0e0e10",
+  "orientation": "portrait",
+  "lang": "en",
   "icons": [
     {
       "src": "/icon-192x192.png",
