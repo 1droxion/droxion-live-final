@@ -144,7 +144,7 @@ function Chatboard() {
             className="p-1 bg-black/30 hover:bg-black/60 rounded"
             title={msg.favorite ? "Unsave" : "Save to Favorites"}
           >
-            <Heart size={16} color={msg.favorite ? "red" : "white"} fill={msg.favorite ? "red" : "none"} />
+            <Heart size={16} color="white" fill={msg.favorite ? "white" : "none"} />
           </button>
         </div>
       )}

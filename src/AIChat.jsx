@@ -14,6 +14,8 @@ function AIChat() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [voiceMode, setVoiceMode] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
+  const [showPrompts, setShowPrompts] = useState(true);
+  const quickPrompts = ["Hello", "Show features", "Pricing", "Contact info"];
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
@@ -39,16 +41,22 @@ function AIChat() {
     synth.speak(utter);
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMsg = { role: "user", content: input };
+  const handlePromptClick = (prompt) => {
+    setShowPrompts(false);
+    handleSend(prompt);
+  };
+
+  const handleSend = async (msg) => {
+    const text = msg !== undefined ? msg : input;
+    if (!text.trim()) return;
+    const userMsg = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
+    if (msg === undefined) setInput("");
     setTyping(true);
 
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/realtime", {
-        prompt: input,
+        prompt: text,
         user_id: userId.current
       });
       const reply = res.data.reply;
@@ -69,8 +77,8 @@ function AIChat() {
       speak(reply);
 
       const history = JSON.parse(localStorage.getItem("chat_history") || "[]");
-      if (!history.includes(input)) {
-        const updated = [input, ...history].slice(0, 10);
+      if (!history.includes(text)) {
+        const updated = [text, ...history].slice(0, 10);
         localStorage.setItem("chat_history", JSON.stringify(updated));
       }
     } catch (e) {
@@ -105,8 +113,21 @@ function AIChat() {
       <div className="flex flex-col flex-1 min-h-screen">
         <div className="flex items-center justify-between p-3 border-b border-gray-700">
           <div className="text-lg font-bold">Droxion</div>
-          <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer" />
+          <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer text-white" />
         </div>
+        {showPrompts && (
+          <div className="p-2 bg-gray-800 text-xs flex gap-2 justify-center">
+            {quickPrompts.map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePromptClick(p)}
+                className="px-2 py-1 bg-gray-700 rounded text-white"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((msg, i) => (
