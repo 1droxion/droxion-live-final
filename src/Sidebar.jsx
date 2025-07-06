@@ -1,5 +1,3 @@
-// ✅ Sidebar.jsx – Droxion (Small, White/Black Icons, Auto Close, Chat History)
-
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -23,10 +21,14 @@ function Sidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
-
-  const isMobile = window.innerWidth < 768;
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    // ✅ Safely set mobile check after component mounts
+    if (typeof window !== "undefined") {
+      setIsMobile(window.innerWidth < 768);
+    }
+
     const stored = JSON.parse(localStorage.getItem("chat_history")) || [];
     setHistory(stored);
   }, []);
