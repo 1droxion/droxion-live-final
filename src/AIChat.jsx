@@ -72,20 +72,25 @@ function AIChat() {
         prompt: query,
         user_id: userId.current,
       });
+
       const reply = res.data.reply || "";
       const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
       const suggestions = res.data.suggestions || [];
 
-      const suggestionCards = suggestions.map(s => ({
-        role: "assistant",
-        content: `<button onclick="window.droxionSend('${s}')" class='px-2 py-1 mt-2 text-sm border border-white rounded hover:bg-white hover:text-black'>${s}</button>`
-      }));
+      const suggestionContent = suggestions.length
+        ? `<div class='flex flex-wrap gap-2 mt-2'>${suggestions
+            .map(
+              (s) =>
+                `<button onclick="window.droxionSend('${s}')" class='text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black'>${s}</button>`
+            )
+            .join("")}</div>`
+        : "";
 
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: reply },
         ...cards,
-        ...suggestionCards
+        ...(suggestionContent ? [{ role: "assistant", content: suggestionContent }] : []),
       ]);
 
       speak(reply);
@@ -112,13 +117,18 @@ function AIChat() {
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <button onClick={() => setVoiceOn(!voiceOn)} className="text-xs border border-white px-2 py-1 rounded hover:bg-white hover:text-black text-white">
-          {voiceOn ? "🔊 Voice On" : "🔇 Voice Off"}
+          {voiceOn ? "Voice On" : "🔇 Voice Off"}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
-          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+          <div
+            key={i}
+            className={`px-3 whitespace-pre-wrap text-sm max-w-full ${
+              msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"
+            }`}
+          >
             {msg.content.includes("<div") || msg.content.includes("<iframe") ? (
               <div dangerouslySetInnerHTML={{ __html: msg.content }} />
             ) : (
