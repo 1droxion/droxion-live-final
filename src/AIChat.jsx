@@ -1,15 +1,17 @@
-// ✅ AIChat.jsx – Final Droxion Smart UI (All Cards Included)
-// Built by Dhruv Patel – Previews for: Date, Time, Stocks, Crypto, Weather, Wiki, News, YouTube, Sports, Maps
+// ✅ AIChat.jsx – Final Integrated with Sidebar + Smart Previews
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import { FaPlus } from "react-icons/fa";
+import Sidebar from "./Sidebar";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
@@ -48,11 +50,9 @@ function AIChat() {
       });
       const reply = res.data.reply;
       const cards = [];
-
       const urlMatch = reply.match(/https?:\/\/[^\s)\]]+/g);
-      const hasYouTube = reply.includes("youtube.com/watch?v=");
 
-      if (hasYouTube) {
+      if (reply.includes("youtube.com/watch?v=")) {
         const vid = reply.split("v=")[1]?.split("&")[0];
         cards.push(`<iframe class='rounded my-2' width='360' height='203' src='https://www.youtube.com/embed/${vid}' allowfullscreen></iframe>`);
       }
@@ -113,37 +113,41 @@ function AIChat() {
   };
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">Droxion</div>
-      </div>
+    <div className="flex">
+      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <div className="bg-black text-white min-h-screen flex flex-col flex-1">
+        <div className="flex items-center justify-between p-3 border-b border-gray-700">
+          <div className="text-lg font-bold">Droxion</div>
+          <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer" />
+        </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-              img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-              iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />)
-            }}>{msg.content}</ReactMarkdown>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+                img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
+                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />)
+              }}>{msg.content}</ReactMarkdown>
+            </div>
+          ))}
+          {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
+          <div ref={chatRef} />
+        </div>
+
+        <div className="p-3 border-t border-gray-700">
+          <div className="flex items-center space-x-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
+              placeholder="Type anything..."
+            />
+            <button
+              onClick={handleSend}
+              className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
+            >➤</button>
           </div>
-        ))}
-        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
-        <div ref={chatRef} />
-      </div>
-
-      <div className="p-3 border-t border-gray-700">
-        <div className="flex items-center space-x-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
-            placeholder="Type anything..."
-          />
-          <button
-            onClick={handleSend}
-            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-          >➤</button>
         </div>
       </div>
     </div>
