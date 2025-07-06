@@ -1,8 +1,6 @@
-// App.jsx
 import React, { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 
-import LandingPage from "./LandingPage";
 import SmartBar from "./SmartBar";
 import Generator from "./Generator";
 import AIChat from "./AIChat";
@@ -46,10 +44,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0e0e10] text-white">
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        {/* ✅ Droxion now loads AIChat directly */}
+        <Route path="/" element={<AIChat />} />
+        <Route path="/chatboard" element={<AIChat />} />
         <Route path="/smart" element={<SmartBar />} />
         <Route path="/generator" element={<Generator />} />
-        <Route path="/chatboard" element={<AIChat />} />
         <Route path="/ai-image" element={<AIImage />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/projects" element={<Projects />} />
@@ -60,7 +59,6 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/analytics" element={<Analytics />} />
-        {/* 🔥 Fallback route */}
         <Route path="*" element={<h1 className="text-center mt-20 text-xl">404 – Page Not Found</h1>} />
       </Routes>
     </div>
