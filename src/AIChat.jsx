@@ -4,6 +4,9 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 
+const backend =
+  import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
+
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -59,12 +62,20 @@ function AIChat() {
     setShowMenu(false);
 
     try {
-      const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
-      if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
-        const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
+      if (
+        query.toLowerCase().includes("generate") &&
+        query.toLowerCase().includes("image")
+      ) {
+        const imgRes = await axios.post(`${backend}/generate-image`, {
+          prompt: query,
+        });
         const imageUrl = imgRes.data.image_url;
-        setMessages((prev) => [...prev, { role: "assistant", content: `![image](${imageUrl})` }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `![image](${imageUrl})` },
+        ]);
+        speak("Here is your image");
         return;
       }
 
@@ -92,7 +103,13 @@ function AIChat() {
 
       speak(reply);
     } catch (e) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "⚠️ No live result found. Try again with something more specific.",
+        },
+      ]);
     } finally {
       setTyping(false);
     }
@@ -126,12 +143,29 @@ function AIChat() {
               msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"
             }`}
           >
-            {msg.content.includes("<div") || msg.content.includes("<iframe") ? (
-              <div dangerouslySetInnerHTML={{ __html: msg.content }} />
+            {msg.content.includes("<div") ||
+            msg.content.includes("<iframe") ||
+            msg.content.includes("<img") ? (
+              <div
+                className="my-2 max-w-full"
+                dangerouslySetInnerHTML={{ __html: msg.content }}
+              />
             ) : (
               <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-                img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
+                img: ({ node, ...props }) => (
+                  <img
+                    {...props}
+                    alt="Preview"
+                    className="rounded-lg my-2 max-w-full"
+                  />
+                ),
+                iframe: ({ node, ...props }) => (
+                  <iframe
+                    {...props}
+                    className="rounded-lg my-2 max-w-full"
+                    allowFullScreen
+                  />
+                ),
                 audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
                 button: ({ node, ...props }) => (<button {...props} className="text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
               }}>{msg.content}</ReactMarkdown>
