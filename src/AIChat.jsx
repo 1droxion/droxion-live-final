@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx – Droxion Final (Live Previews + Sidebar + Voice + New Chat + Theme)
+// ✅ AIChat.jsx – Full Real-Time Cards (News, Stocks, Weather, Suggestions)
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -47,58 +47,24 @@ function AIChat() {
     setTyping(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+      const res = await axios.post("https://droxion-backend.onrender.com/realtime", {
         prompt: input,
         user_id: userId.current
       });
       const reply = res.data.reply;
-      const cards = [];
-      const urlMatch = reply.match(/https?:\/\/[^\s)\]]+/g);
+      const cards = res.data.cards || [];
+      const suggestions = res.data.suggestions || [];
 
-      if (reply.includes("youtube.com/watch?v=")) {
-        const vid = reply.split("v=")[1]?.split("&")[0];
-        cards.push(`<iframe class='rounded my-2' width='360' height='203' src='https://www.youtube.com/embed/${vid}' allowfullscreen></iframe>`);
-      }
+      const suggestionBlock =
+        suggestions.length > 0
+          ? `<div class='mt-2'><b>🔎 Try also:</b><br>${suggestions.map((s) => `<span class='text-blue-400 cursor-pointer underline'>${s}</span>`).join(" · ")}</div>`
+          : "";
 
-      if (reply.toLowerCase().includes("bitcoin") || reply.toLowerCase().includes("price")) {
-        cards.push(`📈 **Live Crypto**\nBitcoin: $58,200\n![Chart](https://cryptohistory.org/api/chart/bitcoin)`);
-      }
-
-      if (reply.toLowerCase().includes("usd") && reply.toLowerCase().includes("inr")) {
-        cards.push(`💱 **USD to INR**\nRate: ₹83.19\n![XE Chart](https://xe.com/favicon.ico)`);
-      }
-
-      if (reply.toLowerCase().includes("weather") && urlMatch) {
-        cards.push(`🌤️ **Weather**\n[Live Forecast](${urlMatch[0]})`);
-      }
-
-      if (reply.toLowerCase().includes("wikipedia") && urlMatch) {
-        cards.push(`📚 **Wikipedia**\n[Open Wiki](${urlMatch[0]})`);
-      }
-
-      if (reply.toLowerCase().includes("cricbuzz") || reply.toLowerCase().includes("score")) {
-        cards.push(`🏏 **Match Update**\nIndia vs Pakistan: 212/3\n[Live Score](https://www.cricbuzz.com)`);
-      }
-
-      if (reply.toLowerCase().includes("news") && urlMatch) {
-        cards.push(`📰 **News Headline**\n[Read Full](${urlMatch[0]})`);
-      }
-
-      if (reply.toLowerCase().includes("date") || reply.toLowerCase().includes("july") || reply.toLowerCase().includes("2025")) {
-        cards.push(`📅 **Date:** ${new Date().toDateString()}`);
-      }
-
-      if (reply.toLowerCase().includes("time") || reply.toLowerCase().includes("pm") || reply.toLowerCase().includes("am")) {
-        const now = new Date();
-        cards.push(`🕒 **Time Now:** ${now.toLocaleTimeString()} (${now.toLocaleDateString()})`);
-      }
-
-      if (reply.toLowerCase().includes("map")) {
-        cards.push(`🗺️ **Map Preview**\n![Map](https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(input)}&zoom=12&size=400x200&key=YOUR_GOOGLE_MAPS_KEY)`);
-      }
-
-      setMessages((prev) => [...prev, { role: "assistant", content: reply },
-        ...cards.map((c) => ({ role: "assistant", content: c }))
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: reply },
+        ...cards.map((c) => ({ role: "assistant", content: c })),
+        { role: "assistant", content: suggestionBlock }
       ]);
       speak(reply);
     } catch (e) {
@@ -138,10 +104,11 @@ function AIChat() {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((msg, i) => (
-            <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+            <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-2xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
               <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
                 img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />)
+                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
+                span: ({ node, ...props }) => (<span {...props} className="text-blue-400 underline cursor-pointer" />)
               }}>{msg.content}</ReactMarkdown>
             </div>
           ))}
