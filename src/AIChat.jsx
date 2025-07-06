@@ -71,7 +71,10 @@ function AIChat() {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: reply },
-        ...cards.map((c) => ({ role: "assistant", content: c })),
+        ...cards.map((c) => ({
+          role: "assistant",
+          content: typeof c === "string" ? c : JSON.stringify(c),
+        })),
         { role: "assistant", content: suggestionBlock }
       ]);
       speak(reply);
