@@ -1,11 +1,9 @@
-// FULL FIXED AIChat.jsx
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 
-const backend =
-  import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
+const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
@@ -44,7 +42,7 @@ function AIChat() {
   }, []);
 
   const speak = (text) => {
-    if (!voiceOn) return;
+    if (!voiceOn || !text) return;
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
     synth.cancel();
@@ -62,18 +60,12 @@ function AIChat() {
     setShowMenu(false);
 
     try {
-
-      if (
-        query.toLowerCase().includes("generate") &&
-        query.toLowerCase().includes("image")
-      ) {
-        const imgRes = await axios.post(`${backend}/generate-image`, {
-          prompt: query,
-        });
+      if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
+        const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: `![image](${imageUrl})` },
+          { role: "assistant", content: `![image](${imageUrl})` }
         ]);
         speak("Here is your image");
         return;
@@ -84,7 +76,7 @@ function AIChat() {
         user_id: userId.current,
       });
 
-      const reply = res.data.reply || "⚠️ No live result found. Try again with something more specific.";
+      const reply = res.data.reply || "⚠️ No live result found.";
       const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
       const suggestions = res.data.suggestions || [];
 
@@ -105,10 +97,7 @@ function AIChat() {
     } catch (e) {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ No live result found. Try again with something more specific.",
-        },
+        { role: "assistant", content: "⚠️ No live result found. Try again with something more specific." }
       ]);
     } finally {
       setTyping(false);
@@ -130,7 +119,10 @@ function AIChat() {
     <div className="bg-black text-white min-h-screen flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
-        <button onClick={() => setVoiceOn(!voiceOn)} className="text-xs border border-white px-2 py-1 rounded hover:bg-white hover:text-black text-white">
+        <button
+          onClick={() => setVoiceOn(!voiceOn)}
+          className="text-xs border border-white px-2 py-1 rounded hover:bg-white hover:text-black"
+        >
           {voiceOn ? "Voice On" : "🔇 Voice Off"}
         </button>
       </div>
@@ -143,9 +135,7 @@ function AIChat() {
               msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"
             }`}
           >
-            {msg.content.includes("<div") ||
-            msg.content.includes("<iframe") ||
-            msg.content.includes("<img") ? (
+            {msg.content.includes("<div") || msg.content.includes("<iframe") || msg.content.includes("<img") ? (
               <div
                 className="my-2 max-w-full"
                 dangerouslySetInnerHTML={{ __html: msg.content }}
@@ -153,22 +143,16 @@ function AIChat() {
             ) : (
               <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
                 img: ({ node, ...props }) => (
-                  <img
-                    {...props}
-                    alt="Preview"
-                    className="rounded-lg my-2 max-w-full"
-                  />
+                  <img {...props} alt="Preview" className="rounded-lg my-2 max-w-[420px] w-full" />
                 ),
                 iframe: ({ node, ...props }) => (
-                  <iframe
-                    {...props}
-                    className="rounded-lg my-2 max-w-full"
-                    allowFullScreen
-                  />
+                  <iframe {...props} className="rounded-lg my-2 max-w-[480px] w-full" allowFullScreen />
                 ),
                 audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
                 button: ({ node, ...props }) => (<button {...props} className="text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
-              }}>{msg.content}</ReactMarkdown>
+              }}>
+                {msg.content}
+              </ReactMarkdown>
             )}
           </div>
         ))}
@@ -219,7 +203,9 @@ function AIChat() {
         <button
           onClick={() => handleSend()}
           className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-        >➤</button>
+        >
+          ➤
+        </button>
       </div>
     </div>
   );
