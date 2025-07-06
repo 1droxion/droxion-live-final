@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx – Final Integrated with Sidebar + Smart Previews
+// ✅ AIChat.jsx – Droxion Final (Live Previews + Sidebar + Voice + New Chat + Theme)
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
@@ -11,7 +11,9 @@ function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
@@ -30,6 +32,7 @@ function AIChat() {
   }, [messages, typing]);
 
   const speak = (text) => {
+    if (!voiceMode) return;
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
     synth.cancel();
@@ -112,10 +115,22 @@ function AIChat() {
     }
   };
 
+  const handleNewChat = () => {
+    setMessages([]);
+  };
+
   return (
-    <div className="flex">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
-      <div className="bg-black text-white min-h-screen flex flex-col flex-1">
+    <div className={`flex ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
+      <Sidebar
+        isOpen={sidebarOpen}
+        setIsOpen={setSidebarOpen}
+        onNewChat={handleNewChat}
+        voiceMode={voiceMode}
+        setVoiceMode={setVoiceMode}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+      <div className="flex flex-col flex-1 min-h-screen">
         <div className="flex items-center justify-between p-3 border-b border-gray-700">
           <div className="text-lg font-bold">Droxion</div>
           <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer" />
