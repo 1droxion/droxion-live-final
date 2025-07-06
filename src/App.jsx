@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 
@@ -59,6 +60,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/analytics" element={<Analytics />} />
+        {/* 🔥 Fallback route */}
+        <Route path="*" element={<h1 className="text-center mt-20 text-xl">404 – Page Not Found</h1>} />
       </Routes>
     </div>
   );
