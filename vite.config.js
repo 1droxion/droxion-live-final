@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/', // ✅ Ensures correct paths for all assets (especially on Vercel)
   plugins: [
     react(),
     VitePWA({
@@ -11,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'Droxion',
         short_name: 'Droxion',
-        description: 'AI-powered video generator',
+        description: 'AI-powered creative tools for content, images, and video.',
         start_url: '/',
         display: 'standalone',
         background_color: '#000000',
