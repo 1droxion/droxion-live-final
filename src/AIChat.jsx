@@ -1,13 +1,10 @@
-Look this is my best file // ✅ AIChat.jsx – fixed missing plus icon and dropdown
-// Built by Dhruv Patel | Droxion AI
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
   FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaVideo, FaMicrophone,
+  FaVolumeUp, FaVolumeMute, FaMicrophone,
   FaUpload, FaCamera, FaDesktop
 } from "react-icons/fa";
 
@@ -16,7 +13,6 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
   const [topToolsOpen, setTopToolsOpen] = useState(false);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
@@ -97,8 +93,7 @@ function AIChat() {
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
-          voiceMode,
-          videoMode,
+          voiceMode
         });
         let reply = res.data.reply;
         if (/who.*(made|created|owner|built).*you/i.test(textToSend)) {
@@ -142,7 +137,15 @@ function AIChat() {
           {topToolsOpen && (
             <div className="flex gap-4 mr-2 bg-black border border-gray-700 px-2 py-1 rounded z-20 text-sm items-center">
               <FaTrash onClick={() => { setMessages([]); setTopToolsOpen(false); }} className="cursor-pointer" title="Clear" />
-              <FaDownload onClick={() => { const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n"); const blob = new Blob([text], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "chat.txt"; link.click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Download" />
+              <FaDownload onClick={() => {
+                const text = messages.map((m) => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
+                const blob = new Blob([text], { type: "text/plain" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "chat.txt";
+                link.click();
+                setTopToolsOpen(false);
+              }} className="cursor-pointer" title="Download" />
               <FaClock onClick={() => setTopToolsOpen(false)} className="cursor-pointer" title="History" />
               <FaMicrophone onClick={() => { handleMic(); setTopToolsOpen(false); }} className="cursor-pointer" title="Mic" />
               {voiceMode ? (
@@ -153,7 +156,7 @@ function AIChat() {
               <FaUpload onClick={() => { document.getElementById('fileUpload').click(); setTopToolsOpen(false); }} className="cursor-pointer" title="Upload" />
               <FaCamera onClick={() => { alert("Take Photo"); setTopToolsOpen(false); }} className="cursor-pointer" title="Take Photo" />
               <FaDesktop onClick={() => { alert("Screenshot"); setTopToolsOpen(false); }} className="cursor-pointer" title="Screenshot" />
-              <input type="file" id="fileUpload" hidden accept="image/*" onChange={(e) => handleImageUpload(e.target.files[0])} />
+              <input type="file" id="fileUpload" hidden accept="image/*" />
             </div>
           )}
           <FaPlus
@@ -173,7 +176,7 @@ function AIChat() {
             }}>{msg.content}</ReactMarkdown>
           </div>
         ))}
-        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-[ping_2s_ease-in-out_infinite]" /></div>}
+        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
         <div ref={chatRef} />
       </div>
 
