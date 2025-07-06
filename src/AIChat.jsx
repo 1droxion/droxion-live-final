@@ -1,15 +1,19 @@
-// AIChat.jsx – Droxion Real-Time Full Preview Chat
-// Built by Dhruv Patel | Droxion AI
+// AIChat.jsx – Final Version (Live Previews + Sidebar + Suggestions + History)
 
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import { FaPlus } from "react-icons/fa";
+import Sidebar from "./Sidebar";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
@@ -28,6 +32,7 @@ function AIChat() {
   }, [messages, typing]);
 
   const speak = (text) => {
+    if (!voiceMode) return;
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
     synth.cancel();
@@ -42,47 +47,32 @@ function AIChat() {
     setTyping(true);
 
     try {
-      const backend =
-        import.meta.env.VITE_BACKEND_URL ||
-        "https://droxion-backend.onrender.com";
-      const res = await axios.post(`${backend}/chat`, {
+      const res = await axios.post("https://droxion-backend.onrender.com/realtime", {
         prompt: input,
-        user_id: userId.current,
+        user_id: userId.current
       });
       const reply = res.data.reply;
+      const cards = res.data.cards || [];
+      const suggestions = res.data.suggestions || [];
 
-      const cards = [];
+      const suggestionBlock =
+        suggestions.length > 0
+          ? `<div class='mt-2'><b>🔎 Try also:</b><br>${suggestions.map((s) => `<span class='text-blue-400 cursor-pointer underline'>${s}</span>`).join(" · ")}</div>`
+          : "";
 
-      // Smart detection for live preview content
-      if (reply.includes("youtube.com/watch?v=")) {
-        const vidId = reply.split("v=")[1]?.split("&")[0];
-        cards.push(`<iframe class='rounded my-2' width='360' height='203' src='https://www.youtube.com/embed/${vidId}' allowfullscreen></iframe>`);
-      }
-
-      if (reply.includes("http") && reply.includes("coin")) {
-        cards.push(`📈 **Crypto Market Live**\n[See More](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
-      }
-
-      if (reply.includes("cricbuzz") || reply.toLowerCase().includes("score")) {
-        cards.push(`🏏 **Cricket Live Score**\n[View Match](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
-      }
-
-      if (reply.toLowerCase().includes("weather") && reply.includes("http")) {
-        cards.push(`🌤️ **Live Weather**\n[Check Forecast](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
-      }
-
-      if (reply.toLowerCase().includes("wikipedia") && reply.includes("http")) {
-        cards.push(`📚 **Wikipedia Info**\n[View Wiki](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
-      }
-
-      if (reply.toLowerCase().includes("date") || reply.toLowerCase().includes("time")) {
-        cards.push(`🕒 **${reply}**`);
-      }
-
-      setMessages((prev) => [...prev, { role: "assistant", content: reply },
-        ...cards.map((c) => ({ role: "assistant", content: c }))
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: reply },
+        ...cards.map((c) => ({ role: "assistant", content: c })),
+        { role: "assistant", content: suggestionBlock }
       ]);
       speak(reply);
+
+      const history = JSON.parse(localStorage.getItem("chat_history") || "[]");
+      if (!history.includes(input)) {
+        const updated = [input, ...history].slice(0, 10);
+        localStorage.setItem("chat_history", JSON.stringify(updated));
+      }
     } catch (e) {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -97,38 +87,55 @@ function AIChat() {
     }
   };
 
+  const handleNewChat = () => {
+    setMessages([]);
+  };
+
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">Droxion</div>
-      </div>
+    <div className={`flex ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
+      <Sidebar
+        isOpen={sidebarOpen}
+        setIsOpen={setSidebarOpen}
+        onNewChat={handleNewChat}
+        voiceMode={voiceMode}
+        setVoiceMode={setVoiceMode}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+      <div className="flex flex-col flex-1 min-h-screen">
+        <div className="flex items-center justify-between p-3 border-b border-gray-700">
+          <div className="text-lg font-bold">Droxion</div>
+          <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer" />
+        </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-              img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-              iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />)
-            }}>{msg.content}</ReactMarkdown>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-2xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+                img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
+                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
+                span: ({ node, ...props }) => (<span {...props} className="text-blue-400 underline cursor-pointer" />)
+              }}>{msg.content}</ReactMarkdown>
+            </div>
+          ))}
+          {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
+          <div ref={chatRef} />
+        </div>
+
+        <div className="p-3 border-t border-gray-700">
+          <div className="flex items-center space-x-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
+              placeholder="Type anything..."
+            />
+            <button
+              onClick={handleSend}
+              className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
+            >➤</button>
           </div>
-        ))}
-        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
-        <div ref={chatRef} />
-      </div>
-
-      <div className="p-3 border-t border-gray-700">
-        <div className="flex items-center space-x-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
-            placeholder="Type anything..."
-          />
-          <button
-            onClick={handleSend}
-            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-          >➤</button>
         </div>
       </div>
     </div>
