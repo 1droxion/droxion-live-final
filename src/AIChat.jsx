@@ -73,7 +73,6 @@ function AIChat() {
     try {
       const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
-      // Image generation
       if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
         const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
@@ -140,12 +139,16 @@ function AIChat() {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-              img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-              iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
-              audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
-              button: ({ node, ...props }) => (<button {...props} className="text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
-            }}>{msg.content}</ReactMarkdown>
+            {msg.content.includes("<div") || msg.content.includes("<iframe") ? (
+              <div dangerouslySetInnerHTML={{ __html: msg.content }} />
+            ) : (
+              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+                img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
+                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
+                audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
+                button: ({ node, ...props }) => (<button {...props} className="text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
+              }}>{msg.content}</ReactMarkdown>
+            )}
           </div>
         ))}
         {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
