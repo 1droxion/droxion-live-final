@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import SmartBar from "./SmartBar";
 import Generator from "./Generator";
@@ -16,8 +16,6 @@ import Signup from "./Signup";
 import Analytics from "./Analytics";
 
 export default function App() {
-  const location = useLocation();
-
   useEffect(() => {
     const startTime = Date.now();
     const handleUnload = () => {
@@ -44,7 +42,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0e0e10] text-white">
       <Routes>
-        {/* ✅ Droxion now loads AIChat directly */}
         <Route path="/" element={<AIChat />} />
         <Route path="/chatboard" element={<AIChat />} />
         <Route path="/smart" element={<SmartBar />} />
