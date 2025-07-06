@@ -34,7 +34,17 @@ export default defineConfig({
   optimizeDeps: {
     include: ['rehype-raw']
   },
+  build: {
+    outDir: 'dist'
+  },
+  resolve: {
+    alias: {
+      '@': '/src'
+    }
+  },
   server: {
-    historyApiFallback: true   // ✅ This is the missing piece
+    fs: {
+      allow: ['.']
+    }
   }
 });
