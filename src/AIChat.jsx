@@ -1,24 +1,18 @@
-// AIChat.jsx – Final Version (Live Previews + Sidebar + Suggestions + History)
-
+// AIChat.jsx – Updated by Dhruv Patel | Droxion AI
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import { FaPlus } from "react-icons/fa";
-import Sidebar from "./Sidebar";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
-  const [showPrompts, setShowPrompts] = useState(true);
-  const quickPrompts = ["Hello", "Show features", "Pricing", "Contact info"];
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
+
+  const promptButtons = ["news", "weather", "crypto", "usd to inr", "tesla stock", "time", "youtube trending", "generate car image"];
 
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
@@ -34,56 +28,43 @@ function AIChat() {
   }, [messages, typing]);
 
   const speak = (text) => {
-    if (!voiceMode) return;
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
     synth.cancel();
     synth.speak(utter);
   };
 
-  const handlePromptClick = (prompt) => {
-    setShowPrompts(false);
-    handleSend(prompt);
-  };
-
-  const handleSend = async (msg) => {
-    const text = msg !== undefined ? msg : input;
-    if (!text.trim()) return;
-    const userMsg = { role: "user", content: text };
+  const handleSend = async (customPrompt) => {
+    const query = customPrompt || input;
+    if (!query.trim()) return;
+    const userMsg = { role: "user", content: query };
     setMessages((prev) => [...prev, userMsg]);
-    if (msg === undefined) setInput("");
+    setInput("");
     setTyping(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/realtime", {
-        prompt: text,
-        user_id: userId.current
+      const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
+      const res = await axios.post(`${backend}/chat`, {
+        prompt: query,
+        user_id: userId.current,
       });
-      const reply = res.data.reply;
-      const cards = res.data.cards || [];
+      const reply = res.data.reply || "";
+      const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
       const suggestions = res.data.suggestions || [];
 
-      const suggestionBlock =
-        suggestions.length > 0
-          ? `<div class='mt-2'><b>🔎 Try also:</b><br>${suggestions.map((s) => `<span class='text-blue-400 cursor-pointer underline'>${s}</span>`).join(" · ")}</div>`
-          : "";
+      const suggestionCards = suggestions.map(s => ({
+        role: "assistant",
+        content: `<button onclick="window.droxionSend('${s}')" class='px-2 py-1 mt-2 text-sm border border-white rounded hover:bg-white hover:text-black'>${s}</button>`
+      }));
 
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: reply },
-        ...cards.map((c) => ({
-          role: "assistant",
-          content: typeof c === "string" ? c : JSON.stringify(c),
-        })),
-        { role: "assistant", content: suggestionBlock }
+        ...cards,
+        ...suggestionCards
       ]);
-      speak(reply);
 
-      const history = JSON.parse(localStorage.getItem("chat_history") || "[]");
-      if (!history.includes(text)) {
-        const updated = [text, ...history].slice(0, 10);
-        localStorage.setItem("chat_history", JSON.stringify(updated));
-      }
+      speak(reply);
     } catch (e) {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
@@ -98,68 +79,61 @@ function AIChat() {
     }
   };
 
-  const handleNewChat = () => {
-    setMessages([]);
-  };
+  useEffect(() => {
+    // Allow global prompt buttons to call send
+    window.droxionSend = (text) => handleSend(text);
+  }, []);
 
   return (
-    <div className={`flex ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
-      <Sidebar
-        isOpen={sidebarOpen}
-        setIsOpen={setSidebarOpen}
-        onNewChat={handleNewChat}
-        voiceMode={voiceMode}
-        setVoiceMode={setVoiceMode}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-      />
-      <div className="flex flex-col flex-1 min-h-screen">
-        <div className="flex items-center justify-between p-3 border-b border-gray-700">
-          <div className="text-lg font-bold">Droxion</div>
-          <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer text-white" />
-        </div>
-        {showPrompts && (
-          <div className="p-2 bg-gray-800 text-xs flex gap-2 justify-center">
-            {quickPrompts.map((p) => (
-              <button
-                key={p}
-                onClick={() => handlePromptClick(p)}
-                className="px-2 py-1 bg-gray-700 rounded text-white"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        )}
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className="text-lg font-bold">Droxion</div>
+      </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((msg, i) => (
-            <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-2xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-                img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
-                span: ({ node, ...props }) => (<span {...props} className="text-blue-400 underline cursor-pointer" />)
-              }}>{msg.content}</ReactMarkdown>
-            </div>
-          ))}
-          {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
-          <div ref={chatRef} />
-        </div>
+      {/* Prompt Buttons */}
+      <div className="flex flex-wrap gap-2 px-3 py-2 border-b border-gray-700">
+        {promptButtons.map((p, i) => (
+          <button
+            key={i}
+            onClick={() => handleSend(p)}
+            className="text-sm px-3 py-1 border border-gray-500 rounded hover:bg-white hover:text-black"
+          >
+            {p}
+          </button>
+        ))}
+      </div>
 
-        <div className="p-3 border-t border-gray-700">
-          <div className="flex items-center space-x-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
-              placeholder="Type anything..."
-            />
-            <button
-              onClick={handleSend}
-              className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-            >➤</button>
+      {/* Chat Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((msg, i) => (
+          <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+              img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
+              iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
+              audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
+              button: ({ node, ...props }) => (<button {...props} className="text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
+            }}>{msg.content}</ReactMarkdown>
           </div>
+        ))}
+        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
+        <div ref={chatRef} />
+      </div>
+
+      {/* Input Area */}
+      <div className="p-3 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
+            placeholder="Type anything..."
+          />
+          <button
+            onClick={() => handleSend()}
+            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
+          >➤</button>
         </div>
       </div>
     </div>
