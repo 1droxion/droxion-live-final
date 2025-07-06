@@ -1,3 +1,4 @@
+// FULL FIXED AIChat.jsx
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -64,7 +65,6 @@ function AIChat() {
         const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
         setMessages((prev) => [...prev, { role: "assistant", content: `![image](${imageUrl})` }]);
-        setTyping(false);
         return;
       }
 
@@ -73,16 +73,13 @@ function AIChat() {
         user_id: userId.current,
       });
 
-      const reply = res.data.reply || "";
+      const reply = res.data.reply || "⚠️ No live result found. Try again with something more specific.";
       const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
       const suggestions = res.data.suggestions || [];
 
-      const suggestionContent = suggestions.length
-        ? `<div class='flex flex-wrap gap-2 mt-2'>${suggestions
-            .map(
-              (s) =>
-                `<button onclick="window.droxionSend('${s}')" class='text-sm px-2 py-1 border border-white rounded hover:bg-white hover:text-black'>${s}</button>`
-            )
+      const suggestionButtons = suggestions.length
+        ? `<div class='flex gap-2 flex-wrap mt-3'>${suggestions
+            .map((s) => `<button onclick="window.droxionSend('${s}')" class='text-xs px-2 py-1 border border-white rounded hover:bg-white hover:text-black'>${s}</button>`)
             .join("")}</div>`
         : "";
 
@@ -90,7 +87,7 @@ function AIChat() {
         ...prev,
         { role: "assistant", content: reply },
         ...cards,
-        ...(suggestionContent ? [{ role: "assistant", content: suggestionContent }] : []),
+        ...(suggestionButtons ? [{ role: "assistant", content: suggestionButtons }] : []),
       ]);
 
       speak(reply);
