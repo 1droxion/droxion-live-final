@@ -1,5 +1,3 @@
-// ✅ AIChat.jsx – Full Real-Time Cards (News, Stocks, Weather, Suggestions)
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -103,16 +101,42 @@ function AIChat() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((msg, i) => (
-            <div key={i} className={`px-3 whitespace-pre-wrap text-sm max-w-2xl ${msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"}`}>
-              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-                img: ({ node, ...props }) => (<img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />),
-                iframe: ({ node, ...props }) => (<iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />),
-                span: ({ node, ...props }) => (<span {...props} className="text-blue-400 underline cursor-pointer" />)
-              }}>{msg.content}</ReactMarkdown>
+          {messages.length === 0 ? (
+            <div className="text-center text-gray-400 text-lg mt-10 animate-fade-in">
+              💬 Ask anything to begin
             </div>
-          ))}
-          {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
+          ) : (
+            messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`px-3 whitespace-pre-wrap text-sm max-w-2xl ${
+                  msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"
+                }`}
+              >
+                <ReactMarkdown
+                  rehypePlugins={[rehypeRaw]}
+                  components={{
+                    img: ({ node, ...props }) => (
+                      <img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />
+                    ),
+                    iframe: ({ node, ...props }) => (
+                      <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
+                    ),
+                    span: ({ node, ...props }) => (
+                      <span {...props} className="text-blue-400 underline cursor-pointer" />
+                    )
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </div>
+            ))
+          )}
+          {typing && (
+            <div className="text-left ml-4">
+              <span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" />
+            </div>
+          )}
           <div ref={chatRef} />
         </div>
 
@@ -128,7 +152,9 @@ function AIChat() {
             <button
               onClick={handleSend}
               className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded"
-            >➤</button>
+            >
+              ➤
+            </button>
           </div>
         </div>
       </div>
