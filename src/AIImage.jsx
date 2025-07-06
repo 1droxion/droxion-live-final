@@ -22,8 +22,11 @@ function AIImage() {
   const isDhruv = true; // ✅ Allow full free use
 
   useEffect(() => {
+    const backend =
+      import.meta.env.VITE_BACKEND_URL ||
+      "https://droxion-backend.onrender.com";
     axios
-      .get(`${import.meta.env.VITE_BACKEND_URL}/user-stats`)
+      .get(`${backend}/user-stats`)
       .then((res) => {
         setCoins(res.data.coins || 0);
       })
@@ -48,10 +51,12 @@ function AIImage() {
     try {
       const styledPrompt = `${finalPrompt}, in ${finalStyle} style`;
 
-      const response = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/generate-image`,
-        { prompt: styledPrompt }
-      );
+      const backend =
+        import.meta.env.VITE_BACKEND_URL ||
+        "https://droxion-backend.onrender.com";
+      const response = await axios.post(`${backend}/generate-image`, {
+        prompt: styledPrompt,
+      });
 
       const url = response.data.image_url;
       setImageUrl(url);
