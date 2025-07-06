@@ -100,44 +100,8 @@ function AIChat() {
           <FaPlus onClick={() => setSidebarOpen(!sidebarOpen)} className="cursor-pointer" />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-400 text-lg mt-10 animate-fade-in">
-              💬 Ask anything to begin
-            </div>
-          ) : (
-            messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`px-3 whitespace-pre-wrap text-sm max-w-2xl ${
-                  msg.role === "user" ? "text-right self-end ml-auto" : "text-left self-start"
-                }`}
-              >
-                <ReactMarkdown
-                  rehypePlugins={[rehypeRaw]}
-                  components={{
-                    img: ({ node, ...props }) => (
-                      <img {...props} alt="Preview" className="rounded-lg my-2 max-w-xs" />
-                    ),
-                    iframe: ({ node, ...props }) => (
-                      <iframe {...props} className="rounded-lg my-2 max-w-xs" allowFullScreen />
-                    ),
-                    span: ({ node, ...props }) => (
-                      <span {...props} className="text-blue-400 underline cursor-pointer" />
-                    )
-                  }}
-                >
-                  {msg.content}
-                </ReactMarkdown>
-              </div>
-            ))
-          )}
-          {typing && (
-            <div className="text-left ml-4">
-              <span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" />
-            </div>
-          )}
-          <div ref={chatRef} />
+        <div className="flex-1 flex items-center justify-center p-10 text-2xl text-green-400 font-semibold">
+          ✅ Droxion AIChat is working
         </div>
 
         <div className="p-3 border-t border-gray-700">
