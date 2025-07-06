@@ -57,19 +57,19 @@ function AIChat() {
       }
 
       if (reply.includes("http") && reply.includes("coin")) {
-        cards.push(`📈 **Crypto Market Live**\n[See More](${reply.match(/https:\\/\\/[^ )\\n]+/g)?.[0]})`);
+        cards.push(`📈 **Crypto Market Live**\n[See More](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
       }
 
       if (reply.includes("cricbuzz") || reply.toLowerCase().includes("score")) {
-        cards.push(`🏏 **Cricket Live Score**\n[View Match](${reply.match(/https:\\/\\/[^ )\\n]+/g)?.[0]})`);
+        cards.push(`🏏 **Cricket Live Score**\n[View Match](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
       }
 
       if (reply.toLowerCase().includes("weather") && reply.includes("http")) {
-        cards.push(`🌤️ **Live Weather**\n[Check Forecast](${reply.match(/https:\\/\\/[^ )\\n]+/g)?.[0]})`);
+        cards.push(`🌤️ **Live Weather**\n[Check Forecast](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
       }
 
       if (reply.toLowerCase().includes("wikipedia") && reply.includes("http")) {
-        cards.push(`📚 **Wikipedia Info**\n[View Wiki](${reply.match(/https:\\/\\/[^ )\\n]+/g)?.[0]})`);
+        cards.push(`📚 **Wikipedia Info**\n[View Wiki](${reply.match(/https:\/\/[^ )\n]+/g)?.[0]})`);
       }
 
       if (reply.toLowerCase().includes("date") || reply.toLowerCase().includes("time")) {
