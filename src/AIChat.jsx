@@ -90,6 +90,56 @@ function AIChat() {
         }
       }
 
+      // ✅ Real-time triggers
+      if (!handled && lower.startsWith("weather in ")) {
+        const city = textToSend.split("weather in ")[1];
+        const w = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
+        if (w.data?.temp) {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `**🌦️ Weather in ${w.data.city}**\n\nTemperature: ${w.data.temp}\nCondition: ${w.data.condition}`
+          }]);
+          handled = true;
+        }
+      }
+
+      if (!handled && lower.startsWith("news about ")) {
+        const topic = textToSend.split("news about ")[1];
+        const n = await axios.post("https://droxion-backend.onrender.com/realtime/news", { topic });
+        if (n.data?.headlines?.length) {
+          const headlines = n.data.headlines.map(h => `• ${h}`).join("\n");
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `**📰 Top News about ${topic}:**\n\n${headlines}`
+          }]);
+          handled = true;
+        }
+      }
+
+      if (!handled && lower.startsWith("stock price of ")) {
+        const ticker = textToSend.split("stock price of ")[1].toUpperCase();
+        const s = await axios.post("https://droxion-backend.onrender.com/realtime/stock", { ticker });
+        if (s.data?.price) {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `**📈 Stock Price of ${ticker}:** ${s.data.price}`
+          }]);
+          handled = true;
+        }
+      }
+
+      if (!handled && lower.includes("time in")) {
+        const city = textToSend.split("time in")[1]?.trim();
+        const t = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
+        if (t.data?.time) {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: `**⏰ Current Time in ${city}:** ${t.data.time}`
+          }]);
+          handled = true;
+        }
+      }
+
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
