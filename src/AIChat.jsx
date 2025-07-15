@@ -67,6 +67,7 @@ function AIChat() {
 
       let handled = false;
 
+      // YouTube
       if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: textToSend });
         if (yt.data?.url && yt.data?.title) {
@@ -79,6 +80,7 @@ function AIChat() {
         }
       }
 
+      // Image
       if (!handled && imgKeywords.some((k) => lower.includes(k))) {
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: textToSend });
         if (imgRes.data?.image_url) {
@@ -90,7 +92,7 @@ function AIChat() {
         }
       }
 
-      // ✅ Real-time triggers
+      // Real-time weather
       if (!handled && lower.startsWith("weather in ")) {
         const city = textToSend.split("weather in ")[1];
         const w = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
@@ -103,6 +105,7 @@ function AIChat() {
         }
       }
 
+      // Real-time news
       if (!handled && lower.startsWith("news about ")) {
         const topic = textToSend.split("news about ")[1];
         const n = await axios.post("https://droxion-backend.onrender.com/realtime/news", { topic });
@@ -116,6 +119,7 @@ function AIChat() {
         }
       }
 
+      // Real-time stock
       if (!handled && lower.startsWith("stock price of ")) {
         const ticker = textToSend.split("stock price of ")[1].toUpperCase();
         const s = await axios.post("https://droxion-backend.onrender.com/realtime/stock", { ticker });
@@ -128,6 +132,7 @@ function AIChat() {
         }
       }
 
+      // Real-time time
       if (!handled && lower.includes("time in")) {
         const city = textToSend.split("time in")[1]?.trim();
         const t = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
@@ -140,6 +145,7 @@ function AIChat() {
         }
       }
 
+      // Normal AI reply
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
