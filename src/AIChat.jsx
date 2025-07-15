@@ -1,3 +1,6 @@
+// FULL AIChat.jsx with real-time and original working routes
+// All working with backend: /chat, /generate-image, /search-youtube, /realtime
+
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -65,9 +68,14 @@ function AIChat() {
       const ytKeywords = ["video", "watch", "trailer", "movie", "song", "youtube"];
       const imgKeywords = ["image", "picture", "draw", "photo", "create", "generate"];
 
+      // 🔍 Real-time triggers
+      const weatherRegex = /weather\s(in)?\s?([a-zA-Z\s]+)/i;
+      const newsRegex = /news\s(about|on)?\s?([a-zA-Z\s]+)/i;
+      const stockRegex = /stock\s(price|of)?\s?([A-Z]+)/i;
+      const timeRegex = /time\s(in)?\s?([a-zA-Z\s]+)/i;
+
       let handled = false;
 
-      // YouTube
       if (ytKeywords.some((k) => lower.includes(k))) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: textToSend });
         if (yt.data?.url && yt.data?.title) {
@@ -80,7 +88,6 @@ function AIChat() {
         }
       }
 
-      // Image
       if (!handled && imgKeywords.some((k) => lower.includes(k))) {
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: textToSend });
         if (imgRes.data?.image_url) {
@@ -92,60 +99,29 @@ function AIChat() {
         }
       }
 
-      // Real-time weather
-      if (!handled && lower.startsWith("weather in ")) {
-        const city = textToSend.split("weather in ")[1];
-        const w = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
-        if (w.data?.temp) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `**🌦️ Weather in ${w.data.city}**\n\nTemperature: ${w.data.temp}\nCondition: ${w.data.condition}`
-          }]);
-          handled = true;
-        }
+      // ✅ Real-time info detection
+      if (!handled && weatherRegex.test(lower)) {
+        const city = lower.match(weatherRegex)[2];
+        const res = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data?.reply || "Weather data unavailable." }]);
+        handled = true;
+      } else if (!handled && newsRegex.test(lower)) {
+        const topic = lower.match(newsRegex)[2];
+        const res = await axios.post("https://droxion-backend.onrender.com/realtime/news", { topic });
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data?.reply || "News not available." }]);
+        handled = true;
+      } else if (!handled && stockRegex.test(lower)) {
+        const ticker = lower.match(stockRegex)[2];
+        const res = await axios.post("https://droxion-backend.onrender.com/realtime/stock", { ticker });
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data?.reply || "Stock info unavailable." }]);
+        handled = true;
+      } else if (!handled && timeRegex.test(lower)) {
+        const city = lower.match(timeRegex)[2];
+        const res = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data?.reply || "Time unavailable." }]);
+        handled = true;
       }
 
-      // Real-time news
-      if (!handled && lower.startsWith("news about ")) {
-        const topic = textToSend.split("news about ")[1];
-        const n = await axios.post("https://droxion-backend.onrender.com/realtime/news", { topic });
-        if (n.data?.headlines?.length) {
-          const headlines = n.data.headlines.map(h => `• ${h}`).join("\n");
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `**📰 Top News about ${topic}:**\n\n${headlines}`
-          }]);
-          handled = true;
-        }
-      }
-
-      // Real-time stock
-      if (!handled && lower.startsWith("stock price of ")) {
-        const ticker = textToSend.split("stock price of ")[1].toUpperCase();
-        const s = await axios.post("https://droxion-backend.onrender.com/realtime/stock", { ticker });
-        if (s.data?.price) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `**📈 Stock Price of ${ticker}:** ${s.data.price}`
-          }]);
-          handled = true;
-        }
-      }
-
-      // Real-time time
-      if (!handled && lower.includes("time in")) {
-        const city = textToSend.split("time in")[1]?.trim();
-        const t = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
-        if (t.data?.time) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `**⏰ Current Time in ${city}:** ${t.data.time}`
-          }]);
-          handled = true;
-        }
-      }
-
-      // Normal AI reply
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
@@ -158,6 +134,7 @@ function AIChat() {
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
         speak(reply);
       }
+
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
     } finally {
