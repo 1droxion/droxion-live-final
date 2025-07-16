@@ -9,47 +9,62 @@ function AIChat() {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const sendMessage = async (customInput) => {
+    const prompt = customInput || input;
+    if (!prompt.trim()) return;
 
-    const userMsg = { role: "user", content: input };
+    const userMsg = { role: "user", content: prompt };
     setMessages((prev) => [userMsg, ...prev]);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-        prompt: input,
-      });
-
-      const botReply = res.data.reply;
-
-      // Image Preview
-      if (botReply.includes("https://replicate.delivery")) {
+      // Image prompt → Replit
+      if (prompt.toLowerCase().includes("image")) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", {
+          prompt,
+        });
+        const imgUrl = imgRes.data.image_url;
         setMessages((prev) => [
           {
             role: "assistant",
-            content: `![Generated Image](${botReply})`,
+            content: `![Generated Image](${imgUrl})`,
           },
           ...prev,
         ]);
       }
-      // YouTube Preview
-      else if (botReply.includes("youtube.com/watch")) {
-        const videoId = botReply.split("v=")[1];
+      // YouTube prompt
+      else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
+        const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
+          prompt,
+        });
+        const ytUrl = ytRes.data.url;
+        const title = ytRes.data.title;
+        const videoId = ytUrl.split("v=")[1];
         setMessages((prev) => [
           {
             role: "assistant",
-            content: `<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
+            content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
           },
           ...prev,
         ]);
       }
-      // Smart Card or Text
+      // Normal chat prompt
       else {
-        setMessages((prev) => [{ role: "assistant", content: botReply }, ...prev]);
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+          prompt,
+        });
+        const reply = res.data.reply;
+
+        // If reply contains URLs, make it clickable
+        const finalReply = reply.replace(
+          /(https?:\/\/[^\s]+)/g,
+          (url) => `[🔗 ${url}](${url})`
+        );
+
+        setMessages((prev) => [{ role: "assistant", content: finalReply }, ...prev]);
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         { role: "assistant", content: "⚠️ Error from AI. Try again." },
         ...prev,
@@ -68,10 +83,7 @@ function AIChat() {
 
   const ToolButton = ({ title }) => (
     <button
-      onClick={() => {
-        setInput(title.toLowerCase());
-        sendMessage();
-      }}
+      onClick={() => sendMessage(title)}
       className="border border-gray-700 bg-black text-white px-3 py-1 rounded-full text-xs hover:bg-white hover:text-black transition"
     >
       {title}
@@ -86,12 +98,11 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col pt-6">
-      {/* Logo */}
       <div className="text-center mb-4">
         <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
       </div>
 
-      {/* Layout before first message: centered */}
+      {/* First screen layout */}
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col justify-center items-center px-4">
           <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 max-w-xl w-full shadow-xl">
@@ -114,7 +125,7 @@ function AIChat() {
             </div>
             <div className="text-center">
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={loading}
                 className="bg-white text-black text-sm px-4 py-1 rounded-full hover:bg-gray-200 transition"
               >
@@ -125,7 +136,7 @@ function AIChat() {
         </div>
       ) : (
         <>
-          {/* Replies container */}
+          {/* Chat replies */}
           <div className="flex-1 overflow-y-auto px-4 max-w-3xl mx-auto w-full">
             {messages.map((msg, i) => (
               <div
@@ -154,7 +165,7 @@ function AIChat() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input fixed at bottom */}
+          {/* Input bar fixed at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4">
             <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
               <ToolButton title="DeepSearch" />
@@ -165,7 +176,6 @@ function AIChat() {
               <ToolButton title="Latest News" />
               <ToolButton title="Personas" />
             </div>
-
             <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
               <input
                 type="text"
@@ -176,7 +186,7 @@ function AIChat() {
                 onKeyDown={handleKeyDown}
               />
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={loading}
                 className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
               >
