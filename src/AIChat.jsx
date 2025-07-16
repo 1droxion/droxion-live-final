@@ -40,12 +40,6 @@ function AIChat() {
     }
   };
 
-  useEffect(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
-  }, [messages]);
-
   const ToolButton = ({ title }) => (
     <button
       onClick={() => {
@@ -70,7 +64,7 @@ function AIChat() {
         ref={chatRef}
         className="flex-1 overflow-y-auto px-4 pt-2 pb-40 max-w-3xl mx-auto w-full"
       >
-        {messages.map((msg, i) => (
+        {[...messages].reverse().map((msg, i) => (
           <div
             key={i}
             className={`my-3 text-sm ${
