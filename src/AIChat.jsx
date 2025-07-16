@@ -1,31 +1,36 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 
 function AIChat() {
-  const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
 
-  const handleSend = async () => {
+  const sendMessage = async () => {
     if (!input.trim()) return;
-    const userMessage = { role: "user", content: input };
-    setMessages((prev) => [userMessage, ...prev]);
+
+    const newUserMessage = { role: "user", content: input };
+    setMessages((prev) => [...prev, newUserMessage]);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", { message: input });
-      const reply = { role: "assistant", content: res.data.response };
-      setMessages((prev) => [reply, ...prev]);
-    } catch (err) {
-      const errorMsg = {
-        role: "assistant",
-        content: "⚠️ Error: Failed to fetch reply. Please try again.",
-      };
-      setMessages((prev) => [errorMsg, ...prev]);
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        message: input,
+      });
+      const botReply = { role: "assistant", content: res.data.response };
+      setMessages((prev) => [...prev, botReply]);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "⚠️ Error: Something went wrong. Please try again.",
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -34,16 +39,22 @@ function AIChat() {
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      sendMessage();
     }
   };
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   const ToolButton = ({ title }) => (
     <button
       className="border px-3 py-1 rounded-full text-white text-sm hover:bg-white hover:text-black transition"
       onClick={() => {
         setInput(title.toLowerCase());
-        handleSend();
+        sendMessage();
       }}
     >
       {title}
@@ -51,28 +62,29 @@ function AIChat() {
   );
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col items-center relative overflow-hidden">
-      {/* Droxion Title */}
-      <h1 className="text-gray-300 text-2xl font-semibold mt-4">Droxion</h1>
+    <div className="flex flex-col bg-black min-h-screen text-white relative">
+      {/* Header */}
+      <div className="text-center py-6">
+        <h1 className="text-2xl text-gray-300 font-semibold">Droxion</h1>
+      </div>
 
-      {/* Top Tool Buttons */}
-      <div className="mt-6 mb-2 flex gap-3 flex-wrap justify-center">
+      {/* Top Tools */}
+      <div className="flex justify-center gap-4 mb-3 flex-wrap">
         <ToolButton title="DeepSearch" />
         <ToolButton title="Think" />
       </div>
 
-      {/* Input Card */}
-      <div className="w-full max-w-3xl px-4">
-        <div className="bg-[#111] rounded-xl p-4 w-full text-white shadow-md text-sm">
+      {/* Input Section */}
+      <div className="flex justify-center mb-4">
+        <div className="bg-[#111] p-4 rounded-xl max-w-2xl w-full mx-4 shadow-md">
           <input
-            type="text"
+            className="w-full bg-transparent text-white outline-none text-sm"
             placeholder="What do you want to know?"
-            className="bg-transparent outline-none w-full"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <div className="mt-2 flex justify-start gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <ToolButton title="Create Images" />
             <ToolButton title="Research" />
             <ToolButton title="Edit Image" />
@@ -82,37 +94,41 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Message Container */}
-      <div className="w-full max-w-3xl flex-1 overflow-y-auto px-4 mt-4 mb-28 flex flex-col-reverse">
-        {messages.map((msg, idx) => (
+      {/* Messages */}
+      <div
+        className="flex-1 overflow-y-auto px-4 pb-40"
+        ref={chatContainerRef}
+        style={{ maxHeight: "calc(100vh - 300px)" }}
+      >
+        {messages.map((msg, i) => (
           <div
-            key={idx}
-            className={`my-2 p-3 rounded-lg text-sm ${
+            key={i}
+            className={`my-4 px-4 py-2 rounded-lg text-sm whitespace-pre-wrap ${
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} className="prose prose-invert whitespace-pre-wrap">
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} className="prose prose-invert">
               {msg.content}
             </ReactMarkdown>
           </div>
         ))}
       </div>
 
-      {/* Bottom Input Fixed */}
-      <div className="fixed bottom-4 w-full flex justify-center px-4">
-        <div className="bg-[#111] max-w-3xl w-full p-4 rounded-xl flex items-center shadow-md">
+      {/* Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 px-4 py-3 bg-black">
+        <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full items-center px-4 py-2 shadow-md">
           <input
             type="text"
             placeholder="Type your question..."
-            className="flex-1 bg-transparent outline-none text-white text-sm"
+            className="flex-1 bg-transparent text-white outline-none text-sm"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
           />
           <button
-            onClick={handleSend}
+            onClick={sendMessage}
             disabled={loading}
-            className="ml-3 px-4 py-1 text-sm rounded-full bg-white text-black hover:bg-gray-300 transition"
+            className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
           >
             ➤
           </button>
