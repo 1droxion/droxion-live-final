@@ -1,192 +1,159 @@
-import React, { useState, useRef, useEffect } from "react";
-import axios from "axios";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from openai import OpenAI
+import requests
+import datetime
+import pytz
+import os
+import json
+import time
 
-function AIChat() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const bottomRef = useRef(null);
+app = Flask(__name__)
+CORS(app)
 
-  const sendMessage = async (customInput) => {
-    const prompt = customInput || input;
-    if (!prompt.trim()) return;
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    const userMsg = { role: "user", content: prompt };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setSuggestions([]);
-    setLoading(true);
+# ----------- ROUTE: CHAT ----------- 
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.json
+    prompt = data.get("prompt", "").strip()
+    voice_mode = data.get("voiceMode", False)
 
-    try {
-      if (prompt.toLowerCase().includes("image")) {
-        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
-        const imgUrl = imgRes.data.image_url;
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `<img src='${imgUrl}' alt='Generated Image' style='border-radius: 12px; max-width: 100%;' onerror="this.style.display='none'" />`,
-        }]);
-      } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
-        const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
-        const ytUrl = ytRes.data.url;
-        const title = ytRes.data.title;
-        const videoId = ytUrl.split("v=")[1];
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `<b>📺 ${title}</b><br/><iframe width='100%' height='315' src='https://www.youtube.com/embed/${videoId}' frameborder='0' allowfullscreen></iframe>`,
-        }]);
-      } else {
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
-        const reply = res.data.reply;
-        const finalReply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
-        setMessages((prev) => [...prev, { role: "assistant", content: finalReply }]);
-      }
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Error from AI. Try again." }]);
-    } finally {
-      setLoading(false);
+    lower = prompt.lower()
+    reply = ""
+
+    # --- SMART RESPONSES ---
+    if lower.startswith("stock:"):
+        stock = lower.replace("stock:", "").strip().upper()
+        reply = f"📈 <b>{stock} Live Stock:</b><br><iframe src='https://www.google.com/finance/quote/{stock}:NASDAQ' width='100%' height='200' frameborder='0'></iframe>"
+
+    elif lower.startswith("crypto:"):
+        coin = lower.replace("crypto:", "").strip().upper()
+        reply = f"💰 <b>{coin} Live Crypto:</b><br><iframe src='https://www.google.com/search?q={coin}+price' width='100%' height='150' frameborder='0'></iframe>"
+
+    elif "time in" in lower:
+        try:
+            city = lower.split("time in")[-1].strip().title()
+            now = datetime.datetime.now(pytz.timezone("US/Central"))
+            reply = f"🕒 Current time in {city}: {now.strftime('%I:%M %p')}"
+        except:
+            reply = "🕒 Couldn't fetch time for that location."
+
+    elif "weather" in lower:
+        city = lower.split("weather")[-1].strip().title()
+        reply = f"⛅ Live weather in {city}:<br><iframe src='https://www.google.com/search?q=weather+in+{city}' width='100%' height='150' frameborder='0'></iframe>"
+
+    elif "news" in lower:
+        reply = "📰 Latest Headlines:<br>• AI breakthroughs in 2025<br>• Markets show global volatility<br>• Climate targets spark debates"
+
+    elif any(t in lower for t in ["time", "current time"]):
+        now = datetime.datetime.now(pytz.timezone("US/Central"))
+        reply = f"🕒 Current time: {now.strftime('%I:%M %p')}"
+
+    elif any(t in lower for t in ["date", "today"]):
+        today = datetime.datetime.now(pytz.timezone("US/Central"))
+        reply = f"📅 Today's date: {today.strftime('%A, %B %d, %Y')}"
+
+    else:
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You're a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            if response.choices and response.choices[0].message.content:
+                reply = response.choices[0].message.content
+            else:
+                reply = "⚠️ No reply from AI. Please try again."
+
+            if "who" in lower and any(x in lower for x in ["made", "created", "owner", "built"]):
+                reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI."
+
+        except Exception as e:
+            reply = f"⚠️ Error occurred: {str(e)}"
+
+    return jsonify({"reply": reply})
+
+
+# ----------- ROUTE: TRACK ----------- 
+@app.route("/track", methods=["POST"])
+def track():
+    data = request.json
+    log = {
+        "user_id": data.get("user_id"),
+        "action": data.get("action"),
+        "input": data.get("input"),
+        "timestamp": data.get("timestamp")
     }
-  };
+    try:
+        with open("user_logs.json", "a") as f:
+            f.write(json.dumps(log) + "\n")
+    except Exception as e:
+        print("Track log error:", e)
+    return jsonify({"status": "ok"})
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
 
-  const handleInputChange = (e) => {
-    const val = e.target.value;
-    setInput(val);
-    const lower = val.toLowerCase();
-    if (lower.includes("bitcoin")) setSuggestions(["BTC Price", "Crypto News"]);
-    else if (lower.includes("weather")) setSuggestions(["Weather in NYC", "7-day Forecast"]);
-    else if (lower.includes("stock")) setSuggestions(["stock: AAPL", "stock: TSLA"]);
-    else if (lower.includes("time")) setSuggestions(["Time in Tokyo", "Time in India"]);
-    else if (lower.includes("news")) setSuggestions(["AI News", "World News"]);
-    else setSuggestions([]);
-  };
+# ----------- ROUTE: GENERATE IMAGE ----------- 
+@app.route("/generate-image", methods=["POST"])
+def generate_image():
+    data = request.json
+    prompt = data.get("prompt")
+    try:
+        response = requests.post(
+            "https://api.replicate.com/v1/predictions",
+            headers={
+                "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "version": "db21e45a-df6d-4845-90c5-6e1f01b16f3f",
+                "input": {"prompt": prompt}
+            }
+        )
+        result = response.json()
+        prediction_url = result.get("urls", {}).get("get")
+        image_url = ""
 
-  const ToolButton = ({ title }) => (
-    <button
-      onClick={() => sendMessage(title)}
-      className="border border-gray-700 bg-black text-white px-3 py-1 rounded-full text-xs hover:bg-white hover:text-black transition"
-    >
-      {title}
-    </button>
-  );
+        if prediction_url:
+            for _ in range(20):
+                poll = requests.get(prediction_url, headers={
+                    "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}"
+                }).json()
+                if poll.get("status") == "succeeded":
+                    image_url = poll.get("output", [""])[0]
+                    break
+                elif poll.get("status") == "failed":
+                    break
+                time.sleep(1)
 
-  useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, loading]);
+        return jsonify({"image_url": image_url})
+    except Exception as e:
+        return jsonify({"error": f"Image generation failed: {str(e)}"})
 
-  return (
-    <div className="bg-black text-white flex flex-col h-[100dvh]">
-      <div className="text-center pt-4 pb-2">
-        <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
-      </div>
 
-      {messages.length === 0 ? (
-        <div className="flex-1 flex flex-col justify-center items-center px-4 overflow-hidden">
-          <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 max-w-xl w-full shadow-xl">
-            <input
-              type="text"
-              placeholder="What do you want to know?"
-              className="w-full bg-transparent text-white text-sm outline-none mb-4"
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-            />
-            {suggestions.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {suggestions.map((sug, i) => (
-                  <ToolButton key={i} title={sug} />
-                ))}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <ToolButton title="DeepSearch" />
-              <ToolButton title="Think" />
-              <ToolButton title="Create Images" />
-              <ToolButton title="Research" />
-              <ToolButton title="Edit Image" />
-              <ToolButton title="Latest News" />
-              <ToolButton title="Personas" />
-            </div>
-            <div className="text-center">
-              <button
-                onClick={() => sendMessage()}
-                disabled={loading}
-                className="bg-white text-black text-sm px-4 py-1 rounded-full hover:bg-gray-200 transition"
-              >
-                ➤
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="flex-1 overflow-y-auto px-4 pb-40 max-w-3xl mx-auto w-full">
-            {messages.map((msg, i) => (
-              <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
-                <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : "bg-[#1a1a1a]"}`}>
-                  <ReactMarkdown
-                    className="prose prose-invert text-sm"
-                    rehypePlugins={[rehypeRaw]}
-                  >
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="my-3 text-left">
-                <div className="flex gap-1 items-center">
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
+# ----------- ROUTE: YOUTUBE SEARCH ----------- 
+@app.route("/search-youtube", methods=["POST"])
+def search_youtube():
+    data = request.json
+    prompt = data.get("prompt")
+    try:
+        query = prompt.replace("YouTube", "").strip()
+        search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q={query}&key={os.getenv('YOUTUBE_API_KEY')}"
+        res = requests.get(search_url).json()
+        if res["items"]:
+            vid = res["items"][0]
+            video_id = vid["id"]["videoId"]
+            title = vid["snippet"]["title"]
+            return jsonify({"url": f"https://www.youtube.com/watch?v={video_id}", "title": title})
+    except Exception as e:
+        return jsonify({"error": f"YouTube search failed: {str(e)}"})
 
-          <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
-            <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
-              <ToolButton title="DeepSearch" />
-              <ToolButton title="Think" />
-              <ToolButton title="Create Images" />
-              <ToolButton title="Research" />
-              <ToolButton title="Edit Image" />
-              <ToolButton title="Latest News" />
-              <ToolButton title="Personas" />
-            </div>
-            <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
-              <input
-                type="text"
-                placeholder="Ask anything..."
-                className="flex-1 bg-transparent text-white text-sm outline-none"
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-              />
-              <button
-                onClick={() => sendMessage()}
-                disabled={loading}
-                className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
-              >
-                ➤
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+    return jsonify({"error": "No video found"})
 
-export default AIChat;
+
+# ----------- MAIN ----------- 
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
