@@ -49,7 +49,8 @@ function AIChat() {
     const query = customPrompt || input;
     if (!query.trim()) return;
 
-    setMessages((prev) => [...prev, { role: "user", content: query }]);
+    const userMsg = { role: "user", content: query };
+    setMessages((prev) => [userMsg, ...prev]);
     setInput("");
     setTyping(true);
 
@@ -57,7 +58,7 @@ function AIChat() {
       if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
         const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
-        setMessages((prev) => [...prev, { role: "assistant", content: `![image](${imageUrl})` }]);
+        setMessages((prev) => [{ role: "assistant", content: `![image](${imageUrl})` }, ...prev]);
         speak("Here is your image");
         return;
       }
@@ -78,18 +79,18 @@ function AIChat() {
         : "";
 
       setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: reply },
-        ...cards,
         ...(suggestionButtons ? [{ role: "assistant", content: suggestionButtons }] : []),
+        ...cards,
+        { role: "assistant", content: reply },
+        ...prev,
       ]);
 
       speak(reply);
-    } catch (e) {
-      setMessages((prev) => [...prev, {
-        role: "assistant",
-        content: "⚠️ Sorry, something went wrong.",
-      }]);
+    } catch {
+      setMessages((prev) => [
+        { role: "assistant", content: "⚠️ Sorry, something went wrong." },
+        ...prev,
+      ]);
     } finally {
       setTyping(false);
     }
@@ -106,10 +107,12 @@ function AIChat() {
   }, []);
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4">
-      <div className="text-3xl font-bold mt-10 mb-8">🚀 Droxion</div>
+    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4 py-6">
+      <div className="text-3xl font-bold mb-6 backdrop-blur-sm bg-white/10 px-6 py-2 rounded-xl shadow">
+        🚀 Droxion
+      </div>
 
-      <div className="bg-[#111] rounded-xl px-5 py-3 w-full max-w-xl flex items-center space-x-2 shadow-md">
+      <div className="backdrop-blur-md bg-white/10 rounded-xl px-4 py-3 w-full max-w-xl flex items-center space-x-2 shadow">
         <input
           type="text"
           value={input}
@@ -121,7 +124,7 @@ function AIChat() {
         <button onClick={() => handleSend()} className="text-white text-xl px-2">↑</button>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-3 mt-5 mb-6">
+      <div className="flex flex-wrap justify-center gap-3 mt-4 mb-6">
         {smartButtons.map((btn, i) => (
           <button
             key={i}
@@ -133,7 +136,7 @@ function AIChat() {
         ))}
       </div>
 
-      <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 py-6">
+      <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 py-4 flex flex-col-reverse">
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -163,7 +166,7 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      <div className="mb-8">
+      <div className="mt-6">
         <button
           onClick={() => setVoiceOn(!voiceOn)}
           className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
