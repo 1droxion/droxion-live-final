@@ -22,7 +22,7 @@ function AIChat() {
       });
       const botMsg = { role: "assistant", content: res.data.response };
       setMessages((prev) => [...prev, botMsg]);
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "⚠️ Something went wrong. Try again." },
@@ -58,39 +58,21 @@ function AIChat() {
   );
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-white">
-      {/* Top Logo and Tools */}
-      <div className="text-center pt-5">
-        <h1 className="text-2xl font-semibold text-white">Droxion</h1>
+    <div className="flex flex-col min-h-screen bg-black text-white relative">
+      {/* Top Logo */}
+      <div className="text-center pt-4 pb-2">
+        <h1 className="text-2xl font-semibold text-gray-400">Droxion</h1>
       </div>
 
-      <div className="flex justify-center mt-4 gap-3 flex-wrap">
-        <ToolButton title="DeepSearch" />
-        <ToolButton title="Think" />
-      </div>
-
-      <div className="flex justify-center mt-4">
-        <div className="bg-[#111] rounded-xl p-4 w-full max-w-2xl mx-4">
-          <p className="text-sm text-gray-400 mb-2">What do you want to know?</p>
-          <div className="flex flex-wrap gap-2">
-            <ToolButton title="Create Images" />
-            <ToolButton title="Research" />
-            <ToolButton title="Edit Image" />
-            <ToolButton title="Latest News" />
-            <ToolButton title="Personas" />
-          </div>
-        </div>
-      </div>
-
-      {/* Chat Scroll Area */}
+      {/* Chat Replies (latest on top) */}
       <div
         ref={chatRef}
-        className="flex-1 overflow-y-auto px-6 pt-6 pb-32 w-full max-w-3xl mx-auto"
+        className="flex-1 overflow-y-auto px-4 pb-36 w-full max-w-3xl mx-auto"
       >
-        {messages.map((msg, index) => (
+        {[...messages].reverse().map((msg, index) => (
           <div
             key={index}
-            className={`my-4 text-sm ${
+            className={`my-4 text-sm whitespace-pre-wrap ${
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
@@ -104,8 +86,15 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Fixed Bottom Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black px-4 py-3 z-10">
+      {/* Fixed Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black z-10 px-2 py-3">
+        <div className="flex justify-center mb-2 flex-wrap gap-2">
+          <ToolButton title="Create Images" />
+          <ToolButton title="Research" />
+          <ToolButton title="Edit Image" />
+          <ToolButton title="Latest News" />
+          <ToolButton title="Personas" />
+        </div>
         <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
           <input
             type="text"
