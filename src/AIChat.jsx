@@ -2,21 +2,27 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import {
-  FaTrash, FaDownload, FaClock, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaMicrophone,
-  FaUpload, FaCamera, FaDesktop
-} from "react-icons/fa";
+
+const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [topToolsOpen, setTopToolsOpen] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(true);
   const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
+
+  const smartButtons = [
+    { label: "DeepSearch", prefix: "search:" },
+    { label: "Think", prefix: "think:" },
+    { label: "Create Images", action: "image" },
+    { label: "Research", prefix: "research:" },
+    { label: "Edit Image", action: "edit-image" },
+    { label: "Latest News", prefix: "news:" },
+    { label: "Personas", prefix: "persona:" }
+  ];
 
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
@@ -31,239 +37,142 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  const logAction = async (action, inputText) => {
-    try {
-      await axios.post("https://droxion-backend.onrender.com/track", {
-        user_id: userId.current,
-        action,
-        input: inputText,
-        timestamp: new Date().toISOString()
-      });
-    } catch (e) {
-      console.warn("Tracking failed", e);
-    }
-  };
-
   const speak = (text) => {
-    if (!voiceMode || !text) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US";
+    if (!voiceOn) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "en-US";
     synth.cancel();
-    synth.speak(u);
+    synth.speak(utter);
   };
 
-  const handleSend = async (textToSend = input) => {
-    if (!textToSend.trim()) return;
-    const userMsg = { role: "user", content: textToSend };
-    setMessages(prev => [...prev, userMsg]);
+  const handleSend = async (customPrompt) => {
+    const query = customPrompt || input;
+    if (!query.trim()) return;
+
+    const userMsg = { role: "user", content: query };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
-    logAction("message", textToSend);
 
     try {
-      const lower = textToSend.toLowerCase();
-      const ytKW = ["video", "youtube", "watch", "trailer"];
-      const imgKW = ["generate image", "photo", "draw", "picture"];
-      let handled = false;
-
-      // YouTube
-      if (ytKW.some(k => lower.includes(k))) {
-        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: textToSend });
-        if (yt.data?.url) {
-          const vid = yt.data.url.split("v=")[1];
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `<iframe class='rounded-lg my-2 max-w-xs' width='360' height='203' src='https://www.youtube.com/embed/${vid}' allowfullscreen></iframe>`
-          }]);
-          handled = true;
-        }
+      if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
+        const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
+        const imageUrl = imgRes.data.image_url;
+        setMessages((prev) => [...prev, { role: "assistant", content: `![image](${imageUrl})` }]);
+        speak("Here is your image");
+        return;
       }
 
-      // Image
-      if (!handled && imgKW.some(k => lower.includes(k))) {
-        const im = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: textToSend });
-        if (im.data?.image_url) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: `![Generated Image](${im.data.image_url})`
-          }]);
-          handled = true;
-        }
-      }
+      const res = await axios.post(`${backend}/chat`, {
+        prompt: query,
+        user_id: userId.current,
+      });
 
-      // Time
-      if (!handled && lower.includes("time in ")) {
-        const city = textToSend.split("time in ")[1].trim();
-        const t = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `**⏰ Time in ${t.data.city}:** ${t.data.time}`
-        }]);
-        handled = true;
-      }
+      const reply = res.data.reply || "⚠️ No live result found. Try again.";
+      const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
+      const suggestions = res.data.suggestions || [];
 
-      // Date
-      if (!handled && lower.includes("date today")) {
-        const d = await axios.post("https://droxion-backend.onrender.com/realtime/date");
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `📅 **Today’s Date:** ${d.data.date}`
-        }]);
-        handled = true;
-      }
+      const suggestionButtons = suggestions.length
+        ? `<div class='flex gap-2 flex-wrap mt-3'>${suggestions
+            .map((s) => `<button onclick="window.droxionSend('${s}')" class='text-xs px-2 py-1 border border-white rounded hover:bg-white hover:text-black'>${s}</button>`)
+            .join("")}</div>`
+        : "";
 
-      // Weather
-      if (!handled && lower.startsWith("weather in ")) {
-        const city = textToSend.replace("weather in ", "").trim();
-        const w = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `**🌤️ Weather in ${w.data.city}:** ${w.data.temp}, ${w.data.condition}`
-        }]);
-        handled = true;
-      }
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: reply },
+        ...cards,
+        ...(suggestionButtons ? [{ role: "assistant", content: suggestionButtons }] : []),
+      ]);
 
-      // News
-      if (!handled && lower.startsWith("news about ")) {
-        const topic = textToSend.replace("news about ", "").trim();
-        const n = await axios.post("https://droxion-backend.onrender.com/realtime/news", { topic });
-        const hl = n.data?.headlines || [];
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `**📰 News on ${topic}:**\n` + hl.map(h => `• ${h}`).join("\n")
-        }]);
-        handled = true;
-      }
-
-      // Stocks
-      if (!handled && lower.includes("stock price of")) {
-        const ticker = textToSend.split("stock price of")[1].trim().toUpperCase();
-        const s = await axios.post("https://droxion-backend.onrender.com/realtime/stock", { ticker });
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `**📈 ${ticker}:** ${s.data.price} (${s.data.change})`
-        }]);
-        handled = true;
-      }
-
-      // Default GPT
-      if (!handled) {
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: textToSend,
-          voiceMode
-        });
-        let reply = res.data.reply;
-        if (/who.*(made|created)/i.test(textToSend)) {
-          reply += `\n\n💡 Created by **Dhruv Patel**.`;
-        }
-        setMessages(prev => [...prev, { role: "assistant", content: reply }]);
-        speak(reply);
-      }
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "❌ Error: Something went wrong." }]);
+      speak(reply);
+    } catch (e) {
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "⚠️ No live result found. Try again with something more specific.",
+      }]);
     } finally {
       setTyping(false);
     }
   };
 
-  const handlePromptClick = (style) => {
-    handleSend(`Generate an image in ${style} style.`);
+  const handleSmartClick = (item) => {
+    if (item.action === "image") window.location.href = "/image";
+    else if (item.action === "edit-image") window.location.href = "/edit-image";
+    else handleSend(item.prefix + " " + input);
   };
 
-  const handleMic = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return alert("Mic not supported");
-    const recog = new SR();
-    recog.lang = "en-US";
-    recog.start();
-    recog.onresult = e => setInput(e.results[0][0].transcript);
-  };
-
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  useEffect(() => {
+    window.droxionSend = (text) => handleSend(text);
+  }, []);
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <div className="text-lg font-bold">Droxion</div>
-        <div className="relative">
-          {topToolsOpen && (
-            <div className="flex gap-4 bg-black border border-gray-700 px-2 py-1 rounded z-20 text-sm">
-              <FaTrash className="cursor-pointer" onClick={() => { setMessages([]); setTopToolsOpen(false); }} title="Clear" />
-              <FaDownload className="cursor-pointer" onClick={() => {
-                const txt = messages.map(m => `${m.role === "user" ? "You" : "AI"}: ${m.content}`).join("\n\n");
-                const blob = new Blob([txt], { type: "text/plain" });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = "chat.txt";
-                link.click();
-              }} title="Download" />
-              <FaClock className="cursor-pointer" onClick={() => setTopToolsOpen(false)} title="History" />
-              <FaMicrophone className="cursor-pointer" onClick={() => { handleMic(); setTopToolsOpen(false); }} title="Mic" />
-              {voiceMode
-                ? <FaVolumeUp className="cursor-pointer" onClick={() => { setVoiceMode(false); setTopToolsOpen(false); }} title="Speaker On" />
-                : <FaVolumeMute className="cursor-pointer" onClick={() => { setVoiceMode(true); setTopToolsOpen(false); }} title="Speaker Off" />}
-              <FaUpload className="cursor-pointer" onClick={() => document.getElementById("fileUpload").click()} title="Upload" />
-              <FaCamera className="cursor-pointer" onClick={() => alert("Take Photo")} title="Take Photo" />
-              <FaDesktop className="cursor-pointer" onClick={() => alert("Screenshot")} title="Screenshot" />
-              <input type="file" id="fileUpload" hidden />
-            </div>
-          )}
-          <FaPlus className="cursor-pointer ml-2" onClick={() => setTopToolsOpen(o => !o)} title="Tools" />
-        </div>
+    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4">
+      <div className="text-2xl font-bold mt-10 mb-6 flex items-center gap-2">
+        <span className="text-white">🚀 Droxion</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="bg-[#111] w-full max-w-2xl rounded-xl px-4 py-3 flex items-center space-x-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          placeholder="What do you want to know?"
+          className="bg-transparent flex-1 text-white placeholder-gray-400 focus:outline-none"
+        />
+        <button onClick={() => handleSend()} className="text-white text-xl px-3">↑</button>
+      </div>
+
+      <div className="flex flex-wrap justify-center gap-3 mt-4 mb-6">
+        {smartButtons.map((btn, i) => (
+          <button
+            key={i}
+            onClick={() => handleSmartClick(btn)}
+            className="text-sm px-4 py-1 border border-white rounded hover:bg-white hover:text-black transition"
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 py-4">
         {messages.map((msg, i) => (
-          <div key={i}
-            className={`px-3 whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "self-end text-right" : "self-start text-left"}`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-              img: ({ ...p }) => (
-                <img
-                  {...p}
-                  onError={(e) => { e.target.src = "https://via.placeholder.com/360x200?text=Image+Error"; }}
-                  className="rounded-lg my-2 max-w-xs"
-                />
-              ),
-              iframe: ({ ...p }) => (
-                <iframe {...p} className="rounded-lg my-2 max-w-xs" allowFullScreen />
-              )
-            }}>{msg.content}</ReactMarkdown>
+          <div
+            key={i}
+            className={`px-3 whitespace-pre-wrap text-sm ${
+              msg.role === "user" ? "text-right" : "text-left"
+            }`}
+          >
+            {msg.content.includes("<div") ||
+            msg.content.includes("<iframe") ||
+            msg.content.includes("<img") ? (
+              <div dangerouslySetInnerHTML={{ __html: msg.content }} />
+            ) : (
+              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+                img: ({ node, ...props }) => (
+                  <img {...props} alt="img" className="rounded-lg my-2 max-w-full" />
+                ),
+                iframe: ({ node, ...props }) => (
+                  <iframe {...props} className="rounded-lg my-2 max-w-full" allowFullScreen />
+                ),
+                audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
+                button: ({ node, ...props }) => (<button {...props} className="text-xs px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
+              }}>{msg.content}</ReactMarkdown>
+            )}
           </div>
         ))}
         {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
         <div ref={chatRef} />
       </div>
 
-      <div className="px-3 pb-1">
-        <div className="flex gap-2 flex-wrap">
-          {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map(s => (
-            <button key={s} onClick={() => handlePromptClick(s)}
-              className="px-3 py-1 border border-white rounded-full text-sm hover:bg-white hover:text-black">
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-3 border-t border-gray-700">
-        <div className="flex items-center space-x-2">
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            className="flex-1 p-2 rounded bg-black text-white border border-gray-600 focus:outline-none"
-            placeholder="Type or say anything..."
-          />
-          <button onClick={() => handleSend(input)}
-            className="bg-white hover:bg-gray-300 text-black font-bold py-2 px-4 rounded">
-            ➤
-          </button>
-        </div>
+      <div className="mb-6">
+        <button
+          onClick={() => setVoiceOn(!voiceOn)}
+          className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
+        >
+          {voiceOn ? "Voice On" : "🔇 Voice Off"}
+        </button>
       </div>
     </div>
   );
