@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -13,7 +13,7 @@ function AIChat() {
     if (!input.trim()) return;
 
     const userMsg = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [userMsg, ...prev]); // Add to top
     setInput("");
     setLoading(true);
 
@@ -22,11 +22,11 @@ function AIChat() {
         message: input,
       });
       const botMsg = { role: "assistant", content: res.data.response };
-      setMessages((prev) => [...prev, botMsg]);
+      setMessages((prev) => [botMsg, ...prev]); // Add to top
     } catch {
       setMessages((prev) => [
-        ...prev,
         { role: "assistant", content: "⚠️ Error from AI. Try again." },
+        ...prev,
       ]);
     } finally {
       setLoading(false);
@@ -62,9 +62,9 @@ function AIChat() {
       {/* Chat area */}
       <div
         ref={chatRef}
-        className="flex-1 overflow-y-auto px-4 pt-2 pb-40 max-w-3xl mx-auto w-full"
+        className="flex-1 overflow-y-auto px-4 pb-40 pt-2 max-w-3xl mx-auto w-full"
       >
-        {[...messages].reverse().map((msg, i) => (
+        {messages.map((msg, i) => (
           <div
             key={i}
             className={`my-3 text-sm ${
@@ -81,7 +81,7 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Bottom bar */}
+      {/* Bottom input bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-black z-10 px-2 py-3 border-t border-gray-800">
         <div className="flex justify-center mb-2 flex-wrap gap-2">
           <ToolButton title="Create Images" />
