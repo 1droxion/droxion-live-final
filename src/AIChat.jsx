@@ -13,16 +13,6 @@ function AIChat() {
   const synth = window.speechSynthesis;
   const userId = useRef("");
 
-  const smartButtons = [
-    { label: "DeepSearch", prefix: "search:" },
-    { label: "Think", prefix: "think:" },
-    { label: "Create Images", action: "image" },
-    { label: "Research", prefix: "research:" },
-    { label: "Edit Image", action: "edit-image" },
-    { label: "Latest News", prefix: "news:" },
-    { label: "Personas", prefix: "persona:" }
-  ];
-
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
@@ -46,9 +36,7 @@ function AIChat() {
 
     setInput("");
     setTyping(true);
-
-    const userMsg = { role: "user", content: query };
-    setMessages((prev) => [userMsg, ...prev]);
+    setMessages((prev) => [{ role: "user", content: query }, ...prev]);
 
     try {
       if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
@@ -66,19 +54,7 @@ function AIChat() {
       });
 
       const reply = res.data.reply || "⚠️ No live result found.";
-      const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
-      const suggestions = res.data.suggestions || [];
-
-      const suggestionButtons = suggestions.length
-        ? `<div class='flex gap-2 flex-wrap mt-3'>${suggestions
-            .map((s) => `<button onclick="window.droxionSend('${s}')" class='text-xs px-2 py-1 border border-white rounded hover:bg-white hover:text-black'>${s}</button>`)
-            .join("")}</div>`
-        : "";
-
-      const fullReply = [{ role: "assistant", content: reply }, ...cards];
-      if (suggestionButtons) fullReply.unshift({ role: "assistant", content: suggestionButtons });
-
-      setMessages((prev) => [...fullReply, ...prev]);
+      setMessages((prev) => [{ role: "assistant", content: reply }, ...prev]);
       speak(reply);
     } catch {
       setMessages((prev) => [{ role: "assistant", content: "⚠️ Something went wrong." }, ...prev]);
@@ -87,89 +63,59 @@ function AIChat() {
     }
   };
 
-  const handleSmartClick = (btn) => {
-    if (btn.action === "image") window.location.href = "/ai-image";
-    else if (btn.action === "edit-image") window.location.href = "/editor";
-    else handleSend(btn.prefix + " " + input);
+  const handleKey = (e) => {
+    if (e.key === "Enter") handleSend();
   };
 
-  useEffect(() => {
-    window.droxionSend = (text) => handleSend(text);
-  }, []);
-
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* TOP BAR */}
-      <div className="text-center py-4">
-        <h1 className="text-2xl font-bold text-gray-300">🚀 Droxion</h1>
+    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4 py-6">
+      {/* Droxion Logo */}
+      <div className="text-3xl font-bold text-gray-300 mb-8">🚀 Droxion</div>
+
+      {/* Floating Chat Box */}
+      <div className="bg-[#111111] w-full max-w-2xl rounded-2xl px-6 py-4 backdrop-blur-xl shadow-xl mb-4">
+        <input
+          type="text"
+          placeholder="What do you want to know?"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          className="w-full bg-transparent text-white text-md outline-none placeholder-gray-400"
+        />
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button onClick={() => handleSend("search: " + input)} className="rounded-full border border-white px-4 py-1 text-sm hover:bg-white hover:text-black">DeepSearch</button>
+          <button onClick={() => handleSend("think: " + input)} className="rounded-full border border-white px-4 py-1 text-sm hover:bg-white hover:text-black">Think</button>
+          <button onClick={() => handleSend()} className="rounded-full border border-white px-4 py-1 text-sm hover:bg-white hover:text-black">↗</button>
+        </div>
       </div>
 
-      {/* BUTTONS */}
-      <div className="flex flex-wrap justify-center gap-3 mb-4 px-4">
-        {smartButtons.map((btn, i) => (
-          <button
-            key={i}
-            onClick={() => handleSmartClick(btn)}
-            className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black transition"
-          >
-            {btn.label}
-          </button>
-        ))}
+      {/* Secondary Options */}
+      <div className="flex flex-wrap justify-center gap-3 mb-6">
+        <button onClick={() => handleSend("generate car image")} className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black">Create Images</button>
+        <button onClick={() => handleSend("research: " + input)} className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black">Research</button>
+        <button onClick={() => window.location.href='/editor'} className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black">Edit Image</button>
+        <button onClick={() => handleSend("news: " + input)} className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black">Latest News</button>
+        <button onClick={() => handleSend("persona: " + input)} className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black">Personas</button>
       </div>
 
-      {/* MESSAGES AREA */}
-      <div className="flex-1 overflow-y-auto flex flex-col-reverse px-4 pb-32">
+      {/* Messages */}
+      <div className="w-full max-w-3xl flex-1 overflow-y-auto flex flex-col-reverse px-2 pb-32">
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`my-2 text-sm whitespace-pre-wrap ${
-              msg.role === "user" ? "text-right" : "text-left"
-            }`}
-          >
-            {msg.content.includes("<div") || msg.content.includes("<iframe") || msg.content.includes("<img") ? (
-              <div dangerouslySetInnerHTML={{ __html: msg.content }} />
-            ) : (
-              <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-                img: ({ node, ...props }) => (
-                  <img {...props} alt="img" className="rounded-lg my-2 max-w-full" />
-                ),
-                iframe: ({ node, ...props }) => (
-                  <iframe {...props} className="rounded-lg my-2 max-w-full" allowFullScreen />
-                ),
-                audio: ({ node, ...props }) => (<audio {...props} controls className="my-2" />),
-                button: ({ node, ...props }) => (<button {...props} className="text-xs px-2 py-1 border border-white rounded hover:bg-white hover:text-black mt-2" />)
-              }}>{msg.content}</ReactMarkdown>
-            )}
+          <div key={i} className={`whitespace-pre-wrap text-sm my-2 ${msg.role === "user" ? "text-right" : "text-left"}`}>
+            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
           </div>
         ))}
-        {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
+        {typing && <div className="text-left text-sm text-gray-400">Typing...</div>}
       </div>
 
-      {/* INPUT BAR FIXED BOTTOM */}
-      <div className="fixed bottom-0 left-0 w-full bg-black border-t border-gray-800 p-4">
-        <div className="max-w-2xl mx-auto flex items-center gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Ask anything..."
-            className="flex-1 bg-gray-900 text-white rounded-md px-4 py-2 text-sm focus:outline-none"
-          />
-          <button
-            onClick={() => handleSend()}
-            className="bg-white text-black text-sm font-bold px-4 py-2 rounded hover:bg-gray-300"
-          >➤</button>
-        </div>
-
-        <div className="mt-2 text-center">
-          <button
-            onClick={() => setVoiceOn(!voiceOn)}
-            className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
-          >
-            {voiceOn ? "Voice On" : "🔇 Voice Off"}
-          </button>
-        </div>
+      {/* Fixed bottom bar (Voice Toggle Only) */}
+      <div className="fixed bottom-4 left-0 w-full text-center">
+        <button
+          onClick={() => setVoiceOn(!voiceOn)}
+          className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
+        >
+          {voiceOn ? "Voice On" : "🔇 Voice Off"}
+        </button>
       </div>
     </div>
   );
