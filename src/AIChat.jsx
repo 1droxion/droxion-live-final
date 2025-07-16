@@ -8,7 +8,7 @@ function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const chatEndRef = useRef(null);
+  const chatRef = useRef(null);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -18,17 +18,21 @@ function AIChat() {
     setTyping(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", { message: input });
-      const reply = { sender: "ai", text: res.data.reply || "No response." };
-      setMessages((prev) => [...prev, reply]);
-    } catch {
-      setMessages((prev) => [...prev, { sender: "ai", text: "Error fetching response." }]);
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        message: input,
+      });
+
+      const reply = res.data.reply || "No reply received.";
+      const replyMsg = { sender: "ai", text: reply };
+      setMessages((prev) => [...prev, replyMsg]);
+    } catch (err) {
+      setMessages((prev) => [...prev, { sender: "ai", text: "⚠️ Server error." }]);
     }
     setTyping(false);
   };
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
   const handleKeyDown = (e) => {
@@ -38,48 +42,44 @@ function AIChat() {
     }
   };
 
-  const handleButton = (text) => {
-    setInput(text);
+  const handlePrompt = (prompt) => {
+    setInput(prompt);
     sendMessage();
   };
 
   return (
-    <div className="chat-container">
+    <div className="ai-chat">
       <div className="chat-header">Droxion</div>
 
-      <div className="chat-messages">
+      <div className="chat-body">
         {messages.map((msg, i) => (
-          <div key={i} className={`bubble ${msg.sender}`}>
+          <div key={i} className={`chat-bubble ${msg.sender}`}>
             <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text}</ReactMarkdown>
           </div>
         ))}
-
         {typing && (
-          <div className="loader-container">
-            <div className="loader-x" />
+          <div className="loading-wrap">
+            <div className="loading-x"></div>
           </div>
         )}
-
-        <div ref={chatEndRef} />
+        <div ref={chatRef} />
       </div>
 
       <div className="chat-footer">
-        <div className="prompt-buttons">
-          {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((label, idx) => (
-            <button key={idx} onClick={() => handleButton(label)}>{label}</button>
+        <div className="prompt-bar">
+          {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((txt) => (
+            <button key={txt} onClick={() => handlePrompt(txt)}>{txt}</button>
           ))}
         </div>
 
-        <div className="input-bar">
+        <div className="chat-input-bar">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="What do you want to know?"
           />
-          <button onClick={sendMessage}>
-            <span className="play-icon">▶</span>
-          </button>
+          <button onClick={sendMessage}>▶</button>
         </div>
       </div>
     </div>
