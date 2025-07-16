@@ -7,13 +7,13 @@ function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const chatContainerRef = useRef(null);
+  const chatRef = useRef(null);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const newUserMessage = { role: "user", content: input };
-    setMessages((prev) => [...prev, newUserMessage]);
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
@@ -21,14 +21,14 @@ function AIChat() {
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         message: input,
       });
-      const botReply = { role: "assistant", content: res.data.response };
-      setMessages((prev) => [...prev, botReply]);
-    } catch (error) {
+      const botMsg = { role: "assistant", content: res.data.response };
+      setMessages((prev) => [...prev, botMsg]);
+    } catch (err) {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "⚠️ Error: Something went wrong. Please try again.",
+          content: "⚠️ Something went wrong. Try again.",
         },
       ]);
     } finally {
@@ -44,47 +44,41 @@ function AIChat() {
   };
 
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
   }, [messages]);
 
   const ToolButton = ({ title }) => (
     <button
-      className="border px-3 py-1 rounded-full text-white text-sm hover:bg-white hover:text-black transition"
       onClick={() => {
         setInput(title.toLowerCase());
         sendMessage();
       }}
+      className="border px-3 py-1 rounded-full text-white text-sm hover:bg-white hover:text-black transition"
     >
       {title}
     </button>
   );
 
   return (
-    <div className="flex flex-col bg-black min-h-screen text-white relative">
-      {/* Header */}
-      <div className="text-center py-6">
-        <h1 className="text-2xl text-gray-300 font-semibold">Droxion</h1>
+    <div className="flex flex-col bg-black text-white min-h-screen">
+      {/* Logo */}
+      <div className="text-center pt-6">
+        <h1 className="text-2xl font-semibold text-gray-300">Droxion</h1>
       </div>
 
-      {/* Top Tools */}
-      <div className="flex justify-center gap-4 mb-3 flex-wrap">
+      {/* Top Buttons */}
+      <div className="flex justify-center gap-3 mt-4 mb-2 flex-wrap">
         <ToolButton title="DeepSearch" />
         <ToolButton title="Think" />
       </div>
 
-      {/* Input Section */}
-      <div className="flex justify-center mb-4">
-        <div className="bg-[#111] p-4 rounded-xl max-w-2xl w-full mx-4 shadow-md">
-          <input
-            className="w-full bg-transparent text-white outline-none text-sm"
-            placeholder="What do you want to know?"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <div className="mt-3 flex flex-wrap gap-2">
+      {/* Input Panel */}
+      <div className="flex justify-center">
+        <div className="bg-[#111] rounded-xl p-4 w-full max-w-2xl mx-4">
+          <p className="text-sm text-gray-400 mb-2">What do you want to know?</p>
+          <div className="flex flex-wrap gap-2">
             <ToolButton title="Create Images" />
             <ToolButton title="Research" />
             <ToolButton title="Edit Image" />
@@ -94,16 +88,16 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Chat Area */}
       <div
-        className="flex-1 overflow-y-auto px-4 pb-40"
-        ref={chatContainerRef}
-        style={{ maxHeight: "calc(100vh - 300px)" }}
+        ref={chatRef}
+        className="flex-1 overflow-y-auto px-6 mt-4 pb-32"
+        style={{ maxHeight: "calc(100vh - 260px)" }}
       >
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`my-4 px-4 py-2 rounded-lg text-sm whitespace-pre-wrap ${
+            className={`my-4 text-sm whitespace-pre-wrap ${
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
@@ -114,13 +108,13 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 px-4 py-3 bg-black">
-        <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full items-center px-4 py-2 shadow-md">
+      {/* Bottom Input Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black px-4 py-3">
+        <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
           <input
             type="text"
             placeholder="Type your question..."
-            className="flex-1 bg-transparent text-white outline-none text-sm"
+            className="flex-1 bg-transparent text-white text-sm outline-none"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
