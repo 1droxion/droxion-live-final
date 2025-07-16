@@ -1,159 +1,112 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from openai import OpenAI
-import requests
-import datetime
-import pytz
-import os
-import json
-import time
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
 
-app = Flask(__name__)
-CORS(app)
+function AIChat() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const chatRef = useRef(null);
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const prompt = input.trim();
+    setMessages([...messages, { type: "user", text: prompt }]);
+    setInput("");
+    setTyping(true);
 
-# ----------- ROUTE: CHAT ----------- 
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.json
-    prompt = data.get("prompt", "").strip()
-    voice_mode = data.get("voiceMode", False)
+    try {
+      // IMAGE
+      if (prompt.toLowerCase().includes("image")) {
+        const res = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
+        const imgUrl = res.data.image_url || "";
+        setMessages((prev) => [...prev, { type: "ai", text: `<img src="${imgUrl}" alt="Generated Image" style="max-width:100%; border-radius:10px;" onerror="this.style.display='none';" />` }]);
+      }
 
-    lower = prompt.lower()
-    reply = ""
+      // YOUTUBE
+      else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
+        const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
+        const url = yt.data.url || "";
+        const title = yt.data.title || "YouTube Video";
+        setMessages((prev) => [...prev, {
+          type: "ai",
+          text: `<div style="border-radius:10px; overflow:hidden;">
+                   <iframe width="100%" height="200" src="https://www.youtube.com/embed/${url.split("v=")[1]}" frameborder="0" allowfullscreen></iframe>
+                   <div style="font-size:14px; margin-top:5px;"><b>${title}</b></div>
+                 </div>`
+        }]);
+      }
 
-    # --- SMART RESPONSES ---
-    if lower.startswith("stock:"):
-        stock = lower.replace("stock:", "").strip().upper()
-        reply = f"📈 <b>{stock} Live Stock:</b><br><iframe src='https://www.google.com/finance/quote/{stock}:NASDAQ' width='100%' height='200' frameborder='0'></iframe>"
+      // NORMAL AI
+      else {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
+        const reply = res.data.reply || "No response.";
+        setMessages((prev) => [...prev, { type: "ai", text: reply }]);
+      }
 
-    elif lower.startswith("crypto:"):
-        coin = lower.replace("crypto:", "").strip().upper()
-        reply = f"💰 <b>{coin} Live Crypto:</b><br><iframe src='https://www.google.com/search?q={coin}+price' width='100%' height='150' frameborder='0'></iframe>"
-
-    elif "time in" in lower:
-        try:
-            city = lower.split("time in")[-1].strip().title()
-            now = datetime.datetime.now(pytz.timezone("US/Central"))
-            reply = f"🕒 Current time in {city}: {now.strftime('%I:%M %p')}"
-        except:
-            reply = "🕒 Couldn't fetch time for that location."
-
-    elif "weather" in lower:
-        city = lower.split("weather")[-1].strip().title()
-        reply = f"⛅ Live weather in {city}:<br><iframe src='https://www.google.com/search?q=weather+in+{city}' width='100%' height='150' frameborder='0'></iframe>"
-
-    elif "news" in lower:
-        reply = "📰 Latest Headlines:<br>• AI breakthroughs in 2025<br>• Markets show global volatility<br>• Climate targets spark debates"
-
-    elif any(t in lower for t in ["time", "current time"]):
-        now = datetime.datetime.now(pytz.timezone("US/Central"))
-        reply = f"🕒 Current time: {now.strftime('%I:%M %p')}"
-
-    elif any(t in lower for t in ["date", "today"]):
-        today = datetime.datetime.now(pytz.timezone("US/Central"))
-        reply = f"📅 Today's date: {today.strftime('%A, %B %d, %Y')}"
-
-    else:
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You're a helpful assistant."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            if response.choices and response.choices[0].message.content:
-                reply = response.choices[0].message.content
-            else:
-                reply = "⚠️ No reply from AI. Please try again."
-
-            if "who" in lower and any(x in lower for x in ["made", "created", "owner", "built"]):
-                reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI."
-
-        except Exception as e:
-            reply = f"⚠️ Error occurred: {str(e)}"
-
-    return jsonify({"reply": reply})
-
-
-# ----------- ROUTE: TRACK ----------- 
-@app.route("/track", methods=["POST"])
-def track():
-    data = request.json
-    log = {
-        "user_id": data.get("user_id"),
-        "action": data.get("action"),
-        "input": data.get("input"),
-        "timestamp": data.get("timestamp")
+    } catch (err) {
+      setMessages((prev) => [...prev, { type: "ai", text: "⚠️ Error getting reply." }]);
     }
-    try:
-        with open("user_logs.json", "a") as f:
-            f.write(json.dumps(log) + "\n")
-    except Exception as e:
-        print("Track log error:", e)
-    return jsonify({"status": "ok"})
 
+    setTyping(false);
+  };
 
-# ----------- ROUTE: GENERATE IMAGE ----------- 
-@app.route("/generate-image", methods=["POST"])
-def generate_image():
-    data = request.json
-    prompt = data.get("prompt")
-    try:
-        response = requests.post(
-            "https://api.replicate.com/v1/predictions",
-            headers={
-                "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "version": "db21e45a-df6d-4845-90c5-6e1f01b16f3f",
-                "input": {"prompt": prompt}
-            }
-        )
-        result = response.json()
-        prediction_url = result.get("urls", {}).get("get")
-        image_url = ""
+  useEffect(() => {
+    chatRef.current?.scrollTo(0, chatRef.current.scrollHeight);
+  }, [messages, typing]);
 
-        if prediction_url:
-            for _ in range(20):
-                poll = requests.get(prediction_url, headers={
-                    "Authorization": f"Token {os.getenv('REPLICATE_API_TOKEN')}"
-                }).json()
-                if poll.get("status") == "succeeded":
-                    image_url = poll.get("output", [""])[0]
-                    break
-                elif poll.get("status") == "failed":
-                    break
-                time.sleep(1)
+  return (
+    <div className="flex flex-col h-screen bg-black text-white font-sans">
+      {/* Header */}
+      <div className="text-center text-2xl font-bold py-4 text-gray-300">Droxion</div>
 
-        return jsonify({"image_url": image_url})
-    except Exception as e:
-        return jsonify({"error": f"Image generation failed: {str(e)}"})
+      {/* Chat */}
+      <div ref={chatRef} className="flex-1 overflow-y-auto px-4 pb-20">
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`my-3 flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`rounded-xl px-4 py-2 max-w-[75%] text-sm leading-relaxed 
+              ${msg.type === "user" ? "bg-blue-600 text-white" : "bg-neutral-900 text-white"}`}>
+              <ReactMarkdown rehypePlugins={[rehypeRaw]} children={msg.text} />
+            </div>
+          </div>
+        ))}
 
+        {typing && (
+          <div className="flex justify-start my-2">
+            <div className="bg-neutral-900 px-4 py-2 rounded-xl text-sm flex space-x-1">
+              <span className="animate-bounce">●</span>
+              <span className="animate-bounce delay-100">●</span>
+              <span className="animate-bounce delay-200">●</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-# ----------- ROUTE: YOUTUBE SEARCH ----------- 
-@app.route("/search-youtube", methods=["POST"])
-def search_youtube():
-    data = request.json
-    prompt = data.get("prompt")
-    try:
-        query = prompt.replace("YouTube", "").strip()
-        search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q={query}&key={os.getenv('YOUTUBE_API_KEY')}"
-        res = requests.get(search_url).json()
-        if res["items"]:
-            vid = res["items"][0]
-            video_id = vid["id"]["videoId"]
-            title = vid["snippet"]["title"]
-            return jsonify({"url": f"https://www.youtube.com/watch?v={video_id}", "title": title})
-    except Exception as e:
-        return jsonify({"error": f"YouTube search failed: {str(e)}"})
+      {/* Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-neutral-800 p-3">
+        <div className="flex justify-center flex-wrap gap-2 mb-3">
+          {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((btn, i) => (
+            <button key={i} onClick={() => setInput(btn)} className="border px-3 py-1 rounded-full text-sm hover:bg-white hover:text-black transition">
+              {btn}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            className="flex-1 bg-neutral-900 text-white px-4 py-2 rounded-full outline-none"
+            placeholder="Ask anything..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          />
+          <button onClick={sendMessage} className="bg-white text-black rounded-full p-2">
+            ▶
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-    return jsonify({"error": "No video found"})
-
-
-# ----------- MAIN ----------- 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+export default AIChat;
