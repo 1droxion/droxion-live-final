@@ -1,134 +1,122 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 
-const backend = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
-
 function AIChat() {
-  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [voiceOn, setVoiceOn] = useState(true);
-  const userId = useRef("");
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
 
-  useEffect(() => {
-    let id = localStorage.getItem("droxion_uid");
-    if (!id) {
-      id = "user-" + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem("droxion_uid", id);
-    }
-    userId.current = id;
-  }, []);
-
-  const speak = (text) => {
-    if (!voiceOn) return;
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "en-US";
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utter);
-  };
-
-  const handleSend = async (customPrompt) => {
-    const query = customPrompt || input;
-    if (!query.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const userMessage = { role: "user", content: input };
+    setMessages((prev) => [userMessage, ...prev]);
     setInput("");
-    setTyping(true);
-    setMessages((prev) => [ { role: "user", content: query }, ...prev ]);
+    setLoading(true);
 
     try {
-      if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
-        const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
-        const imageUrl = imgRes.data.image_url;
-        setMessages((prev) => [ { role: "assistant", content: `![image](${imageUrl})` }, ...prev ]);
-        speak("Here is your image");
-        return;
-      }
-
-      const res = await axios.post(`${backend}/chat`, {
-        prompt: query,
-        user_id: userId.current
-      });
-
-      const reply = res.data.reply || "⚠️ No result found.";
-      setMessages((prev) => [ { role: "assistant", content: reply }, ...prev ]);
-      speak(reply);
-    } catch {
-      setMessages((prev) => [ { role: "assistant", content: "⚠️ Something went wrong." }, ...prev ]);
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", { message: input });
+      const reply = { role: "assistant", content: res.data.response };
+      setMessages((prev) => [reply, ...prev]);
+    } catch (err) {
+      const errorMsg = {
+        role: "assistant",
+        content: "⚠️ Error: Failed to fetch reply. Please try again.",
+      };
+      setMessages((prev) => [errorMsg, ...prev]);
     } finally {
-      setTyping(false);
+      setLoading(false);
     }
   };
 
-  const handleKey = (e) => {
-    if (e.key === "Enter") handleSend();
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
-  const buttons = [
-    { label: "DeepSearch", prefix: "search:" },
-    { label: "Think", prefix: "think:" },
-    { label: "Create Images", value: "generate car image" },
-    { label: "Research", prefix: "research:" },
-    { label: "Edit Image", action: () => window.location.href = "/editor" },
-    { label: "Latest News", prefix: "news:" },
-    { label: "Personas", prefix: "persona:" }
-  ];
-
-  const sendButton = (btn) => {
-    if (btn.action) return btn.action();
-    if (btn.value) return handleSend(btn.value);
-    if (btn.prefix) return handleSend(`${btn.prefix} ${input}`);
-  };
+  const ToolButton = ({ title }) => (
+    <button
+      className="border px-3 py-1 rounded-full text-white text-sm hover:bg-white hover:text-black transition"
+      onClick={() => {
+        setInput(title.toLowerCase());
+        handleSend();
+      }}
+    >
+      {title}
+    </button>
+  );
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4 pt-10">
-      {/* Title */}
-      <div className="text-center mb-6">
-        <h1 className="text-3xl font-semibold text-gray-300">Droxion</h1>
+    <div className="bg-black text-white min-h-screen flex flex-col items-center relative overflow-hidden">
+      {/* Droxion Title */}
+      <h1 className="text-gray-300 text-2xl font-semibold mt-4">Droxion</h1>
+
+      {/* Top Tool Buttons */}
+      <div className="mt-6 mb-2 flex gap-3 flex-wrap justify-center">
+        <ToolButton title="DeepSearch" />
+        <ToolButton title="Think" />
       </div>
 
-      {/* Input Box */}
-      <div className="bg-[#111] w-full max-w-2xl rounded-xl px-6 py-4 shadow-lg backdrop-blur">
-        <input
-          type="text"
-          value={input}
-          placeholder="What do you want to know?"
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          className="w-full bg-transparent text-white placeholder-gray-400 outline-none mb-4"
-        />
-        <div className="flex gap-3 flex-wrap">
-          <button onClick={() => sendButton(buttons[0])} className="rounded-full border border-white px-4 py-1 text-sm hover:bg-white hover:text-black">DeepSearch</button>
-          <button onClick={() => sendButton(buttons[1])} className="rounded-full border border-white px-4 py-1 text-sm hover:bg-white hover:text-black">Think</button>
-          <button onClick={() => handleSend()} className="rounded-full border border-white px-4 py-1 text-sm hover:bg-white hover:text-black">↗</button>
+      {/* Input Card */}
+      <div className="w-full max-w-3xl px-4">
+        <div className="bg-[#111] rounded-xl p-4 w-full text-white shadow-md text-sm">
+          <input
+            type="text"
+            placeholder="What do you want to know?"
+            className="bg-transparent outline-none w-full"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <div className="mt-2 flex justify-start gap-2">
+            <ToolButton title="Create Images" />
+            <ToolButton title="Research" />
+            <ToolButton title="Edit Image" />
+            <ToolButton title="Latest News" />
+            <ToolButton title="Personas" />
+          </div>
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap justify-center gap-3 mt-4 mb-8">
-        {buttons.slice(2).map((btn, i) => (
-          <button key={i} onClick={() => sendButton(btn)} className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black transition">{btn.label}</button>
-        ))}
-      </div>
-
-      {/* Replies (Top-down) */}
-      <div className="w-full max-w-3xl px-2 flex flex-col gap-4 pb-32">
-        {messages.map((msg, i) => (
-          <div key={i} className={`${msg.role === "user" ? "text-right" : "text-left"} whitespace-pre-wrap text-sm`}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+      {/* Message Container */}
+      <div className="w-full max-w-3xl flex-1 overflow-y-auto px-4 mt-4 mb-28 flex flex-col-reverse">
+        {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`my-2 p-3 rounded-lg text-sm ${
+              msg.role === "user" ? "text-right" : "text-left"
+            }`}
+          >
+            <ReactMarkdown rehypePlugins={[rehypeRaw]} className="prose prose-invert whitespace-pre-wrap">
+              {msg.content}
+            </ReactMarkdown>
           </div>
         ))}
-        {typing && <div className="text-left text-sm text-gray-400">Typing...</div>}
       </div>
 
-      {/* Voice Toggle Bottom */}
-      <div className="fixed bottom-4 text-center">
-        <button
-          onClick={() => setVoiceOn(!voiceOn)}
-          className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
-        >
-          {voiceOn ? "Voice On" : "🔇 Voice Off"}
-        </button>
+      {/* Bottom Input Fixed */}
+      <div className="fixed bottom-4 w-full flex justify-center px-4">
+        <div className="bg-[#111] max-w-3xl w-full p-4 rounded-xl flex items-center shadow-md">
+          <input
+            type="text"
+            placeholder="Type your question..."
+            className="flex-1 bg-transparent outline-none text-white text-sm"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <button
+            onClick={handleSend}
+            disabled={loading}
+            className="ml-3 px-4 py-1 text-sm rounded-full bg-white text-black hover:bg-gray-300 transition"
+          >
+            ➤
+          </button>
+        </div>
       </div>
     </div>
   );
