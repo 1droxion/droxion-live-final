@@ -17,34 +17,42 @@ function AIChat() {
     setTyping(true);
 
     try {
-      // IMAGE
+      // ----- IMAGE GENERATION -----
       if (prompt.toLowerCase().includes("image")) {
         const res = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
         const imgUrl = res.data.image_url || "";
-        setMessages((prev) => [...prev, { type: "ai", text: `<img src="${imgUrl}" alt="Generated Image" style="max-width:100%; border-radius:10px;" onerror="this.style.display='none';" />` }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "ai",
+            text: `<img src="${imgUrl}" alt="Generated Image" style="max-width:100%; border-radius:10px;" onerror="this.style.display='none';" />`,
+          },
+        ]);
       }
 
-      // YOUTUBE
+      // ----- YOUTUBE SEARCH -----
       else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
         const yt = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
         const url = yt.data.url || "";
         const title = yt.data.title || "YouTube Video";
-        setMessages((prev) => [...prev, {
-          type: "ai",
-          text: `<div style="border-radius:10px; overflow:hidden;">
-                   <iframe width="100%" height="200" src="https://www.youtube.com/embed/${url.split("v=")[1]}" frameborder="0" allowfullscreen></iframe>
-                   <div style="font-size:14px; margin-top:5px;"><b>${title}</b></div>
-                 </div>`
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "ai",
+            text: `<div style="border-radius:10px; overflow:hidden;">
+                     <iframe width="100%" height="200" src="https://www.youtube.com/embed/${url.split("v=")[1]}" frameborder="0" allowfullscreen></iframe>
+                     <div style="font-size:14px; margin-top:5px;"><b>${title}</b></div>
+                   </div>`,
+          },
+        ]);
       }
 
-      // NORMAL AI
+      // ----- TEXT CHAT -----
       else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
         const reply = res.data.reply || "No response.";
         setMessages((prev) => [...prev, { type: "ai", text: reply }]);
       }
-
     } catch (err) {
       setMessages((prev) => [...prev, { type: "ai", text: "⚠️ Error getting reply." }]);
     }
@@ -58,15 +66,16 @@ function AIChat() {
 
   return (
     <div className="flex flex-col h-screen bg-black text-white font-sans">
-      {/* Header */}
       <div className="text-center text-2xl font-bold py-4 text-gray-300">Droxion</div>
 
-      {/* Chat */}
       <div ref={chatRef} className="flex-1 overflow-y-auto px-4 pb-20">
         {messages.map((msg, idx) => (
           <div key={idx} className={`my-3 flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`rounded-xl px-4 py-2 max-w-[75%] text-sm leading-relaxed 
-              ${msg.type === "user" ? "bg-blue-600 text-white" : "bg-neutral-900 text-white"}`}>
+            <div
+              className={`rounded-xl px-4 py-2 max-w-[75%] text-sm leading-relaxed ${
+                msg.type === "user" ? "bg-blue-600 text-white" : "bg-neutral-900 text-white"
+              }`}
+            >
               <ReactMarkdown rehypePlugins={[rehypeRaw]} children={msg.text} />
             </div>
           </div>
@@ -83,11 +92,14 @@ function AIChat() {
         )}
       </div>
 
-      {/* Bottom Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-neutral-800 p-3">
         <div className="flex justify-center flex-wrap gap-2 mb-3">
           {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((btn, i) => (
-            <button key={i} onClick={() => setInput(btn)} className="border px-3 py-1 rounded-full text-sm hover:bg-white hover:text-black transition">
+            <button
+              key={i}
+              onClick={() => setInput(btn)}
+              className="border px-3 py-1 rounded-full text-sm hover:bg-white hover:text-black transition"
+            >
               {btn}
             </button>
           ))}
