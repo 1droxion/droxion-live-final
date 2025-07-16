@@ -13,16 +13,16 @@ function AIChat() {
     if (!input.trim()) return;
 
     const userMsg = { role: "user", content: input };
-    setMessages((prev) => [userMsg, ...prev]); // Add to top
+    setMessages((prev) => [userMsg, ...prev]); // Show newest at top
     setInput("");
     setLoading(true);
 
     try {
       const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-        message: input,
+        prompt: input,
       });
-      const botMsg = { role: "assistant", content: res.data.response };
-      setMessages((prev) => [botMsg, ...prev]); // Add to top
+      const botMsg = { role: "assistant", content: res.data.reply }; // << fixed here
+      setMessages((prev) => [botMsg, ...prev]);
     } catch {
       setMessages((prev) => [
         { role: "assistant", content: "⚠️ Error from AI. Try again." },
@@ -54,12 +54,10 @@ function AIChat() {
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-white">
-      {/* Logo */}
       <div className="text-center pt-6 pb-2">
         <h1 className="text-2xl font-bold text-gray-400">Droxion</h1>
       </div>
 
-      {/* Chat area */}
       <div
         ref={chatRef}
         className="flex-1 overflow-y-auto px-4 pb-40 pt-2 max-w-3xl mx-auto w-full"
@@ -81,7 +79,6 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Bottom input bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-black z-10 px-2 py-3 border-t border-gray-800">
         <div className="flex justify-center mb-2 flex-wrap gap-2">
           <ToolButton title="Create Images" />
