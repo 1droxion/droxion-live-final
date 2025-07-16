@@ -26,7 +26,7 @@ function AIChat() {
         const imgUrl = imgRes.data.image_url;
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: `<img src="${imgUrl}" alt="Generated Image" style="border-radius: 12px; max-width: 100%;" />`,
+          content: `<img src='${imgUrl}' alt='Generated Image' style='border-radius: 12px; max-width: 100%;' onerror="this.style.display='none'" />`,
         }]);
       } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
         const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
@@ -35,15 +35,12 @@ function AIChat() {
         const videoId = ytUrl.split("v=")[1];
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
+          content: `<b>📺 ${title}</b><br/><iframe width='100%' height='315' src='https://www.youtube.com/embed/${videoId}' frameborder='0' allowfullscreen></iframe>`,
         }]);
       } else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
         const reply = res.data.reply;
-        const finalReply = reply.replace(
-          /(https?:\/\/[^\s]+)/g,
-          (url) => `[🔗 ${url}](${url})`
-        );
+        const finalReply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
         setMessages((prev) => [...prev, { role: "assistant", content: finalReply }]);
       }
     } catch {
@@ -148,8 +145,10 @@ function AIChat() {
             ))}
             {loading && (
               <div className="my-3 text-left">
-                <div className="flex items-center justify-start">
-                  <span className="text-2xl text-gray-400 animate-futureX">✖</span>
+                <div className="flex gap-1 items-center">
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
                 </div>
               </div>
             )}
