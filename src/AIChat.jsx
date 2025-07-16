@@ -49,8 +49,7 @@ function AIChat() {
     const query = customPrompt || input;
     if (!query.trim()) return;
 
-    const userMsg = { role: "user", content: query };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { role: "user", content: query }]);
     setInput("");
     setTyping(true);
 
@@ -89,7 +88,7 @@ function AIChat() {
     } catch (e) {
       setMessages((prev) => [...prev, {
         role: "assistant",
-        content: "⚠️ No live result found. Try again with something more specific.",
+        content: "⚠️ Sorry, something went wrong.",
       }]);
     } finally {
       setTyping(false);
@@ -108,35 +107,33 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white min-h-screen flex flex-col items-center px-4">
-      <div className="text-2xl font-bold mt-10 mb-6 flex items-center gap-2">
-        <span className="text-white">🚀 Droxion</span>
-      </div>
+      <div className="text-3xl font-bold mt-10 mb-8">🚀 Droxion</div>
 
-      <div className="bg-[#111] w-full max-w-2xl rounded-xl px-4 py-3 flex items-center space-x-2">
+      <div className="bg-[#111] rounded-xl px-5 py-3 w-full max-w-xl flex items-center space-x-2 shadow-md">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="What do you want to know?"
-          className="bg-transparent flex-1 text-white placeholder-gray-400 focus:outline-none"
+          className="bg-transparent flex-1 text-white placeholder-gray-400 text-md focus:outline-none"
         />
-        <button onClick={() => handleSend()} className="text-white text-xl px-3">↑</button>
+        <button onClick={() => handleSend()} className="text-white text-xl px-2">↑</button>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-3 mt-4 mb-6">
+      <div className="flex flex-wrap justify-center gap-3 mt-5 mb-6">
         {smartButtons.map((btn, i) => (
           <button
             key={i}
             onClick={() => handleSmartClick(btn)}
-            className="text-sm px-4 py-1 border border-white rounded hover:bg-white hover:text-black transition"
+            className="text-sm px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black transition"
           >
             {btn.label}
           </button>
         ))}
       </div>
 
-      <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 py-4">
+      <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 py-6">
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -166,7 +163,7 @@ function AIChat() {
         <div ref={chatRef} />
       </div>
 
-      <div className="mb-6">
+      <div className="mb-8">
         <button
           onClick={() => setVoiceOn(!voiceOn)}
           className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
