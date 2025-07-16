@@ -11,6 +11,7 @@ function AIChat() {
 
   const sendMessage = async () => {
     if (!input.trim()) return;
+
     const userMsg = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -25,7 +26,7 @@ function AIChat() {
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "⚠️ Something went wrong. Try again." },
+        { role: "assistant", content: "⚠️ Error from AI. Try again." },
       ]);
     } finally {
       setLoading(false);
@@ -58,21 +59,21 @@ function AIChat() {
   );
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-white relative">
-      {/* Top Logo */}
-      <div className="text-center pt-4 pb-2">
-        <h1 className="text-2xl font-semibold text-gray-400">Droxion</h1>
+    <div className="flex flex-col min-h-screen bg-black text-white">
+      {/* Logo */}
+      <div className="text-center pt-6 pb-2">
+        <h1 className="text-2xl font-bold text-gray-400">Droxion</h1>
       </div>
 
-      {/* Chat Area */}
+      {/* Chat area */}
       <div
         ref={chatRef}
-        className="flex-1 overflow-y-auto px-4 pb-32 w-full max-w-3xl mx-auto"
+        className="flex-1 overflow-y-auto px-4 pt-2 pb-40 max-w-3xl mx-auto w-full"
       >
-        {messages.map((msg, index) => (
+        {messages.map((msg, i) => (
           <div
-            key={index}
-            className={`my-4 text-sm whitespace-pre-wrap ${
+            key={i}
+            className={`my-3 text-sm ${
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
@@ -86,8 +87,8 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black z-10 px-2 py-3">
+      {/* Bottom bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black z-10 px-2 py-3 border-t border-gray-800">
         <div className="flex justify-center mb-2 flex-wrap gap-2">
           <ToolButton title="Create Images" />
           <ToolButton title="Research" />
@@ -95,6 +96,7 @@ function AIChat() {
           <ToolButton title="Latest News" />
           <ToolButton title="Personas" />
         </div>
+
         <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
           <input
             type="text"
