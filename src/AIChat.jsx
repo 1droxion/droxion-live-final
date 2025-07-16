@@ -64,12 +64,12 @@ function AIChat() {
         <h1 className="text-2xl font-semibold text-gray-400">Droxion</h1>
       </div>
 
-      {/* Chat Replies (latest on top) */}
+      {/* Chat Area */}
       <div
         ref={chatRef}
-        className="flex-1 overflow-y-auto px-4 pb-36 w-full max-w-3xl mx-auto"
+        className="flex-1 overflow-y-auto px-4 pb-32 w-full max-w-3xl mx-auto"
       >
-        {[...messages].reverse().map((msg, index) => (
+        {messages.map((msg, index) => (
           <div
             key={index}
             className={`my-4 text-sm whitespace-pre-wrap ${
@@ -86,7 +86,7 @@ function AIChat() {
         ))}
       </div>
 
-      {/* Fixed Bottom Bar */}
+      {/* Bottom Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-black z-10 px-2 py-3">
         <div className="flex justify-center mb-2 flex-wrap gap-2">
           <ToolButton title="Create Images" />
