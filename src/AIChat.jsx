@@ -1,3 +1,4 @@
+// AIChat.jsx
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -26,7 +27,7 @@ export default function AIChat() {
     setInput("");
 
     try {
-      const res = await axios.post("/chat", {
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
         prompt: input,
         voiceMode: false,
       });
@@ -55,20 +56,25 @@ export default function AIChat() {
     if (content?.includes(".jpg") || content?.includes(".png")) {
       return <img src={content} alt="Generated" className="rounded-xl mt-2" />;
     }
-    if (content?.includes("youtube.com")) {
-      const url = content.match(/https:\/\/www\.youtube\.com\S+/)?.[0];
-      if (url) {
-        const videoId = new URL(url).searchParams.get("v");
-        return (
-          <iframe
-            width="100%"
-            height="240"
-            className="rounded-xl mt-2"
-            src={`https://www.youtube.com/embed/${videoId}`}
-            frameBorder="0"
-            allowFullScreen
-          ></iframe>
-        );
+    if (content?.includes("youtube.com") || content?.includes("youtu.be")) {
+      const urlMatch = content.match(/https?:\/\/(?:www\.)?(youtube\.com\S+|youtu\.be\S+)/);
+      if (urlMatch) {
+        let videoId = "";
+        try {
+          const url = new URL(urlMatch[0]);
+          videoId = url.searchParams.get("v") || url.pathname.replace("/", "");
+        } catch {}
+        if (videoId)
+          return (
+            <iframe
+              width="100%"
+              height="240"
+              className="rounded-xl mt-2"
+              src={`https://www.youtube.com/embed/${videoId}`}
+              frameBorder="0"
+              allowFullScreen
+            ></iframe>
+          );
       }
     }
     return (
