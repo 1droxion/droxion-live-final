@@ -7,6 +7,7 @@ function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
   const bottomRef = useRef(null);
 
   const sendMessage = async (customInput) => {
@@ -16,6 +17,7 @@ function AIChat() {
     const userMsg = { role: "user", content: prompt };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    setSuggestions([]);
     setLoading(true);
 
     try {
@@ -24,7 +26,7 @@ function AIChat() {
         const imgUrl = imgRes.data.image_url;
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: `![Generated Image](${imgUrl})`,
+          content: `<img src="${imgUrl}" alt="Generated Image" style="border-radius: 12px; max-width: 100%;" />`,
         }]);
       } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
         const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
@@ -58,6 +60,18 @@ function AIChat() {
     }
   };
 
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    const lower = val.toLowerCase();
+    if (lower.includes("bitcoin")) setSuggestions(["BTC Price", "Crypto News"]);
+    else if (lower.includes("weather")) setSuggestions(["Weather in NYC", "7-day Forecast"]);
+    else if (lower.includes("stock")) setSuggestions(["stock: AAPL", "stock: TSLA"]);
+    else if (lower.includes("time")) setSuggestions(["Time in Tokyo", "Time in India"]);
+    else if (lower.includes("news")) setSuggestions(["AI News", "World News"]);
+    else setSuggestions([]);
+  };
+
   const ToolButton = ({ title }) => (
     <button
       onClick={() => sendMessage(title)}
@@ -75,12 +89,10 @@ function AIChat() {
 
   return (
     <div className="bg-black text-white flex flex-col h-[100dvh]">
-      {/* Droxion Title */}
       <div className="text-center pt-4 pb-2">
         <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
       </div>
 
-      {/* No messages yet */}
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col justify-center items-center px-4 overflow-hidden">
           <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 max-w-xl w-full shadow-xl">
@@ -89,9 +101,16 @@ function AIChat() {
               placeholder="What do you want to know?"
               className="w-full bg-transparent text-white text-sm outline-none mb-4"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
             />
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {suggestions.map((sug, i) => (
+                  <ToolButton key={i} title={sug} />
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 mb-4">
               <ToolButton title="DeepSearch" />
               <ToolButton title="Think" />
@@ -114,7 +133,6 @@ function AIChat() {
         </div>
       ) : (
         <>
-          {/* Chat history */}
           <div className="flex-1 overflow-y-auto px-4 pb-40 max-w-3xl mx-auto w-full">
             {messages.map((msg, i) => (
               <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
@@ -130,16 +148,14 @@ function AIChat() {
             ))}
             {loading && (
               <div className="my-3 text-left">
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full" />
-                  <span className="text-gray-500 animate-pulse">✖</span>
+                <div className="flex items-center justify-start">
+                  <span className="text-2xl text-gray-400 animate-futureX">✖</span>
                 </div>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
-          {/* Fixed input bar */}
           <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
             <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
               <ToolButton title="DeepSearch" />
@@ -156,7 +172,7 @@ function AIChat() {
                 placeholder="Ask anything..."
                 className="flex-1 bg-transparent text-white text-sm outline-none"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
               />
               <button
