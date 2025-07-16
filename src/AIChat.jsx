@@ -10,7 +10,6 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
-  const chatRef = useRef(null);
   const synth = window.speechSynthesis;
   const userId = useRef("");
 
@@ -52,7 +51,6 @@ function AIChat() {
     setMessages((prev) => [userMsg, ...prev]);
 
     try {
-      // image detect
       if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
         const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
@@ -100,24 +98,14 @@ function AIChat() {
   }, []);
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4 py-4">
-      <div className="text-3xl font-bold mb-6 backdrop-blur-md bg-white/10 px-6 py-3 rounded-xl shadow">
-        🚀 Droxion
+    <div className="bg-black text-white min-h-screen flex flex-col">
+      {/* TOP BAR */}
+      <div className="text-center py-4">
+        <h1 className="text-2xl font-bold text-gray-300">🚀 Droxion</h1>
       </div>
 
-      <div className="backdrop-blur-xl bg-white/5 rounded-xl px-5 py-3 w-full max-w-xl flex items-center space-x-2 shadow-lg">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Ask anything..."
-          className="bg-transparent flex-1 text-white placeholder-gray-400 text-md focus:outline-none"
-        />
-        <button onClick={() => handleSend()} className="text-white text-2xl px-2">➤</button>
-      </div>
-
-      <div className="flex flex-wrap justify-center gap-3 mt-5 mb-4">
+      {/* BUTTONS */}
+      <div className="flex flex-wrap justify-center gap-3 mb-4 px-4">
         {smartButtons.map((btn, i) => (
           <button
             key={i}
@@ -129,12 +117,12 @@ function AIChat() {
         ))}
       </div>
 
-      <div className="w-full max-w-3xl flex-1 overflow-y-auto flex flex-col-reverse space-y-4-reverse py-4">
-        <div ref={chatRef} />
+      {/* MESSAGES AREA */}
+      <div className="flex-1 overflow-y-auto flex flex-col-reverse px-4 pb-32">
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`px-3 whitespace-pre-wrap text-sm ${
+            className={`my-2 text-sm whitespace-pre-wrap ${
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
@@ -157,13 +145,31 @@ function AIChat() {
         {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
       </div>
 
-      <div className="mt-6 mb-3">
-        <button
-          onClick={() => setVoiceOn(!voiceOn)}
-          className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
-        >
-          {voiceOn ? "Voice On" : "🔇 Voice Off"}
-        </button>
+      {/* INPUT BAR FIXED BOTTOM */}
+      <div className="fixed bottom-0 left-0 w-full bg-black border-t border-gray-800 p-4">
+        <div className="max-w-2xl mx-auto flex items-center gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            placeholder="Ask anything..."
+            className="flex-1 bg-gray-900 text-white rounded-md px-4 py-2 text-sm focus:outline-none"
+          />
+          <button
+            onClick={() => handleSend()}
+            className="bg-white text-black text-sm font-bold px-4 py-2 rounded hover:bg-gray-300"
+          >➤</button>
+        </div>
+
+        <div className="mt-2 text-center">
+          <button
+            onClick={() => setVoiceOn(!voiceOn)}
+            className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
+          >
+            {voiceOn ? "Voice On" : "🔇 Voice Off"}
+          </button>
+        </div>
       </div>
     </div>
   );
