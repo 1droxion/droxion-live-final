@@ -1,45 +1,57 @@
-// AIChat.jsx
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import { FaPlay } from "react-icons/fa";
 
-export default function AIChat() {
+function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
   const bottomRef = useRef(null);
 
-  useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
+  const sendMessage = async (customInput) => {
+    const prompt = customInput || input;
+    if (!prompt.trim()) return;
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    const userMsg = { role: "user", content: input };
+    const userMsg = { role: "user", content: prompt };
     setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-    setHasInteracted(true);
     setInput("");
+    setLoading(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-        prompt: input,
-        voiceMode: false,
-      });
-      const botReply = res.data.reply;
-      setMessages((prev) => [...prev, { role: "bot", content: botReply }]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "bot", content: "❌ Something went wrong. Try again." },
-      ]);
+      if (prompt.toLowerCase().includes("image")) {
+        const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
+        const imgUrl = imgRes.data.image_url;
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: `<img src="${imgUrl}" alt="Generated Image" style="border-radius: 12px; max-width: 100%;" />`,
+        }]);
+      } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
+        const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
+        const ytUrl = ytRes.data.url;
+        const title = ytRes.data.title;
+        let videoId = "";
+
+        try {
+          const ytURL = new URL(ytUrl);
+          videoId = ytURL.searchParams.get("v") || ytURL.pathname.split("/").pop();
+        } catch (e) {}
+
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
+        }]);
+      } else {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
+        let reply = res.data.reply;
+        reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      }
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Error from AI. Try again." }]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleKeyDown = (e) => {
@@ -49,114 +61,105 @@ export default function AIChat() {
     }
   };
 
-  const renderContent = (content) => {
-    if (content?.includes("<iframe")) {
-      return <div dangerouslySetInnerHTML={{ __html: content }} />;
+  const ToolButton = ({ title }) => (
+    <button
+      onClick={() => sendMessage(title)}
+      className="border border-gray-700 bg-black text-white px-3 py-1 rounded-full text-xs hover:bg-white hover:text-black transition"
+    >
+      {title}
+    </button>
+  );
+
+  useEffect(() => {
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
-    if (content?.includes(".jpg") || content?.includes(".png")) {
-      return <img src={content} alt="Generated" className="rounded-xl mt-2" />;
-    }
-    if (content?.includes("youtube.com") || content?.includes("youtu.be")) {
-      const urlMatch = content.match(/https?:\/\/(?:www\.)?(youtube\.com\S+|youtu\.be\S+)/);
-      if (urlMatch) {
-        let videoId = "";
-        try {
-          const url = new URL(urlMatch[0]);
-          videoId = url.searchParams.get("v") || url.pathname.replace("/", "");
-        } catch {}
-        if (videoId)
-          return (
-            <iframe
-              width="100%"
-              height="240"
-              className="rounded-xl mt-2"
-              src={`https://www.youtube.com/embed/${videoId}`}
-              frameBorder="0"
-              allowFullScreen
-            ></iframe>
-          );
-      }
-    }
-    return (
-      <ReactMarkdown rehypePlugins={[rehypeRaw]} className="prose prose-invert">
-        {content}
-      </ReactMarkdown>
-    );
-  };
+  }, [messages, loading]);
 
   return (
-    <div className="bg-black min-h-screen text-white flex flex-col">
-      <h1 className="text-center text-3xl font-semibold pt-6 pb-4 text-gray-300">
-        Droxion
-      </h1>
+    <div className="bg-black text-white flex flex-col h-[100dvh]">
+      <div className="text-center pt-4 pb-2">
+        <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
+      </div>
 
-      {!hasInteracted ? (
-        <div className="flex flex-col items-center justify-center flex-1">
-          <div className="bg-zinc-900 border border-zinc-700 p-6 rounded-2xl">
-            <p className="text-lg mb-4 text-gray-300">What do you want to know?</p>
-            <div className="flex flex-wrap gap-3 justify-center">
-              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map(
-                (btn) => (
-                  <button
-                    key={btn}
-                    onClick={() => {
-                      setInput(btn);
-                      sendMessage();
-                    }}
-                    className="border border-gray-500 rounded-full px-4 py-1 text-sm hover:bg-gray-700"
-                  >
-                    {btn}
-                  </button>
-                )
-              )}
+      {messages.length === 0 ? (
+        <div className="flex-1 flex flex-col justify-center items-center px-4 overflow-hidden">
+          <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 max-w-xl w-full shadow-xl">
+            <input
+              type="text"
+              placeholder="What do you want to know?"
+              className="w-full bg-transparent text-white text-sm outline-none mb-4"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <div className="flex flex-wrap gap-2 mb-4">
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
+                <ToolButton key={title} title={title} />
+              ))}
             </div>
-            <button
-              onClick={sendMessage}
-              className="bg-white text-black mt-6 mx-auto rounded-full p-3"
-            >
-              <FaPlay />
-            </button>
+            <div className="text-center">
+              <button
+                onClick={() => sendMessage()}
+                disabled={loading}
+                className="bg-white text-black text-sm px-4 py-1 rounded-full hover:bg-gray-200 transition"
+              >
+                ➤
+              </button>
+            </div>
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-28">
-          <div className="max-w-2xl mx-auto">
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`my-4 p-3 rounded-xl max-w-xl text-sm whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-blue-700 text-white self-end ml-auto text-right"
-                    : "bg-zinc-800 text-white"
-                }`}
-              >
-                {renderContent(msg.content)}
+        <>
+          <div className="flex-1 overflow-y-auto px-4 pb-40 max-w-3xl mx-auto w-full">
+            {messages.map((msg, i) => (
+              <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
+                <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : "bg-[#1a1a1a]"}`}>
+                  <ReactMarkdown
+                    className="prose prose-invert text-sm"
+                    rehypePlugins={[rehypeRaw]}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             ))}
-            {loading && <div className="text-center text-gray-400">Thinking...</div>}
+            {loading && (
+              <div className="my-3 text-left">
+                <div className="text-sm text-gray-400">Thinking...</div>
+              </div>
+            )}
             <div ref={bottomRef} />
           </div>
-        </div>
-      )}
 
-      <div className="fixed bottom-4 left-0 right-0 px-4">
-        <div className="max-w-2xl mx-auto flex gap-2">
-          <textarea
-            className="flex-1 p-3 rounded-full bg-zinc-800 border border-zinc-600 text-white placeholder-gray-400 resize-none"
-            rows={1}
-            placeholder="Ask anything..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            onClick={sendMessage}
-            className="bg-white text-black p-3 rounded-full hover:bg-gray-200"
-          >
-            <FaPlay />
-          </button>
-        </div>
-      </div>
+          <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
+            <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
+                <ToolButton key={title} title={title} />
+              ))}
+            </div>
+            <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
+              <input
+                type="text"
+                placeholder="Ask anything..."
+                className="flex-1 bg-transparent text-white text-sm outline-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={loading}
+                className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
+              >
+                ➤
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+export default AIChat;
