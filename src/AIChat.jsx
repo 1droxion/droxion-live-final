@@ -11,7 +11,6 @@ function AIChat() {
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-
     const userMsg = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -26,10 +25,7 @@ function AIChat() {
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ Something went wrong. Try again.",
-        },
+        { role: "assistant", content: "⚠️ Something went wrong. Try again." },
       ]);
     } finally {
       setLoading(false);
@@ -62,20 +58,18 @@ function AIChat() {
   );
 
   return (
-    <div className="flex flex-col bg-black text-white min-h-screen">
-      {/* Logo */}
-      <div className="text-center pt-6">
-        <h1 className="text-2xl font-semibold text-gray-300">Droxion</h1>
+    <div className="flex flex-col min-h-screen bg-black text-white">
+      {/* Top Logo and Tools */}
+      <div className="text-center pt-5">
+        <h1 className="text-2xl font-semibold text-white">Droxion</h1>
       </div>
 
-      {/* Top Buttons */}
-      <div className="flex justify-center gap-3 mt-4 mb-2 flex-wrap">
+      <div className="flex justify-center mt-4 gap-3 flex-wrap">
         <ToolButton title="DeepSearch" />
         <ToolButton title="Think" />
       </div>
 
-      {/* Input Panel */}
-      <div className="flex justify-center">
+      <div className="flex justify-center mt-4">
         <div className="bg-[#111] rounded-xl p-4 w-full max-w-2xl mx-4">
           <p className="text-sm text-gray-400 mb-2">What do you want to know?</p>
           <div className="flex flex-wrap gap-2">
@@ -88,29 +82,31 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Chat Area */}
+      {/* Chat Scroll Area */}
       <div
         ref={chatRef}
-        className="flex-1 overflow-y-auto px-6 mt-4 pb-32"
-        style={{ maxHeight: "calc(100vh - 260px)" }}
+        className="flex-1 overflow-y-auto px-6 pt-6 pb-32 w-full max-w-3xl mx-auto"
       >
-        {messages.map((msg, i) => (
+        {messages.map((msg, index) => (
           <div
-            key={i}
-            className={`my-4 text-sm whitespace-pre-wrap ${
+            key={index}
+            className={`my-4 text-sm ${
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
-            <ReactMarkdown rehypePlugins={[rehypeRaw]} className="prose prose-invert">
+            <ReactMarkdown
+              className="prose prose-invert"
+              rehypePlugins={[rehypeRaw]}
+            >
               {msg.content}
             </ReactMarkdown>
           </div>
         ))}
       </div>
 
-      {/* Bottom Input Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black px-4 py-3">
-        <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
+      {/* Fixed Bottom Input */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black px-4 py-3 z-10">
+        <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
           <input
             type="text"
             placeholder="Type your question..."
