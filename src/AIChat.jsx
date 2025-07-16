@@ -33,10 +33,6 @@ function AIChat() {
     userId.current = id;
   }, []);
 
-  useEffect(() => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
-
   const speak = (text) => {
     if (!voiceOn) return;
     const utter = new SpeechSynthesisUtterance(text);
@@ -49,17 +45,20 @@ function AIChat() {
     const query = customPrompt || input;
     if (!query.trim()) return;
 
-    const userMsg = { role: "user", content: query };
-    setMessages((prev) => [userMsg, ...prev]);
     setInput("");
     setTyping(true);
 
+    const userMsg = { role: "user", content: query };
+    setMessages((prev) => [userMsg, ...prev]);
+
     try {
+      // image detect
       if (query.toLowerCase().includes("generate") && query.toLowerCase().includes("image")) {
         const imgRes = await axios.post(`${backend}/generate-image`, { prompt: query });
         const imageUrl = imgRes.data.image_url;
         setMessages((prev) => [{ role: "assistant", content: `![image](${imageUrl})` }, ...prev]);
         speak("Here is your image");
+        setTyping(false);
         return;
       }
 
@@ -68,7 +67,7 @@ function AIChat() {
         user_id: userId.current,
       });
 
-      const reply = res.data.reply || "⚠️ No live result found. Try again.";
+      const reply = res.data.reply || "⚠️ No live result found.";
       const cards = (res.data.cards || []).map((c) => ({ role: "assistant", content: c }));
       const suggestions = res.data.suggestions || [];
 
@@ -78,28 +77,22 @@ function AIChat() {
             .join("")}</div>`
         : "";
 
-      setMessages((prev) => [
-        ...(suggestionButtons ? [{ role: "assistant", content: suggestionButtons }] : []),
-        ...cards,
-        { role: "assistant", content: reply },
-        ...prev,
-      ]);
+      const fullReply = [{ role: "assistant", content: reply }, ...cards];
+      if (suggestionButtons) fullReply.unshift({ role: "assistant", content: suggestionButtons });
 
+      setMessages((prev) => [...fullReply, ...prev]);
       speak(reply);
     } catch {
-      setMessages((prev) => [
-        { role: "assistant", content: "⚠️ Sorry, something went wrong." },
-        ...prev,
-      ]);
+      setMessages((prev) => [{ role: "assistant", content: "⚠️ Something went wrong." }, ...prev]);
     } finally {
       setTyping(false);
     }
   };
 
-  const handleSmartClick = (item) => {
-    if (item.action === "image") window.location.href = "/image";
-    else if (item.action === "edit-image") window.location.href = "/edit-image";
-    else handleSend(item.prefix + " " + input);
+  const handleSmartClick = (btn) => {
+    if (btn.action === "image") window.location.href = "/ai-image";
+    else if (btn.action === "edit-image") window.location.href = "/editor";
+    else handleSend(btn.prefix + " " + input);
   };
 
   useEffect(() => {
@@ -107,36 +100,37 @@ function AIChat() {
   }, []);
 
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4 py-6">
-      <div className="text-3xl font-bold mb-6 backdrop-blur-sm bg-white/10 px-6 py-2 rounded-xl shadow">
+    <div className="bg-black text-white min-h-screen flex flex-col items-center px-4 py-4">
+      <div className="text-3xl font-bold mb-6 backdrop-blur-md bg-white/10 px-6 py-3 rounded-xl shadow">
         🚀 Droxion
       </div>
 
-      <div className="backdrop-blur-md bg-white/10 rounded-xl px-4 py-3 w-full max-w-xl flex items-center space-x-2 shadow">
+      <div className="backdrop-blur-xl bg-white/5 rounded-xl px-5 py-3 w-full max-w-xl flex items-center space-x-2 shadow-lg">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="What do you want to know?"
+          placeholder="Ask anything..."
           className="bg-transparent flex-1 text-white placeholder-gray-400 text-md focus:outline-none"
         />
-        <button onClick={() => handleSend()} className="text-white text-xl px-2">↑</button>
+        <button onClick={() => handleSend()} className="text-white text-2xl px-2">➤</button>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-3 mt-4 mb-6">
+      <div className="flex flex-wrap justify-center gap-3 mt-5 mb-4">
         {smartButtons.map((btn, i) => (
           <button
             key={i}
             onClick={() => handleSmartClick(btn)}
-            className="text-sm px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black transition"
+            className="text-xs px-4 py-1 border border-white rounded-full hover:bg-white hover:text-black transition"
           >
             {btn.label}
           </button>
         ))}
       </div>
 
-      <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 py-4 flex flex-col-reverse">
+      <div className="w-full max-w-3xl flex-1 overflow-y-auto flex flex-col-reverse space-y-4-reverse py-4">
+        <div ref={chatRef} />
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -144,9 +138,7 @@ function AIChat() {
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
-            {msg.content.includes("<div") ||
-            msg.content.includes("<iframe") ||
-            msg.content.includes("<img") ? (
+            {msg.content.includes("<div") || msg.content.includes("<iframe") || msg.content.includes("<img") ? (
               <div dangerouslySetInnerHTML={{ __html: msg.content }} />
             ) : (
               <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
@@ -163,10 +155,9 @@ function AIChat() {
           </div>
         ))}
         {typing && <div className="text-left ml-4"><span className="inline-block w-2 h-2 bg-white rounded-full animate-ping" /></div>}
-        <div ref={chatRef} />
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 mb-3">
         <button
           onClick={() => setVoiceOn(!voiceOn)}
           className="text-xs border border-white px-3 py-1 rounded hover:bg-white hover:text-black"
