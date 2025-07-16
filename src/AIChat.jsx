@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 
 function AIChat() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([]); // normal order (bottom-first)
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
@@ -14,26 +14,26 @@ function AIChat() {
     if (!prompt.trim()) return;
 
     const userMsg = { role: "user", content: prompt };
-    setMessages((prev) => [userMsg, ...prev]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
-      // Image prompt → Replit
+      // image
       if (prompt.toLowerCase().includes("image")) {
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", {
           prompt,
         });
         const imgUrl = imgRes.data.image_url;
         setMessages((prev) => [
+          ...prev,
           {
             role: "assistant",
             content: `![Generated Image](${imgUrl})`,
           },
-          ...prev,
         ]);
       }
-      // YouTube prompt
+      // YouTube
       else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
         const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
           prompt,
@@ -42,32 +42,31 @@ function AIChat() {
         const title = ytRes.data.title;
         const videoId = ytUrl.split("v=")[1];
         setMessages((prev) => [
+          ...prev,
           {
             role: "assistant",
             content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
           },
-          ...prev,
         ]);
       }
-      // Normal chat prompt
+      // chat
       else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt,
         });
         const reply = res.data.reply;
 
-        // If reply contains URLs, make it clickable
         const finalReply = reply.replace(
           /(https?:\/\/[^\s]+)/g,
           (url) => `[🔗 ${url}](${url})`
         );
 
-        setMessages((prev) => [{ role: "assistant", content: finalReply }, ...prev]);
+        setMessages((prev) => [...prev, { role: "assistant", content: finalReply }]);
       }
     } catch {
       setMessages((prev) => [
-        { role: "assistant", content: "⚠️ Error from AI. Try again." },
         ...prev,
+        { role: "assistant", content: "⚠️ Error from AI. Try again." },
       ]);
     } finally {
       setLoading(false);
@@ -102,7 +101,7 @@ function AIChat() {
         <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
       </div>
 
-      {/* First screen layout */}
+      {/* Before typing */}
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col justify-center items-center px-4">
           <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 max-w-xl w-full shadow-xl">
@@ -136,8 +135,8 @@ function AIChat() {
         </div>
       ) : (
         <>
-          {/* Chat replies */}
-          <div className="flex-1 overflow-y-auto px-4 max-w-3xl mx-auto w-full">
+          {/* Replies scroll down */}
+          <div className="flex-1 overflow-y-auto px-4 max-w-3xl mx-auto w-full pb-36">
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -145,7 +144,11 @@ function AIChat() {
                   msg.role === "user" ? "text-right" : "text-left"
                 }`}
               >
-                <div className="inline-block bg-[#1a1a1a] p-3 rounded-xl max-w-full">
+                <div
+                  className={`inline-block p-3 rounded-xl max-w-full ${
+                    msg.role === "user" ? "bg-blue-700" : "bg-[#1a1a1a]"
+                  }`}
+                >
                   <ReactMarkdown
                     className="prose prose-invert text-sm"
                     rehypePlugins={[rehypeRaw]}
@@ -156,16 +159,19 @@ function AIChat() {
               </div>
             ))}
             {loading && (
-              <div className="my-3 text-left text-sm">
-                <div className="inline-block bg-[#1a1a1a] px-4 py-2 rounded-xl">
-                  <span className="animate-pulse">Thinking...</span>
+              <div className="my-3 text-left">
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full" />
+                  <div className="text-sm text-gray-400 font-mono tracking-widest">
+                    <span className="text-gray-500 animate-pulse">✖</span>
+                  </div>
                 </div>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
-          {/* Input bar fixed at bottom */}
+          {/* Input bar fixed */}
           <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4">
             <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
               <ToolButton title="DeepSearch" />
