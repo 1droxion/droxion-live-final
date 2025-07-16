@@ -22,10 +22,13 @@ function AIChat() {
       if (prompt.toLowerCase().includes("image")) {
         const imgRes = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
         const imgUrl = imgRes.data.image_url;
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `<img src="${imgUrl}" alt="Generated Image" style="border-radius: 12px; max-width: 100%;" />`,
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `![Generated Image](${imgUrl})`,
+          },
+        ]);
       } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
         const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
         const ytUrl = ytRes.data.url;
@@ -37,10 +40,13 @@ function AIChat() {
           videoId = ytURL.searchParams.get("v") || ytURL.pathname.split("/").pop();
         } catch (e) {}
 
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
+          },
+        ]);
       } else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
         let reply = res.data.reply;
@@ -94,9 +100,11 @@ function AIChat() {
               onKeyDown={handleKeyDown}
             />
             <div className="flex flex-wrap gap-2 mb-4">
-              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
-                <ToolButton key={title} title={title} />
-              ))}
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map(
+                (title) => (
+                  <ToolButton key={title} title={title} />
+                )
+              )}
             </div>
             <div className="text-center">
               <button
@@ -114,7 +122,11 @@ function AIChat() {
           <div className="flex-1 overflow-y-auto px-4 pb-40 max-w-3xl mx-auto w-full">
             {messages.map((msg, i) => (
               <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
-                <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : "bg-[#1a1a1a]"}`}>
+                <div
+                  className={`inline-block p-3 rounded-xl max-w-full break-words ${
+                    msg.role === "user" ? "bg-blue-700" : "bg-[#1a1a1a]"
+                  }`}
+                >
                   <ReactMarkdown
                     className="prose prose-invert text-sm"
                     rehypePlugins={[rehypeRaw]}
@@ -134,9 +146,11 @@ function AIChat() {
 
           <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
             <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
-              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
-                <ToolButton key={title} title={title} />
-              ))}
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map(
+                (title) => (
+                  <ToolButton key={title} title={title} />
+                )
+              )}
             </div>
             <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
               <input
