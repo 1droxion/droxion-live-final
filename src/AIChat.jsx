@@ -91,29 +91,20 @@ function AIChat() {
       <div className="flex-1 overflow-y-auto px-3 max-w-3xl mx-auto w-full pb-32">
         {messages.length === 0 ? (
           <div className="flex flex-col justify-center items-center h-full">
-            <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 w-full shadow-xl">
-              <input
-                type="text"
-                placeholder="What do you want to know?"
-                className="w-full bg-transparent text-white text-sm outline-none mb-4"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-              <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
+            <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 w-full shadow-xl max-w-md text-center">
+              <p className="text-sm text-gray-300 mb-4">What do you want to know?</p>
+              <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
                   <ToolButton key={title} title={title} />
                 ))}
               </div>
-              <div className="text-center">
-                <button
-                  onClick={() => sendMessage()}
-                  disabled={loading}
-                  className="bg-white text-black text-sm px-4 py-1 rounded-full hover:bg-gray-200 transition"
-                >
-                  ➤
-                </button>
-              </div>
+              <button
+                onClick={() => sendMessage()}
+                disabled={loading}
+                className="bg-white text-black text-sm px-4 py-2 rounded-full hover:bg-gray-200 transition"
+              >
+                ➤
+              </button>
             </div>
           </div>
         ) : (
@@ -142,30 +133,32 @@ function AIChat() {
         )}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
-        <div className="flex justify-start overflow-x-auto no-scrollbar gap-2 max-w-full px-2 pb-2">
-          {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
-            <ToolButton key={title} title={title} />
-          ))}
+      {messages.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
+          <div className="flex justify-start overflow-x-auto no-scrollbar gap-2 max-w-full px-2 pb-2">
+            {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
+              <ToolButton key={title} title={title} />
+            ))}
+          </div>
+          <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center mt-2">
+            <input
+              type="text"
+              placeholder="Ask anything..."
+              className="flex-1 bg-transparent text-white text-sm outline-none"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={loading}
+              className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
+            >
+              ➤
+            </button>
+          </div>
         </div>
-        <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center mt-2">
-          <input
-            type="text"
-            placeholder="Ask anything..."
-            className="flex-1 bg-transparent text-white text-sm outline-none"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            onClick={() => sendMessage()}
-            disabled={loading}
-            className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
-          >
-            ➤
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
