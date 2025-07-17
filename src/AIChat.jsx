@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — Final Fixed Version with Full Features & Syntax Correction
+// ✅ AIChat.jsx — Final Version with Fixed handleKeyDown + Smart Live Suggestions
 
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
@@ -31,6 +31,8 @@ function AIChat() {
   const [darkMode, setDarkMode] = useState(true);
   const [voiceActive, setVoiceActive] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState([]);
+  const [livePreview, setLivePreview] = useState(null);
+
   const bottomRef = useRef(null);
   const chatRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -46,10 +48,33 @@ function AIChat() {
     if (val.length > 0) {
       const filtered = SUGGESTIONS.filter((s) => s.toLowerCase().includes(val)).slice(0, 5);
       setFilteredSuggestions(filtered);
+
+      // Live preview detection (Prexacity style)
+      if (val.startsWith("stock:")) {
+        const symbol = val.replace("stock:", "").trim().toUpperCase();
+        setLivePreview(
+          `<b>📈 ${symbol} Live Stock</b><br/><iframe width='100%' height='200' src='https://www.google.com/finance/quote/${symbol}:NASDAQ' frameborder='0'></iframe>`
+        );
+      } else if (val.includes("weather in")) {
+        const city = val.split("weather in")[1].trim();
+        setLivePreview(`<b>🌤️ Live Weather for ${city}</b><br/><i>Preview shown after submitting</i>`);
+      } else if (val.includes("news")) {
+        setLivePreview(`<b>📰 Latest News Preview</b><br/><i>Preview shown after submitting</i>`);
+      } else {
+        setLivePreview(null);
+      }
     } else {
       setFilteredSuggestions([]);
+      setLivePreview(null);
     }
   }, [input]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
   const sendMessage = async (customInput) => {
     const prompt = customInput || input;
@@ -58,6 +83,7 @@ function AIChat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setFilteredSuggestions([]);
+    setLivePreview(null);
     setLoading(true);
 
     try {
@@ -144,6 +170,7 @@ function AIChat() {
     setMessages([]);
     localStorage.removeItem("chatHistory");
     setInput("");
+    setLivePreview(null);
   };
 
   const downloadImage = (url) => {
@@ -182,6 +209,11 @@ function AIChat() {
             </div>
           </div>
         ))}
+
+        {livePreview && (
+          <div className="text-left text-sm text-green-300 p-2 border border-green-700 bg-[#111] rounded-xl mt-2" dangerouslySetInnerHTML={{ __html: livePreview }} />
+        )}
+
         {loading && (
           <div className="my-3 text-left text-sm text-gray-400 px-2">
             <div className="flex gap-1 animate-pulse text-2xl">
@@ -191,6 +223,7 @@ function AIChat() {
             </div>
           </div>
         )}
+
         <div ref={bottomRef} />
       </div>
 
