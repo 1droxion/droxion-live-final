@@ -93,14 +93,22 @@ function AIChat() {
           <div className="flex flex-col justify-center items-center h-full">
             <div className="bg-[#111] border border-gray-700 rounded-2xl p-5 w-full shadow-xl max-w-md text-center">
               <p className="text-sm text-gray-300 mb-4">What do you want to know?</p>
+              <input
+                type="text"
+                placeholder="Ask anything..."
+                className="w-full bg-transparent text-white text-sm outline-none border border-gray-700 rounded-full px-4 py-2 mb-4"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
               <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
                   <ToolButton key={title} title={title} />
                 ))}
               </div>
               <button
-                onClick={() => sendMessage()}
-                disabled={loading}
+                onClick={() => input.trim() && sendMessage()}
+                disabled={loading || !input.trim()}
                 className="bg-white text-black text-sm px-4 py-2 rounded-full hover:bg-gray-200 transition"
               >
                 ➤
@@ -126,7 +134,13 @@ function AIChat() {
               </div>
             ))}
             {loading && (
-              <div className="my-3 text-left text-sm text-gray-400">Thinking...</div>
+              <div className="my-3 text-left text-sm text-gray-400 px-2">
+                <div className="flex gap-1 animate-pulse text-2xl">
+                  <span className="animate-bounce">.</span>
+                  <span className="animate-bounce delay-100">.</span>
+                  <span className="animate-bounce delay-200">.</span>
+                </div>
+              </div>
             )}
             <div ref={bottomRef} />
           </>
