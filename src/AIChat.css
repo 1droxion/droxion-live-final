@@ -15,15 +15,18 @@ input, textarea {
   font-size: 16px !important;
 }
 
+/* Chat Container */
 .ai-chat {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
   height: 100dvh;
   background: #000;
   color: white;
   overflow: hidden;
 }
 
+/* Header */
 .chat-header {
   text-align: center;
   font-size: 24px;
@@ -32,6 +35,7 @@ input, textarea {
   color: lightgray;
 }
 
+/* Body (messages) */
 .chat-body {
   flex: 1;
   overflow-y: auto;
@@ -42,6 +46,7 @@ input, textarea {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Chat Bubble */
 .chat-bubble {
   padding: 0.6rem 1rem;
   margin: 0.5rem 0;
@@ -65,18 +70,22 @@ input, textarea {
   color: white;
 }
 
+/* Footer (input area) */
 .chat-footer {
   border-top: 1px solid #111;
   padding: 1rem 1rem calc(env(safe-area-inset-bottom) + 1rem);
   background: #000;
   position: fixed;
   bottom: 0;
+  left: 0;
+  right: 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   z-index: 999;
 }
 
+/* Prompt buttons */
 .prompt-bar {
   display: flex;
   flex-wrap: wrap;
@@ -95,6 +104,7 @@ input, textarea {
   cursor: pointer;
 }
 
+/* Input bar */
 .chat-input-bar {
   display: flex;
   background: #111;
@@ -127,7 +137,7 @@ input, textarea {
   cursor: pointer;
 }
 
-/* Loading X animation */
+/* Loading (dot or spinner) */
 .loading-wrap {
   align-self: center;
   margin: 1rem 0;
