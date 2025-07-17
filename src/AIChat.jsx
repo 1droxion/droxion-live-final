@@ -1,4 +1,3 @@
-// ✅ Droxion AGI Full Chat (with Phases 1–10, image, YouTube, memory)
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -103,7 +102,7 @@ function AIChat() {
           content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`
         }]);
       }
-      // AGI memory
+      // Memory/Goal Trigger
       else if (input.toLowerCase().startsWith("remember")) {
         await axios.post("/remember", { input });
         setMessages((prev) => [...prev, { role: "assistant", content: "🧠 Got it! I’ve saved that to memory." }]);
@@ -121,7 +120,7 @@ function AIChat() {
         });
         setMessages((prev) => [...prev, { role: "assistant", content: "🤖 Executed step 1:\n" + res.data.result }]);
       }
-      // Normal AI chat
+      // Normal
       else {
         const res = await axios.post("/chat", { prompt });
         let reply = res.data.reply;
