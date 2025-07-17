@@ -3,7 +3,7 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
-  FaMicrophone, FaUpload, FaCamera, FaSun, FaMoon, FaTrash, FaDownload
+  FaMicrophone, FaUpload, FaCamera, FaSun, FaMoon, FaTrash
 } from "react-icons/fa";
 
 const PERSONAS = ["Coder", "Marketer", "Therapist", "Motivator", "Artist"];
@@ -16,12 +16,9 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
-  const [voiceActive, setVoiceActive] = useState(false);
   const [persona, setPersona] = useState(null);
-  const [livePreview, setLivePreview] = useState(null);
   const [autoSuggest, setAutoSuggest] = useState("");
   const bottomRef = useRef(null);
-  const chatRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
 
@@ -29,38 +26,18 @@ function AIChat() {
 
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    scrollToBottom();
   }, [messages]);
 
   useEffect(() => {
-    const val = input.toLowerCase();
-    if (!val) {
-      setLivePreview(null);
-      setAutoSuggest("");
-      return;
+    if (!localStorage.getItem("user_id")) {
+      localStorage.setItem("user_id", "user_" + Math.random().toString(36).substring(2, 12));
     }
+  }, []);
 
-    if (val.startsWith("stock:")) {
-      const symbol = val.replace("stock:", "").trim().toUpperCase();
-      setLivePreview(`<b>📈 ${symbol} Stock Preview</b><br/><iframe width='100%' height='200' src='https://www.google.com/finance/quote/${symbol}:NASDAQ' frameborder='0'></iframe>`);
-      setAutoSuggest("Show stock preview");
-    } else if (val.includes("weather in")) {
-      const city = val.split("weather in")[1]?.trim();
-      if (city) {
-        setLivePreview(`<b>🌤️ Weather Preview for ${city}</b><br/><i>Click ➤ to see full weather data</i>`);
-        setAutoSuggest("Get weather forecast");
-      }
-    } else if (val.includes("image of")) {
-      setAutoSuggest("Generate AI image");
-    } else if (val.includes("youtube") || val.includes("video")) {
-      setAutoSuggest("Search YouTube");
-    } else if (val.length > 10) {
-      setAutoSuggest("Ask AI to explain or summarize");
-    } else {
-      setAutoSuggest("");
-      setLivePreview(null);
-    }
-  }, [input]);
+  const scrollToBottom = () => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -71,40 +48,27 @@ function AIChat() {
 
   const sendMessage = async () => {
     if (!input.trim()) return;
+    const userId = localStorage.getItem("user_id");
     const prompt = persona ? `[${persona}]\n${input}` : input;
     const userMsg = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setAutoSuggest("");
-    setLivePreview(null);
     setLoading(true);
 
     try {
-      if (input.toLowerCase().includes("image")) {
-        const res = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt });
-        const imgUrl = res.data.image_url;
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `![Generated Image](${imgUrl})`
-        }]);
-      } else if (input.toLowerCase().includes("youtube") || input.toLowerCase().includes("video")) {
-        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
-        const ytUrl = res.data.url;
-        const title = res.data.title;
-        const yt = new URL(ytUrl);
-        const videoId = yt.searchParams.get("v") || yt.pathname.split("/").pop();
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`
-        }]);
-      } else {
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
-        let reply = res.data.reply;
-        reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      }
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ AI Error or service down. Try again." }]);
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        prompt,
+        user_id: userId
+      });
+      let reply = res.data.reply;
+      reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "⚠️ AI Error or connection failed."
+      }]);
     } finally {
       setLoading(false);
     }
@@ -112,30 +76,14 @@ function AIChat() {
 
   const startVoice = () => {
     if (!('webkitSpeechRecognition' in window)) return alert("Voice not supported");
-    if (voiceActive) {
-      recognitionRef.current.stop();
-      setVoiceActive(false);
-      return;
-    }
     const recognition = new window.webkitSpeechRecognition();
     recognition.lang = "en-US";
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
     };
-    recognition.onend = () => setVoiceActive(false);
     recognition.start();
     recognitionRef.current = recognition;
-    setVoiceActive(true);
-  };
-
-  const downloadImage = (url) => {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "droxion-image.jpg";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   return (
@@ -160,16 +108,13 @@ function AIChat() {
             </div>
             <input
               type="text"
-              placeholder="Ask anything..."
+              placeholder="Ask anything or save goals like: 'Remember I want to grow my brand'"
               className="w-full bg-transparent text-white text-sm outline-none border border-gray-700 rounded-full px-4 py-3 mb-2"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
             />
             {autoSuggest && <p className="text-xs text-gray-400 italic mt-1">💡 {autoSuggest}</p>}
-            {livePreview && (
-              <div className="text-left text-sm text-green-300 mt-4 p-2 border border-green-700 rounded-xl" dangerouslySetInnerHTML={{ __html: livePreview }} />
-            )}
           </div>
         </div>
       ) : (
@@ -178,18 +123,7 @@ function AIChat() {
             {messages.map((msg, i) => (
               <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
                 <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : darkMode ? "bg-[#1a1a1a]" : "bg-gray-200"}`}>
-                  <ReactMarkdown
-                    className="prose prose-invert text-sm"
-                    rehypePlugins={[rehypeRaw]}
-                    components={{
-                      img: ({ node, ...props }) => (
-                        <div>
-                          <img {...props} alt="Generated" style={{ maxWidth: "100%", borderRadius: "10px" }} />
-                          <button onClick={() => downloadImage(props.src)} className="text-xs text-blue-400 underline mt-1">Download</button>
-                        </div>
-                      )
-                    }}
-                  >
+                  <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>
                     {msg.content}
                   </ReactMarkdown>
                 </div>
@@ -225,7 +159,7 @@ function AIChat() {
             <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-3 items-center">
               <input
                 type="text"
-                placeholder="Ask anything..."
+                placeholder="Type a message or goal..."
                 className="flex-1 bg-transparent text-white text-sm outline-none"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -239,7 +173,6 @@ function AIChat() {
                 ➤
               </button>
             </div>
-            {autoSuggest && <div className="text-xs text-center text-gray-400 mt-2">💡 {autoSuggest}</div>}
           </div>
         </>
       )}
