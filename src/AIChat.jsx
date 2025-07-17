@@ -1,6 +1,3 @@
-// ✅ AIChat.jsx — Full Final Version for Droxion
-// Features: Persona filters, AI auto-guess, live previews while typing, centered layout before chat, image cards with download
-
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -74,8 +71,7 @@ function AIChat() {
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-    const prompt = persona ? `[${persona}]
-${input}` : input;
+    const prompt = persona ? `[${persona}]\n${input}` : input;
     const userMsg = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -108,7 +104,7 @@ ${input}` : input;
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       }
     } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Error from AI. Try again." }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ AI Error or service down. Try again." }]);
     } finally {
       setLoading(false);
     }
