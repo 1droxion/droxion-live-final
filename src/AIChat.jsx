@@ -3,24 +3,32 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
-  FaMicrophone, FaUpload, FaCamera, FaMoon, FaSun
+  FaMicrophone,
+  FaUpload,
+  FaCamera,
+  FaSun,
+  FaMoon,
+  FaTrash
 } from "react-icons/fa";
 
 const SUGGESTIONS = [
-  "Show me latest news",
-  "Generate an image of futuristic city",
-  "What is the time in Tokyo?",
-  "Search YouTube for AI robot dance",
-  "Stock: TSLA",
-  "Crypto: BTC",
-  "weather in New York",
-  "Tell me a joke",
-  "Create a YouTube thumbnail",
-  "Explain quantum computing",
+  "What is AI?",
+  "Generate image of a cyberpunk city",
+  "Search YouTube for motivational video",
+  "Stock: AAPL",
+  "Crypto: ETH",
+  "weather in London",
+  "Tell me a story",
+  "Create blog outline",
+  "How does quantum computing work?",
+  "Latest news"
 ];
 
 function AIChat() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("chatHistory");
+    return saved ? JSON.parse(saved) : [];
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
@@ -29,6 +37,7 @@ function AIChat() {
   const bottomRef = useRef(null);
   const chatRef = useRef(null);
   const recognitionRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const setHeight = () => {
@@ -50,6 +59,10 @@ function AIChat() {
       setFilteredSuggestions([]);
     }
   }, [input]);
+
+  useEffect(() => {
+    localStorage.setItem("chatHistory", JSON.stringify(messages));
+  }, [messages]);
 
   const sendMessage = async (customInput) => {
     const prompt = customInput || input;
@@ -117,96 +130,155 @@ function AIChat() {
     setVoiceActive(true);
   };
 
-  useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+  const handleUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: `📎 Uploaded: ${file.name}` }
+      ]);
     }
-  }, [messages, loading]);
+  };
+
+  const handleScreenshot = () => {
+    alert("📸 Screenshot captured (simulate). Add real logic if needed.");
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    localStorage.removeItem("chatHistory");
+    setInput("");
+  };
 
   return (
-    <div ref={chatRef} className={`flex flex-col w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
-      {/* Header */}
+    <div ref={chatRef} className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
       <div className="text-center pt-4 pb-2">
         <h1 className="text-2xl font-bold tracking-widest text-gray-400">Droxion</h1>
       </div>
 
-      {/* Chat messages */}
-      <div className="flex-1 overflow-y-auto px-3 max-w-3xl mx-auto w-full pb-32">
-        {messages.map((msg, i) => (
-          <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
-            <div
-              className={`inline-block p-3 rounded-xl max-w-full break-words ${
-                msg.role === "user"
-                  ? "bg-blue-700 text-white"
-                  : darkMode ? "bg-[#1a1a1a] text-white" : "bg-gray-200 text-black"
-              }`}
-            >
-              <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>
-                {msg.content}
-              </ReactMarkdown>
+      {messages.length === 0 ? (
+        <div className="flex flex-col justify-center items-center flex-1 px-4">
+          <div className="max-w-md w-full bg-[#111] border border-gray-700 p-6 rounded-2xl shadow-xl text-center">
+            <input
+              type="text"
+              placeholder="Ask anything..."
+              className="w-full bg-transparent text-white text-sm outline-none border border-gray-700 rounded-full px-4 py-3 mb-4"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              style={{ fontSize: 16 }}
+            />
+            {filteredSuggestions.length > 0 && (
+              <div className="bg-[#222] rounded-xl text-sm p-2 mb-4">
+                {filteredSuggestions.map((s, i) => (
+                  <div
+                    key={i}
+                    className="p-2 cursor-pointer hover:bg-gray-800 rounded text-left"
+                    onClick={() => sendMessage(s)}
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-center gap-2 flex-wrap mb-4">
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
+                <button
+                  key={title}
+                  onClick={() => sendMessage(title)}
+                  className="border border-gray-700 bg-black text-white px-3 py-1 rounded-full text-xs hover:bg-white hover:text-black transition"
+                >
+                  {title}
+                </button>
+              ))}
             </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="my-3 text-left text-sm px-2 text-gray-400">
-            <div className="flex gap-1 animate-pulse text-2xl">
-              <span className="animate-bounce">.</span>
-              <span className="animate-bounce delay-100">.</span>
-              <span className="animate-bounce delay-200">.</span>
+            <div className="flex justify-center gap-4 text-white text-lg">
+              <FaMicrophone onClick={startVoice} className="cursor-pointer" />
+              <FaUpload onClick={() => fileInputRef.current.click()} className="cursor-pointer" />
+              <FaCamera onClick={handleScreenshot} className="cursor-pointer" />
+              <button onClick={() => setDarkMode(!darkMode)}>
+                {darkMode ? <FaSun /> : <FaMoon />}
+              </button>
             </div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleUpload}
+              style={{ display: "none" }}
+            />
           </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Suggestions */}
-      {filteredSuggestions.length > 0 && (
-        <div className="absolute bottom-24 left-0 right-0 max-w-xl mx-auto px-4 z-40">
-          <div className="bg-[#1a1a1a] text-white rounded-xl border border-gray-700 p-2 text-sm shadow-xl">
-            {filteredSuggestions.map((s, i) => (
-              <div
-                key={i}
-                className="p-2 cursor-pointer hover:bg-gray-800 rounded"
-                onClick={() => sendMessage(s)}
-              >
-                {s}
+        </div>
+      ) : (
+        <>
+          {/* Chat messages */}
+          <div className="flex-1 overflow-y-auto px-4 pb-36">
+            {messages.map((msg, i) => (
+              <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
+                <div
+                  className={`inline-block p-3 rounded-xl max-w-full break-words ${
+                    msg.role === "user" ? "bg-blue-700" : darkMode ? "bg-[#1a1a1a]" : "bg-gray-200"
+                  }`}
+                >
+                  <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             ))}
+            {loading && (
+              <div className="my-3 text-left text-sm text-gray-400 px-2">
+                <div className="flex gap-1 animate-pulse text-2xl">
+                  <span className="animate-bounce">.</span>
+                  <span className="animate-bounce delay-100">.</span>
+                  <span className="animate-bounce delay-200">.</span>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
           </div>
-        </div>
-      )}
 
-      {/* Footer input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
-        <div className="flex justify-between items-center max-w-2xl mx-auto mb-2 px-1">
-          <div className="flex gap-2">
-            <FaMicrophone onClick={startVoice} className="text-white text-lg cursor-pointer" />
-            <FaUpload className="text-white text-lg cursor-pointer" />
-            <FaCamera className="text-white text-lg cursor-pointer" />
+          {/* Input bar with tools */}
+          <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-3 py-3 z-50">
+            <div className="flex justify-between items-center max-w-3xl mx-auto mb-2 px-1">
+              <div className="flex gap-3">
+                <FaMicrophone onClick={startVoice} className="text-white text-lg cursor-pointer" />
+                <FaUpload onClick={() => fileInputRef.current.click()} className="text-white text-lg cursor-pointer" />
+                <FaCamera onClick={handleScreenshot} className="text-white text-lg cursor-pointer" />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleUpload}
+                  style={{ display: "none" }}
+                />
+              </div>
+              <div className="flex gap-3 items-center">
+                <FaTrash onClick={clearChat} className="text-white text-lg cursor-pointer" />
+                <button onClick={() => setDarkMode(!darkMode)} className="text-white text-xl">
+                  {darkMode ? <FaSun /> : <FaMoon />}
+                </button>
+              </div>
+            </div>
+            <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-3 items-center">
+              <input
+                type="text"
+                placeholder="Ask anything..."
+                className="flex-1 bg-transparent text-white text-sm outline-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                style={{ fontSize: 16 }}
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={loading}
+                className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
+              >
+                ➤
+              </button>
+            </div>
           </div>
-          <button onClick={() => setDarkMode(!darkMode)} className="text-white text-xl">
-            {darkMode ? <FaSun /> : <FaMoon />}
-          </button>
-        </div>
-        <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
-          <input
-            type="text"
-            placeholder="Ask anything..."
-            className="flex-1 bg-transparent text-white text-sm outline-none"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            style={{ fontSize: 16 }}
-          />
-          <button
-            onClick={() => sendMessage()}
-            disabled={loading}
-            className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
-          >
-            ➤
-          </button>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
