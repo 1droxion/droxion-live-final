@@ -26,7 +26,7 @@ function AIChat() {
           ...prev,
           {
             role: "assistant",
-            content: `![Generated Image](${imgUrl})`,
+            content: `<div style="margin-top:10px;"><img src="${imgUrl}" alt="Generated Image" style="width:100%; border-radius:12px;" /></div>`,
           },
         ]);
       } else if (prompt.toLowerCase().includes("youtube") || prompt.toLowerCase().includes("video")) {
@@ -100,11 +100,9 @@ function AIChat() {
               onKeyDown={handleKeyDown}
             />
             <div className="flex flex-wrap gap-2 mb-4">
-              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map(
-                (title) => (
-                  <ToolButton key={title} title={title} />
-                )
-              )}
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
+                <ToolButton key={title} title={title} />
+              ))}
             </div>
             <div className="text-center">
               <button
@@ -119,7 +117,7 @@ function AIChat() {
         </div>
       ) : (
         <>
-          <div className="flex-1 overflow-y-auto px-4 pb-40 max-w-3xl mx-auto w-full">
+          <div className="flex-1 overflow-y-auto px-3 pb-44 max-w-3xl mx-auto w-full">
             {messages.map((msg, i) => (
               <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
                 <div
@@ -137,20 +135,16 @@ function AIChat() {
               </div>
             ))}
             {loading && (
-              <div className="my-3 text-left">
-                <div className="text-sm text-gray-400">Thinking...</div>
-              </div>
+              <div className="my-3 text-left text-sm text-gray-400">Thinking...</div>
             )}
             <div ref={bottomRef} />
           </div>
 
           <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
             <div className="flex justify-center mb-2 flex-wrap gap-2 max-w-2xl mx-auto">
-              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map(
-                (title) => (
-                  <ToolButton key={title} title={title} />
-                )
-              )}
+              {["DeepSearch", "Think", "Create Images", "Research", "Edit Image", "Latest News", "Personas"].map((title) => (
+                <ToolButton key={title} title={title} />
+              ))}
             </div>
             <div className="flex max-w-2xl mx-auto bg-[#111] rounded-full px-4 py-2 items-center">
               <input
