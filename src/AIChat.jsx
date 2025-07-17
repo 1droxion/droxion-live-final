@@ -1,3 +1,5 @@
+// AIChat.jsx — Fully responsive layout with working image generation
+
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -83,11 +85,13 @@ function AIChat() {
   }, [messages, loading]);
 
   return (
-    <div className="bg-black text-white flex flex-col min-h-screen h-[100dvh]">
+    <div className="bg-black text-white flex flex-col min-h-screen h-[100dvh] w-full">
+      {/* Logo */}
       <div className="text-center pt-4 pb-2">
         <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
       </div>
 
+      {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto px-3 max-w-3xl mx-auto w-full pb-32">
         {messages.length === 0 ? (
           <div className="flex flex-col justify-center items-center h-full">
@@ -147,6 +151,7 @@ function AIChat() {
         )}
       </div>
 
+      {/* Bottom Input */}
       {messages.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-2 py-4 z-50">
           <div className="flex justify-start overflow-x-auto no-scrollbar gap-2 max-w-full px-2 pb-2">
