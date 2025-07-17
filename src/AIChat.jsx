@@ -1,5 +1,3 @@
-// AIChat.jsx — Fully responsive layout with working image generation
-
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -10,6 +8,19 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
+  const chatContainerRef = useRef(null);
+
+  // Fix mobile viewport height on keyboard open
+  useEffect(() => {
+    const fixHeight = () => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.style.height = window.innerHeight + "px";
+      }
+    };
+    window.addEventListener("resize", fixHeight);
+    fixHeight();
+    return () => window.removeEventListener("resize", fixHeight);
+  }, []);
 
   const sendMessage = async (customInput) => {
     const prompt = customInput || input;
@@ -36,12 +47,10 @@ function AIChat() {
         const ytUrl = ytRes.data.url;
         const title = ytRes.data.title;
         let videoId = "";
-
         try {
           const ytURL = new URL(ytUrl);
           videoId = ytURL.searchParams.get("v") || ytURL.pathname.split("/").pop();
         } catch (e) {}
-
         setMessages((prev) => [
           ...prev,
           {
@@ -85,13 +94,17 @@ function AIChat() {
   }, [messages, loading]);
 
   return (
-    <div className="bg-black text-white flex flex-col min-h-screen h-[100dvh] w-full">
-      {/* Logo */}
+    <div
+      className="bg-black text-white flex flex-col w-full"
+      ref={chatContainerRef}
+      style={{ height: "100dvh", maxHeight: "100dvh", overflow: "hidden" }}
+    >
+      {/* Logo Header */}
       <div className="text-center pt-4 pb-2">
         <h1 className="text-2xl font-bold text-gray-400 tracking-widest">Droxion</h1>
       </div>
 
-      {/* Chat Messages */}
+      {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-3 max-w-3xl mx-auto w-full pb-32">
         {messages.length === 0 ? (
           <div className="flex flex-col justify-center items-center h-full">
@@ -128,10 +141,7 @@ function AIChat() {
                     msg.role === "user" ? "bg-blue-700" : "bg-[#1a1a1a]"
                   }`}
                 >
-                  <ReactMarkdown
-                    className="prose prose-invert text-sm"
-                    rehypePlugins={[rehypeRaw]}
-                  >
+                  <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>
                     {msg.content}
                   </ReactMarkdown>
                 </div>
