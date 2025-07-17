@@ -47,19 +47,38 @@ function AIChat() {
     setLoading(true);
 
     try {
-      if (input.toLowerCase().includes("image")) {
-        const res = await axios.post("https://droxion-backend.onrender.com/generate-image", {
-          prompt: input
-        });
+      const lower = input.toLowerCase();
+
+      // Memory trigger
+      if (lower.startsWith("remember my name is")) {
+        const name = input.split("is")[1]?.trim();
+        if (name) {
+          await axios.post("https://droxion-backend.onrender.com/remember", {
+            key: "name",
+            value: name
+          });
+          setMessages((prev) => [...prev, {
+            role: "assistant",
+            content: `✅ Got it. I’ll remember your name is ${name}.`
+          }]);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Handle image
+      if (lower.includes("image")) {
+        const res = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: input });
         const imgUrl = res.data.image_url;
         setMessages((prev) => [...prev, {
           role: "assistant",
           content: `![Generated Image](${imgUrl})`
         }]);
-      } else if (input.toLowerCase().includes("youtube") || input.toLowerCase().includes("video")) {
-        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
-          prompt: input
-        });
+      }
+
+      // Handle YouTube
+      else if (lower.includes("youtube") || lower.includes("video")) {
+        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
         const ytUrl = res.data.url;
         const title = res.data.title;
         const videoId = new URL(ytUrl).searchParams.get("v");
@@ -67,7 +86,10 @@ function AIChat() {
           role: "assistant",
           content: `<b>📺 ${title}</b><br/><iframe width="100%" height="300" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`
         }]);
-      } else {
+      }
+
+      // Normal AI chat
+      else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: input,
           user_id: userId
@@ -76,6 +98,7 @@ function AIChat() {
         reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       }
+
     } catch {
       setMessages((prev) => [...prev, {
         role: "assistant",
