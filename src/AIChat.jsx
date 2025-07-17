@@ -1,6 +1,3 @@
-// ⛔ Don't change layout — only logic fixed inside
-// ✅ Real-time logic: Stock, Crypto, Weather, News, Image, YouTube
-
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -81,7 +78,7 @@ function AIChat() {
         const imgUrl = res.data.image_url;
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: `<div style="margin-top:10px;"><img src="${imgUrl}" style="width:100%; border-radius:12px;" /></div>`,
+          content: `![Generated Image](${imgUrl})`
         }]);
       } else if (lower.includes("youtube") || lower.includes("video")) {
         const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt });
