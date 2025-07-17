@@ -1,116 +1,275 @@
-// AIChat.jsx — Full AGI Integration with All Phases (1–10)
+// ✅ Droxion AGI Full Chat (with Phases 1–10, image, YouTube, memory)
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import { FaMicrophone, FaUpload, FaCamera, FaTrash, FaPlus, FaBrain } from "react-icons/fa";
+import {
+  FaMicrophone, FaUpload, FaCamera, FaSun, FaMoon, FaTrash, FaDownload
+} from "react-icons/fa";
 
-const AIChat = () => {
+const PERSONAS = ["Coder", "Marketer", "Therapist", "Motivator", "Artist"];
+
+function AIChat() {
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem("chatHistory");
     return saved ? JSON.parse(saved) : [];
   });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [persona, setPersona] = useState(null);
+  const [livePreview, setLivePreview] = useState(null);
+  const [autoSuggest, setAutoSuggest] = useState("");
+  const [currentGoal, setCurrentGoal] = useState(null);
   const bottomRef = useRef(null);
+  const chatRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
 
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 100);
-  };
+  const firstMessage = messages.length === 0;
 
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
-    scrollToBottom();
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }, [messages]);
+
+  useEffect(() => {
+    const val = input.toLowerCase();
+    if (!val) {
+      setLivePreview(null);
+      setAutoSuggest("");
+      return;
+    }
+
+    if (val.startsWith("stock:")) {
+      const symbol = val.replace("stock:", "").trim().toUpperCase();
+      setLivePreview(`<b>📈 ${symbol} Stock Preview</b><br/><iframe width='100%' height='200' src='https://www.google.com/finance/quote/${symbol}:NASDAQ' frameborder='0'></iframe>`);
+      setAutoSuggest("Show stock preview");
+    } else if (val.includes("weather in")) {
+      const city = val.split("weather in")[1]?.trim();
+      if (city) {
+        setLivePreview(`<b>🌤️ Weather Preview for ${city}</b><br/><i>Click ➤ to see full weather data</i>`);
+        setAutoSuggest("Get weather forecast");
+      }
+    } else if (val.includes("image of")) {
+      setAutoSuggest("Generate AI image");
+    } else if (val.includes("youtube") || val.includes("video")) {
+      setAutoSuggest("Search YouTube");
+    } else if (val.length > 10) {
+      setAutoSuggest("Ask AI to explain or summarize");
+    } else {
+      setAutoSuggest("");
+      setLivePreview(null);
+    }
+  }, [input]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-    const newMsg = { role: "user", content: input };
-    setMessages((prev) => [...prev, newMsg]);
+    const prompt = persona ? `[${persona}]\n${input}` : input;
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    setAutoSuggest("");
+    setLivePreview(null);
     setLoading(true);
 
-    // Detect special triggers
-    if (input.toLowerCase().includes("remember my name")) {
-      const name = input.split("remember my name is")[1]?.trim();
-      await axios.post("/chat", { prompt: input });
-      setMessages((prev) => [...prev, { role: "system", content: `🧠 Got it! I’ll remember: ${name}` }]);
-      setLoading(false);
-      return;
-    }
-
-    if (input.toLowerCase().startsWith("goal:")) {
-      await axios.post("/chat", { prompt: input });
-      setMessages((prev) => [...prev, { role: "system", content: `🎯 Saved your goal!` }]);
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Default chat
-      const res = await axios.post("/chat", { prompt: input });
-      const reply = res.data.reply;
-      setMessages((prev) => [...prev, { role: "ai", content: reply }]);
-    } catch (err) {
-      setMessages((prev) => [...prev, { role: "system", content: "⚠️ Error from AI." }]);
-    }
-    setLoading(false);
-  };
-
-  const analyzeImage = async (e) => {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const imageUrl = reader.result;
-      try {
-        const res = await axios.post("/analyze-image", { url: imageUrl });
-        setMessages((prev) => [...prev, { role: "ai", content: res.data.analysis }]);
-      } catch (err) {
-        setMessages((prev) => [...prev, { role: "system", content: "❌ Vision error." }]);
+      // Image
+      if (input.toLowerCase().includes("image")) {
+        const res = await axios.post("/generate-image", { prompt });
+        const imgUrl = res.data.image_url;
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: `![Generated Image](${imgUrl})`
+        }]);
       }
-    };
-    reader.readAsDataURL(file);
+      // YouTube
+      else if (input.toLowerCase().includes("youtube") || input.toLowerCase().includes("video")) {
+        const res = await axios.post("/search-youtube", { prompt });
+        const ytUrl = res.data.url;
+        const title = res.data.title;
+        const yt = new URL(ytUrl);
+        const videoId = yt.searchParams.get("v") || yt.pathname.split("/").pop();
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: `<b>📺 ${title}</b><br/><iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`
+        }]);
+      }
+      // AGI memory
+      else if (input.toLowerCase().startsWith("remember")) {
+        await axios.post("/remember", { input });
+        setMessages((prev) => [...prev, { role: "assistant", content: "🧠 Got it! I’ve saved that to memory." }]);
+      }
+      else if (input.toLowerCase().startsWith("my goal is")) {
+        const res = await axios.post("/chat", { prompt });
+        setCurrentGoal(input);
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply + "\n\n✅ Would you like help starting with step 1?" }]);
+      }
+      else if (input.toLowerCase().includes("yes") && currentGoal) {
+        const step1 = "Step 1: " + (messages.find(m => m.role === 'assistant' && m.content.includes('Step 1'))?.content.match(/Step 1: (.*?)(\n|$)/)?.[1] || "Define the first step");
+        const res = await axios.post("/agent", {
+          goal: currentGoal,
+          step: step1
+        });
+        setMessages((prev) => [...prev, { role: "assistant", content: "🤖 Executed step 1:\n" + res.data.result }]);
+      }
+      // Normal AI chat
+      else {
+        const res = await axios.post("/chat", { prompt });
+        let reply = res.data.reply;
+        reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      }
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Error from AI. Try again." }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const clearChat = () => {
-    setMessages([]);
-    localStorage.removeItem("chatHistory");
+  const startVoice = () => {
+    if (!('webkitSpeechRecognition' in window)) return alert("Voice not supported");
+    if (voiceActive) {
+      recognitionRef.current.stop();
+      setVoiceActive(false);
+      return;
+    }
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+    };
+    recognition.onend = () => setVoiceActive(false);
+    recognition.start();
+    recognitionRef.current = recognition;
+    setVoiceActive(true);
+  };
+
+  const downloadImage = (url) => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "droxion-image.jpg";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="ai-chat" style={{ background: "#000", color: "#fff", height: "100vh", display: "flex", flexDirection: "column" }}>
-      <div className="chat-header" style={{ textAlign: "center", padding: "1rem", fontSize: "24px", fontWeight: "bold" }}>Droxion AGI</div>
-      <div className="chat-body" style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
-        {messages.map((msg, i) => (
-          <div key={i} style={{
-            background: msg.role === "user" ? "#1e1e1e" : msg.role === "ai" ? "#2a2a2a" : "#333",
-            padding: "0.8rem 1rem", borderRadius: 12, marginBottom: "0.8rem", maxWidth: "85%",
-            alignSelf: msg.role === "user" ? "flex-end" : "flex-start"
-          }}>
-            <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
-          </div>
-        ))}
-        {loading && <div style={{ color: "gray" }}>🤖 Thinking...</div>}
-        <div ref={bottomRef} />
+    <div className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
+      <div className="text-center pt-4 pb-2">
+        <h1 className="text-2xl font-bold tracking-widest text-gray-400">Droxion</h1>
       </div>
 
-      <div className="chat-footer" style={{ display: "flex", alignItems: "center", padding: "0.75rem", borderTop: "1px solid #111" }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything or start your goal..."
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          style={{ flex: 1, padding: "0.75rem", background: "#111", color: "#fff", border: "none", borderRadius: 10 }}
-        />
-        <button onClick={sendMessage} style={{ marginLeft: 8, background: "#333", color: "white", padding: "0.75rem 1rem", borderRadius: 10 }}>Send</button>
-        <input type="file" onChange={analyzeImage} style={{ display: "none" }} id="uploadImg" accept="image/*" />
-        <label htmlFor="uploadImg" style={{ marginLeft: 8, cursor: "pointer" }}><FaCamera /></label>
-        <button onClick={clearChat} style={{ marginLeft: 8 }}><FaTrash /></button>
-      </div>
+      {firstMessage ? (
+        <div className="flex flex-col justify-center items-center flex-1 px-4">
+          <div className="max-w-md w-full bg-[#111] border border-gray-700 p-6 rounded-2xl shadow-xl text-center">
+            <div className="mb-4 flex justify-center gap-2 flex-wrap">
+              {PERSONAS.map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPersona(p)}
+                  className={`px-3 py-1 text-xs rounded-full border ${persona === p ? 'bg-white text-black' : 'bg-transparent text-white border-gray-600'}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder="Ask anything..."
+              className="w-full bg-transparent text-white text-sm outline-none border border-gray-700 rounded-full px-4 py-3 mb-2"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            {autoSuggest && <p className="text-xs text-gray-400 italic mt-1">💡 {autoSuggest}</p>}
+            {livePreview && (
+              <div className="text-left text-sm text-green-300 mt-4 p-2 border border-green-700 rounded-xl" dangerouslySetInnerHTML={{ __html: livePreview }} />
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex-1 overflow-y-auto px-4 pb-32">
+            {messages.map((msg, i) => (
+              <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
+                <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : darkMode ? "bg-[#1a1a1a]" : "bg-gray-200"}`}>
+                  <ReactMarkdown
+                    className="prose prose-invert text-sm"
+                    rehypePlugins={[rehypeRaw]}
+                    components={{
+                      img: ({ node, ...props }) => (
+                        <div>
+                          <img {...props} alt="Generated" style={{ maxWidth: "100%", borderRadius: "10px" }} />
+                          <button onClick={() => downloadImage(props.src)} className="text-xs text-blue-400 underline mt-1">Download</button>
+                        </div>
+                      )
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="my-3 text-left text-sm text-gray-400 px-2">
+                <div className="flex gap-1 animate-pulse text-2xl">
+                  <span className="animate-bounce">.</span>
+                  <span className="animate-bounce delay-100">.</span>
+                  <span className="animate-bounce delay-200">.</span>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-3 py-3 z-50">
+            <div className="flex justify-between items-center max-w-3xl mx-auto mb-2 px-1">
+              <div className="flex gap-3">
+                <FaMicrophone onClick={startVoice} className="text-white text-lg cursor-pointer" />
+                <FaUpload onClick={() => fileInputRef.current.click()} className="text-white text-lg cursor-pointer" />
+                <FaCamera className="text-white text-lg cursor-pointer" />
+                <input type="file" ref={fileInputRef} style={{ display: "none" }} />
+              </div>
+              <div className="flex gap-3 items-center">
+                <FaTrash onClick={() => setMessages([])} className="text-white text-lg cursor-pointer" />
+                <button onClick={() => setDarkMode(!darkMode)} className="text-white text-xl">
+                  {darkMode ? <FaSun /> : <FaMoon />}
+                </button>
+              </div>
+            </div>
+            <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-3 items-center">
+              <input
+                type="text"
+                placeholder="Ask anything..."
+                className="flex-1 bg-transparent text-white text-sm outline-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+              <button
+                onClick={sendMessage}
+                disabled={loading}
+                className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
+              >
+                ➔
+              </button>
+            </div>
+            {autoSuggest && <div className="text-xs text-center text-gray-400 mt-2">💡 {autoSuggest}</div>}
+          </div>
+        </>
+      )}
     </div>
   );
-};
+}
 
 export default AIChat;
