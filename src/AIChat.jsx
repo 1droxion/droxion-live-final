@@ -35,15 +35,16 @@ function AIChat() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    const setHeight = () => {
-      if (chatRef.current) {
-        chatRef.current.style.height = window.innerHeight + "px";
-      }
-    };
     window.addEventListener("resize", setHeight);
     setHeight();
     return () => window.removeEventListener("resize", setHeight);
   }, []);
+
+  const setHeight = () => {
+    if (chatRef.current) {
+      chatRef.current.style.height = window.innerHeight + "px";
+    }
+  };
 
   useEffect(() => {
     const val = input.toLowerCase();
@@ -59,6 +60,9 @@ function AIChat() {
 
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
   }, [messages]);
 
   const sendMessage = async (customInput) => {
@@ -93,10 +97,7 @@ function AIChat() {
       } else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", { prompt });
         let reply = res.data.reply;
-
-        // 🔗 convert links
         reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
-
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       }
     } catch {
@@ -132,14 +133,30 @@ function AIChat() {
     setVoiceActive(true);
   };
 
-  const handleUpload = (e) => {
+  const handleUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Image = reader.result;
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: `📎 Uploaded: ${file.name}` }
+        { role: "user", content: `📷 Uploaded image.` }
       ]);
-    }
+      setLoading(true);
+      try {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+          prompt: input || "Describe this image",
+          image: base64Image,
+        });
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
+      } catch {
+        setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Error analyzing image." }]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleScreenshot = () => {
@@ -244,10 +261,20 @@ function AIChat() {
               </div>
             </div>
             <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-3 items-center">
-              <input type="text" placeholder="Ask anything..." className="flex-1 bg-transparent text-white text-sm outline-none"
-                value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} style={{ fontSize: 16 }} />
-              <button onClick={() => sendMessage()} disabled={loading}
-                className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition">
+              <input
+                type="text"
+                placeholder="Ask anything..."
+                className="flex-1 bg-transparent text-white text-sm outline-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                style={{ fontSize: 16 }}
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={loading}
+                className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
+              >
                 ➤
               </button>
             </div>
