@@ -17,6 +17,7 @@ function AIChat() {
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const [chatStarted, setChatStarted] = useState(messages.length > 0);
 
   useEffect(() => {
     if (!localStorage.getItem("user_id")) {
@@ -26,6 +27,7 @@ function AIChat() {
 
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
+    if (messages.length > 0) setChatStarted(true);
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }, [messages]);
 
@@ -102,6 +104,12 @@ function AIChat() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-32">
+        {messages.length === 0 && !chatStarted && (
+          <div className="h-[60vh] flex flex-col justify-center items-center text-center px-6">
+            <p className="text-gray-400 mb-4">Ask anything, or try saying "Generate image of Mars" or "Latest news".</p>
+          </div>
+        )}
+
         {messages.map((msg, i) => (
           <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
             <div className={`inline-block p-3 rounded-xl max-w-full break-words whitespace-pre-wrap ${
@@ -123,6 +131,7 @@ function AIChat() {
             </div>
           </div>
         ))}
+
         {loading && (
           <div className="my-3 text-left text-sm text-gray-400 px-2">
             <div className="flex gap-1 animate-pulse text-2xl">
@@ -135,39 +144,41 @@ function AIChat() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-3 py-3 z-50">
-        <div className="flex justify-between items-center max-w-3xl mx-auto mb-2 px-1">
-          <div className="flex gap-3">
-            <FaMicrophone onClick={startVoice} className="text-white text-lg cursor-pointer" />
-            <FaUpload onClick={() => fileInputRef.current.click()} className="text-white text-lg cursor-pointer" />
-            <FaCamera className="text-white text-lg cursor-pointer" />
-            <input type="file" ref={fileInputRef} style={{ display: "none" }} />
+      {chatStarted && (
+        <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-3 py-3 z-50">
+          <div className="flex justify-between items-center max-w-3xl mx-auto mb-2 px-1">
+            <div className="flex gap-3">
+              <FaMicrophone onClick={startVoice} className="text-white text-lg cursor-pointer" />
+              <FaUpload onClick={() => fileInputRef.current.click()} className="text-white text-lg cursor-pointer" />
+              <FaCamera className="text-white text-lg cursor-pointer" />
+              <input type="file" ref={fileInputRef} style={{ display: "none" }} />
+            </div>
+            <div className="flex gap-3 items-center">
+              <FaTrash onClick={() => { setMessages([]); setChatStarted(false); }} className="text-white text-lg cursor-pointer" />
+              <button onClick={() => setDarkMode(!darkMode)} className="text-white text-xl">
+                {darkMode ? <FaSun /> : <FaMoon />}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-3 items-center">
-            <FaTrash onClick={() => setMessages([])} className="text-white text-lg cursor-pointer" />
-            <button onClick={() => setDarkMode(!darkMode)} className="text-white text-xl">
-              {darkMode ? <FaSun /> : <FaMoon />}
+          <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-3 items-center">
+            <input
+              type="text"
+              placeholder="Type your message or say 'remember my goal is...'"
+              className="flex-1 bg-transparent text-white text-sm outline-none"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={loading}
+              className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
+            >
+              ➤
             </button>
           </div>
         </div>
-        <div className="flex max-w-3xl mx-auto bg-[#111] rounded-full px-4 py-3 items-center">
-          <input
-            type="text"
-            placeholder="Type your message or say 'remember my goal is...'"
-            className="flex-1 bg-transparent text-white text-sm outline-none"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={loading}
-            className="ml-3 px-3 py-1 rounded-full bg-white text-black text-sm hover:bg-gray-300 transition"
-          >
-            ➤
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
