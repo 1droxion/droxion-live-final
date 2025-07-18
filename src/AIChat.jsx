@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — Full Fix: YouTube, Image, Real-time, GPT Vision, Layout
+// ✅ AIChat.jsx — Final Version: YouTube, Image, Smart Cards, GPT-4 Vision, Layout fixed
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -24,7 +24,7 @@ function AIChat() {
 
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
-    scrollToBottom();
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }, [messages]);
 
   useEffect(() => {
@@ -43,17 +43,6 @@ function AIChat() {
     else if (text.includes("youtube")) setAutoSuggest("Try: Search YouTube for Mr Beast");
     else setAutoSuggest("");
   }, [input]);
-
-  const scrollToBottom = () => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -80,21 +69,8 @@ function AIChat() {
           prompt: userInput,
           user_id: userId
         });
-        reply = res.data.video_cards.join("\n");
-      } else if (
-        userInput.toLowerCase().startsWith("stock:") ||
-        userInput.toLowerCase().startsWith("crypto:") ||
-        userInput.toLowerCase().includes("weather") ||
-        userInput.toLowerCase().includes("news") ||
-        userInput.toLowerCase().includes("time in")
-      ) {
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: userInput,
-          user_id: userId,
-          persona,
-          save_memory: true
-        });
-        reply = res.data.reply;
+        const cards = res.data.video_cards || [res.data.url];
+        reply = cards.map(url => `<iframe width='360' height='203' src='${url}' allowfullscreen class='rounded-xl my-2 max-w-xs'></iframe>`).join("\n");
       } else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt,
@@ -168,15 +144,6 @@ function AIChat() {
     }
   };
 
-  const handlePersonaChange = (p) => {
-    setPersona(p);
-    localStorage.setItem("selectedPersona", p);
-    axios.post("https://droxion-backend.onrender.com/save-persona", {
-      user_id: localStorage.getItem("user_id"),
-      persona: p
-    });
-  };
-
   return (
     <div className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
       <div className="text-center pt-4 pb-2">
@@ -188,7 +155,11 @@ function AIChat() {
           <div className="max-w-md w-full bg-[#111] border border-gray-700 p-6 rounded-2xl shadow-xl text-center">
             <div className="mb-4 flex justify-center gap-2 flex-wrap">
               {PERSONAS.map(p => (
-                <button key={p} onClick={() => handlePersonaChange(p)} className={`px-3 py-1 text-xs rounded-full border ${persona === p ? 'bg-white text-black' : 'bg-transparent text-white border-gray-600'}`}>{p}</button>
+                <button key={p} onClick={() => {
+                  setPersona(p);
+                  localStorage.setItem("selectedPersona", p);
+                }}
+                  className={`px-3 py-1 text-xs rounded-full border ${persona === p ? 'bg-white text-black' : 'bg-transparent text-white border-gray-600'}`}>{p}</button>
               ))}
             </div>
             <input
@@ -197,7 +168,7 @@ function AIChat() {
               className="w-full bg-transparent text-white text-sm outline-none border border-gray-700 rounded-full px-4 py-3 mb-2"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             />
             {autoSuggest && <p className="text-xs text-gray-400 italic mt-1">💡 {autoSuggest}</p>}
           </div>
@@ -221,11 +192,7 @@ function AIChat() {
                 </div>
               </div>
             ))}
-            {loading && (
-              <div className="text-left text-gray-400 px-2 my-3 text-sm">
-                <div className="flex gap-1 animate-pulse text-2xl"><span>.</span><span className="delay-100">.</span><span className="delay-200">.</span></div>
-              </div>
-            )}
+            {loading && <div className="text-left text-gray-400 px-2 my-3 text-sm"><span className="animate-pulse">Thinking...</span></div>}
             <div ref={bottomRef} />
           </div>
 
@@ -251,7 +218,7 @@ function AIChat() {
                 className="flex-1 bg-transparent text-white text-sm outline-none"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               />
               <button
                 onClick={sendMessage}
