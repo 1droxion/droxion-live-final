@@ -1,3 +1,4 @@
+// ✅ AIChat.jsx — Full Fix: YouTube, Image, Real-time, GPT Vision, Layout
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -20,8 +21,6 @@ function AIChat() {
   const [autoSuggest, setAutoSuggest] = useState("");
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
-
-  const firstMessage = messages.length === 0;
 
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
@@ -70,7 +69,7 @@ function AIChat() {
     try {
       let reply = "";
 
-      // Image generation
+      // IMAGE
       if (userInput.toLowerCase().includes("generate image")) {
         const res = await axios.post("https://droxion-backend.onrender.com/generate-image", {
           prompt: userInput,
@@ -79,7 +78,7 @@ function AIChat() {
         reply = `![AI Image](${res.data.image_url})`;
       }
 
-      // YouTube search
+      // YOUTUBE
       else if (userInput.toLowerCase().includes("search youtube")) {
         const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
           prompt: userInput,
@@ -88,12 +87,13 @@ function AIChat() {
         reply = res.data.video_cards.join("\n");
       }
 
-      // Realtime stock, weather, etc.
+      // Real-time (stock/news/weather/time)
       else if (
         userInput.toLowerCase().startsWith("stock:") ||
         userInput.toLowerCase().startsWith("crypto:") ||
         userInput.toLowerCase().includes("weather") ||
-        userInput.toLowerCase().includes("news")
+        userInput.toLowerCase().includes("news") ||
+        userInput.toLowerCase().includes("time in")
       ) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: userInput,
@@ -104,7 +104,7 @@ function AIChat() {
         reply = res.data.reply;
       }
 
-      // Default AI chat
+      // Default AI
       else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt,
@@ -115,7 +115,6 @@ function AIChat() {
         reply = res.data.reply;
       }
 
-      // Replace links
       reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
@@ -194,7 +193,7 @@ function AIChat() {
         <h1 className="text-2xl font-bold tracking-widest text-gray-400">Droxion</h1>
       </div>
 
-      {firstMessage ? (
+      {messages.length === 0 ? (
         <div className="flex flex-col justify-center items-center flex-1 px-4">
           <div className="max-w-md w-full bg-[#111] border border-gray-700 p-6 rounded-2xl shadow-xl text-center">
             <div className="mb-4 flex justify-center gap-2 flex-wrap">
