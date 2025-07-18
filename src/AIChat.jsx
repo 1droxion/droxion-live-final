@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — Fully Fixed with Image, YouTube, Real-Time Cards, Mobile Layout
+// ✅ AIChat.jsx — All Fixed: Image, YouTube, Mobile, Previews
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -21,7 +21,6 @@ function AIChat() {
   const [autoSuggest, setAutoSuggest] = useState("");
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
-
   const firstMessage = messages.length === 0;
 
   useEffect(() => {
@@ -71,18 +70,23 @@ function AIChat() {
     try {
       let reply = "";
 
-      // Check for real-time trigger
-      if (userInput.toLowerCase().startsWith("stock:") || userInput.toLowerCase().startsWith("crypto:") || userInput.toLowerCase().includes("weather") || userInput.toLowerCase().includes("news")) {
+      // Real-time triggers
+      if (
+        userInput.toLowerCase().startsWith("stock:") ||
+        userInput.toLowerCase().startsWith("crypto:") ||
+        userInput.toLowerCase().includes("weather") ||
+        userInput.toLowerCase().includes("news")
+      ) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: userInput,
           user_id: userId,
           persona,
-          save_memory: true
+          save_memory: true,
         });
         reply = res.data.reply;
       }
 
-      // Check for image generation
+      // Image generation
       else if (userInput.toLowerCase().includes("generate image")) {
         const res = await axios.post("https://droxion-backend.onrender.com/generate-image", {
           prompt: userInput,
@@ -91,7 +95,7 @@ function AIChat() {
         reply = `![AI Image](${res.data.image_url})`;
       }
 
-      // Check for YouTube search
+      // YouTube video search
       else if (userInput.toLowerCase().includes("search youtube")) {
         const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
           prompt: userInput,
@@ -106,11 +110,12 @@ function AIChat() {
           prompt,
           user_id: userId,
           persona,
-          save_memory: true
+          save_memory: true,
         });
         reply = res.data.reply;
       }
 
+      // Convert links
       reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
@@ -121,7 +126,7 @@ function AIChat() {
   };
 
   const startVoice = () => {
-    if (!('webkitSpeechRecognition' in window)) return alert("Voice not supported");
+    if (!("webkitSpeechRecognition" in window)) return alert("Voice not supported");
     const recognition = new window.webkitSpeechRecognition();
     recognition.lang = "en-US";
     recognition.onresult = (event) => setInput(event.results[0][0].transcript);
@@ -141,7 +146,7 @@ function AIChat() {
           image_base64: base64,
           user_id: localStorage.getItem("user_id"),
           vision: true,
-          save_memory: true
+          save_memory: true,
         });
         setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
       } catch {
@@ -214,7 +219,16 @@ function AIChat() {
             {messages.map((msg, i) => (
               <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
                 <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : darkMode ? "bg-[#1a1a1a]" : "bg-gray-200"}`}>
-                  <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown
+                    className="prose prose-invert text-sm"
+                    rehypePlugins={[rehypeRaw]}
+                    components={{
+                      img: ({...props}) => <img {...props} className="rounded-xl my-2 max-w-xs" />,
+                      iframe: ({...props}) => <iframe {...props} className="rounded-xl my-2 max-w-xs" allowFullScreen />
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
                 </div>
               </div>
             ))}
