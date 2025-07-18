@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — Updated with Screenshot, File Upload, GPT-4 Vision, Memory Save
+// ✅ AIChat.jsx — Final Version with Image Generation, YouTube, Realtime Smart Previews, GPT-4 Vision, Persona Memory
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -39,7 +39,7 @@ function AIChat() {
   }, []);
 
   useEffect(() => {
-    if (input.toLowerCase().includes("weather")) setAutoSuggest("Try: 'What's the weather in Paris today?'");
+    if (input.toLowerCase().includes("weather")) setAutoSuggest("Try: 'weather in London'");
     else if (input.toLowerCase().includes("image")) setAutoSuggest("Try: 'Generate image of a cyberpunk city'");
     else if (input.toLowerCase().includes("stock")) setAutoSuggest("Try: 'Stock: AAPL'");
     else if (input.toLowerCase().includes("news")) setAutoSuggest("Try: 'Latest news about AI'");
@@ -68,15 +68,27 @@ function AIChat() {
     setLoading(true);
 
     try {
-      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-        prompt,
-        user_id: userId,
-        persona,
-        save_memory: true
-      });
-      let reply = res.data.reply;
-      reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      if (input.toLowerCase().includes("image")) {
+        const imageRes = await axios.post("https://droxion-backend.onrender.com/generate-image", {
+          prompt: input
+        });
+        const image_url = imageRes.data.image_url;
+        setMessages((prev) => [...prev, { role: "assistant", content: `![Generated Image](${image_url})` }]);
+      } else if (input.toLowerCase().includes("youtube")) {
+        const ytRes = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: input });
+        const { url, title } = ytRes.data;
+        setMessages((prev) => [...prev, { role: "assistant", content: `[▶️ ${title}](${url})` }]);
+      } else {
+        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+          prompt,
+          user_id: userId,
+          persona,
+          save_memory: true
+        });
+        let reply = res.data.reply;
+        reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      }
     } catch (err) {
       setMessages((prev) => [...prev, {
         role: "assistant",
