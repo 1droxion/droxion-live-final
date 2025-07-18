@@ -1,4 +1,4 @@
-// ✅ AIChat.jsx — Fixed handleScreenshot + Centered Input Before Chat (Grok Style)
+// ✅ AIChat.jsx — Fully Fixed Version with Screenshot, File Upload, GPT-4 Vision, Persona Fix, Memory Save, Centered Layout
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -22,7 +22,6 @@ function AIChat() {
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
-
   const firstMessage = messages.length === 0;
 
   useEffect(() => {
@@ -39,12 +38,10 @@ function AIChat() {
   }, []);
 
   useEffect(() => {
-    const lower = input.toLowerCase();
-    if (lower.includes("weather")) setAutoSuggest("Try: 'What's the weather in Paris today?'");
-    else if (lower.includes("image")) setAutoSuggest("Try: 'Generate image of a cyberpunk city'");
-    else if (lower.includes("stock")) setAutoSuggest("Try: 'Stock: AAPL'");
-    else if (lower.includes("news")) setAutoSuggest("Try: 'Latest news about AI'");
-    else if (lower.includes("youtube")) setAutoSuggest("Try: 'YouTube: motivation mix'");
+    if (input.toLowerCase().includes("weather")) setAutoSuggest("Try: 'What's the weather in Paris today?'");
+    else if (input.toLowerCase().includes("image")) setAutoSuggest("Try: 'Generate image of a cyberpunk city'");
+    else if (input.toLowerCase().includes("stock")) setAutoSuggest("Try: 'Stock: AAPL'");
+    else if (input.toLowerCase().includes("news")) setAutoSuggest("Try: 'Latest news about AI'");
     else setAutoSuggest("");
   }, [input]);
 
@@ -59,26 +56,46 @@ function AIChat() {
     }
   };
 
-  const handleScreenshot = async () => {
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userId = localStorage.getItem("user_id");
+    const prompt = persona ? `[${persona}]\n${input}` : input;
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setAutoSuggest("");
+    setLoading(true);
+
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const track = stream.getVideoTracks()[0];
-      const imageCapture = new ImageCapture(track);
-      const bitmap = await imageCapture.grabFrame();
-      track.stop();
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(bitmap, 0, 0);
-      canvas.toBlob((blob) => {
-        const file = new File([blob], "screenshot.png", { type: "image/png" });
-        const fakeEvent = { target: { files: [file] } };
-        handleFileChange(fakeEvent);
+      const res = await axios.post("https://droxion-backend.onrender.com/chat", {
+        prompt,
+        user_id: userId,
+        persona,
+        save_memory: true
       });
+      let reply = res.data.reply;
+      reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
-      alert("Screenshot failed.");
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "⚠️ AI Error or connection failed."
+      }]);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const startVoice = () => {
+    if (!('webkitSpeechRecognition' in window)) return alert("Voice not supported");
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+    };
+    recognition.start();
+    recognitionRef.current = recognition;
   };
 
   const handleFileChange = async (e) => {
@@ -106,9 +123,44 @@ function AIChat() {
     reader.readAsDataURL(file);
   };
 
-  const UIWrapper = () => {
-    if (firstMessage) {
-      return (
+  const handleScreenshot = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const imageCapture = new ImageCapture(track);
+      const bitmap = await imageCapture.grabFrame();
+      track.stop();
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(bitmap, 0, 0);
+      canvas.toBlob((blob) => {
+        const file = new File([blob], "screenshot.png", { type: "image/png" });
+        const fakeEvent = { target: { files: [file] } };
+        handleFileChange(fakeEvent);
+      });
+    } catch (err) {
+      alert("Screenshot failed.");
+    }
+  };
+
+  const handlePersonaChange = (p) => {
+    setPersona(p);
+    localStorage.setItem("selectedPersona", p);
+    axios.post("https://droxion-backend.onrender.com/save-persona", {
+      user_id: localStorage.getItem("user_id"),
+      persona: p
+    });
+  };
+
+  return (
+    <div className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
+      <div className="text-center pt-4 pb-2">
+        <h1 className="text-2xl font-bold tracking-widest text-gray-400">Droxion</h1>
+      </div>
+
+      {firstMessage ? (
         <div className="flex flex-col justify-center items-center flex-1 px-4">
           <div className="max-w-md w-full bg-[#111] border border-gray-700 p-6 rounded-2xl shadow-xl text-center">
             <div className="mb-4 flex justify-center gap-2 flex-wrap">
@@ -133,30 +185,27 @@ function AIChat() {
             {autoSuggest && <p className="text-xs text-gray-400 italic mt-1">💡 {autoSuggest}</p>}
           </div>
         </div>
-      );
-    }
-    return null;
-  };
-
-  return (
-    <div className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
-      <div className="text-center pt-4 pb-2">
-        <h1 className="text-2xl font-bold tracking-widest text-gray-400">Droxion</h1>
-      </div>
-
-      <UIWrapper />
-
-      {!firstMessage && (
+      ) : (
         <>
           <div className="flex-1 overflow-y-auto px-4 pb-32">
             {messages.map((msg, i) => (
               <div key={i} className={`my-3 text-sm ${msg.role === "user" ? "text-right" : "text-left"}`}>
                 <div className={`inline-block p-3 rounded-xl max-w-full break-words ${msg.role === "user" ? "bg-blue-700" : darkMode ? "bg-[#1a1a1a]" : "bg-gray-200"}`}>
-                  <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown className="prose prose-invert text-sm" rehypePlugins={[rehypeRaw]}>
+                    {msg.content}
+                  </ReactMarkdown>
                 </div>
               </div>
             ))}
-            {loading && <div className="my-3 text-left text-gray-400 text-xl animate-pulse px-2">● ● ●</div>}
+            {loading && (
+              <div className="my-3 text-left text-sm text-gray-400 px-2">
+                <div className="flex gap-1 animate-pulse text-2xl">
+                  <span className="animate-bounce">.</span>
+                  <span className="animate-bounce delay-100">.</span>
+                  <span className="animate-bounce delay-200">.</span>
+                </div>
+              </div>
+            )}
             <div ref={bottomRef} />
           </div>
 
@@ -192,7 +241,6 @@ function AIChat() {
                 ➤
               </button>
             </div>
-            {autoSuggest && <div className="text-xs text-center text-gray-400 mt-1">💡 {autoSuggest}</div>}
           </div>
         </>
       )}
