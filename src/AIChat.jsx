@@ -1,4 +1,3 @@
-// ✅ AIChat.jsx — All Fixed: Image, YouTube, Mobile, Previews
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -21,6 +20,7 @@ function AIChat() {
   const [autoSuggest, setAutoSuggest] = useState("");
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
+
   const firstMessage = messages.length === 0;
 
   useEffect(() => {
@@ -39,9 +39,9 @@ function AIChat() {
   useEffect(() => {
     const text = input.toLowerCase();
     if (text.includes("weather")) setAutoSuggest("Try: What's the weather in Paris?");
-    else if (text.includes("image")) setAutoSuggest("Try: Generate image of a sunset mountain");
+    else if (text.includes("image")) setAutoSuggest("Try: Generate image of a futuristic city");
     else if (text.includes("stock")) setAutoSuggest("Try: Stock: AAPL");
-    else if (text.includes("youtube")) setAutoSuggest("Try: Search YouTube for productivity tips");
+    else if (text.includes("youtube")) setAutoSuggest("Try: Search YouTube for Mr Beast");
     else setAutoSuggest("");
   }, [input]);
 
@@ -70,8 +70,26 @@ function AIChat() {
     try {
       let reply = "";
 
-      // Real-time triggers
-      if (
+      // Image generation
+      if (userInput.toLowerCase().includes("generate image")) {
+        const res = await axios.post("https://droxion-backend.onrender.com/generate-image", {
+          prompt: userInput,
+          user_id: userId
+        });
+        reply = `![AI Image](${res.data.image_url})`;
+      }
+
+      // YouTube search
+      else if (userInput.toLowerCase().includes("search youtube")) {
+        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
+          prompt: userInput,
+          user_id: userId
+        });
+        reply = res.data.video_cards.join("\n");
+      }
+
+      // Realtime stock, weather, etc.
+      else if (
         userInput.toLowerCase().startsWith("stock:") ||
         userInput.toLowerCase().startsWith("crypto:") ||
         userInput.toLowerCase().includes("weather") ||
@@ -81,27 +99,9 @@ function AIChat() {
           prompt: userInput,
           user_id: userId,
           persona,
-          save_memory: true,
+          save_memory: true
         });
         reply = res.data.reply;
-      }
-
-      // Image generation
-      else if (userInput.toLowerCase().includes("generate image")) {
-        const res = await axios.post("https://droxion-backend.onrender.com/generate-image", {
-          prompt: userInput,
-          user_id: userId
-        });
-        reply = `![AI Image](${res.data.image_url})`;
-      }
-
-      // YouTube video search
-      else if (userInput.toLowerCase().includes("search youtube")) {
-        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
-          prompt: userInput,
-          user_id: userId
-        });
-        reply = res.data.video_cards.join("\n");
       }
 
       // Default AI chat
@@ -110,12 +110,12 @@ function AIChat() {
           prompt,
           user_id: userId,
           persona,
-          save_memory: true,
+          save_memory: true
         });
         reply = res.data.reply;
       }
 
-      // Convert links
+      // Replace links
       reply = reply.replace(/(https?:\/\/[^\s]+)/g, (url) => `[🔗 ${url}](${url})`);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
@@ -146,7 +146,7 @@ function AIChat() {
           image_base64: base64,
           user_id: localStorage.getItem("user_id"),
           vision: true,
-          save_memory: true,
+          save_memory: true
         });
         setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
       } catch {
