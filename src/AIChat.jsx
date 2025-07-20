@@ -1,3 +1,4 @@
+// ✅ AIChat.jsx — Fixed layout + image preview + zoom + Replit + YouTube support
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -80,20 +81,6 @@ function AIChat() {
           user_id: userId
         });
         reply = res.data.video_cards.join("\n");
-      } else if (
-        userInput.toLowerCase().startsWith("stock:") ||
-        userInput.toLowerCase().startsWith("crypto:") ||
-        userInput.toLowerCase().includes("weather") ||
-        userInput.toLowerCase().includes("news") ||
-        userInput.toLowerCase().includes("time in")
-      ) {
-        const res = await axios.post("https://droxion-backend.onrender.com/chat", {
-          prompt: userInput,
-          user_id: userId,
-          persona,
-          save_memory: true
-        });
-        reply = res.data.reply;
       } else {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt,
@@ -177,7 +164,7 @@ function AIChat() {
   };
 
   return (
-    <div className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`}>
+    <div className={`flex flex-col min-h-screen w-full ${darkMode ? "bg-black text-white" : "bg-white text-black"}`} style={{ overflowX: "hidden" }}>
       <div className="text-center pt-4 pb-2">
         <h1 className="text-2xl font-bold tracking-widest text-gray-400">Droxion</h1>
       </div>
@@ -211,7 +198,7 @@ function AIChat() {
                     className="prose prose-invert text-sm"
                     rehypePlugins={[rehypeRaw]}
                     components={{
-                      img: ({...props}) => <img {...props} className="rounded-xl my-2 max-w-xs" />,
+                      img: ({...props}) => <img {...props} className="rounded-xl my-2 max-w-xs border border-gray-700 shadow-xl" />,
                       iframe: ({...props}) => <iframe {...props} className="rounded-xl my-2 max-w-xs" allowFullScreen />
                     }}
                   >
