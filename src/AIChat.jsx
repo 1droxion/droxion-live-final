@@ -1,5 +1,4 @@
-// ✅ AIChat.jsx — Fixed layout + image preview + zoom + Replit + YouTube support
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -37,10 +36,11 @@ function AIChat() {
 
   useEffect(() => {
     const text = input.toLowerCase();
-    if (text.includes("weather")) setAutoSuggest("Try: What's the weather in Paris?");
-    else if (text.includes("image")) setAutoSuggest("Try: Generate image of a futuristic city");
+    if (text.includes("weather")) setAutoSuggest("Try: What's the weather in London?");
+    else if (text.includes("image")) setAutoSuggest("Try: Generate image of a luxury car");
     else if (text.includes("stock")) setAutoSuggest("Try: Stock: AAPL");
-    else if (text.includes("youtube")) setAutoSuggest("Try: Search YouTube for Mr Beast");
+    else if (text.includes("news")) setAutoSuggest("Try: Latest news today");
+    else if (text.includes("youtube")) setAutoSuggest("Try: Search YouTube for success story");
     else setAutoSuggest("");
   }, [input]);
 
