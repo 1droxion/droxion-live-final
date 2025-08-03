@@ -31,6 +31,7 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
+  // 👇 Add mobile fix styles (font, zoom)
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
@@ -152,7 +153,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Default chat
+      // Default
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
