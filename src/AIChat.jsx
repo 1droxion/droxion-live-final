@@ -1,4 +1,3 @@
-this file youtueb working okay // ✅ AIChat.jsx — Fully fixed with YouTube, Image, Smart Cards, Layout intact
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -31,6 +30,23 @@ function AIChat() {
   useEffect(() => {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
+
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+      textarea, input {
+        font-size: 16px !important;
+      }
+      img, iframe {
+        max-width: 100% !important;
+        height: auto !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   const logAction = async (action, inputText) => {
     try {
@@ -67,11 +83,9 @@ function AIChat() {
       const imgKW = ["image", "photo", "draw", "picture", "generate"];
       let handled = false;
 
-      // YouTube video
+      // YouTube
       if (ytKW.some(k => lower.includes(k))) {
-        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", {
-          prompt: textToSend,
-        });
+        const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: textToSend });
         if (res.data?.url) {
           const videoId = res.data.url.split("v=")[1];
           const iframe = `<iframe width="360" height="203" class="rounded-lg my-2 max-w-xs" src="https://www.youtube.com/embed/${videoId}" allowfullscreen></iframe>`;
@@ -80,7 +94,7 @@ function AIChat() {
         }
       }
 
-      // Image generation
+      // Image
       if (!handled && imgKW.some(k => lower.includes(k))) {
         const im = await axios.post("https://droxion-backend.onrender.com/generate-image", {
           prompt: textToSend,
@@ -94,7 +108,7 @@ function AIChat() {
         }
       }
 
-      // Smart: Stock
+      // Stock
       if (!handled && lower.startsWith("stock:")) {
         const stock = lower.replace("stock:", "").trim().toUpperCase();
         const iframe = `<iframe src="https://www.google.com/finance/quote/${stock}:NASDAQ" width="100%" height="200" frameborder="0"></iframe>`;
@@ -105,7 +119,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Smart: Weather
+      // Weather
       if (!handled && lower.startsWith("weather in ")) {
         const city = textToSend.slice(11).trim();
         const w = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
@@ -116,7 +130,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Smart: News
+      // News
       if (!handled && lower.includes("news")) {
         const n = await axios.post("https://droxion-backend.onrender.com/realtime/news", {});
         const headlines = n.data.headlines.map(h => `• ${h}`).join("\n");
@@ -127,7 +141,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Smart: Time
+      // Time
       if (!handled && lower.includes("time in ")) {
         const city = lower.split("time in ")[1];
         const t = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
@@ -138,7 +152,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Fallback: Chat
+      // Default chat
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
