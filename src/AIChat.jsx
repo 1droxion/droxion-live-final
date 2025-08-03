@@ -31,7 +31,7 @@ function AIChat() {
     chatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  // 👇 Add mobile fix styles (font, zoom)
+  // 📱 Mobile Fix: Prevent zoom on iOS
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
@@ -84,7 +84,7 @@ function AIChat() {
       const imgKW = ["image", "photo", "draw", "picture", "generate"];
       let handled = false;
 
-      // YouTube
+      // 🎥 YouTube
       if (ytKW.some(k => lower.includes(k))) {
         const res = await axios.post("https://droxion-backend.onrender.com/search-youtube", { prompt: textToSend });
         if (res.data?.url) {
@@ -95,11 +95,9 @@ function AIChat() {
         }
       }
 
-      // Image
+      // 🖼️ Image
       if (!handled && imgKW.some(k => lower.includes(k))) {
-        const im = await axios.post("https://droxion-backend.onrender.com/generate-image", {
-          prompt: textToSend,
-        });
+        const im = await axios.post("https://droxion-backend.onrender.com/generate-image", { prompt: textToSend });
         if (im.data?.image_url) {
           setMessages(prev => [...prev, {
             role: "assistant",
@@ -109,7 +107,7 @@ function AIChat() {
         }
       }
 
-      // Stock
+      // 📈 Stock
       if (!handled && lower.startsWith("stock:")) {
         const stock = lower.replace("stock:", "").trim().toUpperCase();
         const iframe = `<iframe src="https://www.google.com/finance/quote/${stock}:NASDAQ" width="100%" height="200" frameborder="0"></iframe>`;
@@ -120,7 +118,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Weather
+      // ☁️ Weather
       if (!handled && lower.startsWith("weather in ")) {
         const city = textToSend.slice(11).trim();
         const w = await axios.post("https://droxion-backend.onrender.com/realtime/weather", { city });
@@ -131,7 +129,7 @@ function AIChat() {
         handled = true;
       }
 
-      // News
+      // 📰 News
       if (!handled && lower.includes("news")) {
         const n = await axios.post("https://droxion-backend.onrender.com/realtime/news", {});
         const headlines = n.data.headlines.map(h => `• ${h}`).join("\n");
@@ -142,7 +140,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Time
+      // 🕒 Time
       if (!handled && lower.includes("time in ")) {
         const city = lower.split("time in ")[1];
         const t = await axios.post("https://droxion-backend.onrender.com/realtime/time", { city });
@@ -153,7 +151,7 @@ function AIChat() {
         handled = true;
       }
 
-      // Default
+      // 💬 Default Chat
       if (!handled) {
         const res = await axios.post("https://droxion-backend.onrender.com/chat", {
           prompt: textToSend,
