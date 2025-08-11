@@ -10,46 +10,50 @@ import {
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
+// Common name → ticker map (US + a few IN)
+const STOCK_MAP = {
+  tesla: { symbol: "TSLA", exchange: "NASDAQ" },
+  apple: { symbol: "AAPL", exchange: "NASDAQ" },
+  google: { symbol: "GOOGL", exchange: "NASDAQ" },
+  alphabet: { symbol: "GOOGL", exchange: "NASDAQ" },
+  microsoft: { symbol: "MSFT", exchange: "NASDAQ" },
+  amazon: { symbol: "AMZN", exchange: "NASDAQ" },
+  meta: { symbol: "META", exchange: "NASDAQ" },
+  facebook: { symbol: "META", exchange: "NASDAQ" },
+  nvidia: { symbol: "NVDA", exchange: "NASDAQ" },
+  netflix: { symbol: "NFLX", exchange: "NASDAQ" },
+  // India (works in Google Finance embeds)
+  reliance: { symbol: "RELIANCE", exchange: "NSE" },
+  tcs: { symbol: "TCS", exchange: "NSE" },
+  infosys: { symbol: "INFY", exchange: "NSE" },
+  hdfc: { symbol: "HDFCBANK", exchange: "NSE" },
+  adani: { symbol: "ADANIENT", exchange: "NSE" }
+};
+
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [topToolsOpen, setTopToolsOpen] = useState(false);
-  const chatRef = useRef(null);
+  const chatEndRef = useRef(null);
   const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
   const userId = useRef("");
 
-  // ----- helpers -----
   const pushAssistant = (content, extra = {}) =>
     setMessages(prev => [...prev, { role: "assistant", content, ...extra }]);
   const pushUser = (content) =>
     setMessages(prev => [...prev, { role: "user", content }]);
 
-  const getYouTubeId = (rawUrlOrQuery) => {
-    // supports youtu.be, watch?v=, shorts/, embed/
+  const logAction = async (action, inputText) => {
     try {
-      const txt = rawUrlOrQuery.trim();
-      // ID directly
-      if (/^[A-Za-z0-9_-]{11}$/.test(txt)) return txt;
-
-      // URL parse
-      const u = new URL(txt.includes("http") ? txt : "https://youtube.com/results?search_query=" + encodeURIComponent(txt));
-      const host = u.hostname.replace("www.","");
-      if (host.includes("youtube.com")) {
-        if (u.searchParams.get("v")) return u.searchParams.get("v");
-        const p = u.pathname.split("/").filter(Boolean);
-        // /shorts/VIDEOID or /embed/VIDEOID
-        if (p[0] === "shorts" || p[0] === "embed") return p[1];
-        // /watch
-      } else if (host.includes("youtu.be")) {
-        const p = u.pathname.split("/").filter(Boolean);
-        if (p[0]) return p[0];
-      }
-    } catch {}
-    // last fallback: extract 11-char token
-    const m = rawUrlOrQuery.match(/([A-Za-z0-9_-]{11})/);
-    return m ? m[1] : null;
+      await axios.post(`${API_BASE}/track`, {
+        user_id: userId.current,
+        action,
+        input: inputText,
+        timestamp: new Date().toISOString()
+      });
+    } catch { /* no-op */ }
   };
 
   const speak = (text) => {
@@ -60,20 +64,66 @@ function AIChat() {
     synth.speak(u);
   };
 
-  const logAction = async (action, inputText) => {
+  // ---------- YouTube helpers ----------
+  const getYouTubeId = (raw) => {
     try {
-      await axios.post(`${API_BASE}/track`, {
-        user_id: userId.current,
-        action,
-        input: inputText,
-        timestamp: new Date().toISOString()
-      });
-    } catch (e) {
-      console.warn("Tracking failed", e);
-    }
+      const txt = raw.trim();
+      if (/^[A-Za-z0-9_-]{11}$/.test(txt)) return txt;
+      const hasHttp = /^https?:\/\//i.test(txt);
+      const u = new URL(hasHttp ? txt : `https://youtube.com/results?search_query=${encodeURIComponent(txt)}`);
+      const host = u.hostname.replace("www.", "");
+      if (host.includes("youtube.com")) {
+        if (u.searchParams.get("v")) return u.searchParams.get("v");
+        const p = u.pathname.split("/").filter(Boolean);
+        if (p[0] === "shorts" || p[0] === "embed") return p[1];
+      }
+      if (host.includes("youtu.be")) {
+        const p = u.pathname.split("/").filter(Boolean);
+        if (p[0]) return p[0];
+      }
+    } catch {}
+    const m = raw.match(/([A-Za-z0-9_-]{11})/);
+    return m ? m[1] : null;
   };
 
-  // ----- effects -----
+  // ---------- Stock helpers (natural language) ----------
+  const detectStockQuery = (txt) => {
+    const l = txt.toLowerCase();
+    const looksLikeStock =
+      l.includes("stock") || l.includes("share") || l.includes("price") || l.startsWith("stock:");
+    if (!looksLikeStock) return null;
+
+    // 1) explicit "stock:SYMBOL" still supported
+    if (l.startsWith("stock:")) {
+      const raw = txt.slice(6).trim().toUpperCase();
+      const [symbol, exchange] = raw.split(":");
+      return { symbol: symbol || raw, exchange };
+    }
+
+    // 2) company name keyword map
+    for (const key of Object.keys(STOCK_MAP)) {
+      if (l.includes(key)) return STOCK_MAP[key];
+    }
+
+    // 3) uppercase ticker in text (1–5 letters)
+    const upperTokens = txt.match(/\b[A-Z]{1,5}\b/g);
+    if (upperTokens && upperTokens.length) {
+      // choose the first that is not common word
+      const bad = new Set(["I", "AM", "A", "AND", "THE", "IN", "AT", "ON", "FOR", "WITH", "TO"]);
+      const pick = upperTokens.find(t => !bad.has(t));
+      if (pick) return { symbol: pick };
+    }
+    return null;
+  };
+
+  // ---------- Weather/Time helpers (natural language) ----------
+  const extractCityAfter = (txt, anchor) => {
+    const idx = txt.toLowerCase().indexOf(anchor);
+    if (idx === -1) return null;
+    return txt.slice(idx + anchor.length).trim().replace(/[?.!]+$/, "");
+  };
+
+  // ---------- Effects ----------
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
@@ -84,12 +134,11 @@ function AIChat() {
   }, []);
 
   useEffect(() => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
   // iOS zoom + responsive embeds
   useEffect(() => {
-    // enforce 16px font to prevent iOS zoom
     const style = document.createElement("style");
     style.innerHTML = `
       textarea, input { font-size: 16px !important; }
@@ -101,7 +150,6 @@ function AIChat() {
     `;
     document.head.appendChild(style);
 
-    // ensure viewport meta exists & correct (prevents zoom)
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -109,26 +157,16 @@ function AIChat() {
       document.head.appendChild(meta);
     }
     meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
-    return () => {
-      document.head.removeChild(style);
-    };
+    return () => { document.head.removeChild(style); };
   }, []);
 
-  // ----- cards renderers from /chat smart previews -----
+  // ---------- Cards ----------
   const CardNews = ({ item }) => (
-    <a
-      href={item.url}
-      target="_blank"
-      rel="noreferrer"
-      className="block border border-gray-700 rounded-lg p-3 hover:bg-gray-900 transition"
-    >
-      {item.image && (
-        <img src={item.image} alt="" className="w-full rounded mb-2" loading="lazy" />
-      )}
+    <a href={item.url} target="_blank" rel="noreferrer"
+       className="block border border-gray-700 rounded-lg p-3 hover:bg-gray-900 transition">
+      {item.image && <img src={item.image} alt="" className="w-full rounded mb-2" loading="lazy" />}
       <div className="text-sm font-semibold">{item.title}</div>
-      <div className="text-xs text-gray-400 mt-1">
-        {item.source} {item.time ? "• " + item.time : ""}
-      </div>
+      <div className="text-xs text-gray-400 mt-1">{item.source} {item.time ? `• ${item.time}` : ""}</div>
     </a>
   );
 
@@ -136,9 +174,7 @@ function AIChat() {
     <div className="border border-gray-700 rounded-lg p-3">
       <div className="text-sm font-semibold mb-1">Weather in {data.city}</div>
       <div className="text-lg">{data.temp} — {data.condition}</div>
-      {data.extra && (
-        <div className="text-xs text-gray-400 mt-1">{data.extra}</div>
-      )}
+      {data.extra && <div className="text-xs text-gray-400 mt-1">{data.extra}</div>}
     </div>
   );
 
@@ -152,10 +188,9 @@ function AIChat() {
 
   const CardFinance = ({ data }) => (
     <div className="border border-gray-700 rounded-lg p-3">
-      <div className="text-sm font-semibold mb-2">📈 {data.symbol} {data.exchange ? `(${data.exchange})` : ""}</div>
+      <div className="text-sm font-semibold mb-2">📈 {data.symbol}{data.exchange ? ` (${data.exchange})` : ""}</div>
       {data.price && <div className="text-lg mb-1">{data.price}{data.change ? ` (${data.change})` : ""}</div>}
       <div className="embed-responsive embed-16by9 rounded overflow-hidden">
-        {/* Google Finance preview */}
         <iframe
           src={`https://www.google.com/finance/quote/${encodeURIComponent(data.symbol)}${data.exchange ? ":"+encodeURIComponent(data.exchange) : ""}`}
           title={data.symbol}
@@ -191,20 +226,15 @@ function AIChat() {
           if (c.type === "image" && c.image_url) {
             return <img key={idx} src={c.image_url} alt="" className="w-full rounded" loading="lazy" />;
           }
-          // default raw html or text
-          if (c.html) {
-            return <div key={idx} className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: c.html }} />;
-          }
-          if (c.text) {
-            return <div key={idx} className="text-sm">{c.text}</div>;
-          }
+          if (c.html) return <div key={idx} className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: c.html }} />;
+          if (c.text) return <div key={idx} className="text-sm">{c.text}</div>;
           return null;
         })}
       </div>
     );
   };
 
-  // ----- main send handler -----
+  // ---------- Main send ----------
   const handleSend = async (textToSend = input) => {
     const content = textToSend.trim();
     if (!content) return;
@@ -218,7 +248,7 @@ function AIChat() {
     try {
       let handled = false;
 
-      // GOOGLE-style trigger: let backend return smart cards (news, stocks, weather, etc.)
+      // GOOGLE/search trigger -> backend smart cards (news, stocks, weather, etc.)
       if (lower.startsWith("google:") || lower.startsWith("search:")) {
         const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
         const reply = res.data?.reply || "";
@@ -228,26 +258,19 @@ function AIChat() {
         handled = true;
       }
 
-      // YOUTUBE: if the user asks for videos or includes a YT link/keyword
+      // YOUTUBE: natural keywords or direct link/ID
       if (!handled) {
         const ytKW = ["youtube", "yt ", "video", "watch", "trailer", "music", "song", "shorts", "youtu.be", "youtube.com"];
         if (ytKW.some(k => lower.includes(k))) {
-          // If user pasted a URL, use it; else call your search endpoint
           const directId = getYouTubeId(content);
           if (directId) {
-            pushAssistant(
-              "",
-              {
-                cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }]
-              }
-            );
+            pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] });
           } else {
             const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
             const url = res.data?.url;
             if (url) {
               pushAssistant("", { cards: [{ type: "youtube", url }] });
             } else {
-              // fallback ask model
               const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
               const reply = r.data?.reply || "I couldn't find a video for that.";
               pushAssistant(reply);
@@ -258,7 +281,7 @@ function AIChat() {
         }
       }
 
-      // IMAGE generation (uses your Replit key in backend)
+      // IMAGE generation (Replit key on backend)
       if (!handled) {
         const imgKW = ["image", "photo", "draw", "picture", "generate", "art", "wallpaper"];
         if (imgKW.some(k => lower.includes(k))) {
@@ -272,25 +295,31 @@ function AIChat() {
         }
       }
 
-      // STOCK quick trigger "stock:TSLA" or "stock: TSLA:NDAQ"
-      if (!handled && lower.startsWith("stock:")) {
-        const raw = content.slice(6).trim().toUpperCase(); // TSLA or TSLA:NDAQ
-        const [symbol, exchange] = raw.split(":");
-        pushAssistant("", { cards: [{ type: "finance", symbol: symbol || raw, exchange: exchange || undefined }] });
+      // STOCK: natural language (e.g., "Tesla stock", "price of AAPL", "GOOG stock today")
+      if (!handled) {
+        const stockHit = detectStockQuery(content);
+        if (stockHit) {
+          pushAssistant("", { cards: [{ type: "finance", ...stockHit }] });
+          handled = true;
+        }
+      }
+
+      // WEATHER: any text with "weather" tries to extract city
+      if (!handled && lower.includes("weather")) {
+        let city = extractCityAfter(content, "weather in ");
+        if (!city) city = extractCityAfter(content, "in ");
+        try {
+          const w = await axios.post(`${API_BASE}/realtime/weather`, { city: city || "" });
+          pushAssistant("", { cards: [{ type: "weather", city: w.data?.city || (city || "Your location"), temp: w.data?.temp, condition: w.data?.condition, extra: w.data?.extra }] });
+        } catch {
+          pushAssistant("Couldn't fetch weather right now.");
+        }
         handled = true;
       }
 
-      // WEATHER quick "weather in City"
-      if (!handled && lower.startsWith("weather in ")) {
-        const city = content.slice(11).trim();
-        const w = await axios.post(`${API_BASE}/realtime/weather`, { city });
-        pushAssistant("", { cards: [{ type: "weather", city: w.data?.city || city, temp: w.data?.temp, condition: w.data?.condition, extra: w.data?.extra }] });
-        handled = true;
-      }
-
-      // TIME quick "time in City"
-      if (!handled && lower.includes("time in ")) {
-        const city = content.split(/time in /i)[1]?.trim();
+      // TIME: natural "time in <city>" or "current time <city>"
+      if (!handled && (lower.includes("time in ") || lower.includes("current time"))) {
+        const city = extractCityAfter(content, "time in ") || extractCityAfter(content, "current time ");
         if (city) {
           const t = await axios.post(`${API_BASE}/realtime/time`, { city });
           pushAssistant("", { cards: [{ type: "time", city: t.data?.city || city, time: t.data?.time, date: t.data?.date }] });
@@ -298,19 +327,23 @@ function AIChat() {
         }
       }
 
-      // NEWS quick mention
-      if (!handled && lower.includes("news")) {
+      // NEWS: natural mentions
+      if (!handled && (lower.includes("news") || lower.includes("headlines"))) {
         const n = await axios.post(`${API_BASE}/realtime/news`, {});
-        const headlines = (n.data?.headlines || []).map(h => ({ type: "news", title: h.title || h, url: h.url, source: h.source, image: h.image, time: h.time }));
-        if (headlines.length) {
-          pushAssistant("Top headlines:", { cards: headlines });
-        } else {
-          pushAssistant("Couldn't fetch news right now.");
-        }
+        const headlines = (n.data?.headlines || []).map(h => ({
+          type: "news",
+          title: h.title || h,
+          url: h.url,
+          source: h.source,
+          image: h.image,
+          time: h.time
+        }));
+        if (headlines.length) pushAssistant("Top headlines:", { cards: headlines });
+        else pushAssistant("Couldn't fetch news right now.");
         handled = true;
       }
 
-      // DEFAULT chat (also returns cards in your backend)
+      // DEFAULT chat (also supports cards)
       if (!handled) {
         const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
         let reply = res.data?.reply || "";
@@ -347,10 +380,9 @@ function AIChat() {
     }
   };
 
-  // ----- UI -----
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* TOP BAR */}
+      {/* Top bar */}
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <div className="text-lg font-bold">Droxion</div>
         <div className="relative">
@@ -373,14 +405,13 @@ function AIChat() {
         </div>
       </div>
 
-      {/* MESSAGES */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (
           <div
             key={i}
             className={`px-3 msg whitespace-pre-wrap text-sm max-w-xl ${msg.role === "user" ? "self-end text-right ml-auto" : "self-start text-left"}`}
           >
-            {/* text/html via markdown */}
             {msg.content ? (
               <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
                 img: (props) => <img {...props} className="rounded-lg my-2 w-full" loading="lazy" />,
@@ -394,15 +425,14 @@ function AIChat() {
               </ReactMarkdown>
             ) : null}
 
-            {/* smart preview cards */}
             {msg.cards && renderCards(msg.cards)}
           </div>
         ))}
         {typing && <div className="ml-4 text-left">💬 Thinking...</div>}
-        <div ref={chatRef} />
+        <div ref={chatEndRef} />
       </div>
 
-      {/* STYLE BUTTONS */}
+      {/* Quick style buttons */}
       <div className="px-3 pb-1">
         <div className="flex gap-2 flex-wrap">
           {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map(s => (
@@ -417,7 +447,7 @@ function AIChat() {
         </div>
       </div>
 
-      {/* INPUT */}
+      {/* Input */}
       <div className="p-3 border-t border-gray-700">
         <div className="flex items-center space-x-2">
           <textarea
@@ -427,7 +457,7 @@ function AIChat() {
             rows={1}
             inputMode="text"
             className="flex-1 p-3 rounded bg-black text-white border border-gray-600 focus:outline-none"
-            placeholder="Type your message… (try: google: latest AI news, weather in Chicago, stock:TSLA, a YouTube query, etc.)"
+            placeholder="Type here… try: Tesla stock, latest AI news, weather in Chicago, time in Mumbai, a YouTube query, or google: <anything>"
           />
           <button
             onClick={() => handleSend(input)}
