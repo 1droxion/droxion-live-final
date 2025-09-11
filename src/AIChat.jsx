@@ -19,12 +19,11 @@ function AIChat() {
   const [topToolsOpen, setTopToolsOpen] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // simple quick suggestions
   const [suggestions] = useState([
-    "Generate an image: cinematic city at night",
+    "search: latest AI startups in India 2025",
     "YouTube: best startup talk 2025",
-    "Write a 5-point plan to grow my cafe",
-    "Give me 3 viral reel ideas about productivity",
+    "Generate an image: cinematic city at night",
+    "Write a 5-point plan to grow my cafe"
   ]);
 
   // refs
@@ -149,12 +148,25 @@ function AIChat() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
-  // ---------- Card renderer (YouTube + Image only) ----------
+  // ---------- Card renderer ----------
   const renderCards = (cards) => {
     if (!cards || !cards.length) return null;
     return (
       <div className="grid grid-cols-1 gap-3">
         {cards.map((c, idx) => {
+          if (c.type === "web") {
+            return (
+              <a key={idx} href={c.url} target="_blank" rel="noreferrer"
+                 className="block glass rounded-lg p-3 hover:bg-white/10 transition">
+                {c.image && <img src={c.image} alt="" className="w-full rounded mb-2" loading="lazy" />}
+                <div className="text-sm font-semibold leading-snug">{c.title}</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {c.source || (new URL(c.url).hostname.replace('www.',''))}
+                </div>
+                {c.snippet && <div className="text-xs text-gray-300 mt-1">{c.snippet}</div>}
+              </a>
+            );
+          }
           if (c.type === "youtube") {
             const vid = getYouTubeId(c.url || "");
             if (!vid) return null;
@@ -202,7 +214,32 @@ function AIChat() {
     const lower = content.toLowerCase();
 
     try {
-      // 1) YOUTUBE first
+      // 0) SEARCH (explicit trigger "search: ...")
+      if (lower.startsWith("search:")) {
+        const q = content.replace(/^search:\s*/i, "");
+        try {
+          const r = await axios.post(`${API_BASE}/search`, { prompt: q });
+          const results = (r.data?.results || []).map(it => ({
+            type: "web",
+            title: it.title,
+            url: it.url,
+            image: it.image,
+            source: it.source,
+            snippet: it.snippet
+          }));
+          if (results.length) {
+            pushAssistant(`Here are sources for **${q}**:`, { cards: results });
+          } else {
+            pushAssistant(`No sources found for **${q}**.`);
+          }
+        } catch {
+          pushAssistant("Search is unavailable right now.");
+        }
+        setTyping(false);
+        return;
+      }
+
+      // 1) YOUTUBE first (so "YouTube: ..." won't trigger image/chat)
       const ytKW = ["youtube", "yt ", "youtu.be", "youtube.com", "video", "trailer", "shorts", "song", "watch "];
       if (ytKW.some(k => lower.includes(k)) || lower.startsWith("youtube:")) {
         const directId = getYouTubeId(content);
@@ -346,6 +383,18 @@ function AIChat() {
                   </ReactMarkdown>
                 ) : null}
 
+                {/* Source pills (for web cards) */}
+                {!isUser && msg.cards?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {msg.cards.filter(c => c.type === "web").slice(0, 5).map((c, idx) => (
+                      <a key={idx} href={c.url} target="_blank" rel="noreferrer"
+                         className="text-[11px] px-2 py-1 rounded-full border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+                        {c.source || new URL(c.url).hostname.replace('www.','')}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+
                 {hasCards && (
                   <div className="mt-3">
                     {renderCards(msg.cards)}
@@ -385,7 +434,7 @@ function AIChat() {
                 onKeyDown={handleKey}
                 rows={1}
                 inputMode="text"
-                placeholder=""   // keep it clean; or "Type here…"
+                placeholder=""   // clean; or "Type here…"
                 className="w-full bg-transparent outline-none resize-none leading-[1.6] placeholder-white/30"
                 aria-label="Type your message"
               />
