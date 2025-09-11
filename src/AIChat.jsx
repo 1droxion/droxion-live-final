@@ -167,6 +167,18 @@ function AIChat() {
               </a>
             );
           }
+          if (c.type === "news") {
+            return (
+              <a key={idx} href={c.url} target="_blank" rel="noreferrer"
+                 className="block glass rounded-lg p-3 hover:bg-white/10 transition">
+                {c.image && <img src={c.image} alt="" className="w-full rounded mb-2" loading="lazy" />}
+                <div className="text-sm font-semibold leading-snug">{c.title}</div>
+                <div className="text-[11px] text-gray-400 mt-1">
+                  {c.source} {c.time ? `• ${c.time}` : ""}
+                </div>
+              </a>
+            );
+          }
           if (c.type === "youtube") {
             const vid = getYouTubeId(c.url || "");
             if (!vid) return null;
@@ -239,6 +251,48 @@ function AIChat() {
         return;
       }
 
+      // 0.1) keyword "news" -> backend realtime/news
+      if (/\bnews\b/i.test(lower)) {
+        try {
+          const n = await axios.post(`${API_BASE}/realtime/news`, {});
+          const headlines = (n.data?.headlines || []).map(h => ({
+            type: "news",
+            title: h.title || h,
+            url: h.url,
+            source: h.source,
+            image: h.image,
+            time: h.time
+          }));
+          if (headlines.length) pushAssistant("📰 Top headlines:", { cards: headlines });
+          else pushAssistant("Couldn't fetch news right now.");
+        } catch {
+          pushAssistant("Couldn't fetch news right now.");
+        }
+        setTyping(false);
+        return;
+      }
+
+      // 0.2) keyword "link" -> generic search cards
+      if (/\blink\b/i.test(lower)) {
+        try {
+          const r = await axios.post(`${API_BASE}/search`, { prompt: content });
+          const results = (r.data?.results || []).map(it => ({
+            type: "web",
+            title: it.title,
+            url: it.url,
+            image: it.image,
+            source: it.source,
+            snippet: it.snippet
+          }));
+          if (results.length) pushAssistant("🔗 Here are some links:", { cards: results });
+          else pushAssistant("No links found.");
+        } catch {
+          pushAssistant("Couldn't fetch links right now.");
+        }
+        setTyping(false);
+        return;
+      }
+
       // 1) YOUTUBE first (so "YouTube: ..." won't trigger image/chat)
       const ytKW = ["youtube", "yt ", "youtu.be", "youtube.com", "video", "trailer", "shorts", "song", "watch "];
       if (ytKW.some(k => lower.includes(k)) || lower.startsWith("youtube:")) {
@@ -265,19 +319,21 @@ function AIChat() {
         return;
       }
 
-      // 2) IMAGE (stricter trigger)
+      // 2) IMAGE (stricter trigger, better error handling)
       const imageTrigger = /^(image:|generate( an)? (image|photo|art|picture)|wallpaper|artwork)/i.test(lower)
         || lower.includes(" generate an image");
       if (imageTrigger) {
         try {
           const im = await axios.post(`${API_BASE}/generate-image`, { prompt: content });
-          if (im.data?.image_url) {
-            pushAssistant("", { cards: [{ type: "image", image_url: im.data.image_url }] });
+          const url = im?.data?.image_url;
+          if (url && typeof url === "string") {
+            pushAssistant("", { cards: [{ type: "image", image_url: url }] });
           } else {
-            pushAssistant("I couldn't generate that image right now.");
+            pushAssistant("⚠️ No image returned. Please try again.");
           }
-        } catch {
-          pushAssistant("Image service is unavailable right now.");
+        } catch (err) {
+          console.error("Image gen error:", err);
+          pushAssistant("⚠️ Image generation failed.");
         }
         setTyping(false);
         return;
@@ -302,6 +358,7 @@ function AIChat() {
   const handlePromptClick = (style) => handleSend(`Generate an image in ${style} style.`);
 
   const handleMic = () => {
+    // Browser web speech (native plugin recommended for iOS app)
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return alert("Mic not supported");
     const recog = new SR();
@@ -383,15 +440,18 @@ function AIChat() {
                   </ReactMarkdown>
                 ) : null}
 
-                {/* Source pills (for web cards) */}
+                {/* Source pills (for web/news cards) */}
                 {!isUser && msg.cards?.length ? (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {msg.cards.filter(c => c.type === "web").slice(0, 5).map((c, idx) => (
-                      <a key={idx} href={c.url} target="_blank" rel="noreferrer"
-                         className="text-[11px] px-2 py-1 rounded-full border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
-                        {c.source || new URL(c.url).hostname.replace('www.','')}
-                      </a>
-                    ))}
+                    {msg.cards
+                      .filter(c => c.type === "web" || c.type === "news")
+                      .slice(0, 5)
+                      .map((c, idx) => (
+                        <a key={idx} href={c.url} target="_blank" rel="noreferrer"
+                           className="text-[11px] px-2 py-1 rounded-full border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+                          {(c.source || (c.url ? new URL(c.url).hostname.replace('www.','') : 'source'))}
+                        </a>
+                      ))}
                   </div>
                 ) : null}
 
