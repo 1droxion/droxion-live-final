@@ -3,48 +3,36 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import {
-  FaTrash, FaDownload, FaClock, FaPlus,
+  FaTrash, FaDownload, FaPlus,
   FaVolumeUp, FaVolumeMute, FaMicrophone,
-  FaUpload, FaCamera, FaDesktop, FaRegCopy
+  FaUpload, FaCamera, FaRegCopy
 } from "react-icons/fa";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-// Common name → ticker map (US + a few IN)
-const STOCK_MAP = {
-  tesla: { symbol: "TSLA", exchange: "NASDAQ" },
-  apple: { symbol: "AAPL", exchange: "NASDAQ" },
-  google: { symbol: "GOOGL", exchange: "NASDAQ" },
-  alphabet: { symbol: "GOOGL", exchange: "NASDAQ" },
-  microsoft: { symbol: "MSFT", exchange: "NASDAQ" },
-  amazon: { symbol: "AMZN", exchange: "NASDAQ" },
-  meta: { symbol: "META", exchange: "NASDAQ" },
-  facebook: { symbol: "META", exchange: "NASDAQ" },
-  nvidia: { symbol: "NVDA", exchange: "NASDAQ" },
-  netflix: { symbol: "NFLX", exchange: "NASDAQ" },
-  // India (works in Google Finance embeds)
-  reliance: { symbol: "RELIANCE", exchange: "NSE" },
-  tcs: { symbol: "TCS", exchange: "NSE" },
-  infosys: { symbol: "INFY", exchange: "NSE" },
-  hdfc: { symbol: "HDFCBANK", exchange: "NSE" },
-  adani: { symbol: "ADANIENT", exchange: "NSE" }
-};
+/**
+ * AIChat (Lite) — Chat + YouTube + Image only
+ * - Removed: stocks/crypto, news, weather, time, google/search cards, finance embeds
+ * - Clean mobile-first glass style + black/white icons
+ * - Uses your existing Render backend: /chat, /generate-image, /search-youtube
+ */
 
 function AIChat() {
   // -------- State --------
-  const [messages, setMessages] = useState([]);           // [{role, content, cards?}]
+  const [messages, setMessages] = useState([]); // [{role, content, cards?}]
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [topToolsOpen, setTopToolsOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState([
-    "search: latest AI news India",
-    "Tesla stock",
-    "weather in Ahmedabad",
-    "time in Mumbai",
-    "YouTube: best startup talk 2025",
-  ]);
   const [copiedIdx, setCopiedIdx] = useState(null);
+
+  // simple quick suggestions (no stocks/news)
+  const [suggestions] = useState([
+    "Generate an image: cinematic city at night",
+    "YouTube: best startup talk 2025",
+    "Write a 5-point plan to grow my cafe",
+    "Give me 3 viral reel ideas about productivity",
+  ]);
 
   // refs
   const chatEndRef = useRef(null);
@@ -99,39 +87,6 @@ function AIChat() {
     return m ? m[1] : null;
   };
 
-  // ---------- Stock helpers ----------
-  const detectStockQuery = (txt) => {
-    const l = txt.toLowerCase();
-    const looksLikeStock =
-      l.includes("stock") || l.includes("share") || l.includes("price") || l.startsWith("stock:");
-    if (!looksLikeStock) return null;
-
-    if (l.startsWith("stock:")) {
-      const raw = txt.slice(6).trim().toUpperCase();
-      const [symbol, exchange] = raw.split(":");
-      return { symbol: symbol || raw, exchange };
-    }
-
-    for (const key of Object.keys(STOCK_MAP)) {
-      if (l.includes(key)) return STOCK_MAP[key];
-    }
-
-    const upperTokens = txt.match(/\b[A-Z]{1,5}\b/g);
-    if (upperTokens && upperTokens.length) {
-      const bad = new Set(["I", "AM", "A", "AND", "THE", "IN", "AT", "ON", "FOR", "WITH", "TO"]);
-      const pick = upperTokens.find(t => !bad.has(t));
-      if (pick) return { symbol: pick };
-    }
-    return null;
-  };
-
-  // ---------- Simple parsing helpers ----------
-  const extractCityAfter = (txt, anchor) => {
-    const idx = txt.toLowerCase().indexOf(anchor);
-    if (idx === -1) return null;
-    return txt.slice(idx + anchor.length).trim().replace(/[?.!]+$/, "");
-  };
-
   // ---------- Effects ----------
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
@@ -143,14 +98,18 @@ function AIChat() {
   }, []);
 
   useEffect(() => {
-    // smooth scroll to bottom on new content
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, typing]);
 
-  // Global styles (mobile-safe, smooth embeds)
+  // Global styles (mobile-safe, smooth embeds) + glass look
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
+      :root {
+        --glass: rgba(255,255,255,0.06);
+        --glass-2: rgba(255,255,255,0.10);
+        --border: rgba(255,255,255,0.12);
+      }
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; }
       img, iframe, video { max-width: 100% !important; height: auto !important; }
@@ -158,12 +117,16 @@ function AIChat() {
       .embed-16by9 { padding-top: 56.25%; }
       .embed-responsive iframe { position: absolute; top:0; left:0; width:100%; height:100%; border:0; }
       .msg { word-wrap: break-word; overflow-wrap: anywhere; }
-      .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%); background-size:400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 8px; }
+      .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%);
+                 background-size:400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 8px; }
       @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+      .glass { background: var(--glass); border: 1px solid var(--border); backdrop-filter: blur(10px); }
+      .glass-2 { background: var(--glass-2); border: 1px solid var(--border); backdrop-filter: blur(10px); }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; } }
     `;
     document.head.appendChild(style);
 
+    // mobile viewport (prevents zoom jump)
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -174,20 +137,17 @@ function AIChat() {
     return () => { document.head.removeChild(style); };
   }, []);
 
-  // Keyboard shortcuts (Perplexity vibe)
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e) => {
-      // "/" focuses search
       if (e.key === "/" && document.activeElement !== inputRef.current) {
         e.preventDefault();
         inputRef.current?.focus();
       }
-      // Cmd/Ctrl+K toggles tools
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setTopToolsOpen(v => !v);
       }
-      // Esc blurs
       if (e.key === "Escape") inputRef.current?.blur();
     };
     window.addEventListener("keydown", onKey);
@@ -202,72 +162,17 @@ function AIChat() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
-  // ---------- UI Components ----------
-  const SourcePill = ({ label, href }) => (
-    <a
-      href={href || "#"}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center text-xs px-2 py-1 rounded-full border border-gray-700 hover:bg-gray-900 transition"
-      title={label}
-    >
-      {label?.length > 28 ? label.slice(0, 28) + "…" : label || "source"}
-    </a>
-  );
-
-  const CardNews = ({ item }) => (
-    <a href={item.url} target="_blank" rel="noreferrer"
-       className="block border border-gray-800 rounded-lg p-3 hover:bg-gray-900 transition">
-      {item.image && <img src={item.image} alt="" className="w-full rounded mb-2" loading="lazy" />}
-      <div className="text-sm font-semibold leading-snug">{item.title}</div>
-      <div className="text-[11px] text-gray-400 mt-1">{item.source} {item.time ? `• ${item.time}` : ""}</div>
-    </a>
-  );
-
-  const CardWeather = ({ data }) => (
-    <div className="border border-gray-800 rounded-lg p-3">
-      <div className="text-sm font-semibold mb-1">Weather in {data.city}</div>
-      <div className="text-lg">{data.temp} — {data.condition}</div>
-      {data.extra && <div className="text-xs text-gray-400 mt-1">{data.extra}</div>}
-    </div>
-  );
-
-  const CardTime = ({ data }) => (
-    <div className="border border-gray-800 rounded-lg p-3">
-      <div className="text-sm font-semibold">Time in {data.city}</div>
-      <div className="text-lg">{data.time}</div>
-      {data.date && <div className="text-xs text-gray-400 mt-1">{data.date}</div>}
-    </div>
-  );
-
-  const CardFinance = ({ data }) => (
-    <div className="border border-gray-800 rounded-lg p-3">
-      <div className="text-sm font-semibold mb-2">📈 {data.symbol}{data.exchange ? ` (${data.exchange})` : ""}</div>
-      {data.price && <div className="text-lg mb-1">{data.price}{data.change ? ` (${data.change})` : ""}</div>}
-      <div className="embed-responsive embed-16by9 rounded overflow-hidden">
-        <iframe
-          src={`https://www.google.com/finance/quote/${encodeURIComponent(data.symbol)}${data.exchange ? ":"+encodeURIComponent(data.exchange) : ""}`}
-          title={data.symbol}
-          referrerPolicy="no-referrer-when-downgrade"
-        />
-      </div>
-    </div>
-  );
-
+  // ---------- Minimal card renderer (YouTube + Image only) ----------
   const renderCards = (cards) => {
     if (!cards || !cards.length) return null;
     return (
       <div className="grid grid-cols-1 gap-3">
         {cards.map((c, idx) => {
-          if (c.type === "news")   return <CardNews key={idx} item={c} />;
-          if (c.type === "weather")return <CardWeather key={idx} data={c} />;
-          if (c.type === "time")   return <CardTime key={idx} data={c} />;
-          if (c.type === "finance")return <CardFinance key={idx} data={c} />;
           if (c.type === "youtube") {
             const vid = getYouTubeId(c.url || "");
             if (!vid) return null;
             return (
-              <div key={idx} className="embed-responsive embed-16by9 rounded overflow-hidden">
+              <div key={idx} className="embed-responsive embed-16by9 rounded overflow-hidden glass">
                 <iframe
                   src={`https://www.youtube.com/embed/${vid}`}
                   title={c.title || "YouTube"}
@@ -278,7 +183,7 @@ function AIChat() {
             );
           }
           if (c.type === "image" && c.image_url) {
-            return <img key={idx} src={c.image_url} alt="" className="w-full rounded" loading="lazy" />;
+            return <img key={idx} src={c.image_url} alt="" className="w-full rounded glass" loading="lazy" />;
           }
           if (c.html) return <div key={idx} className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: c.html }} />;
           if (c.text) return <div key={idx} className="text-sm">{c.text}</div>;
@@ -303,33 +208,38 @@ function AIChat() {
     const content = textToSend.trim();
     if (!content) return;
 
-    const lower = content.toLowerCase();
     setTyping(true);
     pushUser(content);
     setInput("");
     logAction("message", content);
+    const lower = content.toLowerCase();
 
     try {
-      let handled = false;
-
-      // GOOGLE/search trigger -> backend smart cards (news, stocks, weather, etc.)
-      if (lower.startsWith("google:") || lower.startsWith("search:")) {
-        const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
-        const reply = res.data?.reply || "";
-        const cards = res.data?.cards || [];
-        pushAssistant(reply || "Here are the results:", { cards });
-        speak(reply);
-        handled = true;
+      // 1) IMAGE generation trigger (simple keywords)
+      const imgKW = ["image", "photo", "draw", "picture", "generate", "art", "wallpaper"];
+      if (imgKW.some(k => lower.includes(k))) {
+        try {
+          const im = await axios.post(`${API_BASE}/generate-image`, { prompt: content });
+          if (im.data?.image_url) {
+            pushAssistant("", { cards: [{ type: "image", image_url: im.data.image_url }] });
+          } else {
+            pushAssistant("I couldn't generate that image right now.");
+          }
+        } catch {
+          pushAssistant("Image service is unavailable right now.");
+        }
+        setTyping(false);
+        return;
       }
 
-      // YOUTUBE
-      if (!handled) {
-        const ytKW = ["youtube", "yt ", "video", "watch", "trailer", "music", "song", "shorts", "youtu.be", "youtube.com"];
-        if (ytKW.some(k => lower.includes(k))) {
-          const directId = getYouTubeId(content);
-          if (directId) {
-            pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] });
-          } else {
+      // 2) YOUTUBE helper
+      const ytKW = ["youtube", "yt ", "video", "watch", "trailer", "music", "song", "shorts", "youtu.be", "youtube.com"];
+      if (ytKW.some(k => lower.includes(k))) {
+        const directId = getYouTubeId(content);
+        if (directId) {
+          pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] });
+        } else {
+          try {
             const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
             const url = res.data?.url;
             if (url) {
@@ -340,84 +250,25 @@ function AIChat() {
               pushAssistant(reply);
               speak(reply);
             }
+          } catch {
+            pushAssistant("YouTube search is unavailable right now.");
           }
-          handled = true;
         }
+        setTyping(false);
+        return;
       }
 
-      // IMAGE generation
-      if (!handled) {
-        const imgKW = ["image", "photo", "draw", "picture", "generate", "art", "wallpaper"];
-        if (imgKW.some(k => lower.includes(k))) {
-          const im = await axios.post(`${API_BASE}/generate-image`, { prompt: content });
-          if (im.data?.image_url) {
-            pushAssistant("", { cards: [{ type: "image", image_url: im.data.image_url }] });
-          } else {
-            pushAssistant("I couldn't generate that image right now.");
-          }
-          handled = true;
-        }
+      // 3) DEFAULT chat
+      const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
+      let reply = res.data?.reply || "";
+
+      // Keep your brand line when they ask who made it
+      if (/who.*(made|created)/i.test(content)) {
+        reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
       }
 
-      // STOCK
-      if (!handled) {
-        const stockHit = detectStockQuery(content);
-        if (stockHit) {
-          pushAssistant("", { cards: [{ type: "finance", ...stockHit }] });
-          handled = true;
-        }
-      }
-
-      // WEATHER
-      if (!handled && lower.includes("weather")) {
-        let city = extractCityAfter(content, "weather in ");
-        if (!city) city = extractCityAfter(content, "in ");
-        try {
-          const w = await axios.post(`${API_BASE}/realtime/weather`, { city: city || "" });
-          pushAssistant("", { cards: [{ type: "weather", city: w.data?.city || (city || "Your location"), temp: w.data?.temp, condition: w.data?.condition, extra: w.data?.extra }] });
-        } catch {
-          pushAssistant("Couldn't fetch weather right now.");
-        }
-        handled = true;
-      }
-
-      // TIME
-      if (!handled && (lower.includes("time in ") || lower.includes("current time"))) {
-        const city = extractCityAfter(content, "time in ") || extractCityAfter(content, "current time ");
-        if (city) {
-          const t = await axios.post(`${API_BASE}/realtime/time`, { city });
-          pushAssistant("", { cards: [{ type: "time", city: t.data?.city || city, time: t.data?.time, date: t.data?.date }] });
-          handled = true;
-        }
-      }
-
-      // NEWS
-      if (!handled && (lower.includes("news") || lower.includes("headlines"))) {
-        const n = await axios.post(`${API_BASE}/realtime/news`, {});
-        const headlines = (n.data?.headlines || []).map(h => ({
-          type: "news",
-          title: h.title || h,
-          url: h.url,
-          source: h.source,
-          image: h.image,
-          time: h.time
-        }));
-        if (headlines.length) pushAssistant("Top headlines:", { cards: headlines });
-        else pushAssistant("Couldn't fetch news right now.");
-        handled = true;
-      }
-
-      // DEFAULT chat
-      if (!handled) {
-        const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
-        let reply = res.data?.reply || "";
-        if (/who.*(made|created)/i.test(content)) {
-          reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
-        }
-        const cards = res.data?.cards || [];
-        pushAssistant(reply, { cards });
-        speak(reply);
-      }
+      pushAssistant(reply);
+      speak(reply);
     } catch (err) {
       console.error(err);
       pushAssistant("⚠️ Error or connection failed.");
@@ -444,27 +295,25 @@ function AIChat() {
     }
   };
 
-  // ---------- LAYOUT (Perplexity-style) ----------
+  // ---------- LAYOUT (Glassy, centered header; mobile first) ----------
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       {/* Sticky Top Bar */}
-      <header className="sticky top-0 z-30 border-b border-gray-800/80 backdrop-blur bg-black/70">
-        <div className="max-w-6xl mx-auto px-3 py-2 flex items-center gap-3">
-          <div className="font-bold tracking-tight">Droxion</div>
-          <div className="text-xs text-gray-400">• Perplexity Mode</div>
+      <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60">
+        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
+          <div className="font-bold tracking-tight text-lg">Droxion</div>
+          <div className="text-xs text-gray-400">• Lite</div>
           <div className="ml-auto relative flex items-center gap-2">
             {topToolsOpen && (
-              <div className="flex gap-4 bg-black/90 border border-gray-800 px-2 py-1 rounded text-sm">
+              <div className="flex gap-4 glass px-2 py-1 rounded text-sm">
                 <FaTrash onClick={() => setMessages([])} className="cursor-pointer" title="Clear chat" />
                 <FaDownload className="cursor-pointer" title="Download (todo)" />
-                <FaClock className="cursor-pointer" title="History" />
                 <FaMicrophone className="cursor-pointer" onClick={handleMic} title="Voice to text" />
                 {voiceMode
                   ? <FaVolumeUp onClick={() => setVoiceMode(false)} title="Voice off" />
                   : <FaVolumeMute onClick={() => setVoiceMode(true)} title="Voice on" />}
                 <FaUpload onClick={() => document.getElementById("fileUpload").click()} title="Upload" />
-                <FaCamera title="Screenshot" />
-                <FaDesktop title="Desktop" />
+                <FaCamera title="Screenshot (todo)" />
                 <input type="file" id="fileUpload" hidden accept="image/*" />
               </div>
             )}
@@ -473,9 +322,9 @@ function AIChat() {
         </div>
 
         {/* Centered Search Bar */}
-        <div className="max-w-3xl mx-auto px-3 pb-3">
+        <div className="max-w-2xl mx-auto px-3 pb-3">
           <div className="flex items-start gap-2">
-            <div className="flex-1 border border-gray-800 rounded-xl px-3 py-2 bg-black/60 focus-within:border-gray-600 transition">
+            <div className="flex-1 glass rounded-xl px-3 py-2 focus-within:border-white/20 transition">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -483,7 +332,7 @@ function AIChat() {
                 onKeyDown={handleKey}
                 rows={1}
                 inputMode="text"
-                placeholder='Ask anything… try: "search: latest tech headlines", "Tesla stock", "weather in Ahmedabad" ( / to focus )'
+                placeholder='Ask anything… try: "Generate an image: neon cyberpunk street", "YouTube: best startup talk 2025" ( / to focus )'
                 className="w-full bg-transparent outline-none resize-none placeholder-gray-500"
               />
             </div>
@@ -502,7 +351,7 @@ function AIChat() {
               <button
                 key={i}
                 onClick={() => setInput(s)}
-                className="px-3 py-1 border border-gray-800 rounded-full text-xs hover:border-gray-600"
+                className="px-3 py-1 glass rounded-full text-xs hover:bg-white hover:text-black transition"
               >
                 {s}
               </button>
@@ -511,111 +360,74 @@ function AIChat() {
         </div>
       </header>
 
-      {/* Main content: Left answer / Right sources */}
-      <div className="max-w-6xl mx-auto w-full flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 px-3 py-4">
-        {/* Left: Answers / Conversation */}
-        <section className="lg:col-span-2">
-          <div className="space-y-4">
-            {messages.map((msg, i) => {
-              const isUser = msg.role === "user";
-              const hasCards = !!msg.cards?.length;
+      {/* Main content */}
+      <div className="max-w-4xl mx-auto w-full px-3 py-4">
+        <div className="space-y-4">
+          {messages.map((msg, i) => {
+            const isUser = msg.role === "user";
+            const hasCards = !!msg.cards?.length;
 
-              return (
-                <div key={i} className={`border border-gray-800 rounded-xl p-4 ${isUser ? "bg-black/40" : "bg-black/20"}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-[11px] uppercase tracking-wider text-gray-400">
-                      {isUser ? "You" : "Droxion"}
-                    </div>
-                    {!isUser && msg.content && (
-                      <button
-                        onClick={() => copyMessage(i)}
-                        className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-                        title="Copy"
-                      >
-                        <FaRegCopy />
-                        {copiedIdx === i ? "Copied" : "Copy"}
-                      </button>
-                    )}
+            return (
+              <div key={i} className={`rounded-xl p-4 ${isUser ? "glass-2" : "glass"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] uppercase tracking-wider text-gray-400">
+                    {isUser ? "You" : "Droxion"}
                   </div>
-
-                  {msg.content ? (
-                    <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-                      img: (props) => <img {...props} className="rounded-lg my-2 w-full" loading="lazy" />,
-                      iframe: (props) => (
-                        <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2">
-                          <iframe {...props} allowFullScreen />
-                        </div>
-                      ),
-                      a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
-                    }}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  ) : null}
-
-                  {/* Inline sources row (for news cards) */}
-                  {!isUser && msg.cards?.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {msg.cards.slice(0, 5).map((c, idx) => {
-                        if (c.type === "news" && c.url) return <SourcePill key={idx} label={c.source || "source"} href={c.url} />;
-                        if (c.type === "finance") return <span key={idx} className="text-[11px] px-2 py-1 rounded-full border border-gray-800">Chart: {c.symbol}</span>;
-                        if (c.type === "youtube") return <span key={idx} className="text-[11px] px-2 py-1 rounded-full border border-gray-800">YouTube</span>;
-                        if (c.type === "weather") return <span key={idx} className="text-[11px] px-2 py-1 rounded-full border border-gray-800">Weather</span>;
-                        if (c.type === "time") return <span key={idx} className="text-[11px] px-2 py-1 rounded-full border border-gray-800">Time</span>;
-                        if (c.type === "image") return <span key={idx} className="text-[11px] px-2 py-1 rounded-full border border-gray-800">Image</span>;
-                        return null;
-                      })}
-                    </div>
-                  ) : null}
-
-                  {/* If this message also has cards, render them full-width below */}
-                  {hasCards && (
-                    <div className="mt-3">
-                      {renderCards(msg.cards)}
-                    </div>
+                  {!isUser && msg.content && (
+                    <button
+                      onClick={() => copyMessage(i)}
+                      className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+                      title="Copy"
+                    >
+                      <FaRegCopy />
+                      {copiedIdx === i ? "Copied" : "Copy"}
+                    </button>
                   )}
                 </div>
-              );
-            })}
 
-            {typing && (
-              <div className="border border-gray-800 rounded-xl p-4">
-                <div className="h-4 w-24 shimmer mb-2" />
-                <div className="h-3 w-full shimmer mb-1" />
-                <div className="h-3 w-4/5 shimmer mb-1" />
-                <div className="h-3 w-3/5 shimmer" />
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-        </section>
+                {msg.content ? (
+                  <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
+                    img: (props) => <img {...props} className="rounded-lg my-2 w-full glass" loading="lazy" />,
+                    iframe: (props) => (
+                      <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass">
+                        <iframe {...props} allowFullScreen />
+                      </div>
+                    ),
+                    a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
+                  }}>
+                    {msg.content}
+                  </ReactMarkdown>
+                ) : null}
 
-        {/* Right: Sources / Cards rail (auto from latest assistant) */}
-        <aside className="lg:col-span-1">
-          <div className="sticky top-[88px] space-y-3">
-            {/* Pull the most recent assistant cards to show as “sources rail” */}
-            {(() => {
-              const lastAssistantWithCards = [...messages].reverse().find(m => m.role === "assistant" && m.cards?.length);
-              if (!lastAssistantWithCards) {
-                return (
-                  <div className="border border-gray-800 rounded-xl p-4 text-sm text-gray-400">
-                    Sources & previews will appear here.
+                {hasCards && (
+                  <div className="mt-3">
+                    {renderCards(msg.cards)}
                   </div>
-                );
-              }
-              return renderCards(lastAssistantWithCards.cards);
-            })()}
-          </div>
-        </aside>
+                )}
+              </div>
+            );
+          })}
+
+          {typing && (
+            <div className="glass rounded-xl p-4">
+              <div className="h-4 w-24 shimmer mb-2" />
+              <div className="h-3 w-full shimmer mb-1" />
+              <div className="h-3 w-4/5 shimmer mb-1" />
+              <div className="h-3 w-3/5 shimmer" />
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
       </div>
 
-      {/* Quick style buttons (bottom strip) */}
-      <div className="max-w-6xl mx-auto w-full px-3 pb-4">
+      {/* Quick style buttons */}
+      <div className="max-w-4xl mx-auto w-full px-3 pb-5">
         <div className="flex gap-2 flex-wrap">
           {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map(s => (
             <button
               key={s}
               onClick={() => handlePromptClick(s)}
-              className="px-3 py-1 border border-gray-700 rounded-full text-sm hover:bg-white hover:text-black transition"
+              className="px-3 py-1 glass rounded-full text-sm hover:bg-white hover:text-black transition"
             >
               {s}
             </button>
