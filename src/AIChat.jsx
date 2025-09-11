@@ -10,23 +10,14 @@ import {
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-/**
- * AIChat (Lite) — Chat + YouTube + Image only
- * - Removed: stocks/crypto, news, weather, time, google/search cards, finance embeds
- * - Clean mobile-first glass style + black/white icons
- * - Uses your existing Render backend: /chat, /generate-image, /search-youtube
- */
-
 function AIChat() {
-  // -------- State --------
-  const [messages, setMessages] = useState([]); // [{role, content, cards?}]
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [topToolsOpen, setTopToolsOpen] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // simple quick suggestions (no stocks/news)
   const [suggestions] = useState([
     "Generate an image: cinematic city at night",
     "YouTube: best startup talk 2025",
@@ -34,13 +25,11 @@ function AIChat() {
     "Give me 3 viral reel ideas about productivity",
   ]);
 
-  // refs
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
   const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
   const userId = useRef("");
 
-  // -------- Helpers --------
   const pushAssistant = (content, extra = {}) =>
     setMessages(prev => [...prev, { role: "assistant", content, ...extra }]);
   const pushUser = (content) =>
@@ -54,7 +43,7 @@ function AIChat() {
         input: inputText,
         timestamp: new Date().toISOString()
       });
-    } catch { /* silent */ }
+    } catch {}
   };
 
   const speak = (text) => {
@@ -65,7 +54,6 @@ function AIChat() {
     synth.speak(u);
   };
 
-  // ---------- YouTube helpers ----------
   const getYouTubeId = (raw) => {
     try {
       const txt = raw.trim();
@@ -87,7 +75,6 @@ function AIChat() {
     return m ? m[1] : null;
   };
 
-  // ---------- Effects ----------
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
@@ -101,32 +88,24 @@ function AIChat() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, typing]);
 
-  // Global styles (mobile-safe, smooth embeds) + glass look
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
-      :root {
-        --glass: rgba(255,255,255,0.06);
-        --glass-2: rgba(255,255,255,0.10);
-        --border: rgba(255,255,255,0.12);
-      }
+      :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; }
       img, iframe, video { max-width: 100% !important; height: auto !important; }
       .embed-responsive { position: relative; width: 100%; }
       .embed-16by9 { padding-top: 56.25%; }
       .embed-responsive iframe { position: absolute; top:0; left:0; width:100%; height:100%; border:0; }
-      .msg { word-wrap: break-word; overflow-wrap: anywhere; }
-      .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%);
-                 background-size:400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 8px; }
+      .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%); background-size:400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 8px; }
       @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
       .glass { background: var(--glass); border: 1px solid var(--border); backdrop-filter: blur(10px); }
       .glass-2 { background: var(--glass-2); border: 1px solid var(--border); backdrop-filter: blur(10px); }
-      @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; } }
+      textarea { min-height: 40px; line-height: 1.6; }
     `;
     document.head.appendChild(style);
 
-    // mobile viewport (prevents zoom jump)
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -137,7 +116,6 @@ function AIChat() {
     return () => { document.head.removeChild(style); };
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "/" && document.activeElement !== inputRef.current) {
@@ -154,7 +132,6 @@ function AIChat() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Autoresize textarea
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -162,7 +139,6 @@ function AIChat() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
-  // ---------- Minimal card renderer (YouTube + Image only) ----------
   const renderCards = (cards) => {
     if (!cards || !cards.length) return null;
     return (
@@ -203,7 +179,6 @@ function AIChat() {
     } catch {}
   };
 
-  // ---------- Main send ----------
   const handleSend = async (textToSend = input) => {
     const content = textToSend.trim();
     if (!content) return;
@@ -215,9 +190,34 @@ function AIChat() {
     const lower = content.toLowerCase();
 
     try {
-      // 1) IMAGE generation trigger (simple keywords)
-      const imgKW = ["image", "photo", "draw", "picture", "generate", "art", "wallpaper"];
-      if (imgKW.some(k => lower.includes(k))) {
+      // --- 1) YOUTUBE first ---
+      const ytKW = ["youtube", "yt ", "youtu.be", "youtube.com", "video", "trailer", "shorts", "song", "watch "];
+      if (ytKW.some(k => lower.includes(k)) || lower.startsWith("youtube:")) {
+        const directId = getYouTubeId(content);
+        if (directId) {
+          pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] });
+        } else {
+          try {
+            const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
+            const url = res.data?.url;
+            if (url) pushAssistant("", { cards: [{ type: "youtube", url }] });
+            else {
+              const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
+              const reply = r.data?.reply || "I couldn't find a video for that.";
+              pushAssistant(reply);
+              speak(reply);
+            }
+          } catch {
+            pushAssistant("YouTube search is unavailable right now.");
+          }
+        }
+        setTyping(false);
+        return;
+      }
+
+      // --- 2) IMAGE (stricter trigger so we don’t fire by accident) ---
+      const imageTrigger = /^(image:|generate( an)? (image|photo|art|picture)|wallpaper|artwork)/i.test(lower);
+      if (imageTrigger || lower.includes(" generate an image")) {
         try {
           const im = await axios.post(`${API_BASE}/generate-image`, { prompt: content });
           if (im.data?.image_url) {
@@ -232,41 +232,12 @@ function AIChat() {
         return;
       }
 
-      // 2) YOUTUBE helper
-      const ytKW = ["youtube", "yt ", "video", "watch", "trailer", "music", "song", "shorts", "youtu.be", "youtube.com"];
-      if (ytKW.some(k => lower.includes(k))) {
-        const directId = getYouTubeId(content);
-        if (directId) {
-          pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] });
-        } else {
-          try {
-            const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
-            const url = res.data?.url;
-            if (url) {
-              pushAssistant("", { cards: [{ type: "youtube", url }] });
-            } else {
-              const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
-              const reply = r.data?.reply || "I couldn't find a video for that.";
-              pushAssistant(reply);
-              speak(reply);
-            }
-          } catch {
-            pushAssistant("YouTube search is unavailable right now.");
-          }
-        }
-        setTyping(false);
-        return;
-      }
-
-      // 3) DEFAULT chat
+      // --- 3) DEFAULT CHAT ---
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
       let reply = res.data?.reply || "";
-
-      // Keep your brand line when they ask who made it
-      if (/who.*(made|created)/i.test(content)) {
+      if (/who.*(made|created|built)/i.test(content)) {
         reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
       }
-
       pushAssistant(reply);
       speak(reply);
     } catch (err) {
@@ -295,10 +266,8 @@ function AIChat() {
     }
   };
 
-  // ---------- LAYOUT (Glassy, centered header; mobile first) ----------
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Sticky Top Bar */}
       <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -321,10 +290,10 @@ function AIChat() {
           </div>
         </div>
 
-        {/* Centered Search Bar */}
+        {/* Centered Search Bar — clean */}
         <div className="max-w-2xl mx-auto px-3 pb-3">
-          <div className="flex items-start gap-2">
-            <div className="flex-1 glass rounded-xl px-3 py-2 focus-within:border-white/20 transition">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -332,26 +301,27 @@ function AIChat() {
                 onKeyDown={handleKey}
                 rows={1}
                 inputMode="text"
-                placeholder='Ask anything… try: "Generate an image: neon cyberpunk street", "YouTube: best startup talk 2025" ( / to focus )'
-                className="w-full bg-transparent outline-none resize-none placeholder-gray-500"
+                placeholder=""   // cleaned placeholder
+                className="w-full bg-transparent outline-none resize-none leading-[1.6] placeholder-white/30"
+                aria-label="Type your message"
               />
             </div>
             <button
               onClick={() => handleSend(input)}
-              className="bg-white hover:bg-gray-300 text-black font-semibold py-2 px-4 rounded-xl"
+              className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
               title="Send"
             >
               ➤
             </button>
           </div>
 
-          {/* Inline suggestions */}
+          {/* Suggestions */}
           <div className="flex gap-2 flex-wrap mt-2">
             {suggestions.map((s, i) => (
               <button
                 key={i}
                 onClick={() => setInput(s)}
-                className="px-3 py-1 glass rounded-full text-xs hover:bg-white hover:text-black transition"
+                className="px-3 py-1 rounded-full text-xs border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
               >
                 {s}
               </button>
@@ -360,7 +330,6 @@ function AIChat() {
         </div>
       </header>
 
-      {/* Main content */}
       <div className="max-w-4xl mx-auto w-full px-3 py-4">
         <div className="space-y-4">
           {messages.map((msg, i) => {
@@ -420,7 +389,6 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Quick style buttons */}
       <div className="max-w-4xl mx-auto w-full px-3 pb-5">
         <div className="flex gap-2 flex-wrap">
           {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map(s => (
