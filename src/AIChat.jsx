@@ -1,5 +1,5 @@
 // src/AIChat.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -10,7 +10,16 @@ const API_BASE = "https://droxion-backend.onrender.com";
 
 /* ---------------------- helpers ---------------------- */
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
-const isPlaceholderUrl = (u="") => { try { return /(^|\.)example\.(com|org)$/i.test(new URL(u).hostname); } catch { return false; } };
+const isPlaceholderUrl = (u="") => {
+  try {
+    const h = new URL(u).hostname.replace(/^www\./,"");
+    if (!h) return true;
+    // filter junk sources that showed in your screenshot
+    if (["google.com","wikipedia.org","m.wikipedia.org"].includes(h)) return true;
+    if ((/^example\.(com|org)$/i).test(h)) return true;
+    return false;
+  } catch { return true; }
+};
 const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
@@ -35,7 +44,7 @@ const timeAgo = (d) => {
   const dd = Math.floor(h/24); return `${dd}d ago`;
 };
 
-// ---- intent helpers ----
+// intent helpers
 const isGreeting = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
 const wantsImages = (s="") => {
   const q = s.trim().toLowerCase();
@@ -93,14 +102,15 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // Smart suggestions (live panel while typing)
+  // live panel state
   const [textSuggestions, setTextSuggestions] = useState([]);
   const [inputFocused, setInputFocused] = useState(false);
-  const [liveNews, setLiveNews] = useState([]);     // cards
-  const [liveWeather, setLiveWeather] = useState(null); // card
-  const [liveCrypto, setLiveCrypto] = useState([]); // cards
+  const [liveNews, setLiveNews] = useState([]);        // keep old while loading
+  const [liveWeather, setLiveWeather] = useState(null);
+  const [liveCrypto, setLiveCrypto] = useState([]);
+  const [loadingPreviews, setLoadingPreviews] = useState(false);
 
-  // Top headlines carousel (optional, keeps earlier behavior)
+  // top ribbon (optional)
   const [headlines, setHeadlines] = useState([]);
   const [headlineStamp, setHeadlineStamp] = useState("");
 
@@ -108,6 +118,7 @@ function AIChat() {
   const listRef = useRef(null);
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
+  const cancelPrev = useRef({ cancel: () => {} });
 
   /* meta + CSS */
   useEffect(() => {
@@ -130,7 +141,7 @@ function AIChat() {
       .glass-2 { background: var(--glass-2); border:1px solid var(--border); backdrop-filter: blur(10px); }
       .pill { font-size:11px; padding:2px 8px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); border-radius:999px; }
       .suggestions-panel {
-        max-height: min(50vh, calc(100svh - 180px));
+        max-height: min(52vh, calc(100svh - 180px));
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
@@ -141,6 +152,8 @@ function AIChat() {
       .hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
       @media (min-width:480px){ .hitem{ min-width: 52%; max-width: 52%; } }
       @media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
+      .skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+      @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -160,43 +173,60 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, inputFocused]);
 
-  /* live previews while typing (news + weather + crypto; debounced) */
+  /* live previews while typing (no flicker: keep previous while loading next) */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
-    if (!inputFocused || q.length < 2) { setLiveNews([]); setLiveWeather(null); setLiveCrypto([]); return; }
+
+    if (!inputFocused || q.length < 2) {
+      // keep previous previews visible; don't clear to avoid blink
+      return;
+    }
 
     previewTimer.current = setTimeout(async () => {
-      // decide intents: if user typed specific keywords, bias; otherwise show all three
-      const askNews = wantsNews(q) || true;     // always show a few
-      const askWeather = wantsWeather(q) || /weather|temp|today/i.test(q);
-      const askCrypto = wantsCrypto(q) || /btc|eth|crypto|price|chart/i.test(q);
+      setLoadingPreviews(true);
+
+      // cancel in-flight requests for older keystrokes
+      cancelPrev.current.cancel?.();
+      const src = axios.CancelToken.source();
+      cancelPrev.current = { cancel: () => src.cancel("new query") };
+
+      // show three lanes always (like your screenshot)
+      const askNews = true;
+      const askWeather = true;
+      const askCrypto = true;
 
       try {
         const reqs = [];
-        if (askNews) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "news" }).catch(()=>null));
-        if (askWeather) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather" }).catch(()=>null));
-        if (askCrypto) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }).catch(()=>null));
+        if (askNews) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "news" }, { cancelToken: src.token }).catch(()=>null));
+        if (askWeather) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather" }, { cancelToken: src.token }).catch(()=>null));
+        if (askCrypto) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null));
         const resps = await Promise.all(reqs);
 
-        let idx = 0;
+        let i = 0;
         if (askNews) {
-          const r = resps[idx++]; 
-          const cards = (r?.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
+          const r = resps[i++]; 
+          const cards = (r?.data?.cards || [])
+            .filter(Boolean)
+            .filter((c)=> !(c?.url && isPlaceholderUrl(c.url)))
+            .filter((c)=> !!(bestPreview(c,true))); // must have decent preview
           setLiveNews(cards.slice(0, 10));
         }
         if (askWeather) {
-          const r = resps[idx++]; 
+          const r = resps[i++]; 
           const cards = (r?.data?.cards || []).filter(Boolean);
-          setLiveWeather(cards.find((c)=>c.type==="weather") || cards[0] || null);
+          const w = cards.find((c)=>c.type==="weather") || cards[0] || null;
+          setLiveWeather(w);
         }
         if (askCrypto) {
-          const r = resps[idx++]; 
-          const cards = (r?.data?.cards || []).filter(Boolean);
-          setLiveCrypto(cards.slice(0, 6));
+          const r = resps[i++]; 
+          const cards = (r?.data?.cards || []).filter(Boolean).slice(0, 6);
+          setLiveCrypto(cards);
         }
-      } catch {
-        setLiveNews([]); setLiveWeather(null); setLiveCrypto([]);
+      } catch(e) {
+        // ignore cancellation
+      } finally {
+        setLoadingPreviews(false);
       }
     }, 300);
 
@@ -207,7 +237,10 @@ function AIChat() {
   const loadHeadlines = async () => {
     try {
       const r = await axios.post(`${API_BASE}/realtime`, { query: "top news today", intent: "news" });
-      const cards = (r.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
+      const cards = (r.data?.cards || [])
+        .filter(Boolean)
+        .filter((c)=> !(c?.url && isPlaceholderUrl(c.url)))
+        .filter((c)=> !!(bestPreview(c,true)));
       setHeadlines(cards.slice(0, 12));
       const now = new Date();
       setHeadlineStamp(`Here are some of the top news items as of ${now.toLocaleDateString(undefined,{ year:"numeric", month:"long", day:"numeric"})}:`);
@@ -226,7 +259,7 @@ function AIChat() {
   const fetchFollowups = async (q) => {
     try {
       const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q, mode: "followup" } });
-      const arr = (data?.suggestions || []).filter(Boolean);
+    const arr = (data?.suggestions || []).filter(Boolean);
       return (arr.length ? arr : ["Explain more", "Pros & cons", "Give steps", "Show sources"]).slice(0, 4);
     } catch {
       return ["Explain more", "Pros & cons", "Give steps", "Show sources"];
@@ -251,7 +284,8 @@ function AIChat() {
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
     setInput("");
-    setTextSuggestions([]); setLiveNews([]); setLiveWeather(null); setLiveCrypto([]);
+    // keep live previews visible; don't clear to avoid blink
+    setTextSuggestions([]);
 
     try {
       if (isGreeting(content)) {
@@ -267,7 +301,9 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
+          cards = cards
+            .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
+            .filter((c)=> c.type!=="news" || !!bestPreview(c,true));
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Google preview is unavailable right now.", [], content); }
@@ -295,7 +331,10 @@ function AIChat() {
 
       if (wantsNews(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
-        const cards = (r.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
+        const cards = (r.data?.cards || [])
+          .filter(Boolean)
+          .filter((c)=> !(c?.url && isPlaceholderUrl(c.url)))
+          .filter((c)=> !!bestPreview(c,true));
         await pushWithFollowups(r.data?.markdown || "Top news:", cards, content);
         setTyping(false); return;
       }
@@ -394,7 +433,7 @@ function AIChat() {
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
         <div className="rounded-xl overflow-hidden glass">
-          {pv && (
+          {pv ? (
             <img
               src={pv.prox}
               data-orig={pv.orig}
@@ -405,6 +444,8 @@ function AIChat() {
               crossOrigin="anonymous"
               onError={(e)=>{ e.currentTarget.style.display = "none"; }}
             />
+          ) : (
+            <div className="aspect-[16/9] skel" />
           )}
           <div className="p-3">
             <div className="text-[11px] text-gray-400 mb-1">{card.source || (card.url ? host(card.url) : "")}</div>
@@ -431,10 +472,10 @@ function AIChat() {
 
   const WeatherMiniCard = ({ w }) => (
     <div className="glass rounded-lg p-3 flex items-center gap-3">
-      {w.icon && <SmartImage url={w.icon} title={w.title} />}
+      {w?.icon && <SmartImage url={w.icon} title={w.title} />}
       <div className="min-w-0">
-        <div className="text-sm font-semibold truncate">{w.title || "Weather"}</div>
-        <div className="text-xs text-gray-400 truncate">{w.subtitle || w.meta}</div>
+        <div className="text-sm font-semibold truncate">{w?.title || "Weather"}</div>
+        <div className="text-xs text-gray-400 truncate">{w?.subtitle || w?.meta}</div>
       </div>
     </div>
   );
@@ -557,6 +598,7 @@ function AIChat() {
             </div>
           )}
 
+          {/* Chat thread */}
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
@@ -658,32 +700,41 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Smart Suggestions (live while typing) */}
+      {/* Live Preview Panel — shows while typing; no blink */}
       {inputFocused && (textSuggestions.length > 0 || liveNews.length > 0 || liveWeather || liveCrypto.length > 0) && (
         <div className="fixed inset-x-0 bottom-[88px] z-40 gpu" onTouchMove={(e)=>e.stopPropagation()}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="glass rounded-xl p-2 suggestions-panel">
               {/* NEWS */}
-              {liveNews.length > 0 && (
-                <div className="mb-2">
-                  <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
-                  <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-                    <div className="flex gap-2">
-                      {liveNews.map((c, i) => <HeadlineCard key={i} card={c} />)}
-                    </div>
+              <div className="mb-2">
+                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                  <div className="flex gap-2">
+                    { (liveNews.length ? liveNews : Array.from({length:3})).map((c, i) =>
+                      c ? <HeadlineCard key={i} card={c} /> :
+                      <div key={i} className="hitem pr-3">
+                        <div className="rounded-xl overflow-hidden glass">
+                          <div className="aspect-[16/9] skel" />
+                          <div className="p-3">
+                            <div className="h-3 w-24 skel rounded mb-2" />
+                            <div className="h-3 w-40 skel rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* WEATHER + CRYPTO row */}
-              {(liveWeather || liveCrypto.length > 0) && (
-                <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                  <div>{liveWeather && <WeatherMiniCard w={liveWeather} />}</div>
-                  <div className="grid grid-cols-1 gap-2">
-                    {liveCrypto.slice(0,2).map((c,i)=> <CryptoMiniCard key={i} c={c} />)}
-                  </div>
+              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+                <div>{liveWeather ? <WeatherMiniCard w={liveWeather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
+                <div className="grid grid-cols-1 gap-2">
+                  { (liveCrypto.length? liveCrypto.slice(0,2) : [null, null]).map((c,i)=>
+                    c ? <CryptoMiniCard key={i} c={c} /> : <div key={i} className="glass rounded-lg p-6 skel" />
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* text suggestions */}
               {textSuggestions.length > 0 && (
@@ -691,7 +742,7 @@ function AIChat() {
                   <div className="px-1 flex justify-between items-center">
                     <div className="text-xs text-gray-400">Suggestions</div>
                     <button
-                      onClick={() => { setTextSuggestions([]); setLiveNews([]); setLiveWeather(null); setLiveCrypto([]); }}
+                      onClick={() => { setTextSuggestions([]); }}
                       className="text-xs px-2 py-1 rounded border border-white/12 hover:bg-white hover:text-black transition"
                     >
                       Close
