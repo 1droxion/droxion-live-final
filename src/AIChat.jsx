@@ -9,14 +9,20 @@ import { FaRegCopy } from "react-icons/fa";
 const API_BASE = "https://droxion-backend.onrender.com";
 
 /* ---------------------- helpers ---------------------- */
-const host = (u) => { try { return new URL(u).hostname.replace(/^www\./,""); } catch { return ""; } };
-const isFilteredSource = (u="") => { // hide junk like google/wikipedia/placeholders
-  try {
-    const h = new URL(u).hostname.replace(/^www\./,"");
-    return ["google.com","wikipedia.org","m.wikipedia.org","example.com","example.org"].includes(h);
-  } catch { return true; }
-};
-const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
+const normHost = (u="") => { try { return new URL(u).hostname.toLowerCase().replace(/^www\./,""); } catch { return ""; } };
+const host = (u) => { const h = normHost(u); return h.replace(/^m\./,""); };
+
+const BAD_HOSTS = [
+  "google.com","news.google.com","maps.google.com","m.google.com",
+  "example.com","example.org",
+  "wikipedia.org","m.wikipedia.org","en.wikipedia.org"
+];
+const isBadHost = (h="") => BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
+
+const isFilteredSource = (u="") => { const h = host(u); return !h || isBadHost(h); };
+
+const firstImageUrl = (c) =>
+  c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const prox = (u) => (!u || u.startsWith("data:") || u.startsWith(IMAGE_PROXY)) ? u : (IMAGE_PROXY + encodeURIComponent(u));
@@ -45,6 +51,62 @@ const wantsYouTube = (s="") => /\b(youtube|youtu\.be|youtube\.com|video|trailer|
 const wantsAnyPreview = (s="") =>
   wantsNews(s) || wantsWeather(s) || wantsCrypto(s) || wantsImages(s) || wantsYouTube(s);
 
+const GOOD_NEWS = [
+  "reuters.com","theguardian.com","bbc.co.uk","bbc.com","apnews.com","nytimes.com",
+  "wsj.com","ft.com","bloomberg.com","economist.com","npr.org","aljazeera.com",
+  "hindustantimes.com","indianexpress.com","livemint.com","moneycontrol.com","toi.in","timesofindia.com"
+];
+const rankHost = (h) => {
+  if (!h) return -50;
+  if (isBadHost(h)) return -200;
+  if (GOOD_NEWS.some(g => h===g || h.endsWith("."+g))) return 90;
+  if (/\b(news|finance|market|money|business|times|post|today)\b/.test(h)) return 40;
+  return 10;
+};
+
+const scoreCard = (c) => {
+  const h = host(c.url || "");
+  let s = rankHost(h);
+  if (c.type === "news") s += 10;
+  if (firstImageUrl(c)) s += 6;
+  if ((c.title||"").length > 0) s += 3;
+  return s;
+};
+
+const dedupeCards = (arr=[]) => {
+  const seen = new Set();
+  return arr.filter(c => {
+    const key = (host(c.url||"")||"") + "::" + (c.title||"").toLowerCase().slice(0,80);
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+};
+
+const rankAndTrim = (cards=[], limit=10, allowWikiFallback=false) => {
+  let filtered = cards
+    .filter(Boolean)
+    .filter(c => !(c?.url && isFilteredSource(c.url))); // drop bad sources
+  filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
+  if (!filtered.length && allowWikiFallback) {
+    // if nothing left, allow one wiki card so it's not empty
+    const wiki = (cards||[]).find(c => host(c.url||"").includes("wikipedia.org"));
+    if (wiki) filtered = [wiki];
+  }
+  return filtered.slice(0, limit);
+};
+
+const bestPreview = (card, allowFallback=false) => {
+  const direct = firstImageUrl(card);
+  if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
+  if (!allowFallback) return null;
+  if (card.url && !isFilteredSource(card.url)) {
+    const shot = prox(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`);
+    return { prox: shot, orig: card.url, title: card.title || "preview" };
+  }
+  const ph = unsplash(card.title || card.source || "news");
+  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
+};
+
 const getYouTubeId = (raw) => {
   try {
     const txt = raw.trim();
@@ -66,18 +128,6 @@ const getYouTubeId = (raw) => {
   return m ? m[1] : null;
 };
 
-const bestPreview = (card, allowFallback=false) => {
-  const direct = firstImageUrl(card);
-  if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
-  if (!allowFallback) return null;
-  if (card.url && !isFilteredSource(card.url)) {
-    const shot = prox(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`);
-    return { prox: shot, orig: card.url, title: card.title || "preview" };
-  }
-  const ph = unsplash(card.title || card.source || "news");
-  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
-};
-
 /* ---------------------- component ---------------------- */
 function AIChat() {
   const [messages, setMessages] = useState([]);
@@ -85,7 +135,7 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // live preview panel (shows ONLY while typing and relevant)
+  // live panel (typing only)
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
   const [news, setNews] = useState([]);
@@ -93,18 +143,18 @@ function AIChat() {
   const [crypto, setCrypto] = useState([]);
   const [loadingPanel, setLoadingPanel] = useState(false);
 
-  // layout & scroll
+  // layout
   const scrollRef = useRef(null);
   const panelRef = useRef(null);
   const composerRef = useRef(null);
   const [panelH, setPanelH] = useState(0);
-  const [composerH, setComposerH] = useState(96); // default approx
+  const [composerH, setComposerH] = useState(96);
 
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
 
-  /* base CSS */
+  /* base CSS (tiny tune on spacing) */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name","viewport"); document.head.appendChild(meta); }
@@ -152,7 +202,7 @@ function AIChat() {
     return () => ro.disconnect();
   }, [composerRef.current]);
 
-  /* text suggestions — appear after first char */
+  /* text suggestions */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -166,7 +216,7 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* live previews — only when query implies previews */
+  /* live previews — only when relevant */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
@@ -189,32 +239,25 @@ function AIChat() {
 
         const [rn, rw, rc, ri, ry] = await Promise.all(reqs);
 
-        // NEWS
-        if (rn) {
-          const newsCards = (rn?.data?.cards || [])
-            .filter(Boolean)
-            .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-            .filter((c)=> !!bestPreview(c,true))
-            .slice(0, 10);
-          setNews(newsCards);
-        } else { setNews([]); }
+        // NEWS (rank + trim; allow wiki only if nothing else)
+        setNews(rn ? rankAndTrim(rn?.data?.cards || [], 10, true) : []);
 
         // WEATHER
         if (rw) {
           const wcards = (rw?.data?.cards || []).filter(Boolean);
           setWeather(wcards.find((c)=>c.type==="weather") || wcards[0] || null);
-        } else { setWeather(null); }
+        } else setWeather(null);
 
         // CRYPTO
         setCrypto(rc ? (rc?.data?.cards || []).filter(Boolean).slice(0,6) : []);
 
-        // IMAGES fallback into the lane to “show something”
-        if (ri && !news?.length) {
+        // IMAGES → if nothing yet, show a gallery thumb to “feel live”
+        if (ri && (news||[]).length===0) {
           const imgs = Array.isArray(ri?.data?.images) ? ri.data.images.slice(0,8) : [];
           if (imgs.length) setNews([{ type:"gallery", images: imgs }]);
         }
 
-        // YOUTUBE mini preview
+        // YOUTUBE mini
         if (ry?.data?.url) {
           setNews((p)=> [{ type:"youtube", url: ry.data.url, title:"YouTube" }, ...(p||[])].slice(0,10));
         }
@@ -226,7 +269,7 @@ function AIChat() {
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
-  /* smart scroll: only when a new assistant message arrives and not while typing */
+  /* smart scroll on assistant reply (not while typing) */
   useEffect(() => {
     if (!messages.length) return;
     const last = messages[messages.length - 1];
@@ -254,7 +297,16 @@ function AIChat() {
   };
 
   const pushWithFollowups = async (md, cards, q) => {
-    setMessages((p) => [...p, { role: "assistant", content: md, cards }]);
+    // rank web/news/link/wiki sets before rendering
+    let ranked = cards;
+    if (Array.isArray(cards) && cards.length) {
+      const webTypes = ["web","link","wiki","news"];
+      const keep = [], rest = [];
+      for (const c of cards) (webTypes.includes(c.type) ? keep : rest).push(c);
+      const rankedWeb = rankAndTrim(keep, 12, true);
+      ranked = [...rankedWeb, ...rest];
+    }
+    setMessages((p) => [...p, { role: "assistant", content: md, cards: ranked }]);
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
@@ -267,8 +319,7 @@ function AIChat() {
     const content = (text || "").trim(); if (!content) return;
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
-    setInput("");
-    setTextSug([]);
+    setInput(""); setTextSug([]);
 
     try {
       if (isGreeting(content)) {
@@ -284,9 +335,8 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          cards = cards
-            .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-            .filter((c)=> c.type!=="news" || !!bestPreview(c,true));
+          // rank & drop bad sources here too
+          cards = rankAndTrim(cards, 12, true);
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
@@ -297,9 +347,10 @@ function AIChat() {
         const q = content.replace(/^search:\s*/i, "");
         try {
           const r = await axios.post(`${API_BASE}/search`, { prompt: q });
-          const results = (r.data?.results || [])
-            .filter((it)=> !isFilteredSource(it.url))
-            .map((it)=>({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet }));
+          const results = rankAndTrim(
+            (r.data?.results || []).map((it)=>({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })),
+            12, true
+          );
           await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         setTyping(false); return;
@@ -307,10 +358,7 @@ function AIChat() {
 
       if (wantsNews(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
-        const cards = (r.data?.cards || [])
-          .filter(Boolean)
-          .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-          .filter((c)=> !!bestPreview(c,true));
+        const cards = rankAndTrim(r.data?.cards || [], 12, true);
         await pushWithFollowups(r.data?.markdown || "Top news:", cards, content);
         setTyping(false); return;
       }
@@ -364,16 +412,15 @@ function AIChat() {
       // default chat
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
       const md = res.data?.reply || res.data?.text || "";
-      let cards = (res.data?.cards || [])
-        .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-        .map((c)=> ({ ...c, image: firstImageUrl(c) || c.image }));
+      let cards = (res.data?.cards || []).map((c)=> ({ ...c, image: firstImageUrl(c) || c.image }));
+      cards = rankAndTrim(cards, 12, true);
       await pushWithFollowups(md, cards, content);
     } catch {
       await pushWithFollowups("⚠️ Error or connection failed.", [], content);
     } finally { setTyping(false); }
   };
 
-  /* ---------------------- small render helpers ---------------------- */
+  /* ---------------------- render bits ---------------------- */
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
     const src = prox(url);
@@ -502,7 +549,7 @@ function AIChat() {
 
     if (["web","link","wiki","news","stock","crypto"].includes(card.type)) {
       if (card.url && isFilteredSource(card.url)) return null;
-      const pv = bestPreview(card, card.type==="news");
+      const pv = bestPreview(card, true); // allow screenshot fallback for ALL web-like cards
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
@@ -541,7 +588,7 @@ function AIChat() {
 
   return (
     <div className="h-screen w-full flex flex-col" style={{ height:"100svh" }}>
-      {/* Clean header */}
+      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -601,7 +648,7 @@ function AIChat() {
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.cards
                         .filter((c)=>["web","news","link","wiki","stock","crypto"].includes(c.type) && !(c.url && isFilteredSource(c.url)))
-                        .slice(0,5)
+                        .slice(0,6)
                         .map((c,idx)=>(
                           <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg:white hover:text-black transition">
                             {c.source || (c.url ? host(c.url) : "source")}
@@ -627,7 +674,7 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL — fades, never blocks input or scroll */}
+      {/* LIVE PREVIEW PANEL */}
       <div
         ref={panelRef}
         className={`fixed inset-x-0 z-40 transition-opacity duration-150 ${showPanel ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
@@ -700,7 +747,7 @@ function AIChat() {
             </button>
           </div>
 
-          {/* Quick chips */}
+          {/* Quick chips (keep) */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
               <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
