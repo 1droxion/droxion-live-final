@@ -17,6 +17,7 @@ const host = (u) => {
 };
 
 function AIChat() {
+  // -------- State --------
   const [messages, setMessages] = useState([]);          // [{role, content?, cards?}]
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -25,12 +26,14 @@ function AIChat() {
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
 
+  // refs
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
   const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
   const userId = useRef("");
   const suggestTimer = useRef(null);
 
+  // -------- Helpers --------
   const pushAssistant = (content, extra = {}) =>
     setMessages((prev) => [...prev, { role: "assistant", content, ...extra }]);
   const pushUser = (content) =>
@@ -55,6 +58,7 @@ function AIChat() {
     synth.speak(u);
   };
 
+  // ---------- YouTube helpers ----------
   const getYouTubeId = (raw) => {
     try {
       const txt = raw.trim();
@@ -76,6 +80,7 @@ function AIChat() {
     return m ? m[1] : null;
   };
 
+  // ---------- Effects ----------
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
     if (!id) {
@@ -89,6 +94,7 @@ function AIChat() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, typing]);
 
+  // Global styles + mobile viewport + tiny utilities
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
@@ -121,6 +127,7 @@ function AIChat() {
     return () => { document.head.removeChild(style); };
   }, []);
 
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "/" && document.activeElement !== inputRef.current) {
@@ -140,6 +147,7 @@ function AIChat() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Autoresize textarea
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -147,6 +155,7 @@ function AIChat() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
+  // -------- Suggestions (debounced) --------
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -160,7 +169,7 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input]);
 
-  // ---- Cards ----
+  // ---------- Card renderer ----------
   const SmartCard = ({ card }) => {
     if (!card) return null;
     const imgUrl = card.image || card.image_url;
@@ -181,7 +190,7 @@ function AIChat() {
       );
     }
 
-    // Simple WEATHER card (renders live info directly)
+    // Weather
     if (card.type === "weather") {
       return (
         <div className="glass rounded-lg p-3">
@@ -191,12 +200,8 @@ function AIChat() {
             )}
             <div>
               <div className="text-sm font-semibold leading-snug">{card.title || "Weather"}</div>
-              <div className="text-xs text-gray-400">
-                {card.subtitle || card.meta}
-              </div>
-              {card.description && (
-                <div className="text-xs text-gray-300 mt-1">{card.description}</div>
-              )}
+              <div className="text-xs text-gray-400">{card.subtitle || card.meta}</div>
+              {card.description && <div className="text-xs text-gray-300 mt-1">{card.description}</div>}
             </div>
           </div>
           {Array.isArray(card.hourly) && card.hourly.length > 0 && (
@@ -213,7 +218,7 @@ function AIChat() {
       );
     }
 
-    // EMAIL (compact)
+    // Email
     if (card.type === "email") {
       return (
         <div className="glass rounded-lg p-3">
@@ -225,7 +230,7 @@ function AIChat() {
       );
     }
 
-    // GALLERY support (multiple images from realtime)
+    // Gallery
     if (card.type === "gallery" && Array.isArray(card.images)) {
       return (
         <div className="grid grid-cols-2 gap-2">
@@ -288,6 +293,7 @@ function AIChat() {
       );
     }
 
+    // Raw HTML
     if (card.html) {
       return (
         <div
@@ -300,7 +306,6 @@ function AIChat() {
     if (card.text) {
       return <div className="glass rounded-lg p-3 text-sm">{card.text}</div>;
     }
-
     return null;
   };
 
@@ -323,7 +328,7 @@ function AIChat() {
     } catch {}
   };
 
-  // ---- SEND ----
+  // ---------- Main send ----------
   const handleSend = async (textToSend = input) => {
     const content = textToSend.trim();
     if (!content) return;
@@ -336,7 +341,7 @@ function AIChat() {
     const lower = content.toLowerCase();
 
     try {
-      // google: trigger → realtime
+      // google: trigger (realtime cards render in-place)
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         try {
@@ -364,11 +369,8 @@ function AIChat() {
             source: it.source,
             snippet: it.snippet,
           }));
-          if (results.length) {
-            pushAssistant(`### Sources for **${q}**`, { cards: results });
-          } else {
-            pushAssistant(`No sources found for **${q}**.`);
-          }
+          if (results.length) pushAssistant(`### Sources for **${q}**`, { cards: results });
+          else pushAssistant(`No sources found for **${q}**.`);
         } catch {
           pushAssistant("Search is unavailable right now.");
         }
@@ -396,7 +398,7 @@ function AIChat() {
         return;
       }
 
-      // Images → use realtime to fetch thumbnails/gallery cards
+      // Images → realtime (gallery) with fallback link
       const imageTrigger =
         /^(image:|images:|show (me )?images|show (me )?image|wallpaper|artwork)/i.test(lower) ||
         lower.includes(" google image") || lower.includes(" images ");
@@ -426,7 +428,7 @@ function AIChat() {
         return;
       }
 
-      // Default chat
+      // DEFAULT chat
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
       const md = res.data?.reply || res.data?.text || "";
       const cards = res.data?.cards || [];
@@ -458,9 +460,10 @@ function AIChat() {
     }
   };
 
+  // ---------- LAYOUT ----------
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Top Bar */}
+      {/* Sticky Top Bar */}
       <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -486,7 +489,7 @@ function AIChat() {
         </div>
       </header>
 
-      {/* Messages */}
+      {/* Main content */}
       <div className="max-w-4xl mx-auto w-full px-3 py-4">
         <div className="space-y-4">
           {messages.map((msg, i) => {
@@ -544,6 +547,7 @@ function AIChat() {
                   </ReactMarkdown>
                 ) : null}
 
+                {/* Source pills (for web/news cards) */}
                 {!isUser && msg.cards?.length ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {msg.cards
@@ -583,7 +587,7 @@ function AIChat() {
       {/* Spacer so content isn't hidden behind the fixed composer */}
       <div style={{ height: "140px" }} />
 
-      {/* Suggestions — no longer block page scroll */}
+      {/* Suggestions — anchored above the composer, not blocking page scroll */}
       {suggestions.length > 0 && (
         <div
           className="fixed inset-x-0 z-35 pointer-events-none"
@@ -608,7 +612,7 @@ function AIChat() {
         </div>
       )}
 
-      {/* Bottom composer */}
+      {/* Bottom composer (sticky) */}
       <div
         className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
@@ -616,6 +620,7 @@ function AIChat() {
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
+              {/* placeholder intentionally empty */}
               <textarea
                 ref={inputRef}
                 value={input}
@@ -624,7 +629,7 @@ function AIChat() {
                 onBlur={() => setSuggestions([])}
                 rows={1}
                 inputMode="text"
-                placeholder=""           {/* emptied as requested */}
+                placeholder=""
                 className="w-full bg-transparent outline-none resize-none leading-[1.6] placeholder-white/30"
                 aria-label="Type your message"
               />
@@ -638,6 +643,7 @@ function AIChat() {
             </button>
           </div>
 
+          {/* Quick style buttons under the composer */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
               <button
