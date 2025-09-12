@@ -4,30 +4,27 @@ import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
-import {
-  FaTrash, FaDownload, FaPlus,
-  FaVolumeUp, FaVolumeMute, FaMicrophone,
-  FaUpload, FaCamera, FaRegCopy
-} from "react-icons/fa";
+import { FaRegCopy } from "react-icons/fa";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 
-// ---------- Component ----------
+// If a card has only a URL and no image, use a small preview screenshot so the user sees something visual.
+const linkScreenshot = (url) =>
+  url ? `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}` : null;
+
 function AIChat() {
-  // State
   const [messages, setMessages] = useState([]); // [{role, content?, cards?, followups?}]
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [topToolsOpen, setTopToolsOpen] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  const [vvh, setVvh] = useState(
+    (typeof window !== "undefined" && window.visualViewport?.height) || (typeof window !== "undefined" && window.innerHeight) || 700
+  ); // visual viewport height (for keyboard-aware sizing)
 
-  // Refs
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
-  const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
   const userId = useRef("");
   const suggestTimer = useRef(null);
 
@@ -38,17 +35,17 @@ function AIChat() {
     setMessages((prev) => [...prev, { role: "user", content }]);
 
   const logAction = async (action, inputText) => {
-    try { await axios.post(`${API_BASE}/track`, { user_id: userId.current, action, input: inputText, timestamp: new Date().toISOString() }); } catch {}
+    try {
+      await axios.post(`${API_BASE}/track`, {
+        user_id: userId.current,
+        action,
+        input: inputText,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {}
   };
 
-  const speak = (text) => {
-    if (!voiceMode || !text || !synth) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US";
-    synth.cancel();
-    synth.speak(u);
-  };
-
+  // YouTube id helper
   const getYouTubeId = (raw) => {
     try {
       const txt = raw.trim();
@@ -73,12 +70,18 @@ function AIChat() {
   // Effects
   useEffect(() => {
     let id = localStorage.getItem("droxion_uid");
-    if (!id) { id = "user-" + Math.random().toString(36).substring(2, 10); localStorage.setItem("droxion_uid", id); }
+    if (!id) {
+      id = "user-" + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem("droxion_uid", id);
+    }
     userId.current = id;
   }, []);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, typing]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, typing]);
 
+  // global styles
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
@@ -99,56 +102,80 @@ function AIChat() {
       .pill { font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.12);
               background: rgba(255,255,255,.06); border-radius: 999px; }
       /* suggestions */
-      .suggestions-wrap { pointer-events: none; } /* wrapper ignores touches so page can scroll */
-      .suggestions-panel { pointer-events: auto; max-height: 44vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+      .suggestions-wrap { pointer-events: none; }
+      .suggestions-panel {
+        pointer-events: auto;
+        overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+        overscroll-behavior: contain;
+      }
     `;
     document.head.appendChild(style);
 
     let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute("name", "viewport");
+      document.head.appendChild(meta);
+    }
     meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
     return () => { document.head.removeChild(style); };
   }, []);
 
+  // keyboard-aware size (iOS)
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "/" && document.activeElement !== inputRef.current) { e.preventDefault(); inputRef.current?.focus(); }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setTopToolsOpen((v) => !v); }
-      if (e.key === "Escape") { inputRef.current?.blur(); setSuggestions([]); }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => setVvh(vv.height);
+    vv.addEventListener("resize", onResize);
+    vv.addEventListener("scroll", onResize);
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      vv.removeEventListener("scroll", onResize);
     };
-    const onScroll = () => setSuggestions([]);  // hide suggestions when user scrolls page
+  }, []);
+
+  // Hide suggestions on ESC or page scroll
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") setSuggestions([]); };
+    const onScroll = () => setSuggestions([]);
     window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("scroll", onScroll); };
   }, []);
 
+  // autoresize textarea
   useEffect(() => {
-    const el = inputRef.current; if (!el) return;
-    el.style.height = "0px"; el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
-  // Suggestions (debounced)
+  // suggestions (debounced)
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
     if (!q) { setSuggestions([]); return; }
     suggestTimer.current = setTimeout(async () => {
-      try { const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } }); setSuggestions((data?.suggestions || []).slice(0, 8)); } catch {}
+      try {
+        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
+        setSuggestions((data?.suggestions || []).slice(0, 8));
+      } catch {}
     }, 250);
     return () => clearTimeout(suggestTimer.current);
   }, [input]);
 
-  // ---------- Cards ----------
+  // ---- Cards ----
   const SmartCard = ({ card }) => {
     if (!card) return null;
 
-    // pick best image url
-    const imgUrl =
+    const primaryImg =
       card.image_url || card.image || card.thumbnail || card.thumb || card.thumb_url || card.ogImage;
 
     // YouTube
     if (card.type === "youtube") {
-      const vid = getYouTubeId(card.url || ""); if (!vid) return null;
+      const vid = getYouTubeId(card.url || "");
+      if (!vid) return null;
       return (
         <div className="embed-responsive embed-16by9 rounded overflow-hidden glass">
           <iframe
@@ -199,7 +226,7 @@ function AIChat() {
       );
     }
 
-    // Gallery — supports array of strings or objects {url,thumbnail}
+    // Gallery — strings or {url,thumbnail}
     if (card.type === "gallery" && Array.isArray(card.images)) {
       const urls = card.images
         .map((it) => (typeof it === "string" ? it : (it.url || it.thumbnail || it.thumb)))
@@ -208,32 +235,53 @@ function AIChat() {
       return (
         <div className="grid grid-cols-2 gap-2">
           {urls.slice(0, 10).map((u, i) => (
-            <img key={i} src={u} alt="" className="w-full rounded-lg glass"
-                 loading="lazy" referrerPolicy="no-referrer"
-                 onError={(e) => (e.currentTarget.style.display = "none")} />
+            <img
+              key={i}
+              src={u}
+              alt=""
+              className="w-full rounded-lg glass"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => (e.currentTarget.style.display = "none")}
+            />
           ))}
         </div>
       );
     }
 
     // Image-only
-    if (card.type === "image" && (imgUrl || card.url)) {
+    if (card.type === "image" && (primaryImg || card.url)) {
       return (
-        <img src={imgUrl || card.url} alt={card.alt || ""} className="w-full rounded-lg glass"
-             loading="lazy" referrerPolicy="no-referrer"
-             onError={(e) => (e.currentTarget.style.display = "none")} />
+        <img
+          src={primaryImg || card.url}
+          alt={card.alt || ""}
+          className="w-full rounded-lg glass"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(e) => (e.currentTarget.style.display = "none")}
+        />
       );
     }
 
-    // Generic link/news/wiki/stock/weather
+    // Generic link/news/wiki/stock — with screenshot fallback
     if (["web", "link", "wiki", "news", "stock", "weather"].includes(card.type)) {
+      const preview = primaryImg || linkScreenshot(card.url);
       return (
-        <a href={card.url} target="_blank" rel="noreferrer"
-           className="block glass rounded-lg p-3 hover:bg-white/10 transition">
-          {imgUrl && (
-            <img src={imgUrl} alt="" className="w-full rounded mb-2"
-                 loading="lazy" referrerPolicy="no-referrer"
-                 onError={(e) => (e.currentTarget.style.display = "none")} />
+        <a
+          href={card.url}
+          target="_blank"
+          rel="noreferrer"
+          className="block glass rounded-lg p-3 hover:bg-white/10 transition"
+        >
+          {preview && (
+            <img
+              src={preview}
+              alt=""
+              className="w-full rounded mb-2"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => (e.currentTarget.style.display = "none")}
+            />
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
           <div className="text-xs text-gray-400 mt-1">
@@ -247,21 +295,55 @@ function AIChat() {
     }
 
     if (card.html) {
-      return <div className="prose prose-invert max-w-none glass rounded-lg p-3"
-                  dangerouslySetInnerHTML={{ __html: card.html }} />;
+      return (
+        <div
+          className="prose prose-invert max-w-none glass rounded-lg p-3"
+          dangerouslySetInnerHTML={{ __html: card.html }}
+        />
+      );
     }
+
     if (card.text) return <div className="glass rounded-lg p-3 text-sm">{card.text}</div>;
     return null;
   };
 
-  const renderCards = (cards) => !cards?.length ? null : (
-    <div className="grid grid-cols-1 gap-3">{cards.map((c, idx) => <SmartCard key={idx} card={c} />)}</div>
-  );
+  const renderCards = (cards) =>
+    !cards?.length ? null : (
+      <div className="grid grid-cols-1 gap-3">
+        {cards.map((c, idx) => <SmartCard key={idx} card={c} />)}
+      </div>
+    );
 
   const copyMessage = async (i) => {
-    try { const msg = messages[i]; if (!msg) return;
-      await navigator.clipboard.writeText(msg.content || ""); setCopiedIdx(i); setTimeout(() => setCopiedIdx(null), 1200);
+    try {
+      const msg = messages[i]; if (!msg) return;
+      await navigator.clipboard.writeText(msg.content || "");
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx(null), 1200);
     } catch {}
+  };
+
+  // Followups
+  const fetchFollowups = async (query) => {
+    try {
+      const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q: query, mode: "followup" } });
+      const arr = (data?.suggestions || []).filter(Boolean);
+      return (arr.length ? arr : ["Explain more", "Pros & cons", "Give steps", "Show sources"]).slice(0, 4);
+    } catch {
+      return ["Explain more", "Pros & cons", "Give steps", "Show sources"];
+    }
+  };
+
+  const pushWithFollowups = async (md, cards, query) => {
+    setMessages((prev) => [...prev, { role: "assistant", content: md, cards }]);
+    const followups = await fetchFollowups(query);
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last || last.role !== "assistant") return prev;
+      const patched = [...prev];
+      patched[patched.length - 1] = { ...last, followups };
+      return patched;
+    });
   };
 
   // Send
@@ -279,7 +361,9 @@ function AIChat() {
           const cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
-        } catch { pushAssistant("Google preview is unavailable right now."); }
+        } catch {
+          pushAssistant("Google preview is unavailable right now.");
+        }
         setTyping(false); return;
       }
 
@@ -292,7 +376,9 @@ function AIChat() {
             type: "web", title: it.title, url: it.url, image: it.image, source: it.source, snippet: it.snippet,
           }));
           await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
-        } catch { pushAssistant("Search is unavailable right now."); }
+        } catch {
+          pushAssistant("Search is unavailable right now.");
+        }
         setTyping(false); return;
       }
 
@@ -300,18 +386,21 @@ function AIChat() {
       const ytKW = ["youtube", "yt ", "youtu.be", "youtube.com", "video", "trailer", "shorts", "song", "watch "];
       if (ytKW.some((k) => lower.includes(k)) || lower.startsWith("youtube:")) {
         const directId = getYouTubeId(content);
-        if (directId) { pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] }); }
-        else {
+        if (directId) {
+          pushAssistant("", { cards: [{ type: "youtube", url: `https://www.youtube.com/watch?v=${directId}` }] });
+        } else {
           try {
             const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
             const url = res.data?.url;
             pushAssistant(url ? "" : "I couldn't find a video for that.", { cards: url ? [{ type: "youtube", url }] : [] });
-          } catch { pushAssistant("YouTube search is unavailable right now."); }
+          } catch {
+            pushAssistant("YouTube search is unavailable right now.");
+          }
         }
         setTyping(false); return;
       }
 
-      // Images (inline via realtime; fallback Google Images page)
+      // Images
       const imageTrigger =
         /^(image:|images:|show (me )?images|show (me )?image|wallpaper|artwork)/i.test(lower) ||
         lower.includes(" google image") || lower.includes(" images ");
@@ -338,11 +427,10 @@ function AIChat() {
       }
 
       // Default chat
-      const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
+      const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
       const md = res.data?.reply || res.data?.text || "";
       const cards = res.data?.cards || [];
       await pushWithFollowups(md, cards, content);
-      speak(md);
     } catch (err) {
       console.error(err);
       pushAssistant("⚠️ Error or connection failed.");
@@ -351,73 +439,16 @@ function AIChat() {
     }
   };
 
-  // After-answer followups (asks for more details)
-  const fetchFollowups = async (query) => {
-    try {
-      const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q: query, mode: "followup" } });
-      const arr = (data?.suggestions || []).filter(Boolean);
-      // fallback set if backend returns nothing
-      if (arr.length) return arr.slice(0, 4);
-      return [
-        "Give me a quick summary",
-        "Show latest news on this",
-        "Any images or charts?",
-        "What should I do next?",
-      ];
-    } catch {
-      return ["Explain more", "Pros & cons", "Give steps", "Show sources"];
-    }
-  };
-
-  const pushWithFollowups = async (md, cards, queryForFollowups) => {
-    setMessages((prev) => [...prev, { role: "assistant", content: md, cards }]);
-    const followups = await fetchFollowups(queryForFollowups);
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== "assistant") return prev;
-      const patched = [...prev];
-      patched[patched.length - 1] = { ...last, followups };
-      return patched;
-    });
-  };
-
-  const handlePromptClick = (style) => handleSend(`steps to do ${style.toLowerCase()} project`);
-
-  const handleMic = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return alert("Mic not supported");
-    const recog = new SR(); recog.lang = "en-US"; recog.start();
-    recog.onresult = (e) => setInput(e.results[0][0].transcript);
-  };
-
   const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
 
   // ---------- UI ----------
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Top Bar */}
+      {/* Top Bar (tools removed per request) */}
       <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
-          <div className="ml-auto relative flex items-center gap-2">
-            {topToolsOpen && (
-              <div className="flex gap-4 glass px-2 py-1 rounded text-sm">
-                <FaTrash onClick={() => setMessages([])} className="cursor-pointer" title="Clear chat" />
-                <FaDownload className="cursor-pointer" title="Download (todo)" />
-                <FaMicrophone className="cursor-pointer" onClick={handleMic} title="Voice to text" />
-                {voiceMode ? (
-                  <FaVolumeUp onClick={() => setVoiceMode(false)} title="Voice off" />
-                ) : (
-                  <FaVolumeMute onClick={() => setVoiceMode(true)} title="Voice on" />
-                )}
-                <FaUpload onClick={() => document.getElementById("fileUpload").click()} title="Upload" />
-                <FaCamera title="Screenshot (todo)" />
-                <input type="file" id="fileUpload" hidden accept="image/*" />
-              </div>
-            )}
-            <FaPlus onClick={() => setTopToolsOpen(!topToolsOpen)} className="cursor-pointer" title="Tools (⌘/Ctrl+K)" />
-          </div>
         </div>
       </header>
 
@@ -433,7 +464,17 @@ function AIChat() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[11px] uppercase tracking-wider text-gray-400">{isUser ? "You" : "Droxion"}</div>
                   {!isUser && msg.content && (
-                    <button onClick={() => copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
+                    <button
+                      onClick={() => {
+                        try {
+                          navigator.clipboard.writeText(msg.content || "");
+                          setCopiedIdx(i);
+                          setTimeout(() => setCopiedIdx(null), 1200);
+                        } catch {}
+                      }}
+                      className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+                      title="Copy"
+                    >
                       <FaRegCopy /> {copiedIdx === i ? "Copied" : "Copy"}
                     </button>
                   )}
@@ -441,25 +482,51 @@ function AIChat() {
 
                 {msg.content ? (
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
                     components={{
-                      img: (props) => <img {...props} className="rounded-lg my-2 w-full glass" loading="lazy" referrerPolicy="no-referrer"
-                                           onError={(e) => (e.currentTarget.style.display = "none")} />,
-                      iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
-                      a: ({ node, ...props }) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />,
+                      img: (props) => (
+                        <img
+                          {...props}
+                          className="rounded-lg my-2 w-full glass"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => (e.currentTarget.style.display = "none")}
+                        />
+                      ),
+                      iframe: (props) => (
+                        <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass">
+                          <iframe {...props} allowFullScreen />
+                        </div>
+                      ),
+                      a: ({ node, ...props }) => (
+                        <a
+                          {...props}
+                          className="underline decoration-gray-600 hover:text-gray-200"
+                          target="_blank"
+                          rel="noreferrer"
+                        />
+                      ),
                     }}
                   >
                     {msg.content}
                   </ReactMarkdown>
                 ) : null}
 
-                {/* Source pills */}
+                {/* Pills */}
                 {!isUser && msg.cards?.length ? (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {msg.cards.filter((c) => ["web", "news", "link", "wiki", "stock", "weather"].includes(c.type))
-                      .slice(0, 5).map((c, idx) => (
-                        <a key={idx} href={c.url} target="_blank" rel="noreferrer"
-                           className="pill hover:bg-white hover:text-black transition">
+                    {msg.cards
+                      .filter((c) => ["web", "news", "link", "wiki", "stock", "weather"].includes(c.type))
+                      .slice(0, 5)
+                      .map((c, idx) => (
+                        <a
+                          key={idx}
+                          href={c.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="pill hover:bg-white hover:text-black transition"
+                        >
                           {c.source || (c.url ? host(c.url) : "source")}
                         </a>
                       ))}
@@ -468,12 +535,15 @@ function AIChat() {
 
                 {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
 
-                {/* Follow-up prompts */}
+                {/* Follow-ups */}
                 {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
                   <div className="mt-3 flex gap-2 flex-wrap">
                     {msg.followups.map((f, idx) => (
-                      <button key={idx} onClick={() => handleSend(f)}
-                        className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+                      <button
+                        key={idx}
+                        onClick={() => handleSend(f)}
+                        className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
+                      >
                         {f}
                       </button>
                     ))}
@@ -495,18 +565,31 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Spacer under the scroll area */}
+      {/* Spacer */}
       <div style={{ height: "140px" }} />
 
-      {/* Suggestions (don’t block page scroll) */}
+      {/* Suggestions — keyboard aware height, scrollable */}
       {suggestions.length > 0 && (
-        <div className="fixed inset-x-0 z-35 suggestions-wrap"
-             style={{ bottom: "calc(72px + max(env(safe-area-inset-bottom), 12px))" }}>
+        <div
+          className="fixed inset-x-0 z-35 suggestions-wrap"
+          style={{
+            bottom: "calc(72px + max(env(safe-area-inset-bottom), 12px))"
+          }}
+        >
           <div className="max-w-4xl mx-auto px-3">
-            <div className="glass rounded-xl p-2 suggestions-panel" style={{ backdropFilter: "blur(10px)" }}>
+            <div
+              className="glass rounded-xl p-2 suggestions-panel"
+              style={{
+                backdropFilter: "blur(10px)",
+                maxHeight: Math.min(Math.floor(vvh * 0.44), 360) + "px"
+              }}
+            >
               {suggestions.map((s, i) => (
-                <button key={i} onClick={() => handleSend(s)}
-                        className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                <button
+                  key={i}
+                  onClick={() => handleSend(s)}
+                  className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
+                >
                   {s}
                 </button>
               ))}
@@ -516,8 +599,10 @@ function AIChat() {
       )}
 
       {/* Composer */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur"
-           style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+      >
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
@@ -526,7 +611,7 @@ function AIChat() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKey}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 onBlur={() => setSuggestions([])}
                 rows={1}
                 inputMode="text"
@@ -535,16 +620,23 @@ function AIChat() {
                 aria-label="Type your message"
               />
             </div>
-            <button onClick={() => handleSend(input)}
-                    className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
-                    title="Send">➤</button>
+            <button
+              onClick={() => handleSend(input)}
+              className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
+              title="Send"
+            >
+              ➤
+            </button>
           </div>
 
           {/* Quick style buttons */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
-              <button key={s} onClick={() => handlePromptClick(s)}
-                className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+              <button
+                key={s}
+                onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)}
+                className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
+              >
                 {s}
               </button>
             ))}
