@@ -22,8 +22,13 @@ const prox = (u) => {
   return IMAGE_PROXY + encodeURIComponent(u);
 };
 
-const linkScreenshot = (url) =>
-  url ? prox(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}`) : null;
+// ⚠️ IMPORTANT: We **do not** auto-screenshot or auto-unsplash for web/news cards anymore.
+// This prevents broken gray boxes on generic queries.
+const bestPreviewStrict = (card) => {
+  const direct = firstImageUrl(card);
+  if (!direct) return null;
+  return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
+};
 
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 
@@ -43,18 +48,6 @@ const wantsImages = (s="") => {
 const wantsNews = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-
-// preview chooser (safe)
-const bestPreview = (card) => {
-  const direct = firstImageUrl(card);
-  if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
-  if (card.url && /^https?:\/\//i.test(card.url)) {
-    const shot = linkScreenshot(card.url);
-    if (shot) return { prox: shot, orig: card.url, title: card.title || "preview" };
-  }
-  const ph = unsplash(card.title || card.source || "preview");
-  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
-};
 
 const getYouTubeId = (raw) => {
   try {
@@ -90,7 +83,7 @@ function AIChat() {
   const listRef = useRef(null);
   const suggestTimer = useRef(null);
 
-  /* meta + CSS: lock scroll to our container; stop iOS blink */
+  /* meta + CSS: fix iOS blink, allow smooth overlays */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
@@ -103,7 +96,7 @@ function AIChat() {
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
       html, body { height: 100%; background:#000; color:#fff; margin:0; padding:0; }
-      body { overflow:hidden; } /* only chat list scrolls */
+      body { overscroll-behavior-y: none; } /* reduce "blink" on focus */
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; }
       img, iframe, video { max-width: 100% !important; height: auto !important; }
@@ -113,7 +106,15 @@ function AIChat() {
       .glass { background: var(--glass); border:1px solid var(--border); backdrop-filter: blur(10px); }
       .glass-2 { background: var(--glass-2); border:1px solid var(--border); backdrop-filter: blur(10px); }
       .pill { font-size:11px; padding:2px 8px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); border-radius:999px; }
-      .suggestions-panel { max-height:40vh; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
+      .suggestions-panel { 
+        max-height: min(45vh, calc(100svh - 180px)); 
+        overflow-y: auto; 
+        -webkit-overflow-scrolling: touch; 
+        overscroll-behavior: contain;
+        touch-action: pan-y; 
+      }
+      /* Reduce repaint/jitter for fixed bars */
+      .gpu { will-change: transform; transform: translateZ(0); -webkit-backface-visibility: hidden; backface-visibility: hidden; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -172,7 +173,7 @@ function AIChat() {
     setSuggestions([]);
 
     try {
-      // 0) greetings → chat only (no cards)
+      // 0) greetings → chat only (no cards, no images)
       if (isGreeting(content)) {
         const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
         await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
@@ -187,6 +188,7 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
+          // drop placeholders
           cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
@@ -205,7 +207,7 @@ function AIChat() {
               type:"web",
               title: it.title,
               url: it.url,
-              image: it.image,         // original; proxy/fallback later
+              image: it.image || null,   // IMPORTANT: only use if present
               source: it.source,
               snippet: it.snippet
             }));
@@ -275,7 +277,7 @@ function AIChat() {
         .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
         .map((c) => {
           const u = firstImageUrl(c);
-          return u ? { ...c, image: u } : c; // keep original; proxy on render
+          return u ? { ...c, image: u } : c;
         });
       await pushWithFollowups(md, cards, content);
     } catch {
@@ -305,6 +307,7 @@ function AIChat() {
           const tried = el.dataset.fallback || "0";
           if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
           if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash(title || "image"); }
+          if (!el.dataset.fallback) el.style.display = "none";
         }}
       />
     );
@@ -362,7 +365,7 @@ function AIChat() {
 
     if (["web","link","wiki","news","stock"].includes(card.type)) {
       if (card.url && isPlaceholderUrl(card.url)) return null;
-      const pv = bestPreview(card);
+      const pv = bestPreviewStrict(card); // <- STRICT (only show if card already has image)
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
@@ -375,10 +378,8 @@ function AIChat() {
               referrerPolicy="no-referrer"
               crossOrigin="anonymous"
               onError={(e)=>{
-                const el = e.currentTarget;
-                const tried = el.dataset.fallback || "0";
-                if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
-                if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash(pv.title); }
+                // If fails, hide image entirely (no gray box)
+                e.currentTarget.style.display = "none";
               }}
             />
           )}
@@ -405,14 +406,14 @@ function AIChat() {
   return (
     <div className="h-screen w-full flex flex-col" style={{ height: "100svh" }}>
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
+      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60 gpu">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
         </div>
       </header>
 
-      {/* Scroll container (only this scrolls) */}
+      {/* Scroll container */}
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto"
@@ -457,7 +458,8 @@ function AIChat() {
                               const el = e.currentTarget;
                               const tried = el.dataset.fallback || "0";
                               if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
-                              if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash("image"); }
+                              if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash("image"); return; }
+                              el.style.display = "none";
                             }}
                           />
                         ),
@@ -521,7 +523,7 @@ function AIChat() {
 
       {/* Suggestions (own scroll; never blocks main scroll) */}
       {inputFocused && suggestions.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[88px] z-40">
+        <div className="fixed inset-x-0 bottom-[88px] z-40 gpu" onTouchMove={(e)=>e.stopPropagation()}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="glass rounded-xl p-2 suggestions-panel">
               <div className="flex justify-between items-center px-1 pb-2">
@@ -549,7 +551,7 @@ function AIChat() {
 
       {/* Composer */}
       <div
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur gpu"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
       >
         <div className="max-w-4xl mx-auto px-3 pt-2">
