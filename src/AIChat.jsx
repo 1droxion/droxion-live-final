@@ -15,10 +15,25 @@ const isPlaceholderUrl = (u="") => { try { return /(^|\.)example\.(com|org)$/i.t
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
-const linkScreenshot = (url) =>
-  url ? `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}` : null;
+// CORS-safe proxy for ANY external image (prevents hotlink blocks)
+// (images.weserv.nl just fetches the image server-side and serves it with correct headers)
+const IMAGE_PROXY = "https://images.weserv.nl/?output=webp&w=1200&url=";
+const prox = (u) => {
+  if (!u) return null;
+  try {
+    const x = new URL(u);
+    if (x.protocol === "data:" || x.protocol === "blob:") return u;
+    if (x.hostname.endsWith("images.weserv.nl")) return u;
+    return IMAGE_PROXY + encodeURIComponent(u);
+  } catch {
+    return u;
+  }
+};
 
-const unsplash = (q) => q ? `https://source.unsplash.com/800x500/?${encodeURIComponent(q)}` : null;
+const linkScreenshot = (url) =>
+  url ? `${IMAGE_PROXY}${encodeURIComponent(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}`)}` : null;
+
+const unsplash = (q) => (q ? `https://source.unsplash.com/800x500/?${encodeURIComponent(q)}` : null);
 
 // on any broken image -> swap once to Unsplash so you never see a broken icon
 const ensureVisible = (el, title="image") => {
@@ -52,12 +67,12 @@ const getYouTubeId = (raw) => {
 
 const bestPreview = (card) => {
   const d = firstImageUrl(card);
-  if (d) return d;
+  if (d) return prox(d);
   if (card.url) {
     const shot = linkScreenshot(card.url);
     if (shot) return shot;
   }
-  return unsplash(card.title || card.source || "preview");
+  return prox(unsplash(card.title || card.source || "preview"));
 };
 
 /* ---------------------- component ---------------------- */
@@ -67,6 +82,7 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  const [inputFocused, setInputFocused] = useState(false); // show suggestions only when focused
 
   const inputRef = useRef(null);
   const suggestTimer = useRef(null);
@@ -84,6 +100,7 @@ function AIChat() {
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
       html, body { height: 100%; background:#000; color:#fff; }
+      body { overscroll-behavior-y: none; } /* reduce iOS bounce blink */
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; } /* prevent iOS zoom */
       img, iframe, video { max-width: 100% !important; height: auto !important; }
@@ -108,11 +125,11 @@ function AIChat() {
     if (el.style.height !== `${h}px`) el.style.height = `${h}px`;
   }, [input]);
 
-  /* debounced suggestions (keep while typing; not tied to page scroll) */
+  /* debounced suggestions: only when focused & ≥2 chars */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
-    if (!q) { setSuggestions([]); return; }
+    if (!inputFocused || q.length < 2) { setSuggestions([]); return; }
     suggestTimer.current = setTimeout(async () => {
       try {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
@@ -120,7 +137,7 @@ function AIChat() {
       } catch { /* ignore */ }
     }, 250);
     return () => clearTimeout(suggestTimer.current);
-  }, [input]);
+  }, [input, inputFocused]);
 
   /* utilities */
   const copyMessage = async (i) => {
@@ -158,7 +175,8 @@ function AIChat() {
     const content = (text || "").trim(); if (!content) return;
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
-    setInput(""); // don't close suggestions until next render
+    setInput("");
+    setSuggestions([]); // close panel after send
     const lower = content.toLowerCase();
 
     try {
@@ -168,7 +186,13 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
+          cards = cards
+            .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
+            .map((c) => {
+              // proxy any image-like fields so they always render
+              const u = firstImageUrl(c);
+              return u ? { ...c, image: prox(u) } : c;
+            });
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Google preview is unavailable right now.", [], content); }
@@ -182,7 +206,14 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/search`, { prompt: q });
           const results = (r.data?.results || [])
             .filter((it) => !isPlaceholderUrl(it.url))
-            .map((it) => ({ type:"web", title: it.title, url: it.url, image: it.image, source: it.source, snippet: it.snippet }));
+            .map((it) => ({
+              type:"web",
+              title: it.title,
+              url: it.url,
+              image: prox(it.image),
+              source: it.source,
+              snippet: it.snippet
+            }));
           await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         setTyping(false); return;
@@ -204,7 +235,7 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // Images: trigger if the word "image/images" appears anywhere
+      // Images trigger
       const imageTrigger = /(^image[s]?:|show (me )?images|show (me )?image|wallpaper|artwork|\bimage(s)?\b)/i.test(lower);
       if (imageTrigger) {
         const q = content.replace(/^image[s]?:\s*/i, "") || content;
@@ -227,9 +258,14 @@ function AIChat() {
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
       const md = res.data?.reply || res.data?.text || "";
       let cards = res.data?.cards || [];
-      cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
+      cards = cards
+        .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
+        .map((c) => {
+          const u = firstImageUrl(c);
+          return u ? { ...c, image: prox(u) } : c;
+        });
       await pushWithFollowups(md, cards, content);
-    } catch (e) {
+    } catch {
       await pushWithFollowups("⚠️ Error or connection failed.", [], content);
     } finally {
       setTyping(false);
@@ -265,7 +301,7 @@ function AIChat() {
           <div className="flex items-center gap-3">
             {card.icon && (
               <img
-                src={card.icon}
+                src={prox(card.icon)}
                 alt=""
                 width={48}
                 height={48}
@@ -288,7 +324,8 @@ function AIChat() {
     if (card.type === "gallery" && Array.isArray(card.images)) {
       const urls = card.images
         .map((it) => (typeof it === "string" ? it : (it.url || it.thumbnail || it.thumb)))
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(prox);
       if (!urls.length) return null;
       return (
         <div className="grid grid-cols-2 gap-2">
@@ -310,7 +347,7 @@ function AIChat() {
 
     // Single image
     if (card.type === "image") {
-      const u = firstImageUrl(card) || card.url;
+      const u = prox(firstImageUrl(card) || card.url);
       if (!u) return null;
       return (
         <img
@@ -370,10 +407,7 @@ function AIChat() {
         </div>
       </header>
 
-      {/* Pinned welcome bar */}
-      <div className="sticky top-[40px] z-30 text-center py-2 bg-black/70 backdrop-blur border-b border-white/10 layer">
-        <span className="text-gray-300 text-base">👋 Hey <span className="text-white font-semibold">Droxion</span></span>
-      </div>
+      {/* (Removed the “Hey Droxion” pinned bar as requested) */}
 
       {/* Main */}
       <div className="max-w-4xl mx-auto w-full px-3 py-4">
@@ -405,6 +439,7 @@ function AIChat() {
                       img: (props) => (
                         <img
                           {...props}
+                          src={prox(props.src)}
                           className="rounded-lg my-2 w-full glass"
                           loading="lazy"
                           referrerPolicy="no-referrer"
@@ -474,11 +509,20 @@ function AIChat() {
       {/* Bottom spacer so input never covers last message */}
       <div style={{ height: 140 }} />
 
-      {/* Suggestions: own scroll, sits above input, never moves page */}
-      {suggestions.length > 0 && (
+      {/* Suggestions: only when focused & ≥2 chars; own scroll; close button */}
+      {inputFocused && suggestions.length > 0 && (
         <div className="fixed inset-x-0 bottom-[88px] z-40 layer">
           <div className="max-w-4xl mx-auto px-3">
             <div className="glass rounded-xl p-2 suggestions-panel">
+              <div className="flex justify-between items-center px-1 pb-2">
+                <div className="text-xs text-gray-400">Suggestions</div>
+                <button
+                  onClick={() => setSuggestions([])}
+                  className="text-xs px-2 py-1 rounded border border-white/12 hover:bg-white hover:text-black transition"
+                >
+                  Close
+                </button>
+              </div>
               {suggestions.map((s, i) => (
                 <button
                   key={i}
@@ -494,8 +538,10 @@ function AIChat() {
       )}
 
       {/* Composer */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur layer"
-           style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur layer"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+      >
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
@@ -504,6 +550,8 @@ function AIChat() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setTimeout(() => setInputFocused(false), 150)} // small delay so clicks register
                 rows={1}
                 inputMode="text"
                 placeholder=""
