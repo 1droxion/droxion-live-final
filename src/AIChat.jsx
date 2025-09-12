@@ -9,14 +9,23 @@ import { FaRegCopy } from "react-icons/fa";
 const API_BASE = "https://droxion-backend.onrender.com";
 
 /* ---------------------- helpers ---------------------- */
-const host = (u) => { try { return new URL(u).hostname.replace(/^www\./,""); } catch { return ""; } };
-const isFilteredSource = (u="") => { // hide junk like google/wikipedia/placeholders
-  try {
-    const h = new URL(u).hostname.replace(/^www\./,"");
-    return ["google.com","wikipedia.org","m.wikipedia.org","example.com","example.org"].includes(h);
-  } catch { return true; }
+// FIX: normalize host (lowercase, strip www. and m.)
+const normHost = (u="") => { try { return new URL(u).hostname.toLowerCase().replace(/^www\./,"").replace(/^m\./,""); } catch { return ""; } };
+const host = (u) => normHost(u);
+
+// FIX: stronger filter (keeps links clean)
+const BAD_HOSTS = [
+  "google.com","news.google.com","maps.google.com",
+  "wikipedia.org","en.wikipedia.org","m.wikipedia.org",
+  "example.com","example.org"
+];
+const isFilteredSource = (u="") => {
+  const h = host(u);
+  return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
 };
-const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
+
+const firstImageUrl = (c) =>
+  c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const prox = (u) => (!u || u.startsWith("data:") || u.startsWith(IMAGE_PROXY)) ? u : (IMAGE_PROXY + encodeURIComponent(u));
@@ -42,6 +51,7 @@ const wantsNews = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s)
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
+// (kept) YouTube id helper used by card rendering
 const getYouTubeId = (raw) => {
   try {
     const txt = raw.trim();
@@ -61,6 +71,47 @@ const getYouTubeId = (raw) => {
   } catch {}
   const m = raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
+};
+
+// FIX: ranking + dedupe (keeps multiple good links, avoids repeats)
+const GOOD_NEWS = [
+  "reuters.com","theguardian.com","bbc.com","bbc.co.uk","apnews.com","nytimes.com",
+  "wsj.com","ft.com","bloomberg.com","economist.com","npr.org",
+  "hindustantimes.com","indianexpress.com","livemint.com","moneycontrol.com","timesofindia.com"
+];
+const rankHost = (h) => {
+  if (!h) return -50;
+  if (BAD_HOSTS.some(b => h===b || h.endsWith("."+b))) return -200;
+  if (GOOD_NEWS.some(g => h===g || h.endsWith("."+g))) return 90;
+  if (/\b(news|finance|market|money|business|times|post|today)\b/.test(h)) return 40;
+  return 10;
+};
+const scoreCard = (c) => {
+  const h = host(c.url || "");
+  let s = rankHost(h);
+  if (c.type === "news") s += 10;
+  if (firstImageUrl(c)) s += 6;
+  if ((c.title||"").length > 0) s += 3;
+  return s;
+};
+const dedupeCards = (arr=[]) => {
+  const seen = new Set();
+  return arr.filter(c => {
+    const key = (host(c.url||"")||"") + "::" + (c.title||"").toLowerCase().slice(0,80);
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+};
+const rankAndTrim = (cards=[], limit=12, allowWikiFallback=false) => {
+  let filtered = (cards||[])
+    .filter(Boolean)
+    .filter(c => !(c?.url && isFilteredSource(c.url)));
+  filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
+  if (!filtered.length && allowWikiFallback) {
+    const wiki = (cards||[]).find(c => (host(c.url||"")||"").includes("wikipedia.org"));
+    if (wiki) filtered = [wiki];
+  }
+  return filtered.slice(0, limit);
 };
 
 const bestPreview = (card, allowFallback=false) => {
@@ -95,7 +146,7 @@ function AIChat() {
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
 
-  /* base CSS */
+  /* base CSS (unchanged style) */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name","viewport"); document.head.appendChild(meta); }
@@ -128,7 +179,7 @@ function AIChat() {
     return () => document.head.removeChild(style);
   }, []);
 
-  /* text suggestions — appear after FIRST character */
+  /* text suggestions — appear after FIRST character (unchanged) */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -142,14 +193,14 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* live previews — start immediately on first char, keep previous while loading (no blink) */
+  /* live previews — rank + no blink + always show images/links */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
     if (!focused || q.length < 1) return;
 
-    setLoadingPanel(true);               // show skeletons instantly
-    cancelPrev.current.cancel?.();       // cancel older keystroke fetch
+    setLoadingPanel(true);
+    cancelPrev.current.cancel?.();
     const src = axios.CancelToken.source();
     cancelPrev.current = { cancel: () => src.cancel("new query") };
 
@@ -162,12 +213,14 @@ function AIChat() {
         ];
         const [rn, rw, rc] = await Promise.all(reqs);
 
-        const newsCards = (rn?.data?.cards || [])
-          .filter(Boolean)
-          .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-          .filter((c)=> !!bestPreview(c,true))
-          .slice(0, 10);
-        setNews(newsCards);
+        // FIX: rank, filter, ensure preview for news (so images don't blink)
+        const newsRanked = rankAndTrim(
+          (rn?.data?.cards || [])
+            .filter(c => !!c && !(c?.url && isFilteredSource(c.url)))
+            .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
+          10, true
+        ).filter(c => !!bestPreview(c, true));
+        setNews(newsRanked);
 
         const wcards = (rw?.data?.cards || []).filter(Boolean);
         setWeather(wcards.find((c)=>c.type==="weather") || wcards[0] || null);
@@ -211,7 +264,7 @@ function AIChat() {
     const content = (text || "").trim(); if (!content) return;
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
-    setInput(""); // keeps panel visible briefly; will hide when blur if you want
+    setInput("");
     setTextSug([]);
 
     try {
@@ -227,10 +280,13 @@ function AIChat() {
         const q = content.replace(/^google:\s*/i, "");
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
-          let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          cards = cards
-            .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-            .filter((c)=> c.type!=="news" || !!bestPreview(c,true));
+          // FIX: rank & trim for clean link set with previews
+          const cards = rankAndTrim(
+            (r.data?.cards || [])
+              .filter(c => !!c && !(c?.url && isFilteredSource(c.url)))
+              .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
+            12, true
+          );
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
@@ -241,9 +297,12 @@ function AIChat() {
         const q = content.replace(/^search:\s*/i, "");
         try {
           const r = await axios.post(`${API_BASE}/search`, { prompt: q });
-          const results = (r.data?.results || [])
-            .filter((it)=> !isFilteredSource(it.url))
-            .map((it)=>({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet }));
+          const results = rankAndTrim(
+            (r.data?.results || [])
+              .filter(it => !isFilteredSource(it.url))
+              .map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })),
+            12, true
+          );
           await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         setTyping(false); return;
@@ -251,10 +310,13 @@ function AIChat() {
 
       if (wantsNews(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
-        const cards = (r.data?.cards || [])
-          .filter(Boolean)
-          .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-          .filter((c)=> !!bestPreview(c,true));
+        const cards = rankAndTrim(
+          (r.data?.cards || [])
+            .filter(Boolean)
+            .filter(c => !(c?.url && isFilteredSource(c.url)))
+            .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
+          12, true
+        ).filter(c => !!bestPreview(c, true));
         await pushWithFollowups(r.data?.markdown || "Top news:", cards, content);
         setTyping(false); return;
       }
@@ -268,22 +330,6 @@ function AIChat() {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
-        setTyping(false); return;
-      }
-
-      // YouTube
-      const ytKW = ["youtube","yt ","youtu.be","youtube.com","video","trailer","shorts","song","watch "];
-      if (ytKW.some((k)=>lower.includes(k)) || lower.startsWith("youtube:")) {
-        const id = getYouTubeId(content);
-        if (id) {
-          await pushWithFollowups("", [{ type:"youtube", url:`https://www.youtube.com/watch?v=${id}` }], content);
-        } else {
-          try {
-            const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
-            const url = res.data?.url;
-            await pushWithFollowups(url ? "" : "I couldn't find a video for that.", url ? [{ type:"youtube", url }] : [], content);
-          } catch { await pushWithFollowups("YouTube search is unavailable right now.", [], content); }
-        }
         setTyping(false); return;
       }
 
@@ -308,9 +354,12 @@ function AIChat() {
       // default chat
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
       const md = res.data?.reply || res.data?.text || "";
-      let cards = (res.data?.cards || [])
-        .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-        .map((c)=> ({ ...c, image: firstImageUrl(c) || c.image }));
+      const cards = rankAndTrim(
+        (res.data?.cards || [])
+          .filter(c => !(c?.url && isFilteredSource(c.url)))
+          .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
+        12, true
+      );
       await pushWithFollowups(md, cards, content);
     } catch {
       await pushWithFollowups("⚠️ Error or connection failed.", [], content);
@@ -453,7 +502,7 @@ function AIChat() {
 
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
 
-  /* ---------------------- UI ---------------------- */
+  /* ---------------------- UI (unchanged) ---------------------- */
   return (
     <div className="h-screen w-full flex flex-col" style={{ height:"100svh" }}>
       {/* Clean header — no buttons */}
@@ -503,6 +552,7 @@ function AIChat() {
                     </ReactMarkdown>
                   )}
 
+                  {/* Source chips under assistant (unchanged) */}
                   {!isUser && hasCards && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.cards
@@ -575,7 +625,7 @@ function AIChat() {
         </div>
       )}
 
-      {/* Composer */}
+      {/* Composer (small type bar kept) */}
       <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
