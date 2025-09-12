@@ -17,29 +17,43 @@ const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const isProxied = (u="") => u.startsWith(IMAGE_PROXY);
 const prox = (u) => {
   if (!u) return null;
-  if (u.startsWith("data:")) return u;           // leave data URLs
-  if (isProxied(u)) return u;                    // already proxied
+  if (u.startsWith("data:")) return u;
+  if (isProxied(u)) return u;
   return IMAGE_PROXY + encodeURIComponent(u);
 };
 
 const linkScreenshot = (url) =>
   url ? prox(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}`) : null;
 
-const unsplash = (q) => (q ? `https://source.unsplash.com/800x500/?${encodeURIComponent(q)}` : null);
+const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 
-// Smart fallback: 1) proxied -> 2) original -> 3) Unsplash
-const ensureVisible = (el, title="image") => {
-  if (!el) return;
-  const tried = el.dataset.fallback || "0";
-  if (tried === "0") {
-    // fall back to ORIGINAL (no proxy)
-    const orig = el.dataset.orig;
-    if (orig) { el.dataset.fallback = "1"; el.src = orig; return; }
+// ---- intent helpers ----
+const isGreeting = (s="") =>
+  /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
+
+const wantsImages = (s="") => {
+  const q = s.trim().toLowerCase();
+  return (
+    /^images?:\s*/.test(q) ||
+    /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) ||
+    /\bwallpaper\b/.test(q)
+  );
+};
+
+const wantsNews = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
+const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
+const wantsCrypto = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
+
+// preview chooser (safe)
+const bestPreview = (card) => {
+  const direct = firstImageUrl(card);
+  if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
+  if (card.url && /^https?:\/\//i.test(card.url)) {
+    const shot = linkScreenshot(card.url);
+    if (shot) return { prox: shot, orig: card.url, title: card.title || "preview" };
   }
-  if (tried === "1") {
-    const fb = unsplash(title || "preview");
-    if (fb) { el.dataset.fallback = "2"; el.src = fb; return; }
-  }
+  const ph = unsplash(card.title || card.source || "preview");
+  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
 };
 
 const getYouTubeId = (raw) => {
@@ -63,17 +77,6 @@ const getYouTubeId = (raw) => {
   return m ? m[1] : null;
 };
 
-const bestPreview = (card) => {
-  const direct = firstImageUrl(card);
-  if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
-  if (card.url) {
-    const shot = linkScreenshot(card.url);
-    if (shot) return { prox: shot, orig: card.url, title: card.title || "preview" };
-  }
-  const ph = unsplash(card.title || card.source || "preview");
-  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
-};
-
 /* ---------------------- component ---------------------- */
 function AIChat() {
   const [messages, setMessages] = useState([]); // {role, content?, cards?, followups?}
@@ -84,14 +87,15 @@ function AIChat() {
   const [inputFocused, setInputFocused] = useState(false);
 
   const inputRef = useRef(null);
-  const listRef = useRef(null);     // scroll container
+  const listRef = useRef(null);
   const suggestTimer = useRef(null);
 
-  /* meta + CSS */
+  /* meta + CSS: lock scroll to our container; stop iOS blink */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
-    meta.setAttribute("content",
+    meta.setAttribute(
+      "content",
       "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content"
     );
 
@@ -99,8 +103,9 @@ function AIChat() {
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
       html, body { height: 100%; background:#000; color:#fff; margin:0; padding:0; }
-      body { overflow:hidden; } /* <<< stop page from jumping; only our container scrolls */
-      textarea, input { font-size: 16px !important; } /* prevent iOS zoom */
+      body { overflow:hidden; } /* only chat list scrolls */
+      * { -webkit-tap-highlight-color: transparent; }
+      textarea, input { font-size: 16px !important; }
       img, iframe, video { max-width: 100% !important; height: auto !important; }
       .embed-responsive { position: relative; width: 100%; }
       .embed-16by9 { padding-top: 56.25%; }
@@ -165,30 +170,31 @@ function AIChat() {
     setMessages((p) => [...p, { role: "user", content }]);
     setInput("");
     setSuggestions([]);
-    const lower = content.toLowerCase();
 
     try {
-      // google:
+      // 0) greetings → chat only (no cards)
+      if (isGreeting(content)) {
+        const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
+        await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
+        setTyping(false); return;
+      }
+
+      const lower = content.toLowerCase();
+
+      // 1) google:
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          cards = cards
-            .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
-            .map((c) => {
-              const u = firstImageUrl(c);
-              return u ? { ...c, image: u } : c;   // keep ORIGINAL; SmartCard will proxy + fallback
-            });
+          cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
-        } catch {
-          await pushWithFollowups("Google preview is unavailable right now.", [], content);
-        }
+        } catch { await pushWithFollowups("Google preview is unavailable right now.", [], content); }
         setTyping(false); return;
       }
 
-      // search:
+      // 2) search:
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
         try {
@@ -199,7 +205,7 @@ function AIChat() {
               type:"web",
               title: it.title,
               url: it.url,
-              image: it.image,            // original; we’ll proxy on render
+              image: it.image,         // original; proxy/fallback later
               source: it.source,
               snippet: it.snippet
             }));
@@ -208,7 +214,27 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // YouTube:
+      // 3) explicit intents
+      if (wantsNews(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
+        const cards = (r.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
+        await pushWithFollowups(r.data?.markdown || "Top news:", cards, content);
+        setTyping(false); return;
+      }
+      if (wantsWeather(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
+        setTyping(false); return;
+      }
+      if (wantsCrypto(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
+        setTyping(false); return;
+      }
+
+      // 4) YouTube
       const ytKW = ["youtube","yt ","youtu.be","youtube.com","video","trailer","shorts","song","watch "];
       if (ytKW.some((k) => lower.includes(k)) || lower.startsWith("youtube:")) {
         const directId = getYouTubeId(content);
@@ -224,10 +250,9 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // Images trigger
-      const imageTrigger = /(^image[s]?:|show (me )?images|show (me )?image|wallpaper|artwork|\bimage(s)?\b)/i.test(lower);
-      if (imageTrigger) {
-        const q = content.replace(/^image[s]?:\s*/i, "") || content;
+      // 5) Images (explicit only)
+      if (wantsImages(content)) {
+        const q = content.replace(/^images?:\s*/i, "") || content;
         try {
           const rr = await axios.post(`${API_BASE}/realtime`, { query: q, intent: "images" });
           let cards = Array.isArray(rr.data?.cards) ? rr.data.cards.filter(Boolean) : [];
@@ -243,15 +268,14 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // default chat
+      // 6) default chat
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
       const md = res.data?.reply || res.data?.text || "";
-      let cards = res.data?.cards || [];
-      cards = cards
+      let cards = (res.data?.cards || [])
         .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
         .map((c) => {
           const u = firstImageUrl(c);
-          return u ? { ...c, image: u } : c;   // keep ORIGINAL; proxy later
+          return u ? { ...c, image: u } : c; // keep original; proxy on render
         });
       await pushWithFollowups(md, cards, content);
     } catch {
@@ -276,7 +300,12 @@ function AIChat() {
         loading="lazy"
         referrerPolicy="no-referrer"
         crossOrigin="anonymous"
-        onError={(e)=>ensureVisible(e.currentTarget, title)}
+        onError={(e)=>{
+          const el = e.currentTarget;
+          const tried = el.dataset.fallback || "0";
+          if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
+          if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash(title || "image"); }
+        }}
       />
     );
   };
@@ -320,9 +349,7 @@ function AIChat() {
       if (!urls.length) return null;
       return (
         <div className="grid grid-cols-2 gap-2">
-          {urls.slice(0, 10).map((u, i) => (
-            <SmartImage key={i} url={u} title="image" />
-          ))}
+          {urls.slice(0, 10).map((u, i) => <SmartImage key={i} url={u} title="image" />)}
         </div>
       );
     }
@@ -347,11 +374,18 @@ function AIChat() {
               loading="lazy"
               referrerPolicy="no-referrer"
               crossOrigin="anonymous"
-              onError={(e)=>ensureVisible(e.currentTarget, pv.title)}
+              onError={(e)=>{
+                const el = e.currentTarget;
+                const tried = el.dataset.fallback || "0";
+                if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
+                if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash(pv.title); }
+              }}
             />
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
-          <div className="text-xs text-gray-400 mt-1">{card.source || (card.url ? host(card.url) : "")}{card.time ? ` • ${card.time}` : ""}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            {card.source || (card.url ? host(card.url) : "")}{card.time ? ` • ${card.time}` : ""}
+          </div>
           {card.snippet && <div className="text-xs text-gray-300 mt-1">{card.snippet}</div>}
           {card.description && <div className="text-xs text-gray-300 mt-1">{card.description}</div>}
           {card.meta && <div className="text-[11px] text-gray-400 mt-1">{card.meta}</div>}
@@ -419,7 +453,12 @@ function AIChat() {
                             loading="lazy"
                             referrerPolicy="no-referrer"
                             crossOrigin="anonymous"
-                            onError={(e)=>ensureVisible(e.currentTarget, "image")}
+                            onError={(e)=>{
+                              const el = e.currentTarget;
+                              const tried = el.dataset.fallback || "0";
+                              if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
+                              if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash("image"); }
+                            }}
                           />
                         ),
                         iframe: (props) => (
@@ -540,6 +579,7 @@ function AIChat() {
             </button>
           </div>
 
+          {/* Quick chips (demo actions) */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s) => (
               <button
