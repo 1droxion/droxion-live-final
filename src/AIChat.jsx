@@ -90,7 +90,9 @@ function AIChat() {
   const [crypto, setCrypto] = useState([]);
   const [loadingPanel, setLoadingPanel] = useState(false);
 
-  const inputRef = useRef(null);
+  // scrolling refs
+  const scrollRef = useRef(null);       // main scroll container
+  const lastWasUser = useRef(false);    // track who sent last
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
@@ -138,7 +140,7 @@ function AIChat() {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
         setTextSug((data?.suggestions || []).slice(0, 8));
       } catch { setTextSug([]); }
-    }, 120);
+    }, 140);
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
@@ -176,10 +178,28 @@ function AIChat() {
       } finally {
         setLoadingPanel(false);
       }
-    }, 150);
+    }, 160);
 
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
+
+  /* smart scroll: only when a new assistant message arrives */
+  useEffect(() => {
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    const el = scrollRef.current;
+    if (!el) return;
+
+    // update flip-flop
+    lastWasUser.current = last.role === "user";
+
+    if (last.role === "assistant" && !focused) {
+      // smooth scroll to bottom (no jump while typing)
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      });
+    }
+  }, [messages, focused]);
 
   const copyMessage = async (i) => {
     try {
@@ -211,7 +231,7 @@ function AIChat() {
     const content = (text || "").trim(); if (!content) return;
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
-    setInput(""); // keeps panel visible briefly; will hide when blur if you want
+    setInput(""); // keeps panel visible briefly; will hide on blur
     setTextSug([]);
 
     try {
@@ -454,6 +474,8 @@ function AIChat() {
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
 
   /* ---------------------- UI ---------------------- */
+  const showPanel = focused && (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0);
+
   return (
     <div className="h-screen w-full flex flex-col" style={{ height:"100svh" }}>
       {/* Clean header — no buttons */}
@@ -465,7 +487,11 @@ function AIChat() {
       </header>
 
       {/* Scroll container */}
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch", padding:"12px 0 16px", height:"calc(100svh - 48px - 96px)" }}>
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ WebkitOverflowScrolling:"touch", padding:"12px 0 16px", height:"calc(100svh - 48px - 96px)", overscrollBehaviorY:"contain" }}
+      >
         <div className="max-w-4xl mx-auto w-full px-3">
           {/* Chat thread only — page is clean until you type */}
           <div className="space-y-4">
@@ -533,47 +559,48 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL — appears only after you start typing */}
-      {focused && (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0) && (
-        <div className="fixed inset-x-0 bottom-[88px] z-40" onTouchMove={(e)=>e.stopPropagation()}>
-          <div className="max-w-4xl mx-auto px-3">
-            <div className="glass rounded-xl p-2 suggestions-panel">
-              {/* NEWS */}
-              <div className="mb-2">
-                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
-                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-                  <div className="flex gap-2">
-                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
-                      c ? <HeadlineCard key={i} card={c} /> :
-                          <div key={i} className="hitem pr-3"><div className="rounded-xl overflow-hidden glass"><div className="aspect-[16/9] skel" /><div className="p-3"><div className="h-3 w-24 skel rounded mb-2" /><div className="h-3 w-40 skel rounded" /></div></div></div>
-                    )}
-                  </div>
+      {/* LIVE PREVIEW PANEL — stays mounted (no blink), just fades */}
+      <div
+        className={`fixed inset-x-0 bottom-[88px] z-40 transition-opacity duration-150 ${showPanel ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        onTouchMove={(e)=>e.stopPropagation()}
+      >
+        <div className="max-w-4xl mx-auto px-3">
+          <div className="glass rounded-xl p-2 suggestions-panel">
+            {/* NEWS */}
+            <div className="mb-2">
+              <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+              <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                <div className="flex gap-2">
+                  {(news.length ? news : Array.from({length:3})).map((c,i)=>
+                    c ? <HeadlineCard key={i} card={c} /> :
+                        <div key={i} className="hitem pr-3"><div className="rounded-xl overflow-hidden glass"><div className="aspect-[16/9] skel" /><div className="p-3"><div className="h-3 w-24 skel rounded mb-2" /><div className="h-3 w-40 skel rounded" /></div></div></div>
+                  )}
                 </div>
               </div>
-
-              {/* WEATHER + CRYPTO */}
-              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? <WeatherMini w={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? <CryptoMini key={i} c={c} /> : <div key={i} className="glass rounded-lg p-6 skel" />)}
-                </div>
-              </div>
-
-              {/* TEXT SUGGESTIONS */}
-              {textSug.length>0 && (
-                <div className="mt-1">
-                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
-                  {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
+
+            {/* WEATHER + CRYPTO */}
+            <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+              <div>{weather ? <WeatherMini w={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
+              <div className="grid grid-cols-1 gap-2">
+                {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? <CryptoMini key={i} c={c} /> : <div key={i} className="glass rounded-lg p-6 skel" />)}
+              </div>
+            </div>
+
+            {/* TEXT SUGGESTIONS */}
+            {textSug.length>0 && (
+              <div className="mt-1">
+                <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
+                {textSug.map((s,i)=>(
+                  <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Composer */}
       <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
@@ -581,12 +608,11 @@ function AIChat() {
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
               <textarea
-                ref={inputRef}
                 value={input}
                 onChange={(e)=>setInput(e.target.value)}
                 onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSend(); }}}
                 onFocus={()=>setFocused(true)}
-                onBlur={()=>setTimeout(()=>setFocused(false),150)}
+                onBlur={()=>setTimeout(()=>setFocused(false),140)}
                 rows={1}
                 inputMode="text"
                 placeholder=""
@@ -600,7 +626,7 @@ function AIChat() {
             </button>
           </div>
 
-          {/* Quick chips (kept) */}
+          {/* Quick chips */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
               <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
