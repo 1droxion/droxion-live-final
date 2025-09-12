@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 import {
   FaTrash, FaDownload, FaPlus,
   FaVolumeUp, FaVolumeMute, FaMicrophone,
@@ -19,18 +20,15 @@ function AIChat() {
   const [topToolsOpen, setTopToolsOpen] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  const [suggestions] = useState([
-    "search: latest AI startups in India 2025",
-    "YouTube: best startup talk 2025",
-    "Generate an image: cinematic city at night",
-    "Write a 5-point plan to grow my cafe"
-  ]);
+  // dynamic, debounced suggestions (replaces static list)
+  const [suggestions, setSuggestions] = useState([]);
 
   // refs
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
   const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
   const userId = useRef("");
+  const suggestTimer = useRef(null);
 
   // -------- Helpers --------
   const pushAssistant = (content, extra = {}) =>
@@ -110,6 +108,10 @@ function AIChat() {
       .glass { background: var(--glass); border: 1px solid var(--border); backdrop-filter: blur(10px); }
       .glass-2 { background: var(--glass-2); border: 1px solid var(--border); backdrop-filter: blur(10px); }
       textarea { min-height: 40px; line-height: 1.6; }
+      .suggestion-box { position: fixed; left: 50%; transform: translateX(-50%); bottom: 88px;
+        width: min(960px, calc(100vw - 24px)); background: rgba(20,20,20,.95); border: 1px solid #333;
+        border-radius: 10px; padding: 8px; display: grid; gap: 6px; z-index: 45; }
+      .suggestion { text-align: left; background: transparent; border: 1px solid #444; border-radius: 8px; padding: 8px; }
     `;
     document.head.appendChild(style);
 
@@ -148,34 +150,39 @@ function AIChat() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
+  // -------- Suggestions (debounced) --------
+  useEffect(() => {
+    const q = (input || "").trim();
+    clearTimeout(suggestTimer.current);
+    if (!q) { setSuggestions([]); return; }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
+        setSuggestions((data?.suggestions || []).slice(0, 8));
+      } catch { /* silent */ }
+    }, 250);
+    return () => clearTimeout(suggestTimer.current);
+  }, [input]);
+
   // ---------- Card renderer ----------
   const renderCards = (cards) => {
     if (!cards || !cards.length) return null;
     return (
       <div className="grid grid-cols-1 gap-3">
         {cards.map((c, idx) => {
-          if (c.type === "web") {
+          // generic "link/news/stock/weather/wiki" support
+          if (c.type === "web" || c.type === "news" || c.type === "link" || c.type === "stock" || c.type === "weather" || c.type === "wiki") {
             return (
               <a key={idx} href={c.url} target="_blank" rel="noreferrer"
                  className="block glass rounded-lg p-3 hover:bg-white/10 transition">
-                {c.image && <img src={c.image} alt="" className="w-full rounded mb-2" loading="lazy" />}
+                {c.image && <img src={c.image} alt="" className="w-full rounded mb-2" loading="lazy" onError={(e)=>e.currentTarget.style.display="none"} />}
                 <div className="text-sm font-semibold leading-snug">{c.title}</div>
                 <div className="text-xs text-gray-400 mt-1">
-                  {c.source || (new URL(c.url).hostname.replace('www.',''))}
+                  {c.source || (c.url ? new URL(c.url).hostname.replace('www.','') : "")}{c.time ? ` • ${c.time}` : ""}
                 </div>
                 {c.snippet && <div className="text-xs text-gray-300 mt-1">{c.snippet}</div>}
-              </a>
-            );
-          }
-          if (c.type === "news") {
-            return (
-              <a key={idx} href={c.url} target="_blank" rel="noreferrer"
-                 className="block glass rounded-lg p-3 hover:bg-white/10 transition">
-                {c.image && <img src={c.image} alt="" className="w-full rounded mb-2" loading="lazy" />}
-                <div className="text-sm font-semibold leading-snug">{c.title}</div>
-                <div className="text-[11px] text-gray-400 mt-1">
-                  {c.source} {c.time ? `• ${c.time}` : ""}
-                </div>
+                {c.description && <div className="text-xs text-gray-300 mt-1">{c.description}</div>}
+                {c.meta && <div className="text-[11px] text-gray-400 mt-1">{c.meta}</div>}
               </a>
             );
           }
@@ -193,8 +200,19 @@ function AIChat() {
               </div>
             );
           }
-          if (c.type === "image" && c.image_url) {
-            return <img key={idx} src={c.image_url} alt="" className="w-full rounded glass" loading="lazy" />;
+          // more robust image card
+          const imgUrl = c.image_url || c.url || c.image;
+          if (c.type === "image" && imgUrl) {
+            return (
+              <img
+                key={idx}
+                src={imgUrl}
+                alt=""
+                className="w-full rounded glass"
+                loading="lazy"
+                onError={(e)=>e.currentTarget.style.display="none"}
+              />
+            );
           }
           if (c.html) return <div key={idx} className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: c.html }} />;
           if (c.text) return <div key={idx} className="text-sm">{c.text}</div>;
@@ -222,10 +240,26 @@ function AIChat() {
     setTyping(true);
     pushUser(content);
     setInput("");
+    setSuggestions([]);
     logAction("message", content);
     const lower = content.toLowerCase();
 
     try {
+      // 0) GOOGLE trigger (renders realtime cards on same page)
+      if (lower.startsWith("google:")) {
+        const q = content.replace(/^google:\s*/i, "");
+        try {
+          const r = await axios.post(`${API_BASE}/realtime`, { query: q });
+          const cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
+          const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
+          pushAssistant(md, { cards });
+        } catch {
+          pushAssistant("Google preview is unavailable right now.");
+        }
+        setTyping(false);
+        return;
+      }
+
       // 0) SEARCH (explicit trigger "search: ...")
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
@@ -319,13 +353,18 @@ function AIChat() {
         return;
       }
 
-      // 2) IMAGE (stricter trigger, better error handling)
+      // 2) IMAGE (robust keys + fallback)
       const imageTrigger = /^(image:|generate( an)? (image|photo|art|picture)|wallpaper|artwork)/i.test(lower)
         || lower.includes(" generate an image");
       if (imageTrigger) {
         try {
           const im = await axios.post(`${API_BASE}/generate-image`, { prompt: content });
-          const url = im?.data?.image_url;
+          const url =
+            im?.data?.image_url ||
+            im?.data?.url ||
+            im?.data?.image ||
+            im?.data?.data?.url ||
+            null;
           if (url && typeof url === "string") {
             pushAssistant("", { cards: [{ type: "image", image_url: url }] });
           } else {
@@ -341,7 +380,7 @@ function AIChat() {
 
       // 3) DEFAULT chat
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content, voiceMode });
-      let reply = res.data?.reply || "";
+      let reply = res.data?.reply || res.data?.text || "";
       if (/who.*(made|created|built)/i.test(content)) {
         reply = "I was created and managed by **Dhruv Patel**, powered by OpenAI.";
       }
@@ -358,7 +397,6 @@ function AIChat() {
   const handlePromptClick = (style) => handleSend(`Generate an image in ${style} style.`);
 
   const handleMic = () => {
-    // Browser web speech (native plugin recommended for iOS app)
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return alert("Mic not supported");
     const recog = new SR();
@@ -427,15 +465,19 @@ function AIChat() {
                 </div>
 
                 {msg.content ? (
-                  <ReactMarkdown rehypePlugins={[rehypeRaw]} components={{
-                    img: (props) => <img {...props} className="rounded-lg my-2 w-full glass" loading="lazy" />,
-                    iframe: (props) => (
-                      <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass">
-                        <iframe {...props} allowFullScreen />
-                      </div>
-                    ),
-                    a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
-                  }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
+                    components={{
+                      img: (props) => <img {...props} className="rounded-lg my-2 w-full glass" loading="lazy" onError={(e)=>e.currentTarget.style.display="none"} />,
+                      iframe: (props) => (
+                        <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass">
+                          <iframe {...props} allowFullScreen />
+                        </div>
+                      ),
+                      a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
+                    }}
+                  >
                     {msg.content}
                   </ReactMarkdown>
                 ) : null}
@@ -444,7 +486,7 @@ function AIChat() {
                 {!isUser && msg.cards?.length ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {msg.cards
-                      .filter(c => c.type === "web" || c.type === "news")
+                      .filter(c => ["web","news","link","wiki","stock","weather"].includes(c.type))
                       .slice(0, 5)
                       .map((c, idx) => (
                         <a key={idx} href={c.url} target="_blank" rel="noreferrer"
@@ -477,7 +519,16 @@ function AIChat() {
       </div>
 
       {/* Spacer so content isn't hidden behind the fixed composer */}
-      <div style={{ height: "120px" }} />
+      <div style={{ height: "140px" }} />
+
+      {/* Suggestions dropdown */}
+      {suggestions.length > 0 && (
+        <div className="suggestion-box">
+          {suggestions.map((s, i) => (
+            <button key={i} className="suggestion" onClick={() => handleSend(s)}>{s}</button>
+          ))}
+        </div>
+      )}
 
       {/* Bottom composer (sticky) */}
       <div
@@ -494,7 +545,7 @@ function AIChat() {
                 onKeyDown={handleKey}
                 rows={1}
                 inputMode="text"
-                placeholder=""   // clean; or "Type here…"
+                placeholder="Try: google: latest Ahmedabad weather"
                 className="w-full bg-transparent outline-none resize-none leading-[1.6] placeholder-white/30"
                 aria-label="Type your message"
               />
