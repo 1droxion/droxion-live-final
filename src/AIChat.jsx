@@ -7,8 +7,9 @@ import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
 
 const API_BASE = "https://droxion-backend.onrender.com";
+const AUTO_SCROLL = false; // <- keep OFF (no auto jump)
 
-// ---------- small helpers ----------
+// ---------- helpers ----------
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 const linkScreenshot = (url) =>
   url ? `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}` : null;
@@ -23,7 +24,19 @@ const isPlaceholderUrl = (u = "") => {
   } catch { return false; }
 };
 
-// lightweight preview images so users always see *something*
+// some sites block hotlinking; this proxy fixes previews
+const proxyImg = (u) => {
+  if (!u) return u;
+  try {
+    const url = new URL(u);
+    return `https://images.weserv.nl/?url=${encodeURIComponent(url.host + url.pathname + url.search)}`;
+  } catch {
+    const clean = u.replace(/^https?:\/\//, "");
+    return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}`;
+  }
+};
+
+// lightweight fallback thumbs so user always sees something
 const unsplashThumbs = (q) => {
   if (!q) return [];
   const safe = encodeURIComponent(q);
@@ -63,18 +76,12 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
-  const [vvh, setVvh] = useState(
-    (typeof window !== "undefined" && window.visualViewport?.height) ||
-    (typeof window !== "undefined" && window.innerHeight) || 700
-  );
 
   // refs
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
   const userId = useRef("");
   const suggestTimer = useRef(null);
-  const atBottomRef = useRef(true);
-  const vvHeightRef = useRef(vvh);
 
   // init uid
   useEffect(() => {
@@ -83,27 +90,18 @@ function AIChat() {
     userId.current = id;
   }, []);
 
-  // smart autoscroll: only on new message if user near bottom
+  // (optional) autoscroll – kept OFF per request
   useEffect(() => {
-    if (atBottomRef.current) chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (!AUTO_SCROLL) return;
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  // mark bottom state
-  useEffect(() => {
-    const onScroll = () => {
-      const nearBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 120);
-      atBottomRef.current = nearBottom;
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // global CSS + viewport meta
+  // global CSS (no visualViewport tricks = no blinking)
   useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
-      html, body { height: 100%; overscroll-behavior-y: contain; touch-action: pan-y; }
+      html, body { height: 100%; overscroll-behavior-y: none; }
       body { position: relative; }
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; }
@@ -119,9 +117,7 @@ function AIChat() {
       textarea { min-height: 40px; line-height: 1.6; }
       .pill { font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.12);
               background: rgba(255,255,255,.06); border-radius: 999px; }
-      /* suggestions */
-      .suggestions-wrap { pointer-events: none; }
-      .suggestions-panel { pointer-events: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }
+      .suggestions-panel { overflow-y: auto; -webkit-overflow-scrolling: touch; max-height: 44vh; }
     `;
     document.head.appendChild(style);
 
@@ -131,30 +127,6 @@ function AIChat() {
     return () => { document.head.removeChild(style); };
   }, []);
 
-  // VisualViewport: debounce updates, ignore tiny jitters
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    let raf = 0;
-    const onChange = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const h = vv.height;
-        if (Math.abs(h - vvHeightRef.current) > 6) {
-          vvHeightRef.current = h;
-          setVvh(h);
-        }
-      });
-    };
-    vv.addEventListener("resize", onChange);
-    vv.addEventListener("scroll", onChange);
-    return () => {
-      cancelAnimationFrame(raf);
-      vv.removeEventListener("resize", onChange);
-      vv.removeEventListener("scroll", onChange);
-    };
-  }, []);
-
   // autoresize textarea
   useEffect(() => {
     const el = inputRef.current; if (!el) return;
@@ -162,13 +134,11 @@ function AIChat() {
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [input]);
 
-  // hide suggestions on ESC or page scroll
+  // hide suggestions on ESC
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") setSuggestions([]); };
-    const onScroll = () => setSuggestions([]);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("scroll", onScroll); };
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // suggestions (debounced)
@@ -180,7 +150,7 @@ function AIChat() {
       try {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
         setSuggestions((data?.suggestions || []).slice(0, 8));
-      } catch {}
+      } catch { /* ignore */ }
     }, 250);
     return () => clearTimeout(suggestTimer.current);
   }, [input]);
@@ -210,7 +180,16 @@ function AIChat() {
       return (
         <div className="glass rounded-lg p-3">
           <div className="flex items-center gap-3">
-            {card.icon && <img src={card.icon} alt="" width={48} height={48} referrerPolicy="no-referrer" />}
+            {card.icon && (
+              <img
+                src={proxyImg(card.icon)}
+                alt=""
+                width={48}
+                height={48}
+                loading="lazy"
+                onError={(e)=>{ e.currentTarget.src = proxyImg(card.icon); }}
+              />
+            )}
             <div>
               <div className="text-sm font-semibold leading-snug">{card.title || "Weather"}</div>
               <div className="text-xs text-gray-400">{card.subtitle || card.meta}</div>
@@ -254,12 +233,11 @@ function AIChat() {
           {urls.slice(0, 10).map((u, i) => (
             <img
               key={i}
-              src={u}
+              src={proxyImg(u)}
               alt=""
               className="w-full rounded-lg glass"
               loading="lazy"
-              referrerPolicy="no-referrer"
-              onError={(e) => (e.currentTarget.style.display = "none")}
+              onError={(e)=>{ e.currentTarget.src = proxyImg(u); }}
             />
           ))}
         </div>
@@ -272,12 +250,11 @@ function AIChat() {
       if (!u) return null;
       return (
         <img
-          src={u}
+          src={proxyImg(u)}
           alt={card.alt || ""}
           className="w-full rounded-lg glass"
           loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={(e) => (e.currentTarget.style.display = "none")}
+          onError={(e)=>{ e.currentTarget.src = proxyImg(u); }}
         />
       );
     }
@@ -287,16 +264,17 @@ function AIChat() {
       if (card.url && isPlaceholderUrl(card.url)) return null; // hide example.com/org
       let preview = firstImageUrl(card) || (card.url ? linkScreenshot(card.url) : null);
       if (!preview && card.title) preview = unsplashThumbs(card.title)[0];
+      const previewSrc = preview ? proxyImg(preview) : null;
+
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
-          {preview && (
+          {previewSrc && (
             <img
-              src={preview}
+              src={previewSrc}
               alt=""
               className="w-full rounded mb-2"
               loading="lazy"
-              referrerPolicy="no-referrer"
-              onError={(e) => (e.currentTarget.style.display = "none")}
+              onError={(e)=>{ e.currentTarget.src = proxyImg(previewSrc); }}
             />
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
@@ -409,10 +387,10 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // Images
+      // Images (now triggers if query contains the word image/images anywhere)
       const imageTrigger =
-        /^(image:|images:|show (me )?images|show (me )?image|wallpaper|artwork)/i.test(lower) ||
-        lower.includes(" google image") || lower.includes(" images ");
+        /(^image[s]?:|show (me )?images|show (me )?image|wallpaper|artwork)/i.test(lower) ||
+        /\bimage(s)?\b/.test(lower);
       if (imageTrigger) {
         const q = content.replace(/^image[s]?:\s*/i, "") || content;
         try {
@@ -461,7 +439,7 @@ function AIChat() {
   // ---------- UI ----------
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
-      {/* Header (no extra tools) */}
+      {/* Header */}
       <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -497,9 +475,12 @@ function AIChat() {
                     rehypePlugins={[rehypeRaw]}
                     components={{
                       img: (props) => (
-                        <img {...props} className="rounded-lg my-2 w-full glass"
-                             loading="lazy" referrerPolicy="no-referrer"
-                             onError={(e) => (e.currentTarget.style.display = "none")} />
+                        <img
+                          {...props}
+                          className="rounded-lg my-2 w-full glass"
+                          loading="lazy"
+                          onError={(e)=>{ e.currentTarget.src = proxyImg(e.currentTarget.src); }}
+                        />
                       ),
                       iframe: (props) => (
                         <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass">
@@ -564,13 +545,11 @@ function AIChat() {
       {/* Spacer */}
       <div style={{ height: "140px" }} />
 
-      {/* Suggestions (scrollable, keyboard-aware) */}
+      {/* Suggestions (scrollable, not covering input) */}
       {suggestions.length > 0 && (
-        <div className="fixed inset-x-0 z-35 suggestions-wrap"
-             style={{ bottom: "calc(72px + max(env(safe-area-inset-bottom), 12px))" }}>
+        <div className="fixed inset-x-0 bottom-[84px] z-35">
           <div className="max-w-4xl mx-auto px-3">
-            <div className="glass rounded-xl p-2 suggestions-panel"
-                 style={{ backdropFilter: "blur(10px)", maxHeight: Math.min(Math.floor(vvh * 0.44), 360) + "px" }}>
+            <div className="glass rounded-xl p-2 suggestions-panel">
               {suggestions.map((s, i) => (
                 <button key={i} onClick={() => handleSend(s)}
                         className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
@@ -588,7 +567,6 @@ function AIChat() {
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
-              {/* placeholder intentionally empty */}
               <textarea
                 ref={inputRef}
                 value={input}
