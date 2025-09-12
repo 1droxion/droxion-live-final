@@ -24,19 +24,23 @@ const prox = (u) => {
 
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 
-// ---- intent helpers ----
-const isGreeting = (s="") =>
-  /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
-
-const wantsImages = (s="") => {
-  const q = s.trim().toLowerCase();
-  return (
-    /^images?:\s*/.test(q) ||
-    /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) ||
-    /\bwallpaper\b/.test(q)
-  );
+const timeAgo = (d) => {
+  if (!d) return "";
+  const t = typeof d === "string" ? new Date(d).getTime() : +d;
+  if (!t || Number.isNaN(t)) return "";
+  const s = Math.floor((Date.now() - t) / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s/60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m/60); if (h < 24) return `${h}h ago`;
+  const dd = Math.floor(h/24); return `${dd}d ago`;
 };
 
+// ---- intent helpers ----
+const isGreeting = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
+const wantsImages = (s="") => {
+  const q = s.trim().toLowerCase();
+  return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q);
+};
 const wantsNews = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
@@ -67,9 +71,8 @@ const bestPreview = (card, allowFallback = false) => {
   const direct = firstImageUrl(card);
   if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
 
-  if (!allowFallback) return null; // keep web/link strict → avoids broken boxes on generic queries
+  if (!allowFallback) return null;
 
-  // try page screenshot (good coverage for news)
   try {
     if (card.url && /^https?:\/\//i.test(card.url) && !isPlaceholderUrl(card.url)) {
       const shot = `${API_BASE}/img?url=${encodeURIComponent(
@@ -79,7 +82,6 @@ const bestPreview = (card, allowFallback = false) => {
     }
   } catch {}
 
-  // final fallback
   const ph = unsplash(card.title || card.source || "news");
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
 };
@@ -93,18 +95,19 @@ function AIChat() {
   const [suggestions, setSuggestions] = useState([]);
   const [inputFocused, setInputFocused] = useState(false);
 
+  // Top news carousel state
+  const [headlines, setHeadlines] = useState([]); // array of news cards
+  const [headlineStamp, setHeadlineStamp] = useState(""); // “as of …”
+
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const suggestTimer = useRef(null);
 
-  /* meta + CSS: fix iOS blink; smooth overlays */
+  /* meta + CSS */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
-    meta.setAttribute(
-      "content",
-      "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content"
-    );
+    meta.setAttribute("content","width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content");
 
     const style = document.createElement("style");
     style.innerHTML = `
@@ -128,6 +131,12 @@ function AIChat() {
         touch-action: pan-y;
       }
       .gpu { will-change: transform; transform: translateZ(0); -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+
+      /* horizontal headlines */
+      .hscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
+      .hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
+      @media (min-width:480px){ .hitem{ min-width: 52%; max-width: 52%; } }
+      @media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -146,6 +155,22 @@ function AIChat() {
     }, 250);
     return () => clearTimeout(suggestTimer.current);
   }, [input, inputFocused]);
+
+  /* load headlines (on tap of News pill; also auto-load once at mount for demo) */
+  const loadHeadlines = async () => {
+    try {
+      const r = await axios.post(`${API_BASE}/realtime`, { query: "top news today", intent: "news" });
+      const cards = (r.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
+      setHeadlines(cards.slice(0, 12));
+      const now = new Date();
+      setHeadlineStamp(`Here are some of the top news items as of ${now.toLocaleDateString(undefined,{ year:"numeric", month:"long", day:"numeric"})}:`);
+    } catch {
+      setHeadlines([]);
+      setHeadlineStamp("");
+    }
+  };
+
+  useEffect(() => { loadHeadlines(); }, []); // auto once – you can remove if you only want manual tap
 
   const copyMessage = async (i) => {
     try {
@@ -186,7 +211,7 @@ function AIChat() {
     setSuggestions([]);
 
     try {
-      // 0) greetings → chat only (no cards)
+      // 0) greetings → chat only
       if (isGreeting(content)) {
         const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
         await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
@@ -325,6 +350,33 @@ function AIChat() {
     );
   };
 
+  const HeadlineCard = ({ card }) => {
+    const pv = bestPreview(card, true); // allow fallbacks for news
+    return (
+      <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+        <div className="rounded-xl overflow-hidden glass">
+          {pv && (
+            <img
+              src={pv.prox}
+              data-orig={pv.orig}
+              alt=""
+              className="w-full aspect-[16/9] object-cover"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
+              onError={(e)=>{ e.currentTarget.style.display = "none"; }}
+            />
+          )}
+          <div className="p-3">
+            <div className="text-[11px] text-gray-400 mb-1">{card.source || (card.url ? host(card.url) : "")}</div>
+            <div className="text-sm font-semibold line-clamp-2 leading-tight">{card.title}</div>
+            <div className="text-[11px] text-gray-500 mt-1">{timeAgo(card.publishedAt || card.time)}</div>
+          </div>
+        </div>
+      </a>
+    );
+  };
+
   const SmartCard = ({ card }) => {
     if (!card) return null;
 
@@ -377,8 +429,7 @@ function AIChat() {
 
     if (["web","link","wiki","news","stock"].includes(card.type)) {
       if (card.url && isPlaceholderUrl(card.url)) return null;
-      // allow fallbacks (screenshot/unsplash) **only for news**
-      const pv = bestPreview(card, card.type === "news");
+      const pv = bestPreview(card, card.type === "news"); // fallbacks only for news
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
@@ -417,9 +468,18 @@ function AIChat() {
     <div className="h-screen w-full flex flex-col" style={{ height: "100svh" }}>
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60 gpu">
-        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
-          <div className="font-bold tracking-tight text-lg">Droxion</div>
-          <div className="text-xs text-gray-400">• Lite</div>
+        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="font-bold tracking-tight text-lg">Droxion</div>
+            <div className="text-xs text-gray-400">• Lite</div>
+          </div>
+          <button
+            onClick={loadHeadlines}
+            className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
+            title="Refresh headlines"
+          >
+            News
+          </button>
         </div>
       </header>
 
@@ -427,9 +487,24 @@ function AIChat() {
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto"
-        style={{ WebkitOverflowScrolling: "touch", padding: "16px 0", height: "calc(100svh - 48px - 96px)" }}
+        style={{ WebkitOverflowScrolling: "touch", padding: "12px 0 16px", height: "calc(100svh - 48px - 96px)" }}
       >
         <div className="max-w-4xl mx-auto w-full px-3">
+
+          {/* Recent Headlines block */}
+          {headlines.length > 0 && (
+            <div className="mb-4">
+              <div className="text-lg font-semibold mb-2">Recent Headlines</div>
+              <div className="hscroll pb-1 -mx-3 pl-3 pr-6">
+                <div className="flex gap-3">
+                  {headlines.map((c, i) => <HeadlineCard key={i} card={c} />)}
+                </div>
+              </div>
+              {headlineStamp && <div className="text-sm text-gray-300 mt-3">{headlineStamp}</div>}
+              <div className="border-t border-white/10 mt-4" />
+            </div>
+          )}
+
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
@@ -531,7 +606,7 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Suggestions (own scroll; never blocks main scroll) */}
+      {/* Suggestions */}
       {inputFocused && suggestions.length > 0 && (
         <div className="fixed inset-x-0 bottom-[88px] z-40 gpu" onTouchMove={(e)=>e.stopPropagation()}>
           <div className="max-w-4xl mx-auto px-3">
@@ -591,7 +666,7 @@ function AIChat() {
             </button>
           </div>
 
-          {/* Quick chips (demo actions) */}
+          {/* Quick chips */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s) => (
               <button
