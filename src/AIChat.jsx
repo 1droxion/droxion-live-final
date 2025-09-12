@@ -92,16 +92,22 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
-  const [suggestions, setSuggestions] = useState([]);
-  const [inputFocused, setInputFocused] = useState(false);
 
-  // Top news carousel state
-  const [headlines, setHeadlines] = useState([]); // array of news cards
-  const [headlineStamp, setHeadlineStamp] = useState(""); // “as of …”
+  // Smart suggestions (live panel while typing)
+  const [textSuggestions, setTextSuggestions] = useState([]);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [liveNews, setLiveNews] = useState([]);     // cards
+  const [liveWeather, setLiveWeather] = useState(null); // card
+  const [liveCrypto, setLiveCrypto] = useState([]); // cards
+
+  // Top headlines carousel (optional, keeps earlier behavior)
+  const [headlines, setHeadlines] = useState([]);
+  const [headlineStamp, setHeadlineStamp] = useState("");
 
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const suggestTimer = useRef(null);
+  const previewTimer = useRef(null);
 
   /* meta + CSS */
   useEffect(() => {
@@ -124,15 +130,13 @@ function AIChat() {
       .glass-2 { background: var(--glass-2); border:1px solid var(--border); backdrop-filter: blur(10px); }
       .pill { font-size:11px; padding:2px 8px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); border-radius:999px; }
       .suggestions-panel {
-        max-height: min(45vh, calc(100svh - 180px));
+        max-height: min(50vh, calc(100svh - 180px));
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
         touch-action: pan-y;
       }
       .gpu { will-change: transform; transform: translateZ(0); -webkit-backface-visibility: hidden; backface-visibility: hidden; }
-
-      /* horizontal headlines */
       .hscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
       .hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
       @media (min-width:480px){ .hitem{ min-width: 52%; max-width: 52%; } }
@@ -142,21 +146,64 @@ function AIChat() {
     return () => document.head.removeChild(style);
   }, []);
 
-  /* debounced suggestions */
+  /* text suggestions (debounced) */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
-    if (!inputFocused || q.length < 2) { setSuggestions([]); return; }
+    if (!inputFocused || q.length < 2) { setTextSuggestions([]); return; }
     suggestTimer.current = setTimeout(async () => {
       try {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
-        setSuggestions((data?.suggestions || []).slice(0, 8));
-      } catch {}
-    }, 250);
+        setTextSuggestions((data?.suggestions || []).slice(0, 8));
+      } catch { setTextSuggestions([]); }
+    }, 220);
     return () => clearTimeout(suggestTimer.current);
   }, [input, inputFocused]);
 
-  /* load headlines (on tap of News pill; also auto-load once at mount for demo) */
+  /* live previews while typing (news + weather + crypto; debounced) */
+  useEffect(() => {
+    const q = (input || "").trim();
+    clearTimeout(previewTimer.current);
+    if (!inputFocused || q.length < 2) { setLiveNews([]); setLiveWeather(null); setLiveCrypto([]); return; }
+
+    previewTimer.current = setTimeout(async () => {
+      // decide intents: if user typed specific keywords, bias; otherwise show all three
+      const askNews = wantsNews(q) || true;     // always show a few
+      const askWeather = wantsWeather(q) || /weather|temp|today/i.test(q);
+      const askCrypto = wantsCrypto(q) || /btc|eth|crypto|price|chart/i.test(q);
+
+      try {
+        const reqs = [];
+        if (askNews) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "news" }).catch(()=>null));
+        if (askWeather) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather" }).catch(()=>null));
+        if (askCrypto) reqs.push(axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }).catch(()=>null));
+        const resps = await Promise.all(reqs);
+
+        let idx = 0;
+        if (askNews) {
+          const r = resps[idx++]; 
+          const cards = (r?.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
+          setLiveNews(cards.slice(0, 10));
+        }
+        if (askWeather) {
+          const r = resps[idx++]; 
+          const cards = (r?.data?.cards || []).filter(Boolean);
+          setLiveWeather(cards.find((c)=>c.type==="weather") || cards[0] || null);
+        }
+        if (askCrypto) {
+          const r = resps[idx++]; 
+          const cards = (r?.data?.cards || []).filter(Boolean);
+          setLiveCrypto(cards.slice(0, 6));
+        }
+      } catch {
+        setLiveNews([]); setLiveWeather(null); setLiveCrypto([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(previewTimer.current);
+  }, [input, inputFocused]);
+
+  /* optional: top headlines on mount */
   const loadHeadlines = async () => {
     try {
       const r = await axios.post(`${API_BASE}/realtime`, { query: "top news today", intent: "news" });
@@ -164,13 +211,9 @@ function AIChat() {
       setHeadlines(cards.slice(0, 12));
       const now = new Date();
       setHeadlineStamp(`Here are some of the top news items as of ${now.toLocaleDateString(undefined,{ year:"numeric", month:"long", day:"numeric"})}:`);
-    } catch {
-      setHeadlines([]);
-      setHeadlineStamp("");
-    }
+    } catch { setHeadlines([]); setHeadlineStamp(""); }
   };
-
-  useEffect(() => { loadHeadlines(); }, []); // auto once – you can remove if you only want manual tap
+  useEffect(() => { loadHeadlines(); }, []);
 
   const copyMessage = async (i) => {
     try {
@@ -208,10 +251,9 @@ function AIChat() {
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
     setInput("");
-    setSuggestions([]);
+    setTextSuggestions([]); setLiveNews([]); setLiveWeather(null); setLiveCrypto([]);
 
     try {
-      // 0) greetings → chat only
       if (isGreeting(content)) {
         const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
         await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
@@ -220,7 +262,6 @@ function AIChat() {
 
       const lower = content.toLowerCase();
 
-      // 1) google:
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         try {
@@ -233,7 +274,6 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // 2) search:
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
         try {
@@ -253,7 +293,6 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // 3) explicit intents
       if (wantsNews(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
         const cards = (r.data?.cards || []).filter(Boolean).filter((c)=>!(c?.url && isPlaceholderUrl(c.url)));
@@ -273,7 +312,7 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // 4) YouTube
+      // YouTube
       const ytKW = ["youtube","yt ","youtu.be","youtube.com","video","trailer","shorts","song","watch "];
       if (ytKW.some((k) => lower.includes(k)) || lower.startsWith("youtube:")) {
         const directId = getYouTubeId(content);
@@ -289,7 +328,7 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // 5) Images (explicit only)
+      // Images (explicit only)
       if (wantsImages(content)) {
         const q = content.replace(/^images?:\s*/i, "") || content;
         try {
@@ -307,7 +346,7 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // 6) default chat
+      // default chat
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
       const md = res.data?.reply || res.data?.text || "";
       let cards = (res.data?.cards || [])
@@ -351,7 +390,7 @@ function AIChat() {
   };
 
   const HeadlineCard = ({ card }) => {
-    const pv = bestPreview(card, true); // allow fallbacks for news
+    const pv = bestPreview(card, true);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
         <div className="rounded-xl overflow-hidden glass">
@@ -377,6 +416,29 @@ function AIChat() {
     );
   };
 
+  const CryptoMiniCard = ({ c }) => (
+    <a href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+      {c.price && <div className="text-base mt-1">{c.price}</div>}
+      {typeof c.change !== "undefined" && (
+        <div className={`text-xs mt-1 ${String(c.change).startsWith("-") ? "text-red-400" : "text-green-400"}`}>
+          {c.change}
+        </div>
+      )}
+    </a>
+  );
+
+  const WeatherMiniCard = ({ w }) => (
+    <div className="glass rounded-lg p-3 flex items-center gap-3">
+      {w.icon && <SmartImage url={w.icon} title={w.title} />}
+      <div className="min-w-0">
+        <div className="text-sm font-semibold truncate">{w.title || "Weather"}</div>
+        <div className="text-xs text-gray-400 truncate">{w.subtitle || w.meta}</div>
+      </div>
+    </div>
+  );
+
   const SmartCard = ({ card }) => {
     if (!card) return null;
 
@@ -396,17 +458,7 @@ function AIChat() {
     }
 
     if (card.type === "weather") {
-      return (
-        <div className="glass rounded-lg p-3">
-          <div className="flex items-center gap-3">
-            {card.icon && <SmartImage url={card.icon} title={card.title} />}
-            <div>
-              <div className="text-sm font-semibold">{card.title || "Weather"}</div>
-              <div className="text-xs text-gray-400">{card.subtitle || card.meta}</div>
-            </div>
-          </div>
-        </div>
-      );
+      return <WeatherMiniCard w={card} />;
     }
 
     if (card.type === "gallery" && Array.isArray(card.images)) {
@@ -427,9 +479,9 @@ function AIChat() {
       return <SmartImage url={u} title={card.title} />;
     }
 
-    if (["web","link","wiki","news","stock"].includes(card.type)) {
+    if (["web","link","wiki","news","stock","crypto"].includes(card.type)) {
       if (card.url && isPlaceholderUrl(card.url)) return null;
-      const pv = bestPreview(card, card.type === "news"); // fallbacks only for news
+      const pv = bestPreview(card, card.type === "news");
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
@@ -491,7 +543,7 @@ function AIChat() {
       >
         <div className="max-w-4xl mx-auto w-full px-3">
 
-          {/* Recent Headlines block */}
+          {/* Recent Headlines */}
           {headlines.length > 0 && (
             <div className="mb-4">
               <div className="text-lg font-semibold mb-2">Recent Headlines</div>
@@ -565,7 +617,7 @@ function AIChat() {
                   {!isUser && hasCards && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.cards
-                        .filter((c) => ["web","news","link","wiki","stock"].includes(c.type) && !(c.url && isPlaceholderUrl(c.url)))
+                        .filter((c) => ["web","news","link","wiki","stock","crypto"].includes(c.type) && !(c.url && isPlaceholderUrl(c.url)))
                         .slice(0, 5)
                         .map((c, idx) => (
                           <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg:white hover:text-black transition">
@@ -606,29 +658,58 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Suggestions */}
-      {inputFocused && suggestions.length > 0 && (
+      {/* Smart Suggestions (live while typing) */}
+      {inputFocused && (textSuggestions.length > 0 || liveNews.length > 0 || liveWeather || liveCrypto.length > 0) && (
         <div className="fixed inset-x-0 bottom-[88px] z-40 gpu" onTouchMove={(e)=>e.stopPropagation()}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="glass rounded-xl p-2 suggestions-panel">
-              <div className="flex justify-between items-center px-1 pb-2">
-                <div className="text-xs text-gray-400">Suggestions</div>
-                <button
-                  onClick={() => setSuggestions([])}
-                  className="text-xs px-2 py-1 rounded border border-white/12 hover:bg-white hover:text-black transition"
-                >
-                  Close
-                </button>
-              </div>
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSend(s)}
-                  className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
-                >
-                  {s}
-                </button>
-              ))}
+              {/* NEWS */}
+              {liveNews.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+                  <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                    <div className="flex gap-2">
+                      {liveNews.map((c, i) => <HeadlineCard key={i} card={c} />)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* WEATHER + CRYPTO row */}
+              {(liveWeather || liveCrypto.length > 0) && (
+                <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+                  <div>{liveWeather && <WeatherMiniCard w={liveWeather} />}</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {liveCrypto.slice(0,2).map((c,i)=> <CryptoMiniCard key={i} c={c} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* text suggestions */}
+              {textSuggestions.length > 0 && (
+                <>
+                  <div className="px-1 flex justify-between items-center">
+                    <div className="text-xs text-gray-400">Suggestions</div>
+                    <button
+                      onClick={() => { setTextSuggestions([]); setLiveNews([]); setLiveWeather(null); setLiveCrypto([]); }}
+                      className="text-xs px-2 py-1 rounded border border-white/12 hover:bg-white hover:text-black transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="mt-2">
+                    {textSuggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSend(s)}
+                        className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
