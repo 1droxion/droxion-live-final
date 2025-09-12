@@ -7,44 +7,35 @@ import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
 
 const API_BASE = "https://droxion-backend.onrender.com";
-const AUTO_SCROLL = false; // <- keep OFF (no auto jump)
 
 // ---------- helpers ----------
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
-const linkScreenshot = (url) =>
-  url ? `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}` : null;
+const isPlaceholderUrl = (u = "") => { try { return /(^|\.)example\.(com|org)$/i.test(new URL(u).hostname); } catch { return false; } };
 
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
-const isPlaceholderUrl = (u = "") => {
-  try {
-    const h = new URL(u).hostname;
-    return /(^|\.)example\.(com|org)$/i.test(h);
-  } catch { return false; }
+const linkScreenshot = (url) =>
+  url ? `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}` : null;
+
+const unsplashThumb = (q) => q ? `https://source.unsplash.com/640x400/?${encodeURIComponent(q)}` : null;
+
+// swap to unsplash on image failure (only once)
+const swapToFallback = (imgEl, title) => {
+  if (!imgEl || imgEl.dataset.swapped === "1") return;
+  const fb = unsplashThumb(title || "news");
+  if (fb) { imgEl.dataset.swapped = "1"; imgEl.src = fb; }
 };
 
-// some sites block hotlinking; this proxy fixes previews
-const proxyImg = (u) => {
-  if (!u) return u;
-  try {
-    const url = new URL(u);
-    return `https://images.weserv.nl/?url=${encodeURIComponent(url.host + url.pathname + url.search)}`;
-  } catch {
-    const clean = u.replace(/^https?:\/\//, "");
-    return `https://images.weserv.nl/?url=${encodeURIComponent(clean)}`;
+// Try to pick the best preview, with fallback
+const bestPreview = (card) => {
+  const direct = firstImageUrl(card);
+  if (direct) return direct;
+  if (card.url) {
+    const shot = linkScreenshot(card.url);
+    if (shot) return shot;
   }
-};
-
-// lightweight fallback thumbs so user always sees something
-const unsplashThumbs = (q) => {
-  if (!q) return [];
-  const safe = encodeURIComponent(q);
-  return [
-    `https://source.unsplash.com/480x320/?${safe}`,
-    `https://source.unsplash.com/480x320/?${safe},news`,
-    `https://source.unsplash.com/480x320/?${safe},photo`,
-  ];
+  return unsplashThumb(card.title || card.source || "image");
 };
 
 // ---------- YouTube id ----------
@@ -71,7 +62,7 @@ const getYouTubeId = (raw) => {
 
 function AIChat() {
   // state
-  const [messages, setMessages] = useState([]); // [{role, content?, cards?, followups?}]
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
@@ -80,29 +71,22 @@ function AIChat() {
   // refs
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
-  const userId = useRef("");
   const suggestTimer = useRef(null);
 
-  // init uid
+  // meta + global CSS (no keyboard-resize flicker, no forced scroll)
   useEffect(() => {
-    let id = localStorage.getItem("droxion_uid");
-    if (!id) { id = "user-" + Math.random().toString(36).substring(2, 10); localStorage.setItem("droxion_uid", id); }
-    userId.current = id;
-  }, []);
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
+    meta.setAttribute(
+      "content",
+      "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content"
+    );
 
-  // (optional) autoscroll – kept OFF per request
-  useEffect(() => {
-    if (!AUTO_SCROLL) return;
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
-
-  // global CSS (no visualViewport tricks = no blinking)
-  useEffect(() => {
     const style = document.createElement("style");
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
-      html, body { height: 100%; overscroll-behavior-y: none; }
-      body { position: relative; }
+      html, body { height: 100%; }
+      body { position: relative; background:#000; color:#fff; }
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; }
       img, iframe, video { max-width: 100% !important; height: auto !important; }
@@ -114,34 +98,24 @@ function AIChat() {
       @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
       .glass { background: var(--glass); border: 1px solid var(--border); backdrop-filter: blur(10px); }
       .glass-2 { background: var(--glass-2); border: 1px solid var(--border); backdrop-filter: blur(10px); }
-      textarea { min-height: 40px; line-height: 1.6; }
-      .pill { font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.12);
-              background: rgba(255,255,255,.06); border-radius: 999px; }
-      .suggestions-panel { overflow-y: auto; -webkit-overflow-scrolling: touch; max-height: 44vh; }
+      .pill { font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); border-radius: 999px; }
+      /* suggestions: own scroll, never block typing */
+      .suggestions-panel { overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; max-height:40vh; }
+      /* iOS flicker guard for fixed bars */
+      .layer { will-change: transform; transform: translateZ(0); }
     `;
     document.head.appendChild(style);
-
-    let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
-    meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
     return () => { document.head.removeChild(style); };
   }, []);
 
-  // autoresize textarea
+  // autoresize textarea without jumping
   useEffect(() => {
     const el = inputRef.current; if (!el) return;
-    el.style.height = "0px";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    const h = Math.min(el.scrollHeight, 160);
+    if (el.style.height !== `${h}px`) el.style.height = `${h}px`;
   }, [input]);
 
-  // hide suggestions on ESC
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") setSuggestions([]); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // suggestions (debounced)
+  // Debounced suggestions (keep visible while typing; do NOT hide on scroll)
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -150,12 +124,12 @@ function AIChat() {
       try {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
         setSuggestions((data?.suggestions || []).slice(0, 8));
-      } catch { /* ignore */ }
+      } catch {}
     }, 250);
     return () => clearTimeout(suggestTimer.current);
   }, [input]);
 
-  // ---------- cards ----------
+  // --- cards renderer ---
   const SmartCard = ({ card }) => {
     if (!card) return null;
 
@@ -175,19 +149,19 @@ function AIChat() {
       );
     }
 
-    // Weather (live)
+    // Weather
     if (card.type === "weather") {
       return (
         <div className="glass rounded-lg p-3">
           <div className="flex items-center gap-3">
             {card.icon && (
               <img
-                src={proxyImg(card.icon)}
+                src={card.icon}
                 alt=""
                 width={48}
                 height={48}
                 loading="lazy"
-                onError={(e)=>{ e.currentTarget.src = proxyImg(card.icon); }}
+                onError={(e)=>swapToFallback(e.currentTarget, card.title)}
               />
             )}
             <div>
@@ -210,18 +184,6 @@ function AIChat() {
       );
     }
 
-    // Email
-    if (card.type === "email") {
-      return (
-        <div className="glass rounded-lg p-3">
-          {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
-          {card.subtitle && <div className="text-xs text-gray-400 mt-1">{card.subtitle}</div>}
-          {card.description && <div className="text-xs text-gray-300 mt-1">{card.description}</div>}
-          {card.meta && <div className="text-[11px] text-gray-400 mt-1">{card.meta}</div>}
-        </div>
-      );
-    }
-
     // Gallery
     if (card.type === "gallery" && Array.isArray(card.images)) {
       const urls = card.images
@@ -233,11 +195,11 @@ function AIChat() {
           {urls.slice(0, 10).map((u, i) => (
             <img
               key={i}
-              src={proxyImg(u)}
+              src={u}
               alt=""
               className="w-full rounded-lg glass"
               loading="lazy"
-              onError={(e)=>{ e.currentTarget.src = proxyImg(u); }}
+              onError={(e)=>swapToFallback(e.currentTarget, card.title)}
             />
           ))}
         </div>
@@ -250,31 +212,28 @@ function AIChat() {
       if (!u) return null;
       return (
         <img
-          src={proxyImg(u)}
+          src={u}
           alt={card.alt || ""}
           className="w-full rounded-lg glass"
           loading="lazy"
-          onError={(e)=>{ e.currentTarget.src = proxyImg(u); }}
+          onError={(e)=>swapToFallback(e.currentTarget, card.title)}
         />
       );
     }
 
-    // Generic link/news/wiki/stock — show some preview image
-    if (["web", "link", "wiki", "news", "stock", "weather"].includes(card.type)) {
-      if (card.url && isPlaceholderUrl(card.url)) return null; // hide example.com/org
-      let preview = firstImageUrl(card) || (card.url ? linkScreenshot(card.url) : null);
-      if (!preview && card.title) preview = unsplashThumbs(card.title)[0];
-      const previewSrc = preview ? proxyImg(preview) : null;
-
+    // Generic link/news/wiki/stock
+    if (["web", "link", "wiki", "news", "stock"].includes(card.type)) {
+      if (card.url && isPlaceholderUrl(card.url)) return null;
+      const preview = bestPreview(card);
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
-          {previewSrc && (
+          {preview && (
             <img
-              src={previewSrc}
+              src={preview}
               alt=""
               className="w-full rounded mb-2"
               loading="lazy"
-              onError={(e)=>{ e.currentTarget.src = proxyImg(previewSrc); }}
+              onError={(e)=>swapToFallback(e.currentTarget, card.title)}
             />
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
@@ -304,7 +263,7 @@ function AIChat() {
     } catch {}
   };
 
-  // followups (chips)
+  // Followups
   const fetchFollowups = async (q) => {
     try {
       const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q, mode: "followup" } });
@@ -327,12 +286,12 @@ function AIChat() {
     });
   };
 
-  // send
+  // Send
   const handleSend = async (textToSend = input) => {
     const content = textToSend.trim(); if (!content) return;
     setTyping(true);
     setMessages((prev) => [...prev, { role: "user", content }]);
-    setInput(""); setSuggestions([]);
+    setInput(""); // keep suggestions panel independent
     const lower = content.toLowerCase();
 
     try {
@@ -356,14 +315,7 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/search`, { prompt: q });
           const results = (r.data?.results || [])
             .filter((it) => !isPlaceholderUrl(it.url))
-            .map((it) => ({
-              type: "web",
-              title: it.title,
-              url: it.url,
-              image: it.image,
-              source: it.source,
-              snippet: it.snippet,
-            }));
+            .map((it) => ({ type: "web", title: it.title, url: it.url, image: it.image, source: it.source, snippet: it.snippet }));
           await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         setTyping(false); return;
@@ -380,17 +332,13 @@ function AIChat() {
             const res = await axios.post(`${API_BASE}/search-youtube`, { prompt: content });
             const url = res.data?.url;
             await pushWithFollowups(url ? "" : "I couldn't find a video for that.", url ? [{ type: "youtube", url }] : [], content);
-          } catch {
-            await pushWithFollowups("YouTube search is unavailable right now.", [], content);
-          }
+          } catch { await pushWithFollowups("YouTube search is unavailable right now.", [], content); }
         }
         setTyping(false); return;
       }
 
-      // Images (now triggers if query contains the word image/images anywhere)
-      const imageTrigger =
-        /(^image[s]?:|show (me )?images|show (me )?image|wallpaper|artwork)/i.test(lower) ||
-        /\bimage(s)?\b/.test(lower);
+      // Images (anywhere the word "image/images" appears)
+      const imageTrigger = /(^image[s]?:|show (me )?images|show (me )?image|wallpaper|artwork|\bimage(s)?\b)/i.test(lower);
       if (imageTrigger) {
         const q = content.replace(/^image[s]?:\s*/i, "") || content;
         try {
@@ -400,21 +348,11 @@ function AIChat() {
           if (!cards.length && Array.isArray(rr.data?.images) && rr.data.images.length) {
             cards = [{ type: "gallery", images: rr.data.images }];
           }
-          if (!cards.length) {
-            const thumbs = unsplashThumbs(q);
-            if (thumbs.length) cards = [{ type: "gallery", images: thumbs }];
-          }
-          if (!cards.length) {
-            const page = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`;
-            cards = [{ type: "web", title: `Google Images – ${q}`, url: page, source: "google.com", snippet: "Open to view high-res images." }];
-          }
+          if (!cards.length) cards = [{ type: "gallery", images: [unsplashThumb(q), unsplashThumb(q + " photo")] }];
           await pushWithFollowups(`### Images for **${q}**`, cards, content);
         } catch {
-          const thumbs = unsplashThumbs(q);
-          let cards = thumbs.length ? [{ type: "gallery", images: thumbs }] : [];
-          const page = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`;
-          cards.push({ type: "web", title: `Google Images – ${q}`, url: page, source: "google.com", snippet: "Open to view high-res images." });
-          await pushWithFollowups(`### Images for **${q}**`, cards, content);
+          const thumbs = [unsplashThumb(q), unsplashThumb(q + " photo")].filter(Boolean);
+          await pushWithFollowups(`### Images for **${q}**`, [{ type: "gallery", images: thumbs }], content);
         }
         setTyping(false); return;
       }
@@ -426,21 +364,18 @@ function AIChat() {
       cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
       await pushWithFollowups(md, cards, content);
     } catch (err) {
-      console.error(err);
       await pushWithFollowups("⚠️ Error or connection failed.", [], content);
     } finally {
       setTyping(false);
     }
   };
 
-  // key send
   const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
 
-  // ---------- UI ----------
   return (
-    <div className="bg-black text-white min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ minHeight: "100svh" }}>
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60">
+      <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur bg-black/60 layer">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
@@ -458,11 +393,7 @@ function AIChat() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[11px] uppercase tracking-wider text-gray-400">{isUser ? "You" : "Droxion"}</div>
                   {!isUser && msg.content && (
-                    <button
-                      onClick={() => copyMessage(i)}
-                      className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-                      title="Copy"
-                    >
+                    <button onClick={() => copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
                       <FaRegCopy />
                       {copiedIdx === i ? "Copied" : "Copy"}
                     </button>
@@ -479,7 +410,7 @@ function AIChat() {
                           {...props}
                           className="rounded-lg my-2 w-full glass"
                           loading="lazy"
-                          onError={(e)=>{ e.currentTarget.src = proxyImg(e.currentTarget.src); }}
+                          onError={(e)=>swapToFallback(e.currentTarget, "image")}
                         />
                       ),
                       iframe: (props) => (
@@ -496,11 +427,11 @@ function AIChat() {
                   </ReactMarkdown>
                 ) : null}
 
-                {/* Pills for sources */}
+                {/* Source pills */}
                 {!isUser && hasCards ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {msg.cards
-                      .filter((c) => ["web", "news", "link", "wiki", "stock", "weather"].includes(c.type) && !(c.url && isPlaceholderUrl(c.url)))
+                      .filter((c) => ["web", "news", "link", "wiki", "stock"].includes(c.type) && !(c.url && isPlaceholderUrl(c.url)))
                       .slice(0, 5)
                       .map((c, idx) => (
                         <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg-white hover:text-black transition">
@@ -512,15 +443,11 @@ function AIChat() {
 
                 {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
 
-                {/* Follow-up chips */}
+                {/* Follow-ups */}
                 {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
                   <div className="mt-3 flex gap-2 flex-wrap">
                     {msg.followups.map((f, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleSend(f)}
-                        className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
-                      >
+                      <button key={idx} onClick={() => handleSend(f)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
                         {f}
                       </button>
                     ))}
@@ -543,16 +470,19 @@ function AIChat() {
       </div>
 
       {/* Spacer */}
-      <div style={{ height: "140px" }} />
+      <div style={{ height: 140 }} />
 
-      {/* Suggestions (scrollable, not covering input) */}
+      {/* Suggestions (own scroll; never block input) */}
       {suggestions.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[84px] z-35">
+        <div className="fixed inset-x-0 bottom-[88px] z-35 layer">
           <div className="max-w-4xl mx-auto px-3">
             <div className="glass rounded-xl p-2 suggestions-panel">
               {suggestions.map((s, i) => (
-                <button key={i} onClick={() => handleSend(s)}
-                        className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                <button
+                  key={i}
+                  onClick={() => handleSend(s)}
+                  className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
+                >
                   {s}
                 </button>
               ))}
@@ -562,7 +492,7 @@ function AIChat() {
       )}
 
       {/* Composer */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur"
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur layer"
            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
@@ -572,7 +502,6 @@ function AIChat() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                onBlur={() => setSuggestions([])}
                 rows={1}
                 inputMode="text"
                 placeholder=""
