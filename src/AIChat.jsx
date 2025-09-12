@@ -13,12 +13,11 @@ const normHost = (u="") => { try { return new URL(u).hostname.toLowerCase().repl
 const host = (u) => { const h = normHost(u); return h.replace(/^m\./,""); };
 
 const BAD_HOSTS = [
-  "google.com","news.google.com","maps.google.com","m.google.com",
+  "google.com","news.google.com","maps.google.com",
   "example.com","example.org",
   "wikipedia.org","m.wikipedia.org","en.wikipedia.org"
 ];
 const isBadHost = (h="") => BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
-
 const isFilteredSource = (u="") => { const h = host(u); return !h || isBadHost(h); };
 
 const firstImageUrl = (c) =>
@@ -53,8 +52,8 @@ const wantsAnyPreview = (s="") =>
 
 const GOOD_NEWS = [
   "reuters.com","theguardian.com","bbc.co.uk","bbc.com","apnews.com","nytimes.com",
-  "wsj.com","ft.com","bloomberg.com","economist.com","npr.org","aljazeera.com",
-  "hindustantimes.com","indianexpress.com","livemint.com","moneycontrol.com","toi.in","timesofindia.com"
+  "wsj.com","ft.com","bloomberg.com","economist.com","npr.org","hindustantimes.com",
+  "indianexpress.com","livemint.com","moneycontrol.com","timesofindia.com"
 ];
 const rankHost = (h) => {
   if (!h) return -50;
@@ -63,7 +62,6 @@ const rankHost = (h) => {
   if (/\b(news|finance|market|money|business|times|post|today)\b/.test(h)) return 40;
   return 10;
 };
-
 const scoreCard = (c) => {
   const h = host(c.url || "");
   let s = rankHost(h);
@@ -72,7 +70,6 @@ const scoreCard = (c) => {
   if ((c.title||"").length > 0) s += 3;
   return s;
 };
-
 const dedupeCards = (arr=[]) => {
   const seen = new Set();
   return arr.filter(c => {
@@ -81,14 +78,12 @@ const dedupeCards = (arr=[]) => {
     seen.add(key); return true;
   });
 };
-
 const rankAndTrim = (cards=[], limit=10, allowWikiFallback=false) => {
   let filtered = cards
     .filter(Boolean)
-    .filter(c => !(c?.url && isFilteredSource(c.url))); // drop bad sources
+    .filter(c => !(c?.url && isFilteredSource(c.url)));
   filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
   if (!filtered.length && allowWikiFallback) {
-    // if nothing left, allow one wiki card so it's not empty
     const wiki = (cards||[]).find(c => host(c.url||"").includes("wikipedia.org"));
     if (wiki) filtered = [wiki];
   }
@@ -154,7 +149,7 @@ function AIChat() {
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
 
-  /* base CSS (tiny tune on spacing) */
+  /* base CSS — stable structure + fixed-aspect images */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name","viewport"); document.head.appendChild(meta); }
@@ -182,6 +177,10 @@ function AIChat() {
       @media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
       .skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
       @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
+
+      /* fixed aspect tiles (prevents blink on image load) */
+      .tile { position:relative; width:100%; padding-top:66.666%; overflow:hidden; border-radius:12px; }
+      .tile > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -251,7 +250,7 @@ function AIChat() {
         // CRYPTO
         setCrypto(rc ? (rc?.data?.cards || []).filter(Boolean).slice(0,6) : []);
 
-        // IMAGES → if nothing yet, show a gallery thumb to “feel live”
+        // IMAGES preview feel
         if (ri && (news||[]).length===0) {
           const imgs = Array.isArray(ri?.data?.images) ? ri.data.images.slice(0,8) : [];
           if (imgs.length) setNews([{ type:"gallery", images: imgs }]);
@@ -269,16 +268,16 @@ function AIChat() {
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
-  /* smart scroll on assistant reply (not while typing) */
+  /* smart scroll on assistant reply and on user send (no jump while typing) */
   useEffect(() => {
     if (!messages.length) return;
-    const last = messages[messages.length - 1];
     const el = scrollRef.current;
     if (!el) return;
-    if (last.role === "assistant" && !focused) {
+    const last = messages[messages.length - 1];
+    if (last.role === "assistant" || last.role === "user") {
       requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
     }
-  }, [messages, focused]);
+  }, [messages]);
 
   const copyMessage = async (i) => {
     try {
@@ -296,8 +295,22 @@ function AIChat() {
     } catch { return ["Explain more","Pros & cons","Give steps","Show sources"]; }
   };
 
+  // lightweight post-formatter: adds Summary/Steps sections if the model returned plain text
+  const formatAssistantText = (txt="") => {
+    const s = txt.trim();
+    if (!s) return s;
+    const hasMd = /[#*`>-]/.test(s);
+    if (hasMd) return s;
+    // naive split into lines → bullets
+    const lines = s.split(/\n+/).map(t=>t.trim()).filter(Boolean);
+    if (lines.length <= 1) return s;
+    const head = lines[0];
+    const rest = lines.slice(1).map(t=>`- ${t}`).join("\n");
+    return `### ${head}\n\n${rest}`;
+  };
+
   const pushWithFollowups = async (md, cards, q) => {
-    // rank web/news/link/wiki sets before rendering
+    // rank cards and make structure stable
     let ranked = cards;
     if (Array.isArray(cards) && cards.length) {
       const webTypes = ["web","link","wiki","news"];
@@ -306,7 +319,8 @@ function AIChat() {
       const rankedWeb = rankAndTrim(keep, 12, true);
       ranked = [...rankedWeb, ...rest];
     }
-    setMessages((p) => [...p, { role: "assistant", content: md, cards: ranked }]);
+    const nice = formatAssistantText(md);
+    setMessages((p) => [...p, { role: "assistant", content: nice, cards: ranked }]);
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
@@ -335,7 +349,6 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          // rank & drop bad sources here too
           cards = rankAndTrim(cards, 12, true);
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
@@ -401,6 +414,7 @@ function AIChat() {
           if (!cards.length && Array.isArray(rr.data?.images) && rr.data.images.length) {
             cards = [{ type:"gallery", images: rr.data.images }];
           }
+          // last resort fallback (prevents empty “blinking” gallery)
           if (!cards.length) cards = [{ type:"gallery", images: [unsplash(q), unsplash(q+" photo")].filter(Boolean) }];
           await pushWithFollowups(`### Images for **${q}**`, cards, content);
         } catch {
@@ -429,15 +443,16 @@ function AIChat() {
         src={src}
         data-orig={url}
         alt=""
-        className="w-full rounded-lg glass"
+        className="w-full h-full object-cover"
         loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
         crossOrigin="anonymous"
         onError={(e)=>{
           const el = e.currentTarget, tried = el.dataset.fallback || "0";
           if (tried==="0"){ el.dataset.fallback="1"; el.src = el.dataset.orig; return; }
           if (tried==="1"){ el.dataset.fallback="2"; el.src = unsplash(title || "image"); return; }
-          el.style.display = "none";
+          el.parentElement.style.display = "none";
         }}
       />
     );
@@ -464,9 +479,7 @@ function AIChat() {
       const first = card.images.find(Boolean);
       return first ? (
         <div className="hitem pr-3">
-          <div className="rounded-xl overflow-hidden glass">
-            <SmartImage url={first} title="image" />
-          </div>
+          <div className="tile glass"><SmartImage url={first} title="image" /></div>
         </div>
       ) : null;
     }
@@ -475,16 +488,18 @@ function AIChat() {
       <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
         <div className="rounded-xl overflow-hidden glass">
           {pv ? (
-            <img
-              src={pv.prox}
-              data-orig={pv.orig}
-              alt=""
-              className="w-full aspect-[16/9] object-cover"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
-              onError={(e)=>{ e.currentTarget.style.display="none"; }}
-            />
+            <div className="embed-responsive embed-16by9">
+              <img
+                src={pv.prox}
+                data-orig={pv.orig}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={(e)=>{ e.currentTarget.style.display="none"; }}
+              />
+            </div>
           ) : <div className="aspect-[16/9] skel" />}
           <div className="p-3">
             <div className="text-[11px] text-gray-400 mb-1">{card.source || (card.url ? host(card.url) : "")}</div>
@@ -509,7 +524,7 @@ function AIChat() {
 
   const WeatherMini = ({ w }) => (
     <div className="glass rounded-lg p-3 flex items-center gap-3">
-      {w?.icon && <SmartImage url={w.icon} title={w.title} />}
+      {w?.icon && <div className="w-12 h-12 overflow-hidden rounded-md"><SmartImage url={w.icon} title={w.title} /></div>}
       <div className="min-w-0">
         <div className="text-sm font-semibold truncate">{w?.title || "Weather"}</div>
         <div className="text-xs text-gray-400 truncate">{w?.subtitle || w?.meta}</div>
@@ -539,30 +554,29 @@ function AIChat() {
     if (card.type === "gallery" && Array.isArray(card.images)) {
       const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean);
       if (!urls.length) return null;
-      return <div className="grid grid-cols-2 gap-2">{urls.slice(0,10).map((u,i)=><SmartImage key={i} url={u} title="image" />)}</div>;
+      return (
+        <div className="grid grid-cols-2 gap-2">
+          {urls.slice(0,10).map((u,i)=>(
+            <div key={i} className="tile glass"><SmartImage url={u} title="image" /></div>
+          ))}
+        </div>
+      );
     }
 
     if (card.type === "image") {
       const u = firstImageUrl(card) || card.url; if (!u) return null;
-      return <SmartImage url={u} title={card.title} />;
+      return <div className="tile glass"><SmartImage url={u} title={card.title} /></div>;
     }
 
     if (["web","link","wiki","news","stock","crypto"].includes(card.type)) {
       if (card.url && isFilteredSource(card.url)) return null;
-      const pv = bestPreview(card, true); // allow screenshot fallback for ALL web-like cards
+      const pv = bestPreview(card, true);
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
-            <img
-              src={pv.prox}
-              data-orig={pv.orig}
-              alt=""
-              className="w-full rounded mb-2"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
-              onError={(e)=>{ e.currentTarget.style.display="none"; }}
-            />
+            <div className="tile mb-2">
+              <SmartImage url={pv.prox} title={card.title || "preview"} />
+            </div>
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
           <div className="text-xs text-gray-400 mt-1">{card.source || (card.url ? host(card.url) : "")}{card.time ? ` • ${card.time}` : ""}</div>
@@ -576,6 +590,21 @@ function AIChat() {
     if (card.html) return <div className="prose prose-invert max-w-none glass rounded-lg p-3" dangerouslySetInnerHTML={{ __html: card.html }} />;
     if (card.text) return <div className="glass rounded-lg p-3 text-sm">{card.text}</div>;
     return null;
+  };
+
+  // shows “Source chips” under assistant text
+  const SourceChips = ({ cards=[] }) => {
+    const web = cards.filter((c)=>["web","news","link","wiki","stock","crypto"].includes(c.type) && !(c.url && isFilteredSource(c.url))).slice(0,6);
+    if (!web.length) return null;
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {web.map((c,idx)=>(
+          <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg:white hover:text-black transition">
+            {c.source || (c.url ? host(c.url) : "source")}
+          </a>
+        ))}
+      </div>
+    );
   };
 
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
@@ -617,45 +646,40 @@ function AIChat() {
                 <div key={i} className={`rounded-xl p-4 ${isUser ? "glass-2" : "glass"}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-[11px] uppercase tracking-wider text-gray-400">{isUser ? "You" : "Droxion"}</div>
-                    {!isUser && msg.content && (
+                    {!isUser && (msg.content || hasCards) && (
                       <button onClick={()=>copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
                         <FaRegCopy /> {copiedIdx===i ? "Copied" : "Copy"}
                       </button>
                     )}
                   </div>
 
-                  {msg.content && (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                      components={{
-                        img: (props) => (
-                          <img {...props}
-                            src={prox(props.src)} data-orig={props.src}
-                            className="rounded-lg my-2 w-full glass" loading="lazy" referrerPolicy="no-referrer" crossOrigin="anonymous"
-                            onError={(e)=>{ const el=e.currentTarget, t=el.dataset.fallback||"0"; if(t==="0"){el.dataset.fallback="1"; el.src=el.dataset.orig; return;} if(t==="1"){el.dataset.fallback="2"; el.src=unsplash("image"); return;} el.style.display="none"; }}
-                          />
-                        ),
-                        iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
-                        a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
-                  )}
-
-                  {!isUser && hasCards && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {msg.cards
-                        .filter((c)=>["web","news","link","wiki","stock","crypto"].includes(c.type) && !(c.url && isFilteredSource(c.url)))
-                        .slice(0,6)
-                        .map((c,idx)=>(
-                          <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg:white hover:text-black transition">
-                            {c.source || (c.url ? host(c.url) : "source")}
-                          </a>
-                        ))}
+                  {/* Assistant content with consistent structure */}
+                  {msg.content && !isUser && (
+                    <div className="mb-2">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeRaw]}
+                        components={{
+                          img: (props) => (
+                            <div className="tile glass my-2">
+                              <SmartImage url={props.src} title={props.alt || "image"} />
+                            </div>
+                          ),
+                          iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
+                          a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200 break-words" target="_blank" rel="noreferrer" />
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     </div>
                   )}
+
+                  {/* User content (plain) */}
+                  {msg.content && isUser && (
+                    <div className="text-sm text-gray-200 whitespace-pre-wrap break-words">{msg.content}</div>
+                  )}
+
+                  {!isUser && <SourceChips cards={msg.cards || []} />}
 
                   {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
                 </div>
@@ -736,7 +760,7 @@ function AIChat() {
                 onBlur={()=>setTimeout(()=>setFocused(false),140)}
                 rows={1}
                 inputMode="text"
-                placeholder=""
+                placeholder="Type a message…"
                 className="w-full bg-transparent outline-none resize-none leading-[1.6]"
                 style={{ height:44, maxHeight:44, overflowY:"auto" }}
                 aria-label="Type your message"
@@ -747,7 +771,7 @@ function AIChat() {
             </button>
           </div>
 
-          {/* Quick chips (keep) */}
+          {/* Quick chips */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
               <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
