@@ -22,14 +22,6 @@ const prox = (u) => {
   return IMAGE_PROXY + encodeURIComponent(u);
 };
 
-// ⚠️ IMPORTANT: We **do not** auto-screenshot or auto-unsplash for web/news cards anymore.
-// This prevents broken gray boxes on generic queries.
-const bestPreviewStrict = (card) => {
-  const direct = firstImageUrl(card);
-  if (!direct) return null;
-  return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
-};
-
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 
 // ---- intent helpers ----
@@ -70,6 +62,28 @@ const getYouTubeId = (raw) => {
   return m ? m[1] : null;
 };
 
+/* ---------- preview helper: strict for web, fallback allowed for news ---------- */
+const bestPreview = (card, allowFallback = false) => {
+  const direct = firstImageUrl(card);
+  if (direct) return { prox: prox(direct), orig: direct, title: card.title || card.source || "preview" };
+
+  if (!allowFallback) return null; // keep web/link strict → avoids broken boxes on generic queries
+
+  // try page screenshot (good coverage for news)
+  try {
+    if (card.url && /^https?:\/\//i.test(card.url) && !isPlaceholderUrl(card.url)) {
+      const shot = `${API_BASE}/img?url=${encodeURIComponent(
+        `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`
+      )}`;
+      return { prox: shot, orig: card.url, title: card.title || "preview" };
+    }
+  } catch {}
+
+  // final fallback
+  const ph = unsplash(card.title || card.source || "news");
+  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
+};
+
 /* ---------------------- component ---------------------- */
 function AIChat() {
   const [messages, setMessages] = useState([]); // {role, content?, cards?, followups?}
@@ -83,7 +97,7 @@ function AIChat() {
   const listRef = useRef(null);
   const suggestTimer = useRef(null);
 
-  /* meta + CSS: fix iOS blink, allow smooth overlays */
+  /* meta + CSS: fix iOS blink; smooth overlays */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
@@ -96,7 +110,7 @@ function AIChat() {
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
       html, body { height: 100%; background:#000; color:#fff; margin:0; padding:0; }
-      body { overscroll-behavior-y: none; } /* reduce "blink" on focus */
+      body { overscroll-behavior-y: none; }
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; }
       img, iframe, video { max-width: 100% !important; height: auto !important; }
@@ -106,14 +120,13 @@ function AIChat() {
       .glass { background: var(--glass); border:1px solid var(--border); backdrop-filter: blur(10px); }
       .glass-2 { background: var(--glass-2); border:1px solid var(--border); backdrop-filter: blur(10px); }
       .pill { font-size:11px; padding:2px 8px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); border-radius:999px; }
-      .suggestions-panel { 
-        max-height: min(45vh, calc(100svh - 180px)); 
-        overflow-y: auto; 
-        -webkit-overflow-scrolling: touch; 
+      .suggestions-panel {
+        max-height: min(45vh, calc(100svh - 180px));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
-        touch-action: pan-y; 
+        touch-action: pan-y;
       }
-      /* Reduce repaint/jitter for fixed bars */
       .gpu { will-change: transform; transform: translateZ(0); -webkit-backface-visibility: hidden; backface-visibility: hidden; }
     `;
     document.head.appendChild(style);
@@ -173,7 +186,7 @@ function AIChat() {
     setSuggestions([]);
 
     try {
-      // 0) greetings → chat only (no cards, no images)
+      // 0) greetings → chat only (no cards)
       if (isGreeting(content)) {
         const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
         await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
@@ -188,7 +201,6 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = Array.isArray(r.data?.cards) ? r.data.cards : [];
-          // drop placeholders
           cards = cards.filter((c) => !(c?.url && isPlaceholderUrl(c.url)));
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           await pushWithFollowups(md, cards, content);
@@ -207,7 +219,7 @@ function AIChat() {
               type:"web",
               title: it.title,
               url: it.url,
-              image: it.image || null,   // IMPORTANT: only use if present
+              image: it.image || null,
               source: it.source,
               snippet: it.snippet
             }));
@@ -306,8 +318,8 @@ function AIChat() {
           const el = e.currentTarget;
           const tried = el.dataset.fallback || "0";
           if (tried === "0") { el.dataset.fallback = "1"; el.src = el.dataset.orig; return; }
-          if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash(title || "image"); }
-          if (!el.dataset.fallback) el.style.display = "none";
+          if (tried === "1") { el.dataset.fallback = "2"; el.src = unsplash(title || "image"); return; }
+          el.style.display = "none";
         }}
       />
     );
@@ -365,7 +377,8 @@ function AIChat() {
 
     if (["web","link","wiki","news","stock"].includes(card.type)) {
       if (card.url && isPlaceholderUrl(card.url)) return null;
-      const pv = bestPreviewStrict(card); // <- STRICT (only show if card already has image)
+      // allow fallbacks (screenshot/unsplash) **only for news**
+      const pv = bestPreview(card, card.type === "news");
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
@@ -377,10 +390,7 @@ function AIChat() {
               loading="lazy"
               referrerPolicy="no-referrer"
               crossOrigin="anonymous"
-              onError={(e)=>{
-                // If fails, hide image entirely (no gray box)
-                e.currentTarget.style.display = "none";
-              }}
+              onError={(e)=>{ e.currentTarget.style.display = "none"; }}
             />
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
