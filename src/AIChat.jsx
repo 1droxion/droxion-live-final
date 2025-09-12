@@ -41,6 +41,9 @@ const wantsImages = (s="") => {
 const wantsNews = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
+const wantsYouTube = (s="") => /\b(youtube|youtu\.be|youtube\.com|video|trailer|shorts|watch)\b/i.test(s);
+const wantsAnyPreview = (s="") =>
+  wantsNews(s) || wantsWeather(s) || wantsCrypto(s) || wantsImages(s) || wantsYouTube(s);
 
 const getYouTubeId = (raw) => {
   try {
@@ -82,17 +85,21 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // live preview panel (shows ONLY while typing)
+  // live preview panel (shows ONLY while typing and relevant)
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
-  const [news, setNews] = useState([]);      // keep previous while loading
+  const [news, setNews] = useState([]);
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
   const [loadingPanel, setLoadingPanel] = useState(false);
 
-  // scrolling refs
-  const scrollRef = useRef(null);       // main scroll container
-  const lastWasUser = useRef(false);    // track who sent last
+  // layout & scroll
+  const scrollRef = useRef(null);
+  const panelRef = useRef(null);
+  const composerRef = useRef(null);
+  const [panelH, setPanelH] = useState(0);
+  const [composerH, setComposerH] = useState(96); // default approx
+
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
@@ -130,7 +137,22 @@ function AIChat() {
     return () => document.head.removeChild(style);
   }, []);
 
-  /* text suggestions — appear after FIRST character */
+  /* measure panel & composer */
+  useEffect(() => {
+    if (!panelRef.current) return;
+    const ro = new ResizeObserver(() => setPanelH(panelRef.current?.offsetHeight || 0));
+    ro.observe(panelRef.current);
+    return () => ro.disconnect();
+  }, [panelRef.current]);
+
+  useEffect(() => {
+    if (!composerRef.current) return;
+    const ro = new ResizeObserver(() => setComposerH(composerRef.current?.offsetHeight || 96));
+    ro.observe(composerRef.current);
+    return () => ro.disconnect();
+  }, [composerRef.current]);
+
+  /* text suggestions — appear after first char */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -144,37 +166,58 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* live previews — start immediately on first char, keep previous while loading (no blink) */
+  /* live previews — only when query implies previews */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
-    if (!focused || q.length < 1) return;
+    if (!focused || q.length < 1 || !wantsAnyPreview(q)) return;
 
-    setLoadingPanel(true);               // show skeletons instantly
-    cancelPrev.current.cancel?.();       // cancel older keystroke fetch
+    setLoadingPanel(true);
+    cancelPrev.current.cancel?.();
     const src = axios.CancelToken.source();
     cancelPrev.current = { cancel: () => src.cancel("new query") };
 
     previewTimer.current = setTimeout(async () => {
       try {
         const reqs = [
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
-        ];
-        const [rn, rw, rc] = await Promise.all(reqs);
+          wantsNews(q)    ? axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"    }, { cancelToken: src.token }).catch(()=>null) : null,
+          wantsWeather(q) ? axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather" }, { cancelToken: src.token }).catch(()=>null) : null,
+          wantsCrypto(q)  ? axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto"  }, { cancelToken: src.token }).catch(()=>null) : null,
+          wantsImages(q)  ? axios.post(`${API_BASE}/realtime`, { query: q, intent: "images"  }, { cancelToken: src.token }).catch(()=>null) : null,
+          wantsYouTube(q) ? axios.post(`${API_BASE}/search-youtube`, { prompt: q             }, { cancelToken: src.token }).catch(()=>null) : null,
+        ].filter(Boolean);
 
-        const newsCards = (rn?.data?.cards || [])
-          .filter(Boolean)
-          .filter((c)=> !(c?.url && isFilteredSource(c.url)))
-          .filter((c)=> !!bestPreview(c,true))
-          .slice(0, 10);
-        setNews(newsCards);
+        const [rn, rw, rc, ri, ry] = await Promise.all(reqs);
 
-        const wcards = (rw?.data?.cards || []).filter(Boolean);
-        setWeather(wcards.find((c)=>c.type==="weather") || wcards[0] || null);
+        // NEWS
+        if (rn) {
+          const newsCards = (rn?.data?.cards || [])
+            .filter(Boolean)
+            .filter((c)=> !(c?.url && isFilteredSource(c.url)))
+            .filter((c)=> !!bestPreview(c,true))
+            .slice(0, 10);
+          setNews(newsCards);
+        } else { setNews([]); }
 
-        setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
+        // WEATHER
+        if (rw) {
+          const wcards = (rw?.data?.cards || []).filter(Boolean);
+          setWeather(wcards.find((c)=>c.type==="weather") || wcards[0] || null);
+        } else { setWeather(null); }
+
+        // CRYPTO
+        setCrypto(rc ? (rc?.data?.cards || []).filter(Boolean).slice(0,6) : []);
+
+        // IMAGES fallback into the lane to “show something”
+        if (ri && !news?.length) {
+          const imgs = Array.isArray(ri?.data?.images) ? ri.data.images.slice(0,8) : [];
+          if (imgs.length) setNews([{ type:"gallery", images: imgs }]);
+        }
+
+        // YOUTUBE mini preview
+        if (ry?.data?.url) {
+          setNews((p)=> [{ type:"youtube", url: ry.data.url, title:"YouTube" }, ...(p||[])].slice(0,10));
+        }
       } finally {
         setLoadingPanel(false);
       }
@@ -183,21 +226,14 @@ function AIChat() {
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
-  /* smart scroll: only when a new assistant message arrives */
+  /* smart scroll: only when a new assistant message arrives and not while typing */
   useEffect(() => {
     if (!messages.length) return;
     const last = messages[messages.length - 1];
     const el = scrollRef.current;
     if (!el) return;
-
-    // update flip-flop
-    lastWasUser.current = last.role === "user";
-
     if (last.role === "assistant" && !focused) {
-      // smooth scroll to bottom (no jump while typing)
-      requestAnimationFrame(() => {
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      });
+      requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
     }
   }, [messages, focused]);
 
@@ -231,7 +267,7 @@ function AIChat() {
     const content = (text || "").trim(); if (!content) return;
     setTyping(true);
     setMessages((p) => [...p, { role: "user", content }]);
-    setInput(""); // keeps panel visible briefly; will hide on blur
+    setInput("");
     setTextSug([]);
 
     try {
@@ -337,8 +373,6 @@ function AIChat() {
     } finally { setTyping(false); }
   };
 
-  const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
-
   /* ---------------------- small render helpers ---------------------- */
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
@@ -363,6 +397,32 @@ function AIChat() {
   };
 
   const HeadlineCard = ({ card }) => {
+    if (card.type === "youtube") {
+      const id = getYouTubeId(card.url || "");
+      if (!id) return null;
+      return (
+        <div className="hitem pr-3">
+          <div className="rounded-xl overflow-hidden glass embed-responsive embed-16by9">
+            <iframe
+              src={`https://www.youtube.com/embed/${id}`}
+              title={card.title || "YouTube"}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      );
+    }
+    if (card.type === "gallery" && Array.isArray(card.images)) {
+      const first = card.images.find(Boolean);
+      return first ? (
+        <div className="hitem pr-3">
+          <div className="rounded-xl overflow-hidden glass">
+            <SmartImage url={first} title="image" />
+          </div>
+        </div>
+      ) : null;
+    }
     const pv = bestPreview(card, true);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
@@ -474,11 +534,14 @@ function AIChat() {
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
 
   /* ---------------------- UI ---------------------- */
-  const showPanel = focused && (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0);
+  const showPanel = focused && wantsAnyPreview(input) &&
+    (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0);
+
+  const bottomPad = showPanel ? panelH + composerH + 16 : composerH + 16;
 
   return (
     <div className="h-screen w-full flex flex-col" style={{ height:"100svh" }}>
-      {/* Clean header — no buttons */}
+      {/* Clean header */}
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -490,10 +553,15 @@ function AIChat() {
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto"
-        style={{ WebkitOverflowScrolling:"touch", padding:"12px 0 16px", height:"calc(100svh - 48px - 96px)", overscrollBehaviorY:"contain" }}
+        style={{
+          WebkitOverflowScrolling:"touch",
+          padding:"12px 0 16px",
+          height:"calc(100svh - 48px)",
+          overscrollBehaviorY:"contain",
+          paddingBottom: bottomPad
+        }}
       >
         <div className="max-w-4xl mx-auto w-full px-3">
-          {/* Chat thread only — page is clean until you type */}
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
@@ -559,14 +627,16 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL — stays mounted (no blink), just fades */}
+      {/* LIVE PREVIEW PANEL — fades, never blocks input or scroll */}
       <div
-        className={`fixed inset-x-0 bottom-[88px] z-40 transition-opacity duration-150 ${showPanel ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        ref={panelRef}
+        className={`fixed inset-x-0 z-40 transition-opacity duration-150 ${showPanel ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        style={{ bottom: composerH + 8 }}
         onTouchMove={(e)=>e.stopPropagation()}
       >
         <div className="max-w-4xl mx-auto px-3">
           <div className="glass rounded-xl p-2 suggestions-panel">
-            {/* NEWS */}
+            {/* NEWS lane */}
             <div className="mb-2">
               <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
               <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
@@ -603,7 +673,11 @@ function AIChat() {
       </div>
 
       {/* Composer */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
+      <div
+        ref={composerRef}
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur"
+        style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}
+      >
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
