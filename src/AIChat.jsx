@@ -15,23 +15,12 @@ const isPlaceholderUrl = (u="") => { try { return /(^|\.)example\.(com|org)$/i.t
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
-// CORS-safe proxy for ANY external image (prevents hotlink blocks)
-// (images.weserv.nl just fetches the image server-side and serves it with correct headers)
-const IMAGE_PROXY = "https://images.weserv.nl/?output=webp&w=1200&url=";
-const prox = (u) => {
-  if (!u) return null;
-  try {
-    const x = new URL(u);
-    if (x.protocol === "data:" || x.protocol === "blob:") return u;
-    if (x.hostname.endsWith("images.weserv.nl")) return u;
-    return IMAGE_PROXY + encodeURIComponent(u);
-  } catch {
-    return u;
-  }
-};
+// Proxy ALL external images through your backend (reliable on iOS/CDNs)
+const IMAGE_PROXY = `${API_BASE}/img?url=`;
+const prox = (u) => (u ? IMAGE_PROXY + encodeURIComponent(u) : null);
 
 const linkScreenshot = (url) =>
-  url ? `${IMAGE_PROXY}${encodeURIComponent(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}`)}` : null;
+  url ? prox(`https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(url)}`) : null;
 
 const unsplash = (q) => (q ? `https://source.unsplash.com/800x500/?${encodeURIComponent(q)}` : null);
 
@@ -72,7 +61,8 @@ const bestPreview = (card) => {
     const shot = linkScreenshot(card.url);
     if (shot) return shot;
   }
-  return prox(unsplash(card.title || card.source || "preview"));
+  const ph = unsplash(card.title || card.source || "preview");
+  return ph ? prox(ph) : null;
 };
 
 /* ---------------------- component ---------------------- */
@@ -100,7 +90,8 @@ function AIChat() {
     style.innerHTML = `
       :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); }
       html, body { height: 100%; background:#000; color:#fff; }
-      body { overscroll-behavior-y: none; } /* reduce iOS bounce blink */
+      html { scroll-behavior: auto; overflow-anchor: none; }
+      body { overscroll-behavior-y: none; }
       * { -webkit-tap-highlight-color: transparent; }
       textarea, input { font-size: 16px !important; } /* prevent iOS zoom */
       img, iframe, video { max-width: 100% !important; height: auto !important; }
@@ -117,13 +108,6 @@ function AIChat() {
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
-
-  /* autoresize textarea without page shifts */
-  useEffect(() => {
-    const el = inputRef.current; if (!el) return;
-    const h = Math.min(el.scrollHeight, 160);
-    if (el.style.height !== `${h}px`) el.style.height = `${h}px`;
-  }, [input]);
 
   /* debounced suggestions: only when focused & ≥2 chars */
   useEffect(() => {
@@ -189,7 +173,6 @@ function AIChat() {
           cards = cards
             .filter((c) => !(c?.url && isPlaceholderUrl(c.url)))
             .map((c) => {
-              // proxy any image-like fields so they always render
               const u = firstImageUrl(c);
               return u ? { ...c, image: prox(u) } : c;
             });
@@ -325,7 +308,7 @@ function AIChat() {
       const urls = card.images
         .map((it) => (typeof it === "string" ? it : (it.url || it.thumbnail || it.thumb)))
         .filter(Boolean)
-        .map(prox);
+        .map((u) => prox(u));
       if (!urls.length) return null;
       return (
         <div className="grid grid-cols-2 gap-2">
@@ -407,7 +390,7 @@ function AIChat() {
         </div>
       </header>
 
-      {/* (Removed the “Hey Droxion” pinned bar as requested) */}
+      {/* (Removed the “Hey Droxion” pinned bar) */}
 
       {/* Main */}
       <div className="max-w-4xl mx-auto w-full px-3 py-4">
@@ -468,7 +451,7 @@ function AIChat() {
                       .filter((c) => ["web","news","link","wiki","stock"].includes(c.type) && !(c.url && isPlaceholderUrl(c.url)))
                       .slice(0, 5)
                       .map((c, idx) => (
-                        <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg-white hover:text-black transition">
+                        <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg:white hover:text-black transition">
                           {c.source || (c.url ? host(c.url) : "source")}
                         </a>
                       ))}
@@ -537,7 +520,7 @@ function AIChat() {
         </div>
       )}
 
-      {/* Composer */}
+      {/* Composer (fixed height to stop page jumping) */}
       <div
         className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/80 backdrop-blur layer"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
@@ -556,6 +539,7 @@ function AIChat() {
                 inputMode="text"
                 placeholder=""
                 className="w-full bg-transparent outline-none resize-none leading-[1.6]"
+                style={{ height: 44, maxHeight: 44, overflowY: "auto" }}
                 aria-label="Type your message"
               />
             </div>
