@@ -2,46 +2,53 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
+
     environment:
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
-      node: 20
+        # Optional: helps when peer deps cause failures
+        NPM_CONFIG_LEGACY_PEER_DEPS: "true"
+      node: 18          # <- more compatible than 20 for many npm deps
       xcode: 15.4
       cocoapods: default
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.droxion.app
+
     cache:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
+
     scripts:
-      - name: Install dependencies
-        script: npm ci
+      - name: Install JS dependencies
+        script: |
+          npm ci || npm install --no-audit --no-fund
+
       - name: Build web app
         script: npm run build
-      - name: Add Capacitor + iOS
+
+      - name: Sync Capacitor iOS
         script: |
+          # Make sure Capacitor CLI is available (lightweight dev dep install)
           npm i -D @capacitor/cli
-          npm i @capacitor/core @capacitor/ios
-          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies
-          npx cap add ios
-          npx cap copy ios
-          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
-          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
+          # Sync (do NOT re-init or re-add ios each build)
+          npx cap sync ios
+
       - name: Install CocoaPods
         script: |
           cd ios/App
-          pod install
+          pod install --repo-update
           cd ../../
+
       - name: Build IPA
         script: |
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App" \
-            --archive-flags="-destination generic/platform=iOS" \
+            --archive-flags="-destination 'generic/platform=iOS'" \
             --team-id "$APP_STORE_CONNECT_TEAM_ID"
 
     publishing:
