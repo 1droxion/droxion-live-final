@@ -57,7 +57,6 @@ workflows:
       - name: Generate iOS project (Capacitor)
         script: |
           set -e
-          # Capacitor toolchain
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
@@ -117,10 +116,7 @@ workflows:
           set -e
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
-            --scheme "App" \
-            --configuration Release \
-            --archive-flags "-destination generic/platform=iOS" \
-            --export-method app-store
+            --scheme "App"
 
     artifacts:
       - build/ios/ipa/*.ipa
