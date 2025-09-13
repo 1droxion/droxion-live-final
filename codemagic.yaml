@@ -115,9 +115,11 @@ workflows:
       - name: Apply provisioning profiles (Automatic signing)
         script: |
           set -e
-          xcode-project use-profiles \
-            --workspace "ios/App/App.xcworkspace" \
-            --scheme "App"
+          # Run inside the iOS app directory; this command reads the workspace/project automatically.
+          cd ios/App
+          xcode-project use-profiles
+          # show what was applied (optional)
+          xcode-project show-build-settings | head -n 50 || true
 
       - name: Build IPA
         script: |
@@ -138,11 +140,12 @@ workflows:
           PLIST
 
           echo "→ Using export options plist at $HOME/export_options.plist"
+          # Build from repo root, pointing to the workspace
+          cd "$CM_BUILD_DIR"
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App" \
             --export-options-plist "$HOME/export_options.plist"
-
     artifacts:
       - build/ios/ipa/*.ipa
       - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.log
