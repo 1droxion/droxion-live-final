@@ -37,10 +37,17 @@ workflows:
           cd ios/App
           pod install
           cd ../../
-      - name: Build IPA
-        script: |
-          xcode-project build-ipa \
-            --workspace "ios/App/App.xcworkspace" \
-            --scheme "App" \
-            --archive-flags="-destination generic/platform=iOS" \
-            --team-id "$APP_STORE_CONNECT_TEAM_ID"
+      - - name: Build IPA
+  script: |
+    # Choose workspace if it exists, otherwise fall back to the project
+    if [ -d "ios/App/App.xcworkspace" ]; then
+      TARGET="--workspace ios/App/App.xcworkspace"
+    else
+      TARGET="--project ios/App/App.xcodeproj"
+    fi
+
+    xcode-project build-ipa \
+      $TARGET \
+      --scheme "App" \
+      --archive-flags="-destination generic/platform=iOS" \
+      --team-id "$APP_STORE_CONNECT_TEAM_ID"
