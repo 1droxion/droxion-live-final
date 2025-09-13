@@ -121,27 +121,73 @@ workflows:
           # show what was applied (optional)
           xcode-project show-build-settings | head -n 50 || true
 
-      - name: Build IPA
+            - name: Build IPA
         script: |
           set -e
-          # Export options for App Store, automatic signing
-          cat > "$HOME/export_options.plist" <<'PLIST'
+
+          # 1) Detect the bundle id from config (fallback to env)
+          BUNDLE_ID_FROM_CFG=$(node -e 'try{const f=require("fs");const j=JSON.parse(f.readFileSync("capacitor.config.json","utf8"));console.log(j.appId||"");}catch(e){console.log("")}')
+          APP_BUNDLE_ID="${BUNDLE_ID_FROM_CFG:-$BUNDLE_ID}"
+          if [[ -z "$APP_BUNDLE_ID" ]]; then
+            echo "❌ Could not determine bundle id"; exit 1
+          fi
+          echo "→ Bundle ID: $APP_BUNDLE_ID"
+
+          # 2) Find an installed App Store provisioning profile for this bundle id
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          MATCHED_PROFILE=""
+          PROFILE_NAME=""
+          TEAM_ID_DETECTED=""
+
+          shopt -s nullglob
+          for p in "$PROFILES_DIR"/*.mobileprovision; do
+            XML=$(/usr/bin/security cms -D -i "$p" 2>/dev/null) || continue
+            APP_ID=$(/usr/bin/plutil -extract Entitlements:application-identifier xml1 -o - - <<<"$XML" 2>/dev/null | /usr/bin/plutil -p - 2>/dev/null | /usr/bin/sed -E 's/^"([^"]+)".*$/\1/')
+            NAME=$(/usr/bin/plutil -extract Name xml1 -o - - <<<"$XML" 2>/dev/null | /usr/bin/plutil -p - 2>/dev/null | /usr/bin/sed -E 's/^"([^"]+)".*$/\1/')
+            METHOD=$(/usr/bin/plutil -extract ProvisionsAllDevices xml1 -o - - <<<"$XML" 2>/dev/null | /usr/bin/plutil -p - 2>/dev/null || echo "false")
+            TEAM=$(/usr/bin/plutil -extract TeamIdentifier.0 xml1 -o - - <<<"$XML" 2>/dev/null | /usr/bin/plutil -p - 2>/dev/null | /usr/bin/sed -E 's/^"([^"]+)".*$/\1/')
+
+            # App Store profile: ProvisionsAllDevices is false; application-identifier ends with the bundle id
+            if [[ "$APP_ID" == *".$APP_BUNDLE_ID" ]]; then
+              MATCHED_PROFILE="$p"
+              PROFILE_NAME="$NAME"
+              TEAM_ID_DETECTED="$TEAM"
+              break
+            fi
+          done
+
+          if [[ -z "$MATCHED_PROFILE" || -z "$PROFILE_NAME" ]]; then
+            echo "❌ No installed provisioning profile found for $APP_BUNDLE_ID"
+            echo "Make sure Codemagic Automatic signing is ON or upload an App Store provisioning profile for $APP_BUNDLE_ID."
+            exit 1
+          fi
+
+          echo "→ Using provisioning profile:"
+          echo "   Path : $MATCHED_PROFILE"
+          echo "   Name : $PROFILE_NAME"
+          echo "   Team : ${APP_STORE_CONNECT_TEAM_ID:-$TEAM_ID_DETECTED}"
+
+          # 3) Write export options that point to that exact profile (manual = explicit mapping)
+          cat > "$HOME/export_options.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${APP_STORE_CONNECT_TEAM_ID:-$TEAM_ID_DETECTED}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$APP_BUNDLE_ID</key><string>$PROFILE_NAME</string>
+            </dict>
             <key>compileBitcode</key><false/>
-            <key>destination</key><string>export</string>
-            <key>signingStyle</key><string>automatic</string>
             <key>stripSwiftSymbols</key><true/>
+            <key>destination</key><string>export</string>
           </dict>
           </plist>
           PLIST
 
-          echo "→ Using export options plist at $HOME/export_options.plist"
-          # Build from repo root, pointing to the workspace
-          cd "$CM_BUILD_DIR"
+          echo "→ Exporting IPA with explicit provisioning profile mapping"
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App" \
