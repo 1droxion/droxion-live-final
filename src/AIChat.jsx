@@ -15,7 +15,8 @@ const normHost = (u = "") => {
 };
 const host = (u) => normHost(u);
 
-const BAD_HOSTS = ["example.com","example.org"]; // allow google/wiki/forbes/etc
+// we allow google/wiki/forbes/etc; keep only placeholders blocked
+const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => {
   const h = host(u);
   return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
@@ -27,6 +28,10 @@ const firstImageUrl = (c) =>
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const toProxy = (u) => `${IMAGE_PROXY}${encodeURIComponent(u)}`;
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
+const faviconFor = (u="") => {
+  const h = host(u); if (!h) return null;
+  return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}`;
+};
 
 const timeAgo = (d) => {
   if (!d) return "";
@@ -71,16 +76,15 @@ const isYouTube = (u="") => {
 };
 
 /* --------- ranking & cleaning --------- */
-const GOOD_NEWS = [
-  "reuters.com","theguardian.com","bbc.com","bbc.co.uk","apnews.com","nytimes.com",
-  "wsj.com","ft.com","bloomberg.com","economist.com","npr.org",
-  "hindustantimes.com","indianexpress.com","livemint.com","moneycontrol.com","timesofindia.com",
-  "forbes.com","coindesk.com","cointelegraph.com"
+const HQ = [
+  "forbes.com","bloomberg.com","reuters.com","cnbc.com",
+  "apnews.com","ft.com","wsj.com","nytimes.com","theguardian.com","bbc.com","bbc.co.uk",
+  "coindesk.com","cointelegraph.com"
 ];
 const rankHost = (h) => {
   if (!h) return -50;
   if (BAD_HOSTS.some(b => h===b || h.endsWith("."+b))) return -200;
-  if (GOOD_NEWS.some(g => h===g || h.endsWith("."+g))) return 90;
+  if (HQ.some(g => h===g || h.endsWith("."+g))) return 100;
   if (/\b(news|finance|market|money|business|times|post|today)\b/.test(h)) return 40;
   return 10;
 };
@@ -102,7 +106,7 @@ const dedupeCards = (arr=[]) => {
 };
 const rankAndTrim = (cards=[], limit=12, allowWikiFallback=false) => {
   let filtered = (cards||[]).filter(Boolean).filter(c => !!c.url && !(c?.url && isFilteredSource(c.url)));
-  filtered = dedupeCards(filtered).sort((a,b)=> scoreCard(b) - scoreCard(a));
+  filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
   if (!filtered.length && allowWikiFallback) {
     const wiki = (cards||[]).find(c => (host(c.url||"")||"").includes("wikipedia.org"));
     if (wiki && wiki.url) filtered = [wiki];
@@ -133,7 +137,7 @@ function AIChat() {
   // live preview (while typing)
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
-  const [news, setNews] = useState([]);      // keep previous batch to avoid blink
+  const [news, setNews] = useState([]);
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
   const [loadingPanel, setLoadingPanel] = useState(false);
@@ -143,7 +147,7 @@ function AIChat() {
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
 
-  // scroll area ref to avoid “jump to bottom” while typing
+  // keyboard/scroll
   const scrollRef = useRef(null);
 
   /* base CSS + keyboard-safe fixes */
@@ -174,11 +178,27 @@ function AIChat() {
       @media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
       .skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
       @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
+
       /* keyboard-aware fixed elements */
       .fixed-bottom { position: fixed; left:0; right:0; bottom: calc(env(safe-area-inset-bottom) + var(--kb)); }
       .fixed-preview { position: fixed; left:0; right:0; bottom: calc(88px + var(--kb)); overflow-anchor: none; }
+
       /* scroll container padding so input is never hidden */
       .chat-scroll { scroll-padding-bottom: 160px; overscroll-behavior: contain; }
+
+      /* --- NEW: structured message layout --- */
+      .msg { padding:12px; border-radius:12px; }
+      .answer { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
+      .answer.expanded { -webkit-line-clamp:unset; max-height:none; }
+      .small-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#9ca3af; }
+      .actions-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+      .action-btn { font-size:12px; padding:6px 10px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(255,255,255,.06); }
+      .sources-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+      .src-tile { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); }
+      .src-title { font-size:12px; line-height:1.3; color:#e5e7eb; }
+      .src-sub { font-size:11px; color:#9ca3af; }
+      .toggle-more { margin-top:6px; font-size:12px; color:#cbd5e1; }
+      .dim-while-typing { opacity:.7; filter:blur(1px); transition:opacity .2s, filter .2s; }
     `;
     document.head.appendChild(style);
 
@@ -263,8 +283,8 @@ function AIChat() {
     try {
       const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q, mode: "followup" } });
       const arr = (data?.suggestions || []).filter(Boolean);
-      return (arr.length ? arr : ["Explain more","Pros & cons","Give steps","Show sources"]).slice(0,4);
-    } catch { return ["Explain more","Pros & cons","Give steps","Show sources"]; }
+      return (arr.length ? arr : ["Explain more","Pros & cons","Give steps"]).slice(0,3);
+    } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
   const pushWithFollowups = async (md, cards, q) => {
@@ -401,123 +421,86 @@ function AIChat() {
     return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
-  const HeadlineCard = ({ card }) => {
-    if (!card?.url || isFilteredSource(card.url)) return null;
-    const pv = bestPreview(card, true);
+  // Compact media block (YouTube, gallery, weather)
+  const MediaBlock = ({ cards = [] }) => {
+    if (!cards.length) return null;
     return (
-      <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
-        <div className="rounded-xl overflow-hidden glass">
-          {pv ? (
-            <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
-          ) : <div className="aspect-[16/9] skel" />}
-          <div className="p-3">
-            <div className="text-[11px] text-gray-400 mb-1">{displaySource(card)}</div>
-            <div className="text-sm font-semibold line-clamp-2 leading-tight">{card.title}</div>
-            <div className="text-[11px] text-gray-500 mt-1">{timeAgo(card.publishedAt || card.time)}</div>
-          </div>
+      <div className="grid grid-cols-1 gap-8 mt-3">
+        {cards.map((card, i) => {
+          if (card.type === "weather") {
+            return (
+              <div key={i} className="glass rounded-lg p-3 flex items-center gap-3">
+                {card?.icon && <SmartImage url={card.icon} title={card.title} />}
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">{card?.title || "Weather"}</div>
+                  <div className="text-xs text-gray-400 truncate">{card?.subtitle || card?.meta}</div>
+                </div>
+              </div>
+            );
+          }
+          if (card.type === "gallery" && Array.isArray(card.images)) {
+            const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
+            if (!urls.length) return null;
+            return <div key={i} className="grid grid-cols-2 gap-2">{urls.map((u,j)=><SmartImage key={j} url={u} title="image" />)}</div>;
+          }
+          if (card.type === "youtube" || isYouTube(card.url || "")) {
+            const id = getYouTubeId(card.url || ""); if (!id) return null;
+            return (
+              <div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${id}`}
+                  title={card.title || "YouTube"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            );
+          }
+          return null;
+        })}
+      </div>
+    );
+  };
+
+  // Sources & actions builders
+  const buildLinkSets = (cards = []) => {
+    const links = (cards || []).filter(c => ["web","link","wiki","news","stock","crypto"].includes(c.type) && c.url && !isFilteredSource(c.url));
+    // prioritize high-quality domains first
+    const sorted = dedupeCards(links).sort((a,b) => scoreCard(b) - scoreCard(a));
+    // quick actions: Forbes/Bloomberg/Reuters/CNBC + Google + Wikipedia + YouTube if present
+    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","google.com","wikipedia.org","youtube.com","youtu.be"];
+    const byHost = {};
+    for (const c of sorted) {
+      const h = host(c.url);
+      if (!byHost[h]) byHost[h] = c;
+    }
+    const quickActions = [];
+    for (const ph of pref) {
+      const k = Object.keys(byHost).find(h => h===ph || h.endsWith("."+ph));
+      if (k) quickActions.push(byHost[k]);
+    }
+    // sources grid = top 6 unique hosts (HQ first)
+    const grid = Object.values(byHost).sort((a,b)=> scoreCard(b)-scoreCard(a)).slice(0,6);
+    return { quickActions, grid };
+  };
+
+  const SourceTile = ({ c }) => {
+    const fav = faviconFor(c.url);
+    const ttl = (c.title || "").replace(/\s+[-–]\s+.*$/,"").slice(0, 60);
+    return (
+      <a href={c.url} target="_blank" rel="noreferrer" className="src-tile hover:bg-white/10 transition">
+        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
+        <div className="min-w-0">
+          <div className="src-title truncate">{ttl || (host(c.url) || "source")}</div>
+          <div className="src-sub truncate">{displaySource(c)}</div>
         </div>
       </a>
     );
   };
 
-  const CryptoMini = ({ c }) => (
-    <a href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
-      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
-      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
-      {c.price && <div className="text-base mt-1">{c.price}</div>}
-      {typeof c.change!=="undefined" && (
-        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
-      )}
-    </a>
-  );
-
-  const WeatherMini = ({ w }) => (
-    <div className="glass rounded-lg p-3 flex items-center gap-3">
-      {w?.icon && <SmartImage url={w.icon} title={w.title} />}
-      <div className="min-w-0">
-        <div className="text-sm font-semibold truncate">{w?.title || "Weather"}</div>
-        <div className="text-xs text-gray-400 truncate">{w?.subtitle || w?.meta}</div>
-      </div>
-    </div>
-  );
-
-  const SmartCard = ({ card }) => {
-    if (!card) return null;
-
-    // YouTube
-    if (card.type === "youtube" || isYouTube(card.url || "")) {
-      const id = getYouTubeId(card.url || ""); if (!id) return null;
-      return (
-        <div className="embed-responsive embed-16by9 rounded overflow-hidden glass">
-          <iframe
-            src={`https://www.youtube.com/embed/${id}`}
-            title={card.title || "YouTube"}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
-      );
-    }
-
-    if (card.type === "weather") return <WeatherMini w={card} />;
-
-    if (card.type === "gallery" && Array.isArray(card.images)) {
-      const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean);
-      if (!urls.length) return null;
-      return <div className="grid grid-cols-2 gap-2">{urls.slice(0,10).map((u,i)=><SmartImage key={i} url={u} title="image" />)}</div>;
-    }
-
-    if (card.type === "image") {
-      const u = firstImageUrl(card) || card.url; if (!u) return null;
-      return <SmartImage url={u} title={card.title} />;
-    }
-
-    if (["web","link","wiki","news","stock","crypto"].includes(card.type)) {
-      if (!card.url || isFilteredSource(card.url)) return null;
-      const pv = bestPreview(card, true); // previews for ALL link types
-      return (
-        <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
-          {pv && (
-            <img src={pv.prox} alt="" className="w-full rounded mb-2" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
-          )}
-          {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
-          <div className="text-xs text-gray-400 mt-1">{displaySource(card)}{card.time ? ` • ${card.time}` : ""}</div>
-          {card.snippet && <div className="text-xs text-gray-300 mt-1">{card.snippet}</div>}
-          {card.description && <div className="text-xs text-gray-300 mt-1">{card.description}</div>}
-          {card.meta && <div className="text-[11px] text-gray-400 mt-1">{card.meta}</div>}
-        </a>
-      );
-    }
-
-    if (card.html) return <div className="prose prose-invert max-w-none glass rounded-lg p-3" dangerouslySetInnerHTML={{ __html: card.html }} />;
-    if (card.text) return <div className="glass rounded-lg p-3 text-sm">{card.text}</div>;
-    return null;
-  };
-
-  const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
-
-  const SourceChips = ({ cards, max = 6 }) => {
-    const usable = (cards || []).filter(c => c?.url && !isFilteredSource(c.url));
-    if (!usable.length) return null;
-    const byDomain = {};
-    for (const c of usable) {
-      const h = host(c.url);
-      if (!byDomain[h]) byDomain[h] = { host: h, url: c.url, count: 0 };
-      byDomain[h].count++;
-    }
-    const list = Object.values(byDomain).sort((a,b)=> b.count - a.count).slice(0, max);
-    return (
-      <div className="mt-2 flex flex-wrap gap-2">
-        {list.map((d,i)=>(
-          <a key={i} href={d.url} target="_blank" rel="noreferrer" className="pill hover:bg-white hover:text-black transition">
-            {d.host}{d.count>1 ? ` +${d.count-1}` : ""}
-          </a>
-        ))}
-      </div>
-    );
-  };
-
   /* ---------------------- UI ---------------------- */
+  const [expandedIdx, setExpandedIdx] = useState(null);
+
   return (
     <div className="flex flex-col min-h-[100svh]">
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
@@ -533,11 +516,16 @@ function AIChat() {
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
-              const hasCards = !!msg.cards?.length;
+              const cards = msg.cards || [];
+              // split media vs links
+              const mediaCards = cards.filter(c => ["youtube","image","gallery","weather"].includes(c.type) || isYouTube(c.url || ""));
+              const linkSets = buildLinkSets(cards);
+              const hasAnything = cards.length>0 || (msg.content && msg.content.length>0);
+
               return (
-                <div key={i} className={`rounded-xl p-4 ${isUser ? "glass-2" : "glass"}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-[11px] uppercase tracking-wider text-gray-400">{isUser ? "You" : "Droxion"}</div>
+                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
                     {!isUser && msg.content && (
                       <button onClick={()=>copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
                         <FaRegCopy /> {copiedIdx===i ? "Copied" : "Copy"}
@@ -545,40 +533,80 @@ function AIChat() {
                     )}
                   </div>
 
-                  {msg.content && (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                      components={{
-                        img: (props) => {
-                          const src = props.src;
-                          return (
-                            <img
-                              {...props}
-                              src={src}
-                              className="rounded-lg my-2 w-full glass"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                              onError={(e)=>{
-                                const el=e.currentTarget;
-                                const step=el.dataset.step||"orig";
-                                if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
-                                if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
-                                el.style.display="none";
-                              }}
-                            />
-                          );
-                        },
-                        iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
-                        a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
+                  {/* Answer (line clamp, toggle) */}
+                  {!isUser && msg.content && (
+                    <>
+                      <div className={`answer ${expandedIdx===i ? "expanded" : ""}`}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeRaw]}
+                          components={{
+                            img: (props) => {
+                              const src = props.src;
+                              return (
+                                <img
+                                  {...props}
+                                  src={src}
+                                  className="rounded-lg my-2 w-full glass"
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e)=>{
+                                    const el=e.currentTarget;
+                                    const step=el.dataset.step||"orig";
+                                    if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
+                                    if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
+                                    el.style.display="none";
+                                  }}
+                                />
+                              );
+                            },
+                            iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
+                            a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                      <button className="toggle-more underline decoration-gray-600" onClick={()=>setExpandedIdx(expandedIdx===i?null:i)}>
+                        {expandedIdx===i ? "Show less" : "Show more"}
+                      </button>
+                    </>
                   )}
 
-                  {!isUser && hasCards && <SourceChips cards={msg.cards} />}
-                  {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
+                  {/* Media between answer and sources */}
+                  {!isUser && <MediaBlock cards={mediaCards} />}
+
+                  {/* Quick actions */}
+                  {!isUser && linkSets.quickActions.length>0 && (
+                    <div className="actions-row">
+                      {linkSets.quickActions.slice(0,5).map((c,idx)=>(
+                        <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                          {displaySource(c).replace(/^m\./,"")}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Sources grid */}
+                  {linkSets.grid.length>0 && (
+                    <div className="mt-3">
+                      <div className="small-label mb-1">Sources</div>
+                      <div className="sources-grid">
+                        {linkSets.grid.map((c,idx)=> <SourceTile key={idx} c={c} />)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Follow-ups under sources */}
+                  {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
+                    <div className="mt-3 flex flex-wrap gap-8">
+                      {msg.followups.slice(0,3).map((s,idx)=>(
+                        <button key={idx} onClick={()=>handleSend(s)} className="action-btn">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -595,9 +623,9 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL – keyboard safe, stays mounted */}
+      {/* LIVE PREVIEW PANEL – keyboard safe, dims while typing */}
       {focused && (
-        <div className="fixed-preview fixed-panel">
+        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
               <div className="mb-2">
@@ -605,7 +633,23 @@ function AIChat() {
                 <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
                   <div className="flex gap-2">
                     {(news.length ? news : Array.from({length:3})).map((c,i)=>
-                      c ? <HeadlineCard key={i} card={c} /> :
+                      c ? (
+                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            {(() => {
+                              const pv = bestPreview(c, true);
+                              return pv
+                                ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
+                                : <div className="aspect-[16/9] skel" />;
+                            })()}
+                            <div className="p-3">
+                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                              <div className="text-[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                            </div>
+                          </div>
+                        </a>
+                      ) : (
                         <div key={i} className="hitem pr-3">
                           <div className="rounded-xl overflow-hidden glass">
                             <div className="aspect-[16/9] skel" />
@@ -615,16 +659,33 @@ function AIChat() {
                             </div>
                           </div>
                         </div>
+                      )
                     )}
                   </div>
                 </div>
-                {news.length>0 && <SourceChips cards={news} max={8} />}
               </div>
 
               <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? <WeatherMini w={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
+                <div>{weather ? (
+                  <div className="glass rounded-lg p-3 flex items-center gap-3">
+                    {weather?.icon && <SmartImage url={weather.icon} title={weather.title} />}
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">{weather?.title || "Weather"}</div>
+                      <div className="text-xs text-gray-400 truncate">{weather?.subtitle || weather?.meta}</div>
+                    </div>
+                  </div>
+                ) : <div className="glass rounded-lg p-6 skel" />}</div>
                 <div className="grid grid-cols-1 gap-2">
-                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? <CryptoMini key={i} c={c} /> : <div key={i} className="glass rounded-lg p-6 skel" />)}
+                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
+                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                      {c.price && <div className="text-base mt-1">{c.price}</div>}
+                      {typeof c.change!=="undefined" && (
+                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
+                      )}
+                    </a>
+                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
                 </div>
               </div>
 
