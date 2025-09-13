@@ -47,10 +47,20 @@ const timeAgo = (d) => {
 const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
-const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
+
+// ✅ tolerant to “wether / wheather / whether”
+const wantsWeather = (s = "") => {
+  const q = s.trim().toLowerCase();
+  if (/\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/.test(q)) return true;
+  if (/\bwether\b/.test(q)) return true;
+  if (/\bwheather\b/.test(q)) return true;
+  if (/^(whether|wether)$/i.test(q)) return true;
+  return false;
+};
+
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
-// ---- intent gate: show sources only when it makes sense
+// ---- intent gate: show sources only when it makes sense (for SOURCES grid, not pills)
 const isSearchy = (s="") => {
   const q = s.toLowerCase();
   return (
@@ -208,7 +218,6 @@ const WeatherCard = ({ card }) => {
   const RH = (n(card.humidity)!=null) ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip!=null && card.precip!=="") ? `${card.precip}${typeof card.precip==="number" ? " mm" : ""}` : "";
 
-  // Derive compact hourly items
   const hrs = (card.hourly || []).slice(0, 8).map(h => ({
     t: pick(h, ["time","ts","timestamp","date"]),
     icon: pick(h, ["icon","icon_url","image"]),
@@ -300,7 +309,6 @@ function AIChat() {
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
 
-  // keyboard/scroll
   const scrollRef = useRef(null);
 
   /* base CSS + keyboard-safe fixes */
@@ -332,14 +340,11 @@ function AIChat() {
       .skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
       @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
 
-      /* keyboard-aware fixed elements */
       .fixed-bottom { position: fixed; left:0; right:0; bottom: calc(env(safe-area-inset-bottom) + var(--kb)); }
       .fixed-preview { position: fixed; left:0; right:0; bottom: calc(88px + var(--kb)); overflow-anchor: none; }
 
-      /* scroll container padding so input is never hidden */
       .chat-scroll { scroll-padding-bottom: 160px; overscroll-behavior: contain; }
 
-      /* structured message layout */
       .msg { padding:12px; border-radius:12px; }
       .answer { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
       .answer.expanded { -webkit-line-clamp:unset; max-height:none; }
@@ -354,7 +359,6 @@ function AIChat() {
       .dim-while-typing { opacity:.7; filter:blur(1px); transition:opacity .2s, filter .2s; }
       .favicon-only { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.14); }
 
-      /* WEATHER CARD */
       .weather-card .wstat { text-align:left; }
       .weather-card .wlabel { color:#9ca3af; margin-bottom:2px; }
       .weather-card .wval { font-weight:600; }
@@ -363,7 +367,6 @@ function AIChat() {
     `;
     document.head.appendChild(style);
 
-    // visualViewport -> compute keyboard height to push fixed bars up
     const vv = window.visualViewport;
     const handleVV = () => {
       if (!vv) return;
@@ -424,7 +427,6 @@ function AIChat() {
         setNews(newsRanked.length ? newsRanked : news);
 
         const wcards = (rw?.data?.cards || []).filter(Boolean);
-        // normalize first weather card if any
         const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
         setWeather(w ? normalizeWeatherCard(w) : null);
 
@@ -531,7 +533,6 @@ function AIChat() {
       if (wantsWeather(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const rawCards = (r.data?.cards || []).filter(Boolean);
-        // normalize & keep only weather
         const normalized = rawCards
           .map(c => (c.type==="weather" ? c : { ...c, type:"weather" }))
           .map(normalizeWeatherCard)
@@ -590,7 +591,6 @@ function AIChat() {
     return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
-  // Try to obtain a preview for a link: OG/Twitter image → screenshot → favicon-only
   const LinkPreview = ({ card }) => {
     const [img, setImg] = useState(null);
     const [tried, setTried] = useState(false);
@@ -609,14 +609,12 @@ function AIChat() {
       };
       run();
       return () => { mounted = false; };
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-    }, [card?.url]);
+    }, [card?.url]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
     if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
     if (img) return <SmartImage url={img} title={card.title} />;
 
-    // favicon-only compact tile as last resort
     const fav = faviconFor(card.url);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
@@ -629,7 +627,6 @@ function AIChat() {
     );
   };
 
-  // Compact media block (YouTube, gallery, weather)
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
     return (
@@ -662,7 +659,7 @@ function AIChat() {
     );
   };
 
-  // Sources & actions builders
+  // build set of source links for grids/pills
   const buildLinkSets = (cards = [], searchy = false) => {
     const links = (cards || []).filter(c =>
       ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
@@ -672,7 +669,6 @@ function AIChat() {
     const byHost = {};
     for (const c of sorted) { const h = host(c.url); if (!byHost[h]) byHost[h] = c; }
 
-    // prefer HQ; only include google/wiki as actions when searchy
     const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com"];
     if (searchy) pref.push("google.com","wikipedia.org","youtube.com","youtu.be");
 
@@ -690,25 +686,11 @@ function AIChat() {
     return { quickActions, grid };
   };
 
-  const SourceTile = ({ c }) => {
-    const fav = faviconFor(c.url);
-    const ttl = (c.title || "").replace(/\s+[-–]\s+.*$/,"").slice(0, 60);
-    return (
-      <a href={c.url} target="_blank" rel="noreferrer" className="src-tile hover:bg-white/10 transition">
-        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
-        <div className="min-w-0">
-          <div className="src-title truncate">{ttl || (host(c.url) || "source")}</div>
-          <div className="src-sub truncate">{displaySource(c)}</div>
-        </div>
-      </a>
-    );
-  };
-
   /* ---------------------- UI ---------------------- */
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col min-h=[100svh] min-h-[100svh]">
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -725,13 +707,17 @@ function AIChat() {
               const cards = msg.cards || [];
               const mediaCards = cards.filter(c => ["youtube","image","gallery","weather"].includes(c.type) || isYouTube(c.url || ""));
 
-              // Decide if we should show sources for THIS assistant reply
               const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
               const showSearchy = isSearchy(userPrompt);
               const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
               const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard);
 
               const linkSets = buildLinkSets(cards, shouldShowSources);
+
+              // Build google/news pill URLs from the user's prompt text
+              const qp = encodeURIComponent(userPrompt || "");
+              const googleUrl = `https://www.google.com/search?q=${qp}`;
+              const newsUrl = `https://www.google.com/search?q=${qp ? qp + "+latest+news" : "latest+news"}`;
 
               return (
                 <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
@@ -744,7 +730,7 @@ function AIChat() {
                     )}
                   </div>
 
-                  {/* Answer (line clamp, toggle) */}
+                  {/* Answer */}
                   {!isUser && msg.content && (
                     <>
                       <div className={`answer ${expandedIdx===i ? "expanded" : ""}`}>
@@ -787,25 +773,30 @@ function AIChat() {
                   {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* Quick actions (searchy/realtime only) */}
-                  {!isUser && shouldShowSources && linkSets.quickActions.length>0 && (
+                  {/* ✅ Quick actions – ALWAYS show base icons; append HQ source pills when present */}
+                  {!isUser && (
                     <div className="actions-row">
-                      {linkSets.quickActions.slice(0,5).map((c,idx)=>(
-                        <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                      <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                        🔎 google: {userPrompt || "search"}
+                      </a>
+                      <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                        📰 search: {userPrompt ? `${userPrompt} latest news` : "latest news"}
+                      </a>
+                      {linkSets.quickActions.slice(0,3).map((c,idx)=>(
+                        <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
                           {displaySource(c).replace(/^m\./,"")}
                         </a>
                       ))}
                     </div>
                   )}
 
-                  {/* Sources grid (searchy/realtime only) */}
+                  {/* Sources grid – only when actually helpful */}
                   {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
                       <div className="sources-grid">
                         {linkSets.grid.map((c,idx)=> (
                           <div key={idx}>
-                            {/* Always try to show a visual preview */}
                             <LinkPreview card={c} />
                           </div>
                         ))}
@@ -813,7 +804,7 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Follow-ups under sources */}
+                  {/* Follow-ups */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
                     <div className="mt-3 flex flex-wrap gap-8">
                       {msg.followups.slice(0,3).map((s,idx)=>(
@@ -839,7 +830,7 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL – keyboard safe, dims while typing */}
+      {/* LIVE PREVIEW PANEL */}
       {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
@@ -918,7 +909,7 @@ function AIChat() {
         </div>
       )}
 
-      {/* Composer – keyboard aware */}
+      {/* Composer */}
       <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
