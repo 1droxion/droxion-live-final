@@ -11,7 +11,6 @@ workflows:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
-        # speed up npm
         NPM_CONFIG_PREFER_OFFLINE: "true"
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
@@ -29,6 +28,7 @@ workflows:
     scripts:
       - name: Show versions
         script: |
+          set -e
           node -v
           npm -v
           pod --version
@@ -50,6 +50,7 @@ workflows:
 
       - name: Build web app
         script: |
+          set -e
           npm rebuild rollup -f || true
           npm run build
 
@@ -59,29 +60,29 @@ workflows:
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (safe quoted heredoc)
+          # Create minimal config if missing (write via Node to avoid YAML heredoc issues)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            cat > capacitor.config.ts <<'EOF'
-            export default {
-              appId: process.env.BUNDLE_ID || "com.droxion.app",
-              appName: process.env.APP_NAME || "Droxion",
-              webDir: process.env.WEB_DIR || "dist",
-              bundledWebRuntime: false
-            };
-EOF
+            node -e "const fs=require('fs'); const c = [
+              'export default {',
+              `  appId: process.env.BUNDLE_ID || \"${process.env.BUNDLE_ID || 'com.droxion.app'}\",`,
+              `  appName: process.env.APP_NAME || \"${process.env.APP_NAME || 'Droxion'}\",`,
+              `  webDir: process.env.WEB_DIR || \"${process.env.WEB_DIR || 'dist'}\",`,
+              '  bundledWebRuntime: false',
+              '};',
+              '' ].join('\\n'); fs.writeFileSync('capacitor.config.ts', c);"
           fi
 
-          # Initialize only if not initialized
+          # Initialize if needed
           if ! npx cap doctor >/dev/null 2>&1; then
             npx cap init "${APP_NAME}" "${BUNDLE_ID}" --web-dir="${WEB_DIR}" --npm-client=npm
           fi
 
-          # Ensure iOS platform exists
+          # Add iOS if missing
           if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-          # Sync web assets & plugins
+          # Sync web + plugins
           npx cap copy ios
           npx cap sync ios
 
@@ -110,11 +111,13 @@ EOF
 
       - name: Bump build number
         script: |
+          set -e
           if [ -d ios/App ]; then cd ios/App; else cd ios; fi
           agvtool new-version -all $BUILD_NUMBER || true
 
       - name: Build IPA
         script: |
+          set -e
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App" \
