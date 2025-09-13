@@ -19,7 +19,7 @@ workflows:
         - ~/Library/Caches/CocoaPods
     scripts:
       - name: Install dependencies
-        script: npm ci
+        script: npm install --legacy-peer-deps
       - name: Build web app
         script: npm run build
       - name: Install Capacitor CLI
