@@ -54,13 +54,13 @@ workflows:
           npm rebuild rollup -f || true
           npm run build
 
-            - name: Generate iOS project (Capacitor)
+      - name: Generate iOS project (Capacitor)
         script: |
           set -e
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (use Node; no shell expansion)
+          # Create minimal config if missing (safe Node write)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
             node -e 'const fs=require("fs");const e=process.env;const s=`export default {
   appId: "${e.BUNDLE_ID||"com.droxion.app"}",
@@ -71,30 +71,30 @@ workflows:
 `;fs.writeFileSync("capacitor.config.ts",s);'
           fi
 
-          # Initialize if needed
+          # Initialize only if not initialized
           if ! npx cap doctor >/dev/null 2>&1; then
             npx cap init "${APP_NAME}" "${BUNDLE_ID}" --web-dir="${WEB_DIR}" --npm-client=npm
           fi
 
-          # Add iOS if missing
+          # Ensure iOS platform exists
           if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-          # Sync web + plugins
+          # Sync web assets & native plugins
           npx cap copy ios
           npx cap sync ios
 
-          # Verify expected structure
+          # Verify ios/App exists
           if [ ! -d ios/App ]; then
             echo "❌ ios/App was not generated. Check Capacitor config."
             exit 1
           fi
 
-          # iOS permissions (idempotent)
+          # Add permissions
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
-          
+
       - name: Install CocoaPods
         script: |
           set -e
