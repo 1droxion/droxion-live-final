@@ -1,0 +1,53 @@
+workflows:
+  ios-capacitor:
+    name: Droxion iOS Build
+    max_build_duration: 60
+    environment:
+      vars:
+        APP_NAME: Droxion
+        BUNDLE_ID: com.droxion.app
+        WEB_DIR: dist
+      node: 20
+      xcode: 15.4
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.droxion.app
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/Library/Caches/CocoaPods
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Build web app
+        script: npm run build
+      - name: Add Capacitor + iOS
+        script: |
+          npm i -D @capacitor/cli
+          npm i @capacitor/core @capacitor/ios
+          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies
+          npx cap add ios
+          npx cap copy ios
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+          cd ../../
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "ios/App/App.xcworkspace" \
+            --scheme "App" \
+            --archive-flags="-destination generic/platform=iOS" \
+            --team-id "$APP_STORE_CONNECT_TEAM_ID"
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_API_KEY
+        key_id: $APP_STORE_CONNECT_KEY_ID
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        submit_to_app_store: false
