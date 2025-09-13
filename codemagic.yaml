@@ -31,6 +31,12 @@ workflows:
           npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies
           npx cap add ios
           npx cap copy ios
+          cd ios/App
+          if [ ! -f "Podfile" ]; then
+            echo "No Podfile found. Creating one..."
+            pod init
+          fi
+          cd ../../
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
@@ -39,6 +45,10 @@ workflows:
           cd ios/App
           pod repo update
           pod install --repo-update
+          if [ ! -d "App.xcworkspace" ]; then
+            echo "❌ No App.xcworkspace generated. Pod install failed."
+            exit 1
+          fi
           ls -la
           cd ../../
 
