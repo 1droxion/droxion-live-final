@@ -2,42 +2,76 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
+
     environment:
+      node: 20
+      xcode: 15.4
+      cocoapods: default
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
-      node: 20
-      xcode: 15.4
-      cocoapods: default
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.droxion.app
+
     cache:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
+        - $CM_BUILD_DIR/ios/Pods
+
     scripts:
-      - name: Install dependencies
-        script: npm ci
+      - name: Show versions
+        script: |
+          node -v
+          npm -v
+          pod --version
+          xcodebuild -version
+
+      - name: Install dependencies (skip optional rollup prebuilds)
+        script: |
+          npm ci --omit=optional --no-audit --no-fund
+
       - name: Build web app
-        script: npm run build
-      - name: Generate iOS project
+        script: |
+          npm run build
+
+      - name: Generate iOS project (Capacitor)
         script: |
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
-          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies
+          # init if needed; ignore if already initialized
+          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --skip-dependencies || true
           npx cap add ios || true
+          npx cap copy ios
           npx cap sync ios
+          # Usage descriptions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install --repo-update
+
+      - name: Bump build number
+        script: |
+          cd ios/App
+          agvtool new-version -all $BUILD_NUMBER || true
+
       - name: Build IPA
         script: |
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App" \
+            --archive-configuration Release \
             --archive-flags="-destination generic/platform=iOS" \
             --team-id "$APP_STORE_CONNECT_TEAM_ID"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.log
 
     publishing:
       app_store_connect:
