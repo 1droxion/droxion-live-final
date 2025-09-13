@@ -452,8 +452,8 @@ function AIChat() {
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
-  const pushWithFollowups = async (md, cards, q) => {
-    setMessages((p) => [...p, { role: "assistant", content: md, cards }]);
+  const pushWithFollowups = async (md, cards, q, steps=[]) => {
+    setMessages((p) => [...p, { role: "assistant", content: md, cards, steps }]);
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
@@ -559,9 +559,9 @@ function AIChat() {
             cards = [{ type:"gallery", images: rr.data.images }];
           }
           if (!cards.length) cards = [{ type:"gallery", images: [unsplash(q), unsplash(q+" photo")].filter(Boolean) }];
-          await pushWithFollowups(`### Images for **${q}**`, cards, content);
+          await pushWithFollowups(`### Images for **${q}**`, cards, content, rr.data?.steps || []);
         } catch {
-          await pushWithFollowups(`### Images for **${q}**`, [{ type:"gallery", images:[unsplash(q)] }], content);
+          await pushWithFollowups(`### Images for **${q}**`, [{ type:"gallery", images:[unsplash(q)] }], content, ["Used Unsplash public endpoint"]);
         }
         setTyping(false); return;
       }
@@ -591,6 +591,7 @@ function AIChat() {
     return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
+  // Try to obtain a preview for a link: OG/Twitter image → screenshot → favicon-only
   const LinkPreview = ({ card }) => {
     const [img, setImg] = useState(null);
     const [tried, setTried] = useState(false);
@@ -609,12 +610,14 @@ function AIChat() {
       };
       run();
       return () => { mounted = false; };
-    }, [card?.url]); // eslint-disable-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [card?.url]);
 
     if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
     if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
     if (img) return <SmartImage url={img} title={card.title} />;
 
+    // favicon-only compact tile as last resort
     const fav = faviconFor(card.url);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
@@ -627,6 +630,7 @@ function AIChat() {
     );
   };
 
+  // Compact media block (YouTube, gallery, weather, images-grid)
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
     return (
@@ -634,6 +638,29 @@ function AIChat() {
         {cards.map((card, i) => {
           if (card.type === "weather") {
             return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
+          }
+          if (card.type === "images-grid" && Array.isArray(card.images)) {
+            const items = card.images.slice(0, 24);
+            return (
+              <div key={i} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {items.map((it, j) => {
+                  const u = it.url || it.thumb;
+                  const srcHost = (it.source || "").replace(/^https?:\/\/(www\.)?/,"");
+                  return (
+                    <a key={j} href={it.pageUrl || u} target="_blank" rel="noreferrer"
+                      className="relative group block rounded-lg overflow-hidden glass">
+                      <img src={u} alt={it.title || ""} className="w-full aspect-[4/3] object-cover"
+                        loading="lazy" referrerPolicy="no-referrer" />
+                      <div className="absolute left-1 top-1 px-2 py-0.5 rounded text-[10px]
+                                      bg-black/60 border border-white/10">
+                        {srcHost || "source"}
+                      </div>
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition bg-black/30" />
+                    </a>
+                  );
+                })}
+              </div>
+            );
           }
           if (card.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
@@ -659,7 +686,7 @@ function AIChat() {
     );
   };
 
-  // build set of source links for grids/pills
+  // Sources & actions builders (for general results)
   const buildLinkSets = (cards = [], searchy = false) => {
     const links = (cards || []).filter(c =>
       ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
@@ -690,7 +717,7 @@ function AIChat() {
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
-    <div className="flex flex-col min-h=[100svh] min-h-[100svh]">
+    <div className="flex flex-col min-h-[100svh]">
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -705,8 +732,11 @@ function AIChat() {
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               const cards = msg.cards || [];
-              const mediaCards = cards.filter(c => ["youtube","image","gallery","weather"].includes(c.type) || isYouTube(c.url || ""));
+              const mediaCards = cards.filter(c =>
+                ["youtube","image","gallery","weather","images-grid"].includes(c.type) || isYouTube(c.url || "")
+              );
 
+              // Decide if we should show sources for THIS assistant reply
               const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
               const showSearchy = isSearchy(userPrompt);
               const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
@@ -730,7 +760,7 @@ function AIChat() {
                     )}
                   </div>
 
-                  {/* Answer */}
+                  {/* Answer (line clamp, toggle) */}
                   {!isUser && msg.content && (
                     <>
                       <div className={`answer ${expandedIdx===i ? "expanded" : ""}`}>
@@ -773,7 +803,22 @@ function AIChat() {
                   {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* ✅ Quick actions – ALWAYS show base icons; append HQ source pills when present */}
+                  {/* 🔹 Explicit Sources pills sent by backend (e.g., for images) */}
+                  {!isUser && (cards.find(c => c.type === "sources")) && (
+                    <div className="mt-3">
+                      <div className="small-label mb-1">Sources</div>
+                      <div className="actions-row">
+                        {cards.find(c => c.type === "sources").links.slice(0,10).map((l,idx)=>(
+                          <a key={idx} href={l.url} target="_blank" rel="noreferrer"
+                            className="action-btn hover:bg-white hover:text-black transition">
+                            {l.title}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick actions (google/news + HQ sources) */}
                   {!isUser && (
                     <div className="actions-row">
                       <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
@@ -790,7 +835,7 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Sources grid – only when actually helpful */}
+                  {/* Sources grid (derived from cards) */}
                   {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
@@ -804,7 +849,7 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Follow-ups */}
+                  {/* Follow-ups under sources */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
                     <div className="mt-3 flex flex-wrap gap-8">
                       {msg.followups.slice(0,3).map((s,idx)=>(
