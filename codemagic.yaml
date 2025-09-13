@@ -11,7 +11,7 @@ workflows:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
-        # Speed up npm by using cache aggressively (safe)
+        # speed up npm
         NPM_CONFIG_PREFER_OFFLINE: "true"
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
@@ -22,7 +22,7 @@ workflows:
 
     cache:
       cache_paths:
-        - ~/.npm               # npm package cache (biggest speedup after first success)
+        - ~/.npm
         - $CM_BUILD_DIR/ios/Pods
         - ~/Library/Caches/CocoaPods
 
@@ -34,15 +34,14 @@ workflows:
           pod --version
           xcodebuild -version
 
-      # Faster installs: prefer cached tarballs; robust fallback if lock is incompatible on CI
       - name: Install dependencies (fast; prefer offline; keep optional deps)
         script: |
           set -e
-          echo "→ npm ci (prefer-offline, no audit/fund)"
+          echo "→ npm ci (prefer-offline)"
           if npm ci --prefer-offline --no-audit --no-fund; then
             echo "✓ npm ci succeeded"
           else
-            echo "⚠ npm ci failed — falling back to clean install with legacy peers"
+            echo "⚠ npm ci failed — fallback to clean install"
             rm -rf node_modules
             mv package-lock.json package-lock.ci.bak || true
             npm config set legacy-peer-deps true
@@ -51,7 +50,6 @@ workflows:
 
       - name: Build web app
         script: |
-          # Ensure rollup binary is good even if cache reused an odd one
           npm rebuild rollup -f || true
           npm run build
 
@@ -61,36 +59,39 @@ workflows:
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (idempotent)
+          # Create minimal config if missing (safe quoted heredoc)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            cat > capacitor.config.ts <<EOF
+            cat > capacitor.config.ts <<'EOF'
             export default {
-              appId: "${BUNDLE_ID}",
-              appName: "${APP_NAME}",
-              webDir: "${WEB_DIR}",
+              appId: process.env.BUNDLE_ID || "com.droxion.app",
+              appName: process.env.APP_NAME || "Droxion",
+              webDir: process.env.WEB_DIR || "dist",
               bundledWebRuntime: false
             };
-            EOF
+EOF
           fi
 
-          # Initialize if needed
+          # Initialize only if not initialized
           if ! npx cap doctor >/dev/null 2>&1; then
             npx cap init "${APP_NAME}" "${BUNDLE_ID}" --web-dir="${WEB_DIR}" --npm-client=npm
           fi
 
-          # Add iOS if missing
+          # Ensure iOS platform exists
           if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-          # Sync web + plugins
+          # Sync web assets & plugins
           npx cap copy ios
           npx cap sync ios
 
           # Verify expected structure
-          test -d ios/App || (echo "❌ ios/App was not generated. Check Capacitor config." && exit 1)
+          if [ ! -d ios/App ]; then
+            echo "❌ ios/App was not generated. Check Capacitor config."
+            exit 1
+          fi
 
-          # iOS privacy strings (safe if already present)
+          # iOS permissions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
