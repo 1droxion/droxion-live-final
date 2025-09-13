@@ -60,20 +60,20 @@ workflows:
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (safe Node write)
+          # Create minimal config if missing (pass env via argv to avoid YAML ${} issues)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            node -e 'const fs=require("fs");const e=process.env;const s=`export default {
-  appId: "${e.BUNDLE_ID||"com.droxion.app"}",
-  appName: "${e.APP_NAME||"Droxion"}",
-  webDir: "${e.WEB_DIR||"dist"}",
+            node -e 'const fs=require("fs"); const [,,id,name,web]=process.argv; const s=`export default {
+  appId: "${id||"com.droxion.app"}",
+  appName: "${name||"Droxion"}",
+  webDir: "${web||"dist"}",
   bundledWebRuntime: false
 };
-`;fs.writeFileSync("capacitor.config.ts",s);'
+`; fs.writeFileSync("capacitor.config.ts", s);' "$BUNDLE_ID" "$APP_NAME" "$WEB_DIR"
           fi
 
           # Initialize only if not initialized
           if ! npx cap doctor >/dev/null 2>&1; then
-            npx cap init "${APP_NAME}" "${BUNDLE_ID}" --web-dir="${WEB_DIR}" --npm-client=npm
+            npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm
           fi
 
           # Ensure iOS platform exists
@@ -91,7 +91,7 @@ workflows:
             exit 1
           fi
 
-          # Add permissions
+          # Add permissions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
@@ -112,7 +112,7 @@ workflows:
         script: |
           set -e
           if [ -d ios/App ]; then cd ios/App; else cd ios; fi
-          agvtool new-version -all $BUILD_NUMBER || true
+          agvtool new-version -all "$BUILD_NUMBER" || true
 
       - name: Build IPA
         script: |
