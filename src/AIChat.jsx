@@ -15,7 +15,7 @@ const normHost = (u = "") => {
 };
 const host = (u) => normHost(u);
 
-// we allow google/wiki/forbes/etc; keep only placeholders blocked
+// allow google/wiki/etc; keep only placeholders blocked
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => {
   const h = host(u);
@@ -50,6 +50,17 @@ const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
+// ---- intent gate: show sources only when it makes sense
+const isSearchy = (s="") => {
+  const q = s.toLowerCase();
+  return (
+    q.startsWith("google:") || q.startsWith("search:") ||
+    /\b(now|today|latest|breaking|live|update|news)\b/.test(q) ||
+    /\b(price|stock|chart|net worth|time|weather|forecast|crypto|btc|eth)\b/.test(q) ||
+    wantsNews(q) || wantsWeather(q) || wantsCrypto(q)
+  );
+};
+
 /* --------- YouTube helpers --------- */
 const getYouTubeId = (raw="") => {
   try {
@@ -77,9 +88,17 @@ const isYouTube = (u="") => {
 
 /* --------- ranking & cleaning --------- */
 const HQ = [
-  "forbes.com","bloomberg.com","reuters.com","cnbc.com",
-  "apnews.com","ft.com","wsj.com","nytimes.com","theguardian.com","bbc.com","bbc.co.uk",
-  "coindesk.com","cointelegraph.com"
+  // News / Biz
+  "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
+  "theguardian.com","bbc.com","bbc.co.uk","npr.org","hindustantimes.com","livemint.com","moneycontrol.com","economictimes.com",
+  // Crypto
+  "coindesk.com","cointelegraph.com","coinmarketcap.com","coingecko.com","messari.io","defillama.com",
+  // Finance trackers
+  "finance.yahoo.com","google.com","tradingview.com","marketwatch.com","morningstar.com","nasdaq.com","seekingalpha.com","sec.gov",
+  // Weather / Time
+  "weather.com","accuweather.com","time.is","timeanddate.com",
+  // Tech / Knowledge
+  "techcrunch.com","theverge.com","wired.com","arstechnica.com","wikipedia.org","medium.com"
 ];
 const rankHost = (h) => {
   if (!h) return -50;
@@ -186,7 +205,7 @@ function AIChat() {
       /* scroll container padding so input is never hidden */
       .chat-scroll { scroll-padding-bottom: 160px; overscroll-behavior: contain; }
 
-      /* --- NEW: structured message layout --- */
+      /* structured message layout */
       .msg { padding:12px; border-radius:12px; }
       .answer { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
       .answer.expanded { -webkit-line-clamp:unset; max-height:none; }
@@ -199,6 +218,7 @@ function AIChat() {
       .src-sub { font-size:11px; color:#9ca3af; }
       .toggle-more { margin-top:6px; font-size:12px; color:#cbd5e1; }
       .dim-while-typing { opacity:.7; filter:blur(1px); transition:opacity .2s, filter .2s; }
+      .favicon-only { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.14); }
     `;
     document.head.appendChild(style);
 
@@ -421,6 +441,45 @@ function AIChat() {
     return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
+  // Try to obtain a preview for a link: OG/Twitter image → screenshot → favicon-only
+  const LinkPreview = ({ card }) => {
+    const [img, setImg] = useState(null);
+    const [tried, setTried] = useState(false);
+    const pv = bestPreview(card, true);
+
+    useEffect(() => {
+      let mounted = true;
+      const need = !firstImageUrl(card) && !pv;
+      const run = async () => {
+        if (!need || tried || !card?.url) return;
+        setTried(true);
+        try {
+          const { data } = await axios.get(`${API_BASE}/preview`, { params: { url: card.url } });
+          if (mounted && data?.image) setImg(data.image);
+        } catch {}
+      };
+      run();
+      return () => { mounted = false; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [card?.url]);
+
+    if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
+    if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
+    if (img) return <SmartImage url={img} title={card.title} />;
+
+    // favicon-only compact tile as last resort
+    const fav = faviconFor(card.url);
+    return (
+      <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
+        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
+        <div className="min-w-0">
+          <div className="src-title truncate">{card.title || displaySource(card)}</div>
+          <div className="src-sub truncate">{displaySource(card)}</div>
+        </div>
+      </a>
+    );
+  };
+
   // Compact media block (YouTube, gallery, weather)
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
@@ -463,24 +522,30 @@ function AIChat() {
   };
 
   // Sources & actions builders
-  const buildLinkSets = (cards = []) => {
-    const links = (cards || []).filter(c => ["web","link","wiki","news","stock","crypto"].includes(c.type) && c.url && !isFilteredSource(c.url));
-    // prioritize high-quality domains first
+  const buildLinkSets = (cards = [], searchy = false) => {
+    const links = (cards || []).filter(c =>
+      ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
+      c.url && !isFilteredSource(c.url)
+    );
     const sorted = dedupeCards(links).sort((a,b) => scoreCard(b) - scoreCard(a));
-    // quick actions: Forbes/Bloomberg/Reuters/CNBC + Google + Wikipedia + YouTube if present
-    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","google.com","wikipedia.org","youtube.com","youtu.be"];
     const byHost = {};
-    for (const c of sorted) {
-      const h = host(c.url);
-      if (!byHost[h]) byHost[h] = c;
-    }
+    for (const c of sorted) { const h = host(c.url); if (!byHost[h]) byHost[h] = c; }
+
+    // prefer HQ; only include google/wiki as actions when searchy
+    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com"];
+    if (searchy) pref.push("google.com","wikipedia.org","youtube.com","youtu.be");
+
     const quickActions = [];
     for (const ph of pref) {
       const k = Object.keys(byHost).find(h => h===ph || h.endsWith("."+ph));
       if (k) quickActions.push(byHost[k]);
     }
-    // sources grid = top 6 unique hosts (HQ first)
-    const grid = Object.values(byHost).sort((a,b)=> scoreCard(b)-scoreCard(a)).slice(0,6);
+
+    const grid = Object.values(byHost)
+      .filter(c => !/^(google\.com|wikipedia\.org)$/.test(host(c.url)) || searchy)
+      .sort((a,b)=> scoreCard(b)-scoreCard(a))
+      .slice(0,6);
+
     return { quickActions, grid };
   };
 
@@ -517,10 +582,15 @@ function AIChat() {
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               const cards = msg.cards || [];
-              // split media vs links
               const mediaCards = cards.filter(c => ["youtube","image","gallery","weather"].includes(c.type) || isYouTube(c.url || ""));
-              const linkSets = buildLinkSets(cards);
-              const hasAnything = cards.length>0 || (msg.content && msg.content.length>0);
+
+              // Decide if we should show sources for THIS assistant reply
+              const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
+              const showSearchy = isSearchy(userPrompt);
+              const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
+              const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard);
+
+              const linkSets = buildLinkSets(cards, shouldShowSources);
 
               return (
                 <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
@@ -576,8 +646,8 @@ function AIChat() {
                   {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* Quick actions */}
-                  {!isUser && linkSets.quickActions.length>0 && (
+                  {/* Quick actions (searchy/realtime only) */}
+                  {!isUser && shouldShowSources && linkSets.quickActions.length>0 && (
                     <div className="actions-row">
                       {linkSets.quickActions.slice(0,5).map((c,idx)=>(
                         <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
@@ -587,12 +657,17 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Sources grid */}
-                  {linkSets.grid.length>0 && (
+                  {/* Sources grid (searchy/realtime only) */}
+                  {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
                       <div className="sources-grid">
-                        {linkSets.grid.map((c,idx)=> <SourceTile key={idx} c={c} />)}
+                        {linkSets.grid.map((c,idx)=> (
+                          <div key={idx}>
+                            {/* Always try to show a visual preview */}
+                            <LinkPreview card={c} />
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
