@@ -60,32 +60,27 @@ workflows:
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (plain string concat to avoid ${} in YAML)
-          if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            node -e 'const fs=require("fs"); const a=process.argv; const id=a[2]||"com.droxion.app"; const name=a[3]||"Droxion"; const web=a[4]||"dist"; const lines=[ "export default {", "  appId: \""+id+"\",", "  appName: \""+name+"\",", "  webDir: \""+web+"\",", "  bundledWebRuntime: false", "};", "" ]; fs.writeFileSync("capacitor.config.ts", lines.join("\n"));' "$BUNDLE_ID" "$APP_NAME" "$WEB_DIR"
+          # Create minimal config if missing (JSON avoids TypeScript requirement)
+          if [ ! -f capacitor.config.json ]; then
+            node -e 'const fs=require("fs");const a=process.argv;const id=a[2]||"com.droxion.app";const name=a[3]||"Droxion";const web=a[4]||"dist";const json={appId:id,appName:name,webDir:web,bundledWebRuntime:false};fs.writeFileSync("capacitor.config.json",JSON.stringify(json,null,2));' "$BUNDLE_ID" "$APP_NAME" "$WEB_DIR"
           fi
 
-          # Initialize only if not initialized
           if ! npx cap doctor >/dev/null 2>&1; then
             npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm
           fi
 
-          # Ensure iOS platform exists
           if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-          # Sync web assets & native plugins
           npx cap copy ios
           npx cap sync ios
 
-          # Verify ios/App exists
           if [ ! -d ios/App ]; then
             echo "❌ ios/App was not generated. Check Capacitor config."
             exit 1
           fi
 
-          # Add permissions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
