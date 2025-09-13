@@ -57,19 +57,24 @@ workflows:
       - name: Generate iOS project (Capacitor)
         script: |
           set -e
-          # Install Capacitor toolchain and iOS platform
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          echo "→ Ensuring capacitor.config.json exists"
+          echo "→ Ensuring capacitor.config.json exists (reading env directly)"
           if [ ! -f capacitor.config.json ]; then
-            node -e 'const fs=require("fs");const a=process.argv;const id=a[2]||"com.droxion.app";const name=a[3]||"Droxion";const web=a[4]||"dist";const json={appId:id,appName:name,webDir:web,bundledWebRuntime:false};fs.writeFileSync("capacitor.config.json",JSON.stringify(json,null,2));' "$BUNDLE_ID" "$APP_NAME" "$WEB_DIR"
+            node -e 'const fs=require("fs"); const e=process.env;
+              // Prefer env BUNDLE_ID; fall back to a valid default
+              let id = (e.BUNDLE_ID && e.BUNDLE_ID.includes(".")) ? e.BUNDLE_ID : "com.droxion.app";
+              let name = e.APP_NAME || "Droxion";
+              let web = e.WEB_DIR || "dist";
+              const json = { appId:id, appName:name, webDir:web, bundledWebRuntime:false };
+              fs.writeFileSync("capacitor.config.json", JSON.stringify(json,null,2));'
           fi
           cat capacitor.config.json
 
           echo "→ Adding iOS platform if missing"
           if [ ! -d ios ]; then
-            npx cap add ios --skip-deps-check
+            npx cap add ios
           fi
 
           echo "→ Syncing Capacitor (copy web + plugins)"
