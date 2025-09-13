@@ -9,21 +9,17 @@ import { FaRegCopy } from "react-icons/fa";
 const API_BASE = "https://droxion-backend.onrender.com";
 
 /* ---------------------- helpers ---------------------- */
-// normalize host
 const normHost = (u = "") => {
   try {
     return new URL(u).hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
-  } catch {
-    return "";
-  }
+  } catch { return ""; }
 };
 const host = (u) => normHost(u);
 
-// filter junk sources
 const BAD_HOSTS = [
-  "google.com", "news.google.com", "maps.google.com",
-  "wikipedia.org", "en.wikipedia.org", "m.wikipedia.org",
-  "example.com", "example.org"
+  "google.com","news.google.com","maps.google.com",
+  "wikipedia.org","en.wikipedia.org","m.wikipedia.org",
+  "example.com","example.org"
 ];
 const isFilteredSource = (u = "") => {
   const h = host(u);
@@ -33,44 +29,38 @@ const isFilteredSource = (u = "") => {
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
-// IMPORTANT: prefer original -> proxy -> placeholder
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const toProxy = (u) => `${IMAGE_PROXY}${encodeURIComponent(u)}`;
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 
-// time label
 const timeAgo = (d) => {
   if (!d) return "";
   const t = typeof d === "string" ? new Date(d).getTime() : +d;
   if (!t || Number.isNaN(t)) return "";
   const s = Math.floor((Date.now() - t) / 1000);
   if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
-  const dd = Math.floor(h / 24); return `${dd}d ago`;
+  const m = Math.floor(s/60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m/60); if (h < 24) return `${h}h ago`;
+  const dd = Math.floor(h/24); return `${dd}d ago`;
 };
 
-const isGreeting = (s = "") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
-const wantsImages = (s = "") => {
-  const q = s.trim().toLowerCase();
-  return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q);
-};
-const wantsNews    = (s = "") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
-const wantsWeather = (s = "") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
-const wantsCrypto  = (s = "") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
+const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
+const wantsImages  = (s="") => { const q = s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
+const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
+const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
+const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
-// YouTube id
 const getYouTubeId = (raw) => {
   try {
     const txt = raw.trim();
     if (/^[A-Za-z0-9_-]{11}$/.test(txt)) return txt;
     const hasHttp = /^https?:\/\//i.test(txt);
     const u = new URL(hasHttp ? txt : `https://youtube.com/results?search_query=${encodeURIComponent(txt)}`);
-    const h = u.hostname.replace("www.", "");
+    const h = u.hostname.replace("www.","");
     if (h.includes("youtube.com")) {
       if (u.searchParams.get("v")) return u.searchParams.get("v");
       const p = u.pathname.split("/").filter(Boolean);
-      if (p[0] === "shorts" || p[0] === "embed") return p[1];
+      if (p[0]==="shorts" || p[0]==="embed") return p[1];
     }
     if (h.includes("youtu.be")) {
       const p = u.pathname.split("/").filter(Boolean);
@@ -81,7 +71,6 @@ const getYouTubeId = (raw) => {
   return m ? m[1] : null;
 };
 
-// ranking
 const GOOD_NEWS = [
   "reuters.com","theguardian.com","bbc.com","bbc.co.uk","apnews.com","nytimes.com",
   "wsj.com","ft.com","bloomberg.com","economist.com","npr.org",
@@ -89,8 +78,8 @@ const GOOD_NEWS = [
 ];
 const rankHost = (h) => {
   if (!h) return -50;
-  if (BAD_HOSTS.some(b => h === b || h.endsWith("." + b))) return -200;
-  if (GOOD_NEWS.some(g => h === g || h.endsWith("." + g))) return 90;
+  if (BAD_HOSTS.some(b => h===b || h.endsWith("."+b))) return -200;
+  if (GOOD_NEWS.some(g => h===g || h.endsWith("."+g))) return 90;
   if (/\b(news|finance|market|money|business|times|post|today)\b/.test(h)) return 40;
   return 10;
 };
@@ -99,32 +88,37 @@ const scoreCard = (c) => {
   let s = rankHost(h);
   if (c.type === "news") s += 10;
   if (firstImageUrl(c)) s += 6;
-  if ((c.title || "").length > 0) s += 3;
+  if ((c.title||"").length > 0) s += 3;
   return s;
 };
-const dedupeCards = (arr = []) => {
+const dedupeCards = (arr=[]) => {
   const seen = new Set();
   return arr.filter(c => {
-    const key = (host(c.url || "") || "") + "::" + (c.title || "").toLowerCase().slice(0, 80);
+    const key = (host(c.url||"")||"")+ "::" + (c.title||"").toLowerCase().slice(0,80);
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
 };
-const rankAndTrim = (cards = [], limit = 12, allowWikiFallback = false) => {
-  let filtered = (cards || [])
+const rankAndTrim = (cards=[], limit=12, allowWikiFallback=false) => {
+  let filtered = (cards||[])
     .filter(Boolean)
-    .filter(c => !(c?.url && isFilteredSource(c.url)));
-  filtered = dedupeCards(filtered).sort((a, b) => scoreCard(b) - scoreCard(a));
+    .filter(c => !!(c.url) && !(c?.url && isFilteredSource(c.url))); // must have usable URL
+  filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
   if (!filtered.length && allowWikiFallback) {
-    const wiki = (cards || []).find(c => (host(c.url || "") || "").includes("wikipedia.org"));
-    if (wiki) filtered = [wiki];
+    const wiki = (cards||[]).find(c => (host(c.url||"")||"").includes("wikipedia.org"));
+    if (wiki && wiki.url) filtered = [wiki];
   }
   return filtered.slice(0, limit);
 };
+// nice source label
+const displaySource = (c) => {
+  const h = host(c?.url || "");
+  return h || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
+};
 
-const bestPreview = (card, allowFallback = false) => {
+const bestPreview = (card, allowFallback=false) => {
   const direct = firstImageUrl(card);
-  if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" }; // use original first
+  if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" };
   if (!allowFallback) return null;
   if (card.url && !isFilteredSource(card.url)) {
     const shot = `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`;
@@ -141,10 +135,10 @@ function AIChat() {
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // live preview panel (shows ONLY while typing)
+  // live preview (while typing)
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
-  const [news, setNews] = useState([]);      // keep previous while loading (prevents blink)
+  const [news, setNews] = useState([]);      // keep previous batch to avoid blink
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
   const [loadingPanel, setLoadingPanel] = useState(false);
@@ -157,8 +151,8 @@ function AIChat() {
   /* base CSS */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "viewport"); document.head.appendChild(meta); }
-    meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content");
+    if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name","viewport"); document.head.appendChild(meta); }
+    meta.setAttribute("content","width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content");
 
     const style = document.createElement("style");
     style.innerHTML = `
@@ -173,10 +167,8 @@ function AIChat() {
       .embed-responsive iframe { position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
       .suggestions-panel {
         max-height: min(52vh, calc(100svh - 180px));
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior: contain;
-        touch-action: pan-y;
+        overflow-y: auto; -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain; touch-action: pan-y;
       }
       .hscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
       .hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
@@ -185,7 +177,7 @@ function AIChat() {
       .skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
       @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
 
-      /* NEW: let page scroll even when the overlay is on screen */
+      /* let the page scroll behind the overlay */
       .fixed-panel { pointer-events: none; }
       .fixed-panel .panel { pointer-events: auto; }
     `;
@@ -207,7 +199,7 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* live previews */
+  /* live previews (news/weather/crypto) while typing */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
@@ -229,19 +221,17 @@ function AIChat() {
 
         const newsRanked = rankAndTrim(
           (rn?.data?.cards || [])
-            .filter(c => !!c && !(c?.url && isFilteredSource(c.url)))
-            .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
+            .filter(Boolean)
+            .map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })),
           10, true
         ).filter(c => !!bestPreview(c, true));
-        setNews(newsRanked.length ? newsRanked : news); // keep last batch if empty
+        setNews(newsRanked.length ? newsRanked : news); // keep last non-empty
 
         const wcards = (rw?.data?.cards || []).filter(Boolean);
         setWeather(wcards.find((c)=>c.type==="weather") || wcards[0] || null);
 
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
-      } finally {
-        setLoadingPanel(false);
-      }
+      } finally { setLoadingPanel(false); }
     }, 150);
 
     return () => clearTimeout(previewTimer.current);
@@ -295,7 +285,7 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           const cards = rankAndTrim(
             (r.data?.cards || [])
-              .filter(c => !!c && !(c?.url && isFilteredSource(c.url)))
+              .filter(Boolean)
               .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
             12, true
           );
@@ -311,7 +301,7 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/search`, { prompt: q });
           const results = rankAndTrim(
             (r.data?.results || [])
-              .filter(it => !isFilteredSource(it.url))
+              .filter(Boolean)
               .map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })),
             12, true
           );
@@ -321,23 +311,30 @@ function AIChat() {
       }
 
       if (wantsNews(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
-        const cards = rankAndTrim(
-          (r.data?.cards || [])
-            .filter(Boolean)
-            .filter(c => !(c?.url && isFilteredSource(c.url)))
-            .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
-          12, true
-        ).filter(c => !!bestPreview(c, true));
-        await pushWithFollowups(r.data?.markdown || "Top news:", cards, content);
+        // try backend
+        let r = null, cards = [];
+        try {
+          r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
+          cards = rankAndTrim(
+            (r.data?.cards || [])
+              .filter(Boolean)
+              .map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })),
+            12, true
+          ).filter(c => !!bestPreview(c, true));
+        } catch {}
+        // fallback to current preview if backend empty
+        if (!cards.length && news.length) cards = news.slice(0,10);
+        await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         setTyping(false); return;
       }
+
       if (wantsWeather(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         setTyping(false); return;
       }
+
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
         const cards = (r.data?.cards || []).filter(Boolean);
@@ -345,7 +342,6 @@ function AIChat() {
         setTyping(false); return;
       }
 
-      // Images (explicit)
       if (wantsImages(content)) {
         const q = content.replace(/^images?:\s*/i, "") || content;
         try {
@@ -368,7 +364,7 @@ function AIChat() {
       const md = res.data?.reply || res.data?.text || "";
       const cards = rankAndTrim(
         (res.data?.cards || [])
-          .filter(c => !(c?.url && isFilteredSource(c.url)))
+          .filter(Boolean)
           .map(c => ({ ...c, image: firstImageUrl(c) || c.image })),
         12, true
       );
@@ -378,47 +374,23 @@ function AIChat() {
     } finally { setTyping(false); }
   };
 
-  const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
-
-  /* ---------------------- small render helpers ---------------------- */
+  /* ---------------------- render helpers ---------------------- */
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
-    // try original -> proxy -> unsplash
     const elRef = useRef(null);
-    useEffect(() => {
-      const el = elRef.current;
-      if (!el) return;
-      el.dataset.step = "orig";
-      el.src = url;
-    }, [url]);
-
+    useEffect(() => { const el = elRef.current; if (!el) return; el.dataset.step = "orig"; el.src = url; }, [url]);
     const onErr = (e) => {
       const el = e.currentTarget;
       const step = el.dataset.step || "orig";
-      if (step === "orig") {
-        el.dataset.step = "proxy";
-        el.src = toProxy(url);
-      } else if (step === "proxy") {
-        el.dataset.step = "fallback";
-        el.src = unsplash(title || "image") || "";
-      } else {
-        el.style.display = "none";
-      }
+      if (step === "orig")   { el.dataset.step = "proxy";    el.src = toProxy(url); return; }
+      if (step === "proxy")  { el.dataset.step = "fallback"; el.src = unsplash(title || "image") || ""; return; }
+      el.style.display = "none";
     };
-
-    return (
-      <img
-        ref={elRef}
-        alt=""
-        className="w-full rounded-lg glass"
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={onErr}
-      />
-    );
+    return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
   const HeadlineCard = ({ card }) => {
+    if (!card?.url || isFilteredSource(card.url)) return null;
     const pv = bestPreview(card, true);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="hitem pr-3">
@@ -434,7 +406,7 @@ function AIChat() {
             />
           ) : <div className="aspect-[16/9] skel" />}
           <div className="p-3">
-            <div className="text-[11px] text-gray-400 mb-1">{card.source || (card.url ? host(card.url) : "")}</div>
+            <div className="text-[11px] text-gray-400 mb-1">{displaySource(card)}</div>
             <div className="text-sm font-semibold line-clamp-2 leading-tight">{card.title}</div>
             <div className="text-[11px] text-gray-500 mt-1">{timeAgo(card.publishedAt || card.time)}</div>
           </div>
@@ -495,7 +467,7 @@ function AIChat() {
     }
 
     if (["web","link","wiki","news","stock","crypto"].includes(card.type)) {
-      if (card.url && isFilteredSource(card.url)) return null;
+      if (!card.url || isFilteredSource(card.url)) return null;
       const pv = bestPreview(card, card.type==="news");
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
@@ -510,7 +482,7 @@ function AIChat() {
             />
           )}
           {card.title && <div className="text-sm font-semibold leading-snug">{card.title}</div>}
-          <div className="text-xs text-gray-400 mt-1">{card.source || (card.url ? host(card.url) : "")}{card.time ? ` • ${card.time}` : ""}</div>
+          <div className="text-xs text-gray-400 mt-1">{displaySource(card)}{card.time ? ` • ${card.time}` : ""}</div>
           {card.snippet && <div className="text-xs text-gray-300 mt-1">{card.snippet}</div>}
           {card.description && <div className="text-xs text-gray-300 mt-1">{card.description}</div>}
           {card.meta && <div className="text-[11px] text-gray-400 mt-1">{card.meta}</div>}
@@ -525,10 +497,31 @@ function AIChat() {
 
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
 
+  /* build source chips from any list of cards */
+  const SourceChips = ({ cards, max = 6 }) => {
+    const usable = (cards || []).filter(c => c?.url && !isFilteredSource(c.url));
+    if (!usable.length) return null;
+    const byDomain = {};
+    for (const c of usable) {
+      const h = host(c.url);
+      if (!byDomain[h]) byDomain[h] = { host: h, url: c.url, count: 0 };
+      byDomain[h].count++;
+    }
+    const list = Object.values(byDomain).sort((a,b)=> b.count - a.count).slice(0, max);
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {list.map((d,i)=>(
+          <a key={i} href={d.url} target="_blank" rel="noreferrer" className="pill hover:bg-white hover:text-black transition">
+            {d.host}{d.count>1 ? ` +${d.count-1}` : ""}
+          </a>
+        ))}
+      </div>
+    );
+  };
+
   /* ---------------------- UI ---------------------- */
   return (
     <div className="h-screen w-full flex flex-col" style={{ height:"100svh" }}>
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -536,7 +529,7 @@ function AIChat() {
         </div>
       </header>
 
-      {/* Scroll container */}
+      {/* chat scroll area */}
       <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch", padding:"12px 0 16px", height:"calc(100svh - 48px - 96px)" }}>
         <div className="max-w-4xl mx-auto w-full px-3">
           <div className="space-y-4">
@@ -586,18 +579,8 @@ function AIChat() {
                     </ReactMarkdown>
                   )}
 
-                  {!isUser && hasCards && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {msg.cards
-                        .filter((c)=>["web","news","link","wiki","stock","crypto"].includes(c.type) && !(c.url && isFilteredSource(c.url)))
-                        .slice(0,5)
-                        .map((c,idx)=>(
-                          <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="pill hover:bg:white hover:text-black transition">
-                            {c.source || (c.url ? host(c.url) : "source")}
-                          </a>
-                        ))}
-                    </div>
-                  )}
+                  {/* SOURCES: show proper domain chips like Guardian/Reuters */}
+                  {!isUser && hasCards && <SourceChips cards={msg.cards} />}
 
                   {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
                 </div>
@@ -616,15 +599,12 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL — visible only while typing.
-         * IMPORTANT: wrapper has pointer-events:none so you can still scroll the page.
-         * The inner .panel is interactive and scrollable.
-      */}
+      {/* LIVE PREVIEW PANEL (while typing) */}
       {focused && (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0) && (
         <div className="fixed-panel fixed inset-x-0 bottom-[88px] z-40">
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
-              {/* NEWS */}
+              {/* HEADLINES carousel */}
               <div className="mb-2">
                 <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
                 <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
@@ -635,6 +615,8 @@ function AIChat() {
                     )}
                   </div>
                 </div>
+                {/* NEW: quick source badges under the carousel */}
+                {news.length>0 && <SourceChips cards={news} max={8} />}
               </div>
 
               {/* WEATHER + CRYPTO */}
