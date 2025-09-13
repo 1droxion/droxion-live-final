@@ -809,10 +809,10 @@ function AIChat() {
                   {!isUser && (
                     <div className="actions-row">
                       <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
-                        🔎 google: {userPrompt || "search"}
+                          google: {userPrompt || "search"}
                       </a>
                       <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
-                        📰 search: {userPrompt ? `${userPrompt} latest news` : "latest news"}
+                          search: {userPrompt ? `${userPrompt} latest news` : "latest news"}
                       </a>
                       {linkSets.quickActions.slice(0,3).map((c,idx)=>(
                         <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
