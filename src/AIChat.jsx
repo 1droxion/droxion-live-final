@@ -15,7 +15,7 @@ const normHost = (u = "") => {
 };
 const host = (u) => normHost(u);
 
-// we allow google/wiki/forbes/etc; keep only placeholders blocked
+// allow google/wiki/etc; keep only placeholders blocked
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => {
   const h = host(u);
@@ -47,8 +47,19 @@ const timeAgo = (d) => {
 const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
-const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
+const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
+
+// ---- intent gate: show sources only when it makes sense
+const isSearchy = (s="") => {
+  const q = s.toLowerCase();
+  return (
+    q.startsWith("google:") || q.startsWith("search:") ||
+    /\b(now|today|latest|breaking|live|update|news)\b/.test(q) ||
+    /\b(price|stock|chart|net worth|time|weather|forecast|crypto|btc|eth)\b/.test(q) ||
+    wantsNews(q) || wantsWeather(q) || wantsCrypto(q)
+  );
+};
 
 /* --------- YouTube helpers --------- */
 const getYouTubeId = (raw="") => {
@@ -77,9 +88,17 @@ const isYouTube = (u="") => {
 
 /* --------- ranking & cleaning --------- */
 const HQ = [
-  "forbes.com","bloomberg.com","reuters.com","cnbc.com",
-  "apnews.com","ft.com","wsj.com","nytimes.com","theguardian.com","bbc.com","bbc.co.uk",
-  "coindesk.com","cointelegraph.com"
+  // News / Biz
+  "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
+  "theguardian.com","bbc.com","bbc.co.uk","npr.org","hindustantimes.com","livemint.com","moneycontrol.com","economictimes.com",
+  // Crypto
+  "coindesk.com","cointelegraph.com","coinmarketcap.com","coingecko.com","messari.io","defillama.com",
+  // Finance trackers
+  "finance.yahoo.com","google.com","tradingview.com","marketwatch.com","morningstar.com","nasdaq.com","seekingalpha.com","sec.gov",
+  // Weather / Time
+  "weather.com","accuweather.com","time.is","timeanddate.com",
+  // Tech / Knowledge
+  "techcrunch.com","theverge.com","wired.com","arstechnica.com","wikipedia.org","medium.com"
 ];
 const rankHost = (h) => {
   if (!h) return -50;
@@ -125,6 +144,140 @@ const bestPreview = (card, allowFallback=false) => {
   }
   const ph = unsplash(card.title || card.source || "news");
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
+};
+
+/* ---------- WEATHER HELPERS & CARD ---------- */
+const n = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : null);
+const pick = (obj, keys, d=null) => {
+  for (const k of keys) if (obj && obj[k] != null && obj[k] !== "") return obj[k];
+  return d;
+};
+const fmtTemp = (c, f) => {
+  if (n(c)!=null && n(f)!=null) return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+  if (n(c)!=null) return `${Math.round(c)}°C`;
+  if (n(f)!=null) return `${Math.round(f)}°F`;
+  return "";
+};
+const fmtSpeed = (kph, mph) => {
+  if (n(kph)!=null && n(mph)!=null) return `${Math.round(kph)} km/h • ${Math.round(mph)} mph`;
+  if (n(kph)!=null) return `${Math.round(kph)} km/h`;
+  if (n(mph)!=null) return `${Math.round(mph)} mph`;
+  return "";
+};
+const hourLabel = (ts) => {
+  try {
+    const d = new Date(ts);
+    let h = d.getHours();
+    const am = h < 12;
+    h = h % 12 || 12;
+    return `${h}${am ? "am" : "pm"}`;
+  } catch { return ""; }
+};
+
+const normalizeWeatherCard = (raw) => {
+  if (!raw) return null;
+  const title = pick(raw, ["title","location","name"], "Weather");
+  const subtitle = pick(raw, ["subtitle","meta","condition","text","desc"], "");
+  const icon = pick(raw, ["icon","icon_url","image"]);
+  const temp_c = pick(raw, ["temp_c","tempC","temperature_c","temperatureC","temp"]);
+  const temp_f = pick(raw, ["temp_f","tempF","temperature_f","temperatureF"]);
+  const feels_c = pick(raw, ["feels_like_c","feels_c","feelsLike_c","feelsLikeC","feels_like"]);
+  const feels_f = pick(raw, ["feels_like_f","feels_f","feelsLike_f","feelsLikeF"]);
+  const humidity = pick(raw, ["humidity","humid","rh"]);
+  const wind_kph = pick(raw, ["wind_kph","windKph","wind_km_h"]);
+  const wind_mph = pick(raw, ["wind_mph","windMph"]);
+  const precip = pick(raw, ["precip_mm","precip","rain_mm","rainChance","rain_chance"]);
+  const hourly = Array.isArray(raw.hourly) ? raw.hourly : (Array.isArray(raw.hours) ? raw.hours : []);
+  const daily = Array.isArray(raw.daily) ? raw.daily : (Array.isArray(raw.days) ? raw.days : []);
+  const loc = pick(raw, ["loc","place","city"]);
+  const when = pick(raw, ["when","time","as_of","updated"]);
+
+  return {
+    type: "weather",
+    title: loc ? `${title} — ${loc}` : title,
+    subtitle: subtitle || (when ? `As of ${new Date(when).toLocaleTimeString()}` : ""),
+    icon, temp_c, temp_f, feels_c, feels_f, humidity, wind_kph, wind_mph, precip, hourly, daily
+  };
+};
+
+const WeatherCard = ({ card }) => {
+  if (!card) return null;
+  const T = fmtTemp(card.temp_c, card.temp_f);
+  const FEELS = fmtTemp(card.feels_c, card.feels_f);
+  const WIND = fmtSpeed(card.wind_kph, card.wind_mph);
+  const RH = (n(card.humidity)!=null) ? `${Math.round(card.humidity)}%` : "";
+  const RAIN = (card.precip!=null && card.precip!=="") ? `${card.precip}${typeof card.precip==="number" ? " mm" : ""}` : "";
+
+  // Derive compact hourly items
+  const hrs = (card.hourly || []).slice(0, 8).map(h => ({
+    t: pick(h, ["time","ts","timestamp","date"]),
+    icon: pick(h, ["icon","icon_url","image"]),
+    c: pick(h, ["temp_c","tempC","temperature_c","temperatureC","temp"]),
+    f: pick(h, ["temp_f","tempF","temperature_f","temperatureF"]),
+    text: pick(h, ["text","condition","desc"])
+  }));
+  const days = (card.daily || []).slice(0, 3).map(d => ({
+    day: pick(d, ["day","name","weekday","label"]),
+    icon: pick(d, ["icon","icon_url","image"]),
+    min_c: pick(d, ["min_c","minC","low_c","lowC","min"]),
+    min_f: pick(d, ["min_f","minF","low_f","lowF"]),
+    max_c: pick(d, ["max_c","maxC","high_c","highC","max"]),
+    max_f: pick(d, ["max_f","maxF","high_f","highF"]),
+    text: pick(d, ["text","condition","desc"])
+  }));
+
+  return (
+    <div className="weather-card glass rounded-xl p-3">
+      <div className="flex items-center gap-3">
+        {card.icon && <img src={card.icon} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold truncate">{card.title || "Weather"}</div>
+          <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
+        </div>
+      </div>
+
+      {(T || FEELS || RH || WIND || RAIN) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
+          {T && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
+          {FEELS && <div className="wstat"><div className="wlabel">Feels like</div><div className="wval">{FEELS}</div></div>}
+          {RH && <div className="wstat"><div className="wlabel">Humidity</div><div className="wval">{RH}</div></div>}
+          {WIND && <div className="wstat"><div className="wlabel">Wind</div><div className="wval">{WIND}</div></div>}
+          {RAIN && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
+        </div>
+      )}
+
+      {hrs.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
+          <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
+            {hrs.map((h, i) => (
+              <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
+                <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
+                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-sm font-semibold">{fmtTemp(h.c, h.f) || "-"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {days.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next days</div>
+          <div className="grid grid-cols-3 gap-2">
+            {days.map((d, i) => (
+              <div key={i} className="glass rounded-lg p-2 text-center">
+                <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
+                {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-xs font-semibold">{fmtTemp(d.max_c, d.max_f)} <span className="text-gray-400">/ {fmtTemp(d.min_c, d.min_f)}</span></div>
+                {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 /* ---------------------- component ---------------------- */
@@ -186,7 +339,7 @@ function AIChat() {
       /* scroll container padding so input is never hidden */
       .chat-scroll { scroll-padding-bottom: 160px; overscroll-behavior: contain; }
 
-      /* --- NEW: structured message layout --- */
+      /* structured message layout */
       .msg { padding:12px; border-radius:12px; }
       .answer { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
       .answer.expanded { -webkit-line-clamp:unset; max-height:none; }
@@ -199,6 +352,14 @@ function AIChat() {
       .src-sub { font-size:11px; color:#9ca3af; }
       .toggle-more { margin-top:6px; font-size:12px; color:#cbd5e1; }
       .dim-while-typing { opacity:.7; filter:blur(1px); transition:opacity .2s, filter .2s; }
+      .favicon-only { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.14); }
+
+      /* WEATHER CARD */
+      .weather-card .wstat { text-align:left; }
+      .weather-card .wlabel { color:#9ca3af; margin-bottom:2px; }
+      .weather-card .wval { font-weight:600; }
+      .w-hscroll { -webkit-overflow-scrolling:touch; }
+      .w-hour { border:1px solid rgba(255,255,255,.08); }
     `;
     document.head.appendChild(style);
 
@@ -263,7 +424,9 @@ function AIChat() {
         setNews(newsRanked.length ? newsRanked : news);
 
         const wcards = (rw?.data?.cards || []).filter(Boolean);
-        setWeather(wcards.find((c)=>c.type==="weather") || wcards[0] || null);
+        // normalize first weather card if any
+        const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
+        setWeather(w ? normalizeWeatherCard(w) : null);
 
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
       } finally { setLoadingPanel(false); }
@@ -367,7 +530,13 @@ function AIChat() {
 
       if (wantsWeather(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
-        const cards = (r.data?.cards || []).filter(Boolean);
+        const rawCards = (r.data?.cards || []).filter(Boolean);
+        // normalize & keep only weather
+        const normalized = rawCards
+          .map(c => (c.type==="weather" ? c : { ...c, type:"weather" }))
+          .map(normalizeWeatherCard)
+          .filter(Boolean);
+        const cards = normalized.length ? normalized : rawCards;
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         setTyping(false); return;
       }
@@ -421,6 +590,45 @@ function AIChat() {
     return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
+  // Try to obtain a preview for a link: OG/Twitter image → screenshot → favicon-only
+  const LinkPreview = ({ card }) => {
+    const [img, setImg] = useState(null);
+    const [tried, setTried] = useState(false);
+    const pv = bestPreview(card, true);
+
+    useEffect(() => {
+      let mounted = true;
+      const need = !firstImageUrl(card) && !pv;
+      const run = async () => {
+        if (!need || tried || !card?.url) return;
+        setTried(true);
+        try {
+          const { data } = await axios.get(`${API_BASE}/preview`, { params: { url: card.url } });
+          if (mounted && data?.image) setImg(data.image);
+        } catch {}
+      };
+      run();
+      return () => { mounted = false; };
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+    }, [card?.url]);
+
+    if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
+    if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
+    if (img) return <SmartImage url={img} title={card.title} />;
+
+    // favicon-only compact tile as last resort
+    const fav = faviconFor(card.url);
+    return (
+      <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
+        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
+        <div className="min-w-0">
+          <div className="src-title truncate">{card.title || displaySource(card)}</div>
+          <div className="src-sub truncate">{displaySource(card)}</div>
+        </div>
+      </a>
+    );
+  };
+
   // Compact media block (YouTube, gallery, weather)
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
@@ -428,15 +636,7 @@ function AIChat() {
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
           if (card.type === "weather") {
-            return (
-              <div key={i} className="glass rounded-lg p-3 flex items-center gap-3">
-                {card?.icon && <SmartImage url={card.icon} title={card.title} />}
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{card?.title || "Weather"}</div>
-                  <div className="text-xs text-gray-400 truncate">{card?.subtitle || card?.meta}</div>
-                </div>
-              </div>
-            );
+            return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
           }
           if (card.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
@@ -463,24 +663,30 @@ function AIChat() {
   };
 
   // Sources & actions builders
-  const buildLinkSets = (cards = []) => {
-    const links = (cards || []).filter(c => ["web","link","wiki","news","stock","crypto"].includes(c.type) && c.url && !isFilteredSource(c.url));
-    // prioritize high-quality domains first
+  const buildLinkSets = (cards = [], searchy = false) => {
+    const links = (cards || []).filter(c =>
+      ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
+      c.url && !isFilteredSource(c.url)
+    );
     const sorted = dedupeCards(links).sort((a,b) => scoreCard(b) - scoreCard(a));
-    // quick actions: Forbes/Bloomberg/Reuters/CNBC + Google + Wikipedia + YouTube if present
-    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","google.com","wikipedia.org","youtube.com","youtu.be"];
     const byHost = {};
-    for (const c of sorted) {
-      const h = host(c.url);
-      if (!byHost[h]) byHost[h] = c;
-    }
+    for (const c of sorted) { const h = host(c.url); if (!byHost[h]) byHost[h] = c; }
+
+    // prefer HQ; only include google/wiki as actions when searchy
+    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com"];
+    if (searchy) pref.push("google.com","wikipedia.org","youtube.com","youtu.be");
+
     const quickActions = [];
     for (const ph of pref) {
       const k = Object.keys(byHost).find(h => h===ph || h.endsWith("."+ph));
       if (k) quickActions.push(byHost[k]);
     }
-    // sources grid = top 6 unique hosts (HQ first)
-    const grid = Object.values(byHost).sort((a,b)=> scoreCard(b)-scoreCard(a)).slice(0,6);
+
+    const grid = Object.values(byHost)
+      .filter(c => !/^(google\.com|wikipedia\.org)$/.test(host(c.url)) || searchy)
+      .sort((a,b)=> scoreCard(b)-scoreCard(a))
+      .slice(0,6);
+
     return { quickActions, grid };
   };
 
@@ -517,10 +723,15 @@ function AIChat() {
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               const cards = msg.cards || [];
-              // split media vs links
               const mediaCards = cards.filter(c => ["youtube","image","gallery","weather"].includes(c.type) || isYouTube(c.url || ""));
-              const linkSets = buildLinkSets(cards);
-              const hasAnything = cards.length>0 || (msg.content && msg.content.length>0);
+
+              // Decide if we should show sources for THIS assistant reply
+              const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
+              const showSearchy = isSearchy(userPrompt);
+              const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
+              const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard);
+
+              const linkSets = buildLinkSets(cards, shouldShowSources);
 
               return (
                 <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
@@ -576,8 +787,8 @@ function AIChat() {
                   {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* Quick actions */}
-                  {!isUser && linkSets.quickActions.length>0 && (
+                  {/* Quick actions (searchy/realtime only) */}
+                  {!isUser && shouldShowSources && linkSets.quickActions.length>0 && (
                     <div className="actions-row">
                       {linkSets.quickActions.slice(0,5).map((c,idx)=>(
                         <a key={idx} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
@@ -587,12 +798,17 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Sources grid */}
-                  {linkSets.grid.length>0 && (
+                  {/* Sources grid (searchy/realtime only) */}
+                  {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
                       <div className="sources-grid">
-                        {linkSets.grid.map((c,idx)=> <SourceTile key={idx} c={c} />)}
+                        {linkSets.grid.map((c,idx)=> (
+                          <div key={idx}>
+                            {/* Always try to show a visual preview */}
+                            <LinkPreview card={c} />
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -666,15 +882,13 @@ function AIChat() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? (
-                  <div className="glass rounded-lg p-3 flex items-center gap-3">
-                    {weather?.icon && <SmartImage url={weather.icon} title={weather.title} />}
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold truncate">{weather?.title || "Weather"}</div>
-                      <div className="text-xs text-gray-400 truncate">{weather?.subtitle || weather?.meta}</div>
-                    </div>
-                  </div>
-                ) : <div className="glass rounded-lg p-6 skel" />}</div>
+                <div>
+                  {weather ? (
+                    <WeatherCard card={weather} />
+                  ) : (
+                    <div className="glass rounded-lg p-6 skel" />
+                  )}
+                </div>
                 <div className="grid grid-cols-1 gap-2">
                   {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
                     <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
