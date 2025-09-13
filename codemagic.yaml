@@ -111,29 +111,18 @@ workflows:
           if [ -d ios/App ]; then cd ios/App; else cd ios; fi
           agvtool new-version -all "$BUILD_NUMBER" || true
 
-      # 👉 NEW: force Automatic signing + set your Development Team
-      - name: Fix code signing in Xcode project
+      # ✅ Apply Codemagic-managed provisioning profiles and automatic signing
+      - name: Apply provisioning profiles (Automatic signing)
         script: |
           set -e
-          PROJ="ios/App/App.xcodeproj/project.pbxproj"
-          echo "→ Patching $PROJ to Automatic signing"
-          # Switch Manual → Automatic
-          /usr/bin/sed -i '' -e 's/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g' "$PROJ"
-          # Remove any stale profile specifiers that force Manual
-          /usr/bin/sed -i '' -e '/PROVISIONING_PROFILE_SPECIFIER/d' "$PROJ"
-          /usr/bin/sed -i '' -e '/PROVISIONING_PROFILE = /d' "$PROJ"
-          # Inject your Apple Team ID everywhere (uses the one you already set in Codemagic)
-          if [ -n "$APP_STORE_CONNECT_TEAM_ID" ]; then
-            /usr/bin/sed -i '' -E "s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = ${APP_STORE_CONNECT_TEAM_ID};/g" "$PROJ"
-            # in case the field is empty or missing, add a line next to CODE_SIGN_STYLE
-            /usr/bin/sed -i '' -E "s/(CODE_SIGN_STYLE = Automatic;)/\\1\n\t\t\t\tDEVELOPMENT_TEAM = ${APP_STORE_CONNECT_TEAM_ID};/g" "$PROJ"
-          fi
-          echo "→ Done patching code signing."
+          xcode-project use-profiles \
+            --workspace "ios/App/App.xcworkspace" \
+            --scheme "App"
 
       - name: Build IPA
         script: |
           set -e
-          # Create export options plist for App Store automatic signing
+          # Export options for App Store, automatic signing
           cat > "$HOME/export_options.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
