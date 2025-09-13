@@ -60,15 +60,9 @@ workflows:
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (pass env via argv to avoid YAML ${} issues)
+          # Create minimal config if missing (plain string concat to avoid ${} in YAML)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            node -e 'const fs=require("fs"); const [,,id,name,web]=process.argv; const s=`export default {
-  appId: "${id||"com.droxion.app"}",
-  appName: "${name||"Droxion"}",
-  webDir: "${web||"dist"}",
-  bundledWebRuntime: false
-};
-`; fs.writeFileSync("capacitor.config.ts", s);' "$BUNDLE_ID" "$APP_NAME" "$WEB_DIR"
+            node -e 'const fs=require("fs"); const a=process.argv; const id=a[2]||"com.droxion.app"; const name=a[3]||"Droxion"; const web=a[4]||"dist"; const lines=[ "export default {", "  appId: \""+id+"\",", "  appName: \""+name+"\",", "  webDir: \""+web+"\",", "  bundledWebRuntime: false", "};", "" ]; fs.writeFileSync("capacitor.config.ts", lines.join("\n"));' "$BUNDLE_ID" "$APP_NAME" "$WEB_DIR"
           fi
 
           # Initialize only if not initialized
