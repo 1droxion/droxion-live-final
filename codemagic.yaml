@@ -11,15 +11,20 @@ workflows:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
+        # Speed up npm by using cache aggressively (safe)
+        NPM_CONFIG_PREFER_OFFLINE: "true"
+        NPM_CONFIG_AUDIT: "false"
+        NPM_CONFIG_FUND: "false"
+        NPM_CONFIG_CACHE: "~/.npm"
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.droxion.app
 
     cache:
       cache_paths:
-        - ~/.npm
-        - ~/Library/Caches/CocoaPods
+        - ~/.npm               # npm package cache (biggest speedup after first success)
         - $CM_BUILD_DIR/ios/Pods
+        - ~/Library/Caches/CocoaPods
 
     scripts:
       - name: Show versions
@@ -29,31 +34,34 @@ workflows:
           pod --version
           xcodebuild -version
 
-      - name: Install dependencies (robust; keep optional deps)
+      # Faster installs: prefer cached tarballs; robust fallback if lock is incompatible on CI
+      - name: Install dependencies (fast; prefer offline; keep optional deps)
         script: |
           set -e
-          if npm ci --no-audit --no-fund; then
-            echo "npm ci OK"
+          echo "→ npm ci (prefer-offline, no audit/fund)"
+          if npm ci --prefer-offline --no-audit --no-fund; then
+            echo "✓ npm ci succeeded"
           else
-            echo "npm ci failed → fallback"
+            echo "⚠ npm ci failed — falling back to clean install with legacy peers"
             rm -rf node_modules
             mv package-lock.json package-lock.ci.bak || true
-            npm install --legacy-peer-deps
+            npm config set legacy-peer-deps true
+            npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund
           fi
 
       - name: Build web app
         script: |
+          # Ensure rollup binary is good even if cache reused an odd one
           npm rebuild rollup -f || true
           npm run build
 
-      # ✅ Make sure a Capacitor config exists and iOS project actually gets created.
       - name: Generate iOS project (Capacitor)
         script: |
           set -e
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create a minimal config if repo doesn't have one
+          # Create minimal config if missing (idempotent)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
             cat > capacitor.config.ts <<EOF
             export default {
@@ -65,28 +73,27 @@ workflows:
             EOF
           fi
 
-          # Initialize only if not initialized
+          # Initialize if needed
           if ! npx cap doctor >/dev/null 2>&1; then
             npx cap init "${APP_NAME}" "${BUNDLE_ID}" --web-dir="${WEB_DIR}" --npm-client=npm
           fi
 
-          # Ensure iOS platform is present
+          # Add iOS if missing
           if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-          # Sync web assets & native plugins
+          # Sync web + plugins
           npx cap copy ios
           npx cap sync ios
 
-          # Verify ios/App exists; fail early if not
+          # Verify expected structure
           test -d ios/App || (echo "❌ ios/App was not generated. Check Capacitor config." && exit 1)
 
-          # Usage descriptions (idempotent)
+          # iOS privacy strings (safe if already present)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
-      # ✅ Enter the right directory even if structure differs
       - name: Install CocoaPods
         script: |
           set -e
