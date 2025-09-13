@@ -57,39 +57,39 @@ workflows:
       - name: Generate iOS project (Capacitor)
         script: |
           set -e
+          # Capacitor toolchain
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          echo "→ Ensuring capacitor.config.json exists (reading env directly)"
+          echo "→ Ensuring capacitor.config.json exists (from env)"
           if [ ! -f capacitor.config.json ]; then
             node -e 'const fs=require("fs"); const e=process.env;
-              // Prefer env BUNDLE_ID; fall back to a valid default
-              let id = (e.BUNDLE_ID && e.BUNDLE_ID.includes(".")) ? e.BUNDLE_ID : "com.droxion.app";
-              let name = e.APP_NAME || "Droxion";
-              let web = e.WEB_DIR || "dist";
+              const id = (e.BUNDLE_ID && e.BUNDLE_ID.includes(".")) ? e.BUNDLE_ID : "com.droxion.app";
+              const name = e.APP_NAME || "Droxion";
+              const web = e.WEB_DIR || "dist";
               const json = { appId:id, appName:name, webDir:web, bundledWebRuntime:false };
               fs.writeFileSync("capacitor.config.json", JSON.stringify(json,null,2));'
           fi
           cat capacitor.config.json
 
-          echo "→ Adding iOS platform if missing"
+          echo "→ Add iOS platform if missing"
           if [ ! -d ios ]; then
             npx cap add ios
           fi
 
-          echo "→ Syncing Capacitor (copy web + plugins)"
+          echo "→ Sync Capacitor"
           npx cap copy ios
           npx cap sync ios
 
-          echo "→ Verifying ios/App exists"
+          echo "→ Verify ios/App exists"
           ls -la ios || true
           ls -la ios/App || true
           if [ ! -d ios/App ]; then
-            echo "❌ ios/App was not generated. Failing early."
+            echo "❌ ios/App not found — failing"
             exit 1
           fi
 
-          echo "→ Adding iOS privacy usage descriptions"
+          echo "→ iOS privacy strings"
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
@@ -118,9 +118,9 @@ workflows:
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App" \
-            --archive-configuration Release \
-            --archive-flags="-destination generic/platform=iOS" \
-            --team-id "$APP_STORE_CONNECT_TEAM_ID"
+            --configuration Release \
+            --archive-flags "-destination generic/platform=iOS" \
+            --export-method app-store
 
     artifacts:
       - build/ios/ipa/*.ipa
