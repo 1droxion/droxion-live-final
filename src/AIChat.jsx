@@ -18,7 +18,7 @@ const host = (u) => normHost(u);
 
 /* IMPORTANT: allow Google, Wikipedia, Forbes, etc. */
 const BAD_HOSTS = [
-  "example.com","example.org" // placeholders only; DO NOT block google/wikipedia anymore
+  "example.com","example.org" // placeholders only
 ];
 const isFilteredSource = (u = "") => {
   const h = host(u);
@@ -195,7 +195,7 @@ function AIChat() {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
         setTextSug((data?.suggestions || []).slice(0, 8));
       } catch { setTextSug([]); }
-    }, 120);
+    }, 250); // smoother
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
@@ -232,8 +232,7 @@ function AIChat() {
 
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
       } finally { setLoadingPanel(false); }
-    }, 150);
-
+    }, 350); // smoother
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
@@ -278,6 +277,27 @@ function AIChat() {
       }
 
       const lower = content.toLowerCase();
+
+      // === YouTube search / embed ===
+      if (lower.startsWith("youtube:") || /\byoutube( video)?\b/.test(lower)) {
+        const q = content.replace(/^youtube:\s*/i, "").trim() || content;
+        try {
+          const r = await axios.post(`${API_BASE}/search-youtube`, { prompt: q });
+          const url = r.data?.url;
+          if (url) {
+            await pushWithFollowups(
+              `### YouTube\nFound a video for **${q}**.`,
+              [{ type: "youtube", url, title: q }],
+              content
+            );
+          } else {
+            await pushWithFollowups(`Couldn't find a YouTube result for **${q}**.`, [], content);
+          }
+        } catch {
+          await pushWithFollowups("YouTube search is unavailable right now.", [], content);
+        }
+        setTyping(false); return;
+      }
 
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
@@ -467,7 +487,7 @@ function AIChat() {
 
     if (["web","link","wiki","news","stock","crypto"].includes(card.type)) {
       if (!card.url || isFilteredSource(card.url)) return null;
-      const pv = bestPreview(card, card.type==="news");
+      const pv = bestPreview(card, true); // enable previews for ALL link types
       return (
         <a href={card.url} target="_blank" rel="noreferrer" className="block glass rounded-lg p-3 hover:bg-white/10 transition">
           {pv && (
@@ -597,8 +617,8 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL (while typing) – doesn’t block page scroll */}
-      {focused && (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0) && (
+      {/* LIVE PREVIEW PANEL (while typing) – stays mounted to avoid blinking */}
+      {focused && (
         <div className="fixed-panel fixed inset-x-0 bottom-[88px] z-40">
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
@@ -608,7 +628,15 @@ function AIChat() {
                   <div className="flex gap-2">
                     {(news.length ? news : Array.from({length:3})).map((c,i)=>
                       c ? <HeadlineCard key={i} card={c} /> :
-                          <div key={i} className="hitem pr-3"><div className="rounded-xl overflow-hidden glass"><div className="aspect-[16/9] skel" /><div className="p-3"><div className="h-3 w-24 skel rounded mb-2" /><div className="h-3 w-40 skel rounded" /></div></div></div>
+                          <div key={i} className="hitem pr-3">
+                            <div className="rounded-xl overflow-hidden glass">
+                              <div className="aspect-[16/9] skel" />
+                              <div className="p-3">
+                                <div className="h-3 w-24 skel rounded mb-2" />
+                                <div className="h-3 w-40 skel rounded" />
+                              </div>
+                            </div>
+                          </div>
                     )}
                   </div>
                 </div>
