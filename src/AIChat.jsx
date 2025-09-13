@@ -452,8 +452,8 @@ function AIChat() {
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
-  const pushWithFollowups = async (md, cards, q, steps=[]) => {
-    setMessages((p) => [...p, { role: "assistant", content: md, cards, steps }]);
+  const pushWithFollowups = async (md, cards, q) => {
+    setMessages((p) => [...p, { role: "assistant", content: md, cards }]);
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
@@ -554,14 +554,10 @@ function AIChat() {
         try {
           const rr = await axios.post(`${API_BASE}/realtime`, { query: q, intent: "images" });
           let cards = Array.isArray(rr.data?.cards) ? rr.data.cards.filter(Boolean) : [];
-          cards = cards.filter((c)=> !(c?.url && isFilteredSource(c.url)));
-          if (!cards.length && Array.isArray(rr.data?.images) && rr.data.images.length) {
-            cards = [{ type:"gallery", images: rr.data.images }];
-          }
-          if (!cards.length) cards = [{ type:"gallery", images: [unsplash(q), unsplash(q+" photo")].filter(Boolean) }];
-          await pushWithFollowups(`### Images for **${q}**`, cards, content, rr.data?.steps || []);
+          // keep both our new images-grid and any simple gallery fallback
+          await pushWithFollowups(`### Images for **${q}**`, cards, content);
         } catch {
-          await pushWithFollowups(`### Images for **${q}**`, [{ type:"gallery", images:[unsplash(q)] }], content, ["Used Unsplash public endpoint"]);
+          await pushWithFollowups(`### Images for **${q}**`, [{ type:"gallery", images:[unsplash(q)] }], content);
         }
         setTyping(false); return;
       }
@@ -577,10 +573,24 @@ function AIChat() {
   };
 
   /* ---------------------- render helpers ---------------------- */
+  // ✅ PROXY-FIRST IMAGE for Unsplash/Lexica/iOS reliability
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
     const elRef = useRef(null);
-    useEffect(() => { const el = elRef.current; if (!el) return; el.dataset.step = "orig"; el.src = url; }, [url]);
+
+    const proxyFirst = (() => {
+      try {
+        const h = new URL(url).hostname;
+        return /(^|\.)(images\.unsplash\.com|source\.unsplash\.com|lexica\.art|cdn\.stability\.ai)$/i.test(h);
+      } catch { return false; }
+    })();
+
+    useEffect(() => {
+      const el = elRef.current; if (!el) return;
+      el.dataset.step = proxyFirst ? "proxy" : "orig";
+      el.src = proxyFirst ? toProxy(url) : url;
+    }, [url]); // eslint-disable-line
+
     const onErr = (e) => {
       const el = e.currentTarget;
       const step = el.dataset.step || "orig";
@@ -591,7 +601,7 @@ function AIChat() {
     return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
   };
 
-  // Try to obtain a preview for a link: OG/Twitter image → screenshot → favicon-only
+  // Try to obtain a preview for a link
   const LinkPreview = ({ card }) => {
     const [img, setImg] = useState(null);
     const [tried, setTried] = useState(false);
@@ -610,14 +620,12 @@ function AIChat() {
       };
       run();
       return () => { mounted = false; };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [card?.url]);
+    }, [card?.url]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
     if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
     if (img) return <SmartImage url={img} title={card.title} />;
 
-    // favicon-only compact tile as last resort
     const fav = faviconFor(card.url);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
@@ -630,43 +638,41 @@ function AIChat() {
     );
   };
 
-  // Compact media block (YouTube, gallery, weather, images-grid)
+  // ✅ Media block with images-grid support
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
-          if (card.type === "weather") {
-            return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
-          }
+          // NEW: render backend image grid
           if (card.type === "images-grid" && Array.isArray(card.images)) {
-            const items = card.images.slice(0, 24);
+            const items = card.images.slice(0, 12);
             return (
-              <div key={i} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              <div key={i} className="grid grid-cols-2 gap-2">
                 {items.map((it, j) => {
-                  const u = it.url || it.thumb;
-                  const srcHost = (it.source || "").replace(/^https?:\/\/(www\.)?/,"");
+                  const u = typeof it === "string" ? it : (it.url || "");
+                  const href = typeof it === "object" ? (it.pageUrl || it.url || "#") : u;
                   return (
-                    <a key={j} href={it.pageUrl || u} target="_blank" rel="noreferrer"
-                      className="relative group block rounded-lg overflow-hidden glass">
-                      <img src={u} alt={it.title || ""} className="w-full aspect-[4/3] object-cover"
-                        loading="lazy" referrerPolicy="no-referrer" />
-                      <div className="absolute left-1 top-1 px-2 py-0.5 rounded text-[10px]
-                                      bg-black/60 border border-white/10">
-                        {srcHost || "source"}
-                      </div>
-                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition bg-black/30" />
+                    <a key={j} href={href} target="_blank" rel="noreferrer" className="block">
+                      <SmartImage url={u} title={it.title || "image"} />
+                      {it.source && <div className="mt-1 text-[10px] text-gray-400">{it.source}</div>}
                     </a>
                   );
                 })}
               </div>
             );
           }
+
+          if (card.type === "weather") {
+            return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
+          }
+
           if (card.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
             if (!urls.length) return null;
             return <div key={i} className="grid grid-cols-2 gap-2">{urls.map((u,j)=><SmartImage key={j} url={u} title="image" />)}</div>;
           }
+
           if (card.type === "youtube" || isYouTube(card.url || "")) {
             const id = getYouTubeId(card.url || ""); if (!id) return null;
             return (
@@ -686,7 +692,7 @@ function AIChat() {
     );
   };
 
-  // Sources & actions builders (for general results)
+  // build set of source links for grids/pills
   const buildLinkSets = (cards = [], searchy = false) => {
     const links = (cards || []).filter(c =>
       ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
@@ -717,7 +723,7 @@ function AIChat() {
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col min-h=[100svh] min-h-[100svh]">
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -732,11 +738,8 @@ function AIChat() {
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               const cards = msg.cards || [];
-              const mediaCards = cards.filter(c =>
-                ["youtube","image","gallery","weather","images-grid"].includes(c.type) || isYouTube(c.url || "")
-              );
+              const mediaCards = cards.filter(c => ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || ""));
 
-              // Decide if we should show sources for THIS assistant reply
               const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
               const showSearchy = isSearchy(userPrompt);
               const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
@@ -744,7 +747,6 @@ function AIChat() {
 
               const linkSets = buildLinkSets(cards, shouldShowSources);
 
-              // Build google/news pill URLs from the user's prompt text
               const qp = encodeURIComponent(userPrompt || "");
               const googleUrl = `https://www.google.com/search?q=${qp}`;
               const newsUrl = `https://www.google.com/search?q=${qp ? qp + "+latest+news" : "latest+news"}`;
@@ -760,7 +762,7 @@ function AIChat() {
                     )}
                   </div>
 
-                  {/* Answer (line clamp, toggle) */}
+                  {/* Answer */}
                   {!isUser && msg.content && (
                     <>
                       <div className={`answer ${expandedIdx===i ? "expanded" : ""}`}>
@@ -803,22 +805,7 @@ function AIChat() {
                   {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* 🔹 Explicit Sources pills sent by backend (e.g., for images) */}
-                  {!isUser && (cards.find(c => c.type === "sources")) && (
-                    <div className="mt-3">
-                      <div className="small-label mb-1">Sources</div>
-                      <div className="actions-row">
-                        {cards.find(c => c.type === "sources").links.slice(0,10).map((l,idx)=>(
-                          <a key={idx} href={l.url} target="_blank" rel="noreferrer"
-                            className="action-btn hover:bg-white hover:text-black transition">
-                            {l.title}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Quick actions (google/news + HQ sources) */}
+                  {/* Quick actions – base pills + HQ pills */}
                   {!isUser && (
                     <div className="actions-row">
                       <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
@@ -835,7 +822,7 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Sources grid (derived from cards) */}
+                  {/* Sources grid – only when helpful */}
                   {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
@@ -849,7 +836,7 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Follow-ups under sources */}
+                  {/* Follow-ups */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
                     <div className="mt-3 flex flex-wrap gap-8">
                       {msg.followups.slice(0,3).map((s,idx)=>(
