@@ -16,10 +16,9 @@ const normHost = (u = "") => {
 };
 const host = (u) => normHost(u);
 
+/* IMPORTANT: allow Google, Wikipedia, Forbes, etc. */
 const BAD_HOSTS = [
-  "google.com","news.google.com","maps.google.com",
-  "wikipedia.org","en.wikipedia.org","m.wikipedia.org",
-  "example.com","example.org"
+  "example.com","example.org" // placeholders only; DO NOT block google/wikipedia anymore
 ];
 const isFilteredSource = (u = "") => {
   const h = host(u);
@@ -79,7 +78,8 @@ const isYouTube = (u="") => {
 const GOOD_NEWS = [
   "reuters.com","theguardian.com","bbc.com","bbc.co.uk","apnews.com","nytimes.com",
   "wsj.com","ft.com","bloomberg.com","economist.com","npr.org",
-  "hindustantimes.com","indianexpress.com","livemint.com","moneycontrol.com","timesofindia.com"
+  "hindustantimes.com","indianexpress.com","livemint.com","moneycontrol.com","timesofindia.com",
+  "forbes.com","coindesk.com","cointelegraph.com"
 ];
 const rankHost = (h) => {
   if (!h) return -50;
