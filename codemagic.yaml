@@ -29,49 +29,80 @@ workflows:
           pod --version
           xcodebuild -version
 
-      # ⚙️ Install with fallback. We DO NOT skip optional deps so rollup native gets installed.
       - name: Install dependencies (robust; keep optional deps)
         script: |
           set -e
-          echo "→ npm ci (with optional deps)"
           if npm ci --no-audit --no-fund; then
-            echo "✓ npm ci succeeded"
+            echo "npm ci OK"
           else
-            echo "⚠ npm ci failed — falling back"
+            echo "npm ci failed → fallback"
             rm -rf node_modules
-            # If lockfile is incompatible on CI, drop it only for this build to let npm resolve properly.
             mv package-lock.json package-lock.ci.bak || true
-            npm config set legacy-peer-deps true
-            npm config set audit false
-            npm config set fund false
             npm install --legacy-peer-deps
           fi
 
       - name: Build web app
         script: |
-          # Ensure rollup binary is healthy even if npm reused a cached one
           npm rebuild rollup -f || true
           npm run build
 
+      # ✅ Make sure a Capacitor config exists and iOS project actually gets created.
       - name: Generate iOS project (Capacitor)
         script: |
+          set -e
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
-          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --skip-dependencies || true
-          npx cap add ios || true
+
+          # Create a minimal config if repo doesn't have one
+          if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
+            cat > capacitor.config.ts <<EOF
+            export default {
+              appId: "${BUNDLE_ID}",
+              appName: "${APP_NAME}",
+              webDir: "${WEB_DIR}",
+              bundledWebRuntime: false
+            };
+            EOF
+          fi
+
+          # Initialize only if not initialized
+          if ! npx cap doctor >/dev/null 2>&1; then
+            npx cap init "${APP_NAME}" "${BUNDLE_ID}" --web-dir="${WEB_DIR}" --npm-client=npm
+          fi
+
+          # Ensure iOS platform is present
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
+
+          # Sync web assets & native plugins
           npx cap copy ios
           npx cap sync ios
+
+          # Verify ios/App exists; fail early if not
+          test -d ios/App || (echo "❌ ios/App was not generated. Check Capacitor config." && exit 1)
+
+          # Usage descriptions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
+      # ✅ Enter the right directory even if structure differs
       - name: Install CocoaPods
         script: |
-          cd ios/App
+          set -e
+          if [ -d ios/App ]; then
+            cd ios/App
+          elif [ -d ios ]; then
+            cd ios
+          else
+            echo "❌ iOS project folder not found."
+            exit 1
+          fi
           pod install --repo-update
 
       - name: Bump build number
         script: |
-          cd ios/App
+          if [ -d ios/App ]; then cd ios/App; else cd ios; fi
           agvtool new-version -all $BUILD_NUMBER || true
 
       - name: Build IPA
