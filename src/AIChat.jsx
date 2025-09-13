@@ -50,7 +50,7 @@ const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
-/* --------- YouTube helpers (works for any card url) --------- */
+/* --------- YouTube helpers --------- */
 const getYouTubeId = (raw="") => {
   try {
     const txt = raw.trim();
@@ -437,7 +437,7 @@ function AIChat() {
   const SmartCard = ({ card }) => {
     if (!card) return null;
 
-    // 1) Explicit YouTube card
+    // YouTube: embed even if type is "web"
     if (card.type === "youtube" || isYouTube(card.url || "")) {
       const id = getYouTubeId(card.url || ""); if (!id) return null;
       return (
@@ -496,6 +496,7 @@ function AIChat() {
 
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
 
+  // Source chips (publishers row)
   const SourceChips = ({ cards, max = 6 }) => {
     const usable = (cards || []).filter(c => c?.url && !isFilteredSource(c.url));
     if (!usable.length) return null;
@@ -577,8 +578,8 @@ function AIChat() {
                     </ReactMarkdown>
                   )}
 
+                  {/* always show sources + cards when present */}
                   {!isUser && hasCards && <SourceChips cards={msg.cards} />}
-
                   {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
                 </div>
               );
@@ -625,7 +626,7 @@ function AIChat() {
                 <div className="mt-1">
                   <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
                   {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg白/10 transition mb-2 last:mb-0">
+                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
                       {s}
                     </button>
                   ))}
