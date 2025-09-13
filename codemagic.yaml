@@ -54,22 +54,21 @@ workflows:
           npm rebuild rollup -f || true
           npm run build
 
-      - name: Generate iOS project (Capacitor)
+            - name: Generate iOS project (Capacitor)
         script: |
           set -e
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
-          # Create minimal config if missing (write via Node to avoid YAML heredoc issues)
+          # Create minimal config if missing (use Node; no shell expansion)
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
-            node -e "const fs=require('fs'); const c = [
-              'export default {',
-              `  appId: process.env.BUNDLE_ID || \"${process.env.BUNDLE_ID || 'com.droxion.app'}\",`,
-              `  appName: process.env.APP_NAME || \"${process.env.APP_NAME || 'Droxion'}\",`,
-              `  webDir: process.env.WEB_DIR || \"${process.env.WEB_DIR || 'dist'}\",`,
-              '  bundledWebRuntime: false',
-              '};',
-              '' ].join('\\n'); fs.writeFileSync('capacitor.config.ts', c);"
+            node -e 'const fs=require("fs");const e=process.env;const s=`export default {
+  appId: "${e.BUNDLE_ID||"com.droxion.app"}",
+  appName: "${e.APP_NAME||"Droxion"}",
+  webDir: "${e.WEB_DIR||"dist"}",
+  bundledWebRuntime: false
+};
+`;fs.writeFileSync("capacitor.config.ts",s);'
           fi
 
           # Initialize if needed
@@ -95,7 +94,7 @@ workflows:
           # iOS permissions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
-
+          
       - name: Install CocoaPods
         script: |
           set -e
