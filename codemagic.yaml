@@ -20,34 +20,46 @@ workflows:
     scripts:
       - name: Install dependencies
         script: npm install --legacy-peer-deps
+
       - name: Build web app
         script: npm run build
-      - name: Install Capacitor CLI
-        script: npm install @capacitor/cli@latest --save-dev
+
       - name: Add Capacitor + iOS
         script: |
+          npm i -D @capacitor/cli
+          npm i @capacitor/core @capacitor/ios
           npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies
           npx cap add ios
           npx cap copy ios
-          npx cap sync ios
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
+
       - name: Install CocoaPods
         script: |
           cd ios/App
-          pod install
+          pod repo update
+          pod install --repo-update
+          ls -la
           cd ../../
-      - - name: Build IPA
-  script: |
-    # Choose workspace if it exists, otherwise fall back to the project
-    if [ -d "ios/App/App.xcworkspace" ]; then
-      TARGET="--workspace ios/App/App.xcworkspace"
-    else
-      TARGET="--project ios/App/App.xcodeproj"
-    fi
 
-    xcode-project build-ipa \
-      $TARGET \
-      --scheme "App" \
-      --archive-flags="-destination generic/platform=iOS" \
-      --team-id "$APP_STORE_CONNECT_TEAM_ID"
+      - name: Build IPA
+        script: |
+          if [ -d "ios/App/App.xcworkspace" ]; then
+            TARGET="--workspace ios/App/App.xcworkspace"
+          else
+            TARGET="--project ios/App/App.xcodeproj"
+          fi
+
+          xcode-project build-ipa \
+            $TARGET \
+            --scheme "App" \
+            --archive-flags="-destination generic/platform=iOS" \
+            --team-id "$APP_STORE_CONNECT_TEAM_ID"
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_API_KEY
+        key_id: $APP_STORE_CONNECT_KEY_ID
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        submit_to_app_store: false
