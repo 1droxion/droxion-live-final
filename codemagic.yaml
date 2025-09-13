@@ -57,6 +57,7 @@ workflows:
       - name: Generate iOS project (Capacitor)
         script: |
           set -e
+          # Capacitor toolchain
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
 
@@ -114,9 +115,26 @@ workflows:
       - name: Build IPA
         script: |
           set -e
+          # Create export options plist expected by xcode-project
+          cat > "$HOME/export_options.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>compileBitcode</key><false/>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>stripSwiftSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          echo "→ Using export options plist at $HOME/export_options.plist"
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
-            --scheme "App"
+            --scheme "App" \
+            --export-options-plist "$HOME/export_options.plist"
 
     artifacts:
       - build/ios/ipa/*.ipa
