@@ -29,24 +29,28 @@ workflows:
           pod --version
           xcodebuild -version
 
-      - name: Install dependencies (with fallback; skip optional rollup prebuilds)
+      # ⚙️ Install with fallback. We DO NOT skip optional deps so rollup native gets installed.
+      - name: Install dependencies (robust; keep optional deps)
         script: |
-          # Prefer deterministic CI install
           set -e
-          echo "→ npm ci (omit optional)"
-          if npm ci --omit=optional --no-audit --no-fund; then
+          echo "→ npm ci (with optional deps)"
+          if npm ci --no-audit --no-fund; then
             echo "✓ npm ci succeeded"
           else
-            echo "⚠ npm ci failed — falling back to npm install with legacy peer deps"
+            echo "⚠ npm ci failed — falling back"
             rm -rf node_modules
-            npm config set fund false
-            npm config set audit false
+            # If lockfile is incompatible on CI, drop it only for this build to let npm resolve properly.
+            mv package-lock.json package-lock.ci.bak || true
             npm config set legacy-peer-deps true
-            npm install --omit=optional --legacy-peer-deps --no-audit --no-fund
+            npm config set audit false
+            npm config set fund false
+            npm install --legacy-peer-deps
           fi
 
       - name: Build web app
         script: |
+          # Ensure rollup binary is healthy even if npm reused a cached one
+          npm rebuild rollup -f || true
           npm run build
 
       - name: Generate iOS project (Capacitor)
