@@ -50,27 +50,32 @@ const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
-const getYouTubeId = (raw) => {
+/* --------- YouTube helpers (works for any card url) --------- */
+const getYouTubeId = (raw="") => {
   try {
     const txt = raw.trim();
     if (/^[A-Za-z0-9_-]{11}$/.test(txt)) return txt;
-    const hasHttp = /^https?:\/\//i.test(txt);
-    const u = new URL(hasHttp ? txt : `https://youtube.com/results?search_query=${encodeURIComponent(txt)}`);
-    const h = u.hostname.replace("www.","");
+    const url = new URL(txt);
+    const h = url.hostname.replace(/^www\./,"");
     if (h.includes("youtube.com")) {
-      if (u.searchParams.get("v")) return u.searchParams.get("v");
-      const p = u.pathname.split("/").filter(Boolean);
+      if (url.searchParams.get("v")) return url.searchParams.get("v");
+      const p = url.pathname.split("/").filter(Boolean);
       if (p[0]==="shorts" || p[0]==="embed") return p[1];
     }
     if (h.includes("youtu.be")) {
-      const p = u.pathname.split("/").filter(Boolean);
+      const p = url.pathname.split("/").filter(Boolean);
       if (p[0]) return p[0];
     }
   } catch {}
   const m = raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 };
+const isYouTube = (u="") => {
+  const h = host(u);
+  return h.includes("youtube.com") || h.includes("youtu.be");
+};
 
+/* --------- ranking & cleaning --------- */
 const GOOD_NEWS = [
   "reuters.com","theguardian.com","bbc.com","bbc.co.uk","apnews.com","nytimes.com",
   "wsj.com","ft.com","bloomberg.com","economist.com","npr.org",
@@ -102,7 +107,7 @@ const dedupeCards = (arr=[]) => {
 const rankAndTrim = (cards=[], limit=12, allowWikiFallback=false) => {
   let filtered = (cards||[])
     .filter(Boolean)
-    .filter(c => !!(c.url) && !(c?.url && isFilteredSource(c.url))); // must have usable URL
+    .filter(c => !!c.url && !(c?.url && isFilteredSource(c.url)));
   filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
   if (!filtered.length && allowWikiFallback) {
     const wiki = (cards||[]).find(c => (host(c.url||"")||"").includes("wikipedia.org"));
@@ -110,11 +115,7 @@ const rankAndTrim = (cards=[], limit=12, allowWikiFallback=false) => {
   }
   return filtered.slice(0, limit);
 };
-// nice source label
-const displaySource = (c) => {
-  const h = host(c?.url || "");
-  return h || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
-};
+const displaySource = (c) => host(c?.url || "") || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
 
 const bestPreview = (card, allowFallback=false) => {
   const direct = firstImageUrl(card);
@@ -148,7 +149,7 @@ function AIChat() {
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
 
-  /* base CSS */
+  /* base CSS + scroll fixes */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name","viewport"); document.head.appendChild(meta); }
@@ -168,7 +169,7 @@ function AIChat() {
       .suggestions-panel {
         max-height: min(52vh, calc(100svh - 180px));
         overflow-y: auto; -webkit-overflow-scrolling: touch;
-        overscroll-behavior: contain; touch-action: pan-y;
+        overscroll-behavior-y: contain; touch-action: pan-y;
       }
       .hscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
       .hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
@@ -176,8 +177,7 @@ function AIChat() {
       @media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
       .skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
       @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
-
-      /* let the page scroll behind the overlay */
+      /* overlay shouldn't block page scroll */
       .fixed-panel { pointer-events: none; }
       .fixed-panel .panel { pointer-events: auto; }
     `;
@@ -311,7 +311,6 @@ function AIChat() {
       }
 
       if (wantsNews(content)) {
-        // try backend
         let r = null, cards = [];
         try {
           r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
@@ -322,7 +321,6 @@ function AIChat() {
             12, true
           ).filter(c => !!bestPreview(c, true));
         } catch {}
-        // fallback to current preview if backend empty
         if (!cards.length && news.length) cards = news.slice(0,10);
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         setTyping(false); return;
@@ -439,7 +437,8 @@ function AIChat() {
   const SmartCard = ({ card }) => {
     if (!card) return null;
 
-    if (card.type === "youtube") {
+    // 1) Explicit YouTube card
+    if (card.type === "youtube" || isYouTube(card.url || "")) {
       const id = getYouTubeId(card.url || ""); if (!id) return null;
       return (
         <div className="embed-responsive embed-16by9 rounded overflow-hidden glass">
@@ -497,7 +496,6 @@ function AIChat() {
 
   const renderCards = (cards) => (!cards?.length ? null : <div className="grid grid-cols-1 gap-3">{cards.map((c,i)=><SmartCard key={i} card={c} />)}</div>);
 
-  /* build source chips from any list of cards */
   const SourceChips = ({ cards, max = 6 }) => {
     const usable = (cards || []).filter(c => c?.url && !isFilteredSource(c.url));
     if (!usable.length) return null;
@@ -521,7 +519,7 @@ function AIChat() {
 
   /* ---------------------- UI ---------------------- */
   return (
-    <div className="h-screen w-full flex flex-col" style={{ height:"100svh" }}>
+    <div className="flex flex-col min-h-[100svh]">
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
@@ -529,9 +527,9 @@ function AIChat() {
         </div>
       </header>
 
-      {/* chat scroll area */}
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch", padding:"12px 0 16px", height:"calc(100svh - 48px - 96px)" }}>
-        <div className="max-w-4xl mx-auto w-full px-3">
+      {/* chat scroll area — safe bottom padding so it never gets "stuck" */}
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch" }}>
+        <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
@@ -579,7 +577,6 @@ function AIChat() {
                     </ReactMarkdown>
                   )}
 
-                  {/* SOURCES: show proper domain chips like Guardian/Reuters */}
                   {!isUser && hasCards && <SourceChips cards={msg.cards} />}
 
                   {hasCards && <div className="mt-3">{renderCards(msg.cards)}</div>}
@@ -599,12 +596,11 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL (while typing) */}
+      {/* LIVE PREVIEW PANEL (while typing) – doesn’t block page scroll */}
       {focused && (loadingPanel || textSug.length>0 || news.length>0 || weather || crypto.length>0) && (
         <div className="fixed-panel fixed inset-x-0 bottom-[88px] z-40">
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
-              {/* HEADLINES carousel */}
               <div className="mb-2">
                 <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
                 <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
@@ -615,11 +611,9 @@ function AIChat() {
                     )}
                   </div>
                 </div>
-                {/* NEW: quick source badges under the carousel */}
                 {news.length>0 && <SourceChips cards={news} max={8} />}
               </div>
 
-              {/* WEATHER + CRYPTO */}
               <div className="grid grid-cols-2 gap-2 px-1 mb-2">
                 <div>{weather ? <WeatherMini w={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
                 <div className="grid grid-cols-1 gap-2">
@@ -627,12 +621,11 @@ function AIChat() {
                 </div>
               </div>
 
-              {/* TEXT SUGGESTIONS */}
               {textSug.length>0 && (
                 <div className="mt-1">
                   <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
                   {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg白/10 transition mb-2 last:mb-0">
                       {s}
                     </button>
                   ))}
@@ -668,7 +661,6 @@ function AIChat() {
             </button>
           </div>
 
-          {/* Quick chips */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
               <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
