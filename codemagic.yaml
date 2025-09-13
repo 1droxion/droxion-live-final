@@ -29,9 +29,21 @@ workflows:
           pod --version
           xcodebuild -version
 
-      - name: Install dependencies (skip optional rollup prebuilds)
+      - name: Install dependencies (with fallback; skip optional rollup prebuilds)
         script: |
-          npm ci --omit=optional --no-audit --no-fund
+          # Prefer deterministic CI install
+          set -e
+          echo "→ npm ci (omit optional)"
+          if npm ci --omit=optional --no-audit --no-fund; then
+            echo "✓ npm ci succeeded"
+          else
+            echo "⚠ npm ci failed — falling back to npm install with legacy peer deps"
+            rm -rf node_modules
+            npm config set fund false
+            npm config set audit false
+            npm config set legacy-peer-deps true
+            npm install --omit=optional --legacy-peer-deps --no-audit --no-fund
+          fi
 
       - name: Build web app
         script: |
@@ -41,12 +53,10 @@ workflows:
         script: |
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
-          # init if needed; ignore if already initialized
           npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --skip-dependencies || true
           npx cap add ios || true
           npx cap copy ios
           npx cap sync ios
-          # Usage descriptions (idempotent)
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
