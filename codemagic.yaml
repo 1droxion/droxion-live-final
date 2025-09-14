@@ -117,7 +117,7 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      # ✅ Replace fragile fastlane upload with Codemagic App Store Connect publisher
+      # Upload to TestFlight with Codemagic's App Store Connect publisher (no fastlane)
       - name: Upload IPA to TestFlight (Codemagic publisher)
         script: |
           set -e
@@ -127,30 +127,22 @@ workflows:
             ls -R build/ios/ipa || true
             exit 1
           fi
+
+          PROVIDER_ARGS=()
+          if [ -n "$APP_STORE_CONNECT_PROVIDER" ]; then
+            echo "→ Using provider: $APP_STORE_CONNECT_PROVIDER"
+            PROVIDER_ARGS+=(--provider "$APP_STORE_CONNECT_PROVIDER")
+          fi
+
           echo "→ Publishing to TestFlight via Codemagic App Store Connect"
           app-store-connect publish \
             --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
             --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
-            --privateKey @"$CM_KEYSTORE_DIR/app-store-connect/private_key.p8" 2>/dev/null || true
-
-          # Fallback to env var if keystore file is not present
-          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-            app-store-connect publish \
-              --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
-              --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
-              --privateKey @env:APP_STORE_CONNECT_API_KEY \
-              --ipa "$IPA_PATH" \
-              --submit false \
-              --softFail false
-          else
-            app-store-connect publish \
-              --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
-              --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
-              --privateKey @"$CM_KEYSTORE_DIR/app-store-connect/private_key.p8" \
-              --ipa "$IPA_PATH" \
-              --submit false \
-              --softFail false
-          fi
+            --privateKey @env:APP_STORE_CONNECT_API_KEY \
+            --ipa "$IPA_PATH" \
+            --submit false \
+            --softFail false \
+            "${PROVIDER_ARGS[@]}"
 
     artifacts:
       - build/ios/ipa/*.ipa
