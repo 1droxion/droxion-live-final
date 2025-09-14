@@ -30,16 +30,17 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # FIX: allow optional deps so Rollup's darwin-arm64 prebuild installs
-      - name: Install dependencies (clean; allow optional deps)
+      # FIX: npm v10+ — include optional deps properly
+      - name: Install dependencies (clean; include optional deps)
         script: |
           set -e
+          # clean to avoid stale lock/modules
           rm -rf node_modules package-lock.json
-          npm config set optional true
-          npm config set audit false
-          npm config set fund false
-          echo "→ npm ci"
-          npm ci
+          # ensure nothing is implicitly omitting optional deps
+          unset npm_config_optional || true
+          unset npm_config_omit || true
+          echo "→ npm ci (with optional deps)"
+          npm ci --include=optional --no-audit --no-fund
 
       - name: Build web app
         script: |
