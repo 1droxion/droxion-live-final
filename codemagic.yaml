@@ -30,30 +30,20 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # Robust install: avoid optional per-OS rollup prebuilds that break 'npm ci' on CI
-      - name: Install dependencies (robust; skip optional rollup prebuilds)
+      # FIX: allow optional deps so Rollup's darwin-arm64 prebuild installs
+      - name: Install dependencies (clean; allow optional deps)
         script: |
           set -e
-          export npm_config_optional=false
-          export npm_config_audit=false
-          export npm_config_fund=false
-          export npm_config_update_notifier=false
-
-          echo "→ npm ci (prefer-offline; optional deps disabled)"
-          if npm ci --prefer-offline --no-audit --no-fund; then
-            echo "✓ npm ci succeeded"
-          else
-            echo "⚠ npm ci failed — fallback to clean install"
-            rm -rf node_modules
-            mv package-lock.json package-lock.ci.bak || true
-            npm install --prefer-offline --no-audit --no-fund
-          fi
+          rm -rf node_modules package-lock.json
+          npm config set optional true
+          npm config set audit false
+          npm config set fund false
+          echo "→ npm ci"
+          npm ci
 
       - name: Build web app
         script: |
           set -e
-          # in case rollup native binary needs a rebuild, don't fail the build
-          npm rebuild rollup -f || true
           npm run build
 
       - name: Generate iOS project (Capacitor)
@@ -88,7 +78,6 @@ workflows:
           if [ -d ios/App ]; then cd ios/App; elif [ -d ios ]; then cd ios; else echo "❌ ios folder missing"; exit 1; fi
           pod install --repo-update
 
-      # Applies the provisioning profile(s) you saved in Codemagic → Code signing identities
       - name: Apply provisioning profiles (Automatic signing)
         script: |
           set -e
