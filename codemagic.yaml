@@ -30,17 +30,19 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # FIX: npm v10+ — include optional deps properly
-      - name: Install dependencies (clean; include optional deps)
+      # LOCK-AWARE: if lock exists use `ci`, else fall back to `install`
+      - name: Install dependencies (lock-aware; include optional deps)
         script: |
           set -e
-          # clean to avoid stale lock/modules
-          rm -rf node_modules package-lock.json
-          # ensure nothing is implicitly omitting optional deps
           unset npm_config_optional || true
           unset npm_config_omit || true
-          echo "→ npm ci (with optional deps)"
-          npm ci --include=optional --no-audit --no-fund
+          if [ -f package-lock.json ]; then
+            echo "→ Lockfile present: npm ci (includes optional deps)"
+            npm ci --include=optional --no-audit --no-fund
+          else
+            echo "→ No lockfile: npm install (writes package-lock.json)"
+            npm install --include=optional --no-audit --no-fund
+          fi
 
       - name: Build web app
         script: |
