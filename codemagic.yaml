@@ -19,25 +19,76 @@ workflows:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
+        - $CM_BUILD_DIR/ios/Pods
 
     scripts:
-      - name: Install dependencies
-        script: npm ci
+      - name: Show versions
+        script: |
+          set -e
+          echo "Node: $(node -v)"
+          echo "npm : $(npm -v)"
+          echo "CocoaPods: $(pod --version)"
+          xcodebuild -version
+
+      # Robust install: avoid optional per-OS rollup prebuilds that break 'npm ci' on CI
+      - name: Install dependencies (robust; skip optional rollup prebuilds)
+        script: |
+          set -e
+          export npm_config_optional=false
+          export npm_config_audit=false
+          export npm_config_fund=false
+          export npm_config_update_notifier=false
+
+          echo "→ npm ci (prefer-offline; optional deps disabled)"
+          if npm ci --prefer-offline --no-audit --no-fund; then
+            echo "✓ npm ci succeeded"
+          else
+            echo "⚠ npm ci failed — fallback to clean install"
+            rm -rf node_modules
+            mv package-lock.json package-lock.ci.bak || true
+            npm install --prefer-offline --no-audit --no-fund
+          fi
 
       - name: Build web app
-        script: npm run build
-
-      - name: Generate iOS project
         script: |
+          set -e
+          # in case rollup native binary needs a rebuild, don't fail the build
+          npm rebuild rollup -f || true
+          npm run build
+
+      - name: Generate iOS project (Capacitor)
+        script: |
+          set -e
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
-          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies || true
-          npx cap add ios || true
+
+          echo "→ Ensure capacitor.config.json exists"
+          if [ ! -f capacitor.config.json ]; then
+            node -e 'const fs=require("fs");const e=process.env;
+              const id=(e.BUNDLE_ID&&e.BUNDLE_ID.includes("."))?e.BUNDLE_ID:"com.droxion.app";
+              const name=e.APP_NAME||"Droxion";
+              const web=e.WEB_DIR||"dist";
+              const json={appId:id,appName:name,webDir:web,bundledWebRuntime:false};
+              fs.writeFileSync("capacitor.config.json",JSON.stringify(json,null,2));'
+          fi
+          cat capacitor.config.json
+
+          echo "→ Add/sync iOS platform"
+          [ -d ios ] || npx cap add ios
+          npx cap copy ios
           npx cap sync ios
+
+          echo "→ Add iOS privacy strings"
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
 
-      # Apply installed profiles automatically (you already downloaded/uploaded the App Store profile)
+      - name: Install CocoaPods
+        script: |
+          set -e
+          if [ -d ios/App ]; then cd ios/App; elif [ -d ios ]; then cd ios; else echo "❌ ios folder missing"; exit 1; fi
+          pod install --repo-update
+
+      # Applies the provisioning profile(s) you saved in Codemagic → Code signing identities
       - name: Apply provisioning profiles (Automatic signing)
         script: |
           set -e
@@ -50,6 +101,10 @@ workflows:
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.log
 
     publishing:
       app_store_connect:
