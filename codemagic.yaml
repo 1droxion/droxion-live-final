@@ -2,6 +2,7 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
+
     environment:
       vars:
         APP_NAME: Droxion
@@ -13,30 +14,43 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.droxion.app
-        provisioning_profile: droxion_appstore_profile
+
     cache:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
+
     scripts:
       - name: Install dependencies
         script: npm ci
+
       - name: Build web app
         script: npm run build
+
       - name: Generate iOS project
         script: |
           npm i -D @capacitor/cli
           npm i @capacitor/core @capacitor/ios
-          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies
+          npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir=$WEB_DIR --npm-client=npm --skip-dependencies || true
           npx cap add ios || true
           npx cap sync ios
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
+
+      # Apply installed profiles automatically (you already downloaded/uploaded the App Store profile)
+      - name: Apply provisioning profiles (Automatic signing)
+        script: |
+          set -e
+          cd ios/App
+          xcode-project use-profiles
+
       - name: Build IPA
         script: |
+          set -e
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
+
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_API_KEY
