@@ -124,9 +124,11 @@ workflows:
       - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.log
 
     publishing:
-      app_store_connect:
-        api_key: $APP_STORE_CONNECT_API_KEY
-        key_id: $APP_STORE_CONNECT_KEY_ID
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true
-        submit_to_app_store: false
+  app_store_connect:
+    api_key: $APP_STORE_CONNECT_API_KEY
+    key_id: $APP_STORE_CONNECT_KEY_ID
+    issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+    bundle_id: com.droxion.app
+    apple_id: $APP_STORE_CONNECT_APPLE_ID
+    submit_to_testflight: true
+    submit_to_app_store: false
