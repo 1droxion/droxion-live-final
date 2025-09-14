@@ -32,7 +32,6 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # Force-clean and recreate lockfile with optional deps included (fixes Rollup native)
       - name: Install dependencies (fresh lock; include optional deps)
         script: |
           set -e
@@ -86,7 +85,6 @@ workflows:
           cd ios/App
           xcode-project use-profiles
 
-      # Sanity check key format so publishing won't fail with "not a valid PEM"
       - name: Validate App Store Connect key format
         script: |
           set -e
@@ -102,7 +100,6 @@ workflows:
           fi
           echo "✅ Key looks like a proper PEM."
 
-      # CFBundleVersion must increase on every upload
       - name: Bump build number (required for upload)
         script: |
           set -e
@@ -124,11 +121,11 @@ workflows:
       - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.log
 
     publishing:
-  app_store_connect:
-    api_key: $APP_STORE_CONNECT_API_KEY
-    key_id: $APP_STORE_CONNECT_KEY_ID
-    issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-    bundle_id: com.droxion.app
-    apple_id: $APP_STORE_CONNECT_APPLE_ID
-    submit_to_testflight: true
-    submit_to_app_store: false
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_API_KEY
+        key_id: $APP_STORE_CONNECT_KEY_ID
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        bundle_id: com.droxion.app
+        apple_id: $APP_STORE_CONNECT_APPLE_ID    # add in Codemagic (value = 6752508884)
+        submit_to_testflight: true
+        submit_to_app_store: false
