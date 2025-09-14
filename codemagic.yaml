@@ -5,7 +5,7 @@ workflows:
 
     environment:
       groups:
-        - codemagic.yaml            # imports APP_STORE_CONNECT_* vars from UI
+        - codemagic.yaml            # provides APP_STORE_CONNECT_* secrets
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
@@ -32,7 +32,7 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # Clean install (keep optional deps so rollup/vite natives are present)
+      # Ensure optional native binaries (rollup/vite prebuilds) are installed
       - name: Install dependencies (fresh lock; include optional deps)
         script: |
           set -e
@@ -40,7 +40,7 @@ workflows:
           unset npm_config_optional || true
           unset npm_config_omit || true
           printf "fund=false\naudit=false\n" > .npmrc
-          echo "→ npm install (recreate package-lock.json with optional deps)"
+          echo "→ npm install (includes optional deps)"
           npm install --include=optional --no-audit --no-fund
 
       - name: Build web app
@@ -86,7 +86,6 @@ workflows:
           cd ios/App
           xcode-project use-profiles
 
-      # Early PEM sanity check
       - name: Validate App Store Connect key format
         script: |
           set -e
@@ -97,12 +96,11 @@ workflows:
           FIRST="$(echo "${APP_STORE_CONNECT_API_KEY}" | head -n1)"
           LAST="$(echo  "${APP_STORE_CONNECT_API_KEY}" | tail -n1)"
           if [ "$FIRST" != "-----BEGIN PRIVATE KEY-----" ] || [ "$LAST" != "-----END PRIVATE KEY-----" ]; then
-            echo "❌ APP_STORE_CONNECT_API_KEY is not a multiline PEM. Re-add it as the full .p8 contents."
+            echo "❌ APP_STORE_CONNECT_API_KEY must be the full multi-line .p8"
             exit 1
           fi
-          echo "✅ Key looks like a proper PEM."
+          echo "✅ PEM looks good."
 
-      # Increase CFBundleVersion every upload
       - name: Bump build number (required for upload)
         script: |
           set -e
@@ -119,8 +117,8 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      # Upload to TestFlight using Fastlane Pilot (API key JSON built inline)
-      - name: Upload IPA to TestFlight (fastlane pilot)
+      # ✅ Replace fragile fastlane upload with Codemagic App Store Connect publisher
+      - name: Upload IPA to TestFlight (Codemagic publisher)
         script: |
           set -e
           IPA_PATH="build/ios/ipa/App.ipa"
@@ -129,36 +127,30 @@ workflows:
             ls -R build/ios/ipa || true
             exit 1
           fi
+          echo "→ Publishing to TestFlight via Codemagic App Store Connect"
+          app-store-connect publish \
+            --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
+            --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
+            --privateKey @"$CM_KEYSTORE_DIR/app-store-connect/private_key.p8" 2>/dev/null || true
 
-          echo "→ Building api_key.json for fastlane (properly escaped)"
-          ESCAPED_PEM=$(printf '%s' "$APP_STORE_CONNECT_API_KEY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-          printf '{"key_id":"%s","issuer_id":"%s","key":%s,"in_house":false}\n' \
-            "$APP_STORE_CONNECT_KEY_ID" "$APP_STORE_CONNECT_ISSUER_ID" "$ESCAPED_PEM" > api_key.json
-          echo "api_key.json created"
-
-          echo "→ Installing fastlane (if needed)"
-          gem list -i fastlane || sudo gem install fastlane --no-document
-
-          # IMPORTANT:
-          # Fastlane also reads APP_STORE_CONNECT_API_KEY from the environment for the `api_key` option
-          # and expects it to be a JSON Hash. Our env var contains the PEM text, so we must unset it
-          # to avoid: `'api_key' value must be a Hash! Found String instead.`
-          unset APP_STORE_CONNECT_API_KEY
-
-          PROVIDER_ARGS=()
-          if [ -n "$APP_STORE_CONNECT_PROVIDER" ]; then
-            echo "→ Using provider: $APP_STORE_CONNECT_PROVIDER"
-            PROVIDER_ARGS+=(--itc_provider "$APP_STORE_CONNECT_PROVIDER")
+          # Fallback to env var if keystore file is not present
+          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            app-store-connect publish \
+              --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
+              --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
+              --privateKey @env:APP_STORE_CONNECT_API_KEY \
+              --ipa "$IPA_PATH" \
+              --submit false \
+              --softFail false
+          else
+            app-store-connect publish \
+              --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
+              --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
+              --privateKey @"$CM_KEYSTORE_DIR/app-store-connect/private_key.p8" \
+              --ipa "$IPA_PATH" \
+              --submit false \
+              --softFail false
           fi
-
-          echo "→ Uploading to TestFlight with fastlane pilot"
-          fastlane pilot upload \
-            --ipa "$IPA_PATH" \
-            --api_key_path api_key.json \
-            --skip_submission true \
-            --skip_waiting_for_build_processing true \
-            "${PROVIDER_ARGS[@]}" \
-            --verbose
 
     artifacts:
       - build/ios/ipa/*.ipa
