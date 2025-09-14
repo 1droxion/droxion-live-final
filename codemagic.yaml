@@ -139,6 +139,12 @@ workflows:
           echo "→ Installing fastlane (if needed)"
           gem list -i fastlane || sudo gem install fastlane --no-document
 
+          # IMPORTANT:
+          # Fastlane also reads APP_STORE_CONNECT_API_KEY from the environment for the `api_key` option
+          # and expects it to be a JSON Hash. Our env var contains the PEM text, so we must unset it
+          # to avoid: `'api_key' value must be a Hash! Found String instead.`
+          unset APP_STORE_CONNECT_API_KEY
+
           PROVIDER_ARGS=()
           if [ -n "$APP_STORE_CONNECT_PROVIDER" ]; then
             echo "→ Using provider: $APP_STORE_CONNECT_PROVIDER"
