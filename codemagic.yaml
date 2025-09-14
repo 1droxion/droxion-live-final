@@ -5,7 +5,7 @@ workflows:
 
     environment:
       groups:
-        - codemagic.yaml            # imports APP_STORE_CONNECT_* vars from UI
+        - codemagic.yaml
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
@@ -100,6 +100,18 @@ workflows:
           fi
           echo "✅ Key looks like a proper PEM."
 
+      # 🔧 DEBUG: Check that new key/issuer are actually loaded
+      - name: Debug App Store Connect Vars
+        script: |
+          set -e
+          echo "🔑 Checking Codemagic env vars:"
+          echo "Key ID: ${APP_STORE_CONNECT_KEY_ID:0:3}******"
+          echo "Issuer: ${APP_STORE_CONNECT_ISSUER_ID:0:8}******"
+          echo "First line of key:" ; echo "${APP_STORE_CONNECT_API_KEY}" | head -n 1
+          echo "Last  line of key:" ; echo "${APP_STORE_CONNECT_API_KEY}" | tail -n 1
+          echo "✅ Environment looks good, stopping here (remove this step for real build)"
+          exit 0
+
       - name: Bump build number (required for upload)
         script: |
           set -e
@@ -116,7 +128,6 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      # ✅ Upload via Apple's iTMSTransporter using API key & issuer
       - name: Upload IPA to TestFlight (iTMSTransporter)
         script: |
           set -e
