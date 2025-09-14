@@ -5,7 +5,7 @@ workflows:
 
     environment:
       groups:
-        - Droxion Codemagic CI          # contains APP_STORE_CONNECT_* vars
+        - Droxion Codemagic CI          # APP_STORE_CONNECT_* live here
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
@@ -116,7 +116,7 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      - name: Upload IPA to TestFlight (Codemagic publisher)
+      - name: Upload IPA to TestFlight (robust)
         script: |
           set -e
           IPA_PATH="build/ios/ipa/App.ipa"
@@ -132,25 +132,49 @@ workflows:
             PROVIDER_ARGS+=(--provider "$APP_STORE_CONNECT_PROVIDER")
           fi
 
-          echo "→ Publishing to TestFlight via Codemagic App Store Connect (kebab-case flags)"
-          if ! app-store-connect publish \
+          echo "→ Try #1: app-store-connect (camelCase, minimal)"
+          if app-store-connect publish \
+                --apiKeyId "$APP_STORE_CONNECT_KEY_ID" \
+                --issuerId "$APP_STORE_CONNECT_ISSUER_ID" \
+                --privateKey @env:APP_STORE_CONNECT_API_KEY \
+                "$IPA_PATH" \
+                "${PROVIDER_ARGS[@]}"; then
+            echo "✅ Uploaded with app-store-connect (camelCase)"
+            exit 0
+          fi
+
+          echo "→ Try #2: app-store-connect (kebab-case, minimal)"
+          if app-store-connect publish \
                 --key-id "$APP_STORE_CONNECT_KEY_ID" \
                 --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
                 --private-key @env:APP_STORE_CONNECT_API_KEY \
-                --file "$IPA_PATH" \
-                --submit-to-testflight \
-                --skip-waiting-for-processing \
+                "$IPA_PATH" \
                 "${PROVIDER_ARGS[@]}"; then
-            echo "→ Retry with positional IPA path syntax"
-            app-store-connect publish \
-              "$IPA_PATH" \
-              --key-id "$APP_STORE_CONNECT_KEY_ID" \
-              --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-              --private-key @env:APP_STORE_CONNECT_API_KEY \
-              --submit-to-testflight \
-              --skip-waiting-for-processing \
-              "${PROVIDER_ARGS[@]}"
+            echo "✅ Uploaded with app-store-connect (kebab-case)"
+            exit 0
           fi
+
+          echo "→ Try #3: fastlane pilot (API key JSON) fallback"
+          ESCAPED_PEM=$(printf '%s' "$APP_STORE_CONNECT_API_KEY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+          printf '{"key_id":"%s","issuer_id":"%s","key":%s,"in_house":false}\n' \
+            "$APP_STORE_CONNECT_KEY_ID" "$APP_STORE_CONNECT_ISSUER_ID" "$ESCAPED_PEM" > api_key.json
+          # prevent type collision inside fastlane
+          unset APP_STORE_CONNECT_API_KEY
+
+          gem list -i fastlane || sudo gem install fastlane --no-document
+
+          PILOT_ARGS=(--ipa "$IPA_PATH" --api_key_path api_key.json --skip_waiting_for_build_processing true --verbose)
+          if [ -n "$APP_STORE_CONNECT_PROVIDER" ]; then
+            PILOT_ARGS+=(--itc_provider "$APP_STORE_CONNECT_PROVIDER")
+          fi
+
+          if fastlane pilot upload "${PILOT_ARGS[@]}"; then
+            echo "✅ Uploaded with fastlane pilot"
+            exit 0
+          fi
+
+          echo "❌ All upload strategies failed."
+          exit 2
 
     artifacts:
       - build/ios/ipa/*.ipa
