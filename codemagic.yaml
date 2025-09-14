@@ -126,6 +126,6 @@ workflows:
         key_id: $APP_STORE_CONNECT_KEY_ID
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         bundle_id: com.droxion.app
-        apple_id: $APP_STORE_CONNECT_APPLE_ID    # add in Codemagic (value = 6752508884)
+        apple_id: $APP_STORE_CONNECT_APPLE_ID
         submit_to_testflight: true
         submit_to_app_store: false
