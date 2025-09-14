@@ -36,14 +36,17 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
 
-      - name: Upload with fastlane pilot
-        shell: bash
-        run: |
-          set -e
-          ARGS=(--ipa App.ipa --api_key_path api_key.json --skip_waiting_for_build_processing true --verbose)
-          if [ -n "${APP_STORE_CONNECT_PROVIDER:-}" ]; then
-            ARGS+=(--itc_provider "$APP_STORE_CONNECT_PROVIDER")
-          fi
-          fastlane pilot upload "${ARGS[@]}"
-        env:
-          APP_STORE_CONNECT_PROVIDER: ${{ secrets.APP_STORE_CONNECT_PROVIDER }}
+      - name: Upload with iTMSTransporter (API key)
+  shell: bash
+  run: |
+    set -e
+    xcrun iTMSTransporter \
+      -m upload \
+      -assetFile App.ipa \
+      -apiKey "$APP_STORE_CONNECT_KEY_ID" \
+      -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+      -v informational ${PROVIDER:+-itc_provider "$PROVIDER"}
+  env:
+    APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+    APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+    PROVIDER: ${{ secrets.APP_STORE_CONNECT_PROVIDER }}
