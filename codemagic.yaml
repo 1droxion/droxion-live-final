@@ -4,6 +4,8 @@ workflows:
     max_build_duration: 60
 
     environment:
+      groups:
+        - codemagic.yaml     # <— THIS imports APP_STORE_* vars from UI
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
