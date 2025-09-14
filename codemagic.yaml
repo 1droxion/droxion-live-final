@@ -5,7 +5,7 @@ workflows:
 
     environment:
       groups:
-        - codemagic.yaml            # provides APP_STORE_CONNECT_* secrets
+        -  Droxion Codemagic CI            # provides APP_STORE_CONNECT_* secrets
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
