@@ -16,8 +16,9 @@ workflows:
         NPM_CONFIG_FUND: "false"
         NPM_CONFIG_CACHE: "~/.npm"
       ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.droxion.app
+  distribution_type: app_store
+  bundle_identifier: com.droxion.app
+  provisioning_profile: droxion_appstore_profile
 
     cache:
       cache_paths:
