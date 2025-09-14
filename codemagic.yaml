@@ -116,7 +116,7 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      # 🔼 Explicit upload to TestFlight (bypasses YAML publishing block)
+      # ✅ Explicit upload to TestFlight using Codemagic CLI
       - name: Upload IPA to TestFlight (explicit)
         script: |
           set -e
@@ -126,16 +126,14 @@ workflows:
             ls -R build/ios/ipa || true
             exit 1
           fi
-          # Write PEM key to a file to avoid quoting issues
+          echo "→ Writing PEM key to asc_key.p8"
           echo "$APP_STORE_CONNECT_API_KEY" > asc_key.p8
-          echo "Uploading $IPA_PATH for bundle com.droxion.app ..."
+          echo "→ Authenticating & uploading $IPA_PATH"
           app-store-connect publish \
             --path "$IPA_PATH" \
-            --api-key-id "$APP_STORE_CONNECT_KEY_ID" \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --private-key @file:asc_key.p8 \
-            --bundle-id "com.droxion.app" \
-            --submit-to-testflight true
+            --api-key @file:asc_key.p8 \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID"
 
     artifacts:
       - build/ios/ipa/*.ipa
