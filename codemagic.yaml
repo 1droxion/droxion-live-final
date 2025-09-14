@@ -5,7 +5,7 @@ workflows:
 
     environment:
       groups:
-        - codemagic.yaml     # <— THIS imports APP_STORE_* vars from UI
+        - codemagic.yaml            # imports APP_STORE_CONNECT_* vars from UI
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
@@ -32,7 +32,7 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # NEW: force-clean and recreate lockfile with optional deps included
+      # Force-clean and recreate lockfile with optional deps included (fixes Rollup native)
       - name: Install dependencies (fresh lock; include optional deps)
         script: |
           set -e
@@ -43,12 +43,10 @@ workflows:
           echo "→ npm install (recreate package-lock.json with optional deps)"
           npm install --include=optional --no-audit --no-fund
 
-      - name: Build IPA
-  script: |
-    set -e
-    xcode-project build-ipa \
-      --workspace "ios/App/App.xcworkspace" \
-      --scheme "App"
+      - name: Build web app
+        script: |
+          set -e
+          npm run build
 
       - name: Generate iOS project (Capacitor)
         script: |
@@ -88,12 +86,12 @@ workflows:
           cd ios/App
           xcode-project use-profiles
 
-      # ✅ NEW: sanity check key format so publishing won't fail with "not a valid PEM"
+      # Sanity check key format so publishing won't fail with "not a valid PEM"
       - name: Validate App Store Connect key format
         script: |
           set -e
-          echo "Key ID: $APP_STORE_CONNECT_KEY_ID"
-          echo "Issuer: $APP_STORE_CONNECT_ISSUER_ID"
+          echo "Key ID: ${APP_STORE_CONNECT_KEY_ID:-MISSING}"
+          echo "Issuer: ${APP_STORE_CONNECT_ISSUER_ID:-MISSING}"
           echo "First line:" ; echo "${APP_STORE_CONNECT_API_KEY}" | head -n1
           echo "Last  line:" ; echo "${APP_STORE_CONNECT_API_KEY}" | tail -n1
           FIRST="$(echo "${APP_STORE_CONNECT_API_KEY}" | head -n1)"
@@ -104,7 +102,7 @@ workflows:
           fi
           echo "✅ Key looks like a proper PEM."
 
-      # ✅ NEW: bump build number (CFBundleVersion must increase on every upload)
+      # CFBundleVersion must increase on every upload
       - name: Bump build number (required for upload)
         script: |
           set -e
@@ -119,8 +117,7 @@ workflows:
           set -e
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
-            --scheme "App" \
-            --export-method app-store
+            --scheme "App"
 
     artifacts:
       - build/ios/ipa/*.ipa
