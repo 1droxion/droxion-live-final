@@ -35,7 +35,6 @@ workflows:
         script: |
           set -e
           rm -rf node_modules package-lock.json
-          # make sure nothing is implicitly omitting optional deps
           unset npm_config_optional || true
           unset npm_config_omit || true
           printf "fund=false\naudit=false\n" > .npmrc
@@ -85,12 +84,39 @@ workflows:
           cd ios/App
           xcode-project use-profiles
 
+      # ✅ NEW: sanity check key format so publishing won't fail with "not a valid PEM"
+      - name: Validate App Store Connect key format
+        script: |
+          set -e
+          echo "Key ID: $APP_STORE_CONNECT_KEY_ID"
+          echo "Issuer: $APP_STORE_CONNECT_ISSUER_ID"
+          echo "First line:" ; echo "${APP_STORE_CONNECT_API_KEY}" | head -n1
+          echo "Last  line:" ; echo "${APP_STORE_CONNECT_API_KEY}" | tail -n1
+          FIRST="$(echo "${APP_STORE_CONNECT_API_KEY}" | head -n1)"
+          LAST="$(echo  "${APP_STORE_CONNECT_API_KEY}" | tail -n1)"
+          if [ "$FIRST" != "-----BEGIN PRIVATE KEY-----" ] || [ "$LAST" != "-----END PRIVATE KEY-----" ]; then
+            echo "❌ APP_STORE_CONNECT_API_KEY is not a multiline PEM. Re-add it as the full .p8 contents."
+            exit 1
+          fi
+          echo "✅ Key looks like a proper PEM."
+
+      # ✅ NEW: bump build number (CFBundleVersion must increase on every upload)
+      - name: Bump build number (required for upload)
+        script: |
+          set -e
+          BUILD_NO=${CM_BUILD_ID:-$(date +%Y%m%d%H%M%S)}
+          echo "Using build number: $BUILD_NO"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NO" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool NO" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Print" ios/App/App/Info.plist | head -n 50
+
       - name: Build IPA
         script: |
           set -e
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
-            --scheme "App"
+            --scheme "App" \
+            --export-method app-store
 
     artifacts:
       - build/ios/ipa/*.ipa
