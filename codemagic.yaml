@@ -32,7 +32,7 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
-      # Clean install (keeps optional deps so Rollup/Vite native bins are available)
+      # Clean install (keep optional deps so rollup/vite natives are present)
       - name: Install dependencies (fresh lock; include optional deps)
         script: |
           set -e
@@ -86,7 +86,7 @@ workflows:
           cd ios/App
           xcode-project use-profiles
 
-      # Quick PEM sanity check so we fail early if the key is pasted wrong
+      # Early PEM sanity check
       - name: Validate App Store Connect key format
         script: |
           set -e
@@ -102,7 +102,7 @@ workflows:
           fi
           echo "✅ Key looks like a proper PEM."
 
-      # CFBundleVersion must increase on every upload
+      # Increase CFBundleVersion every upload
       - name: Bump build number (required for upload)
         script: |
           set -e
@@ -119,7 +119,7 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      # Upload to TestFlight using Fastlane Pilot + API key JSON
+      # Upload to TestFlight using Fastlane Pilot (API key JSON built inline)
       - name: Upload IPA to TestFlight (fastlane pilot)
         script: |
           set -e
@@ -130,18 +130,11 @@ workflows:
             exit 1
           fi
 
-          echo "→ Writing API key JSON for fastlane"
-          python3 - <<'PY'
-import os, json
-data = {
-  "key_id": os.environ["APP_STORE_CONNECT_KEY_ID"],
-  "issuer_id": os.environ["APP_STORE_CONNECT_ISSUER_ID"],
-  "key": os.environ["APP_STORE_CONNECT_API_KEY"],
-  "in_house": False
-}
-open("api_key.json","w").write(json.dumps(data))
-print("Created api_key.json")
-PY
+          echo "→ Building api_key.json for fastlane (properly escaped)"
+          ESCAPED_PEM=$(printf '%s' "$APP_STORE_CONNECT_API_KEY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+          printf '{"key_id":"%s","issuer_id":"%s","key":%s,"in_house":false}\n' \
+            "$APP_STORE_CONNECT_KEY_ID" "$APP_STORE_CONNECT_ISSUER_ID" "$ESCAPED_PEM" > api_key.json
+          echo "api_key.json created"
 
           echo "→ Installing fastlane (if needed)"
           gem list -i fastlane || sudo gem install fastlane --no-document
