@@ -32,6 +32,7 @@ workflows:
           echo "CocoaPods: $(pod --version)"
           xcodebuild -version
 
+      # Clean install (keeps optional deps so Rollup/Vite native bins are available)
       - name: Install dependencies (fresh lock; include optional deps)
         script: |
           set -e
@@ -85,6 +86,7 @@ workflows:
           cd ios/App
           xcode-project use-profiles
 
+      # Quick PEM sanity check so we fail early if the key is pasted wrong
       - name: Validate App Store Connect key format
         script: |
           set -e
@@ -100,6 +102,7 @@ workflows:
           fi
           echo "✅ Key looks like a proper PEM."
 
+      # CFBundleVersion must increase on every upload
       - name: Bump build number (required for upload)
         script: |
           set -e
@@ -116,20 +119,8 @@ workflows:
             --workspace "ios/App/App.xcworkspace" \
             --scheme "App"
 
-      # 🔎 List available providers so you can set APP_STORE_CONNECT_PROVIDER if needed
-      - name: List App Store Connect providers (auth test)
-        script: |
-          set -e
-          echo "→ Checking providers with iTMSTransporter"
-          xcrun iTMSTransporter \
-            -m provider \
-            -apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-            -v informational || true
-          echo "If you see more than one provider above, copy the 'shortName' you need and set APP_STORE_CONNECT_PROVIDER in Codemagic env vars."
-
-      # ✅ Upload via Apple's iTMSTransporter; adds -itc_provider if you set APP_STORE_CONNECT_PROVIDER
-      - name: Upload IPA to TestFlight (iTMSTransporter)
+      # Upload to TestFlight using Fastlane Pilot + API key JSON
+      - name: Upload IPA to TestFlight (fastlane pilot)
         script: |
           set -e
           IPA_PATH="build/ios/ipa/App.ipa"
@@ -139,27 +130,36 @@ workflows:
             exit 1
           fi
 
-          PROVIDER_FLAG=()
+          echo "→ Writing API key JSON for fastlane"
+          python3 - <<'PY'
+import os, json
+data = {
+  "key_id": os.environ["APP_STORE_CONNECT_KEY_ID"],
+  "issuer_id": os.environ["APP_STORE_CONNECT_ISSUER_ID"],
+  "key": os.environ["APP_STORE_CONNECT_API_KEY"],
+  "in_house": False
+}
+open("api_key.json","w").write(json.dumps(data))
+print("Created api_key.json")
+PY
+
+          echo "→ Installing fastlane (if needed)"
+          gem list -i fastlane || sudo gem install fastlane --no-document
+
+          PROVIDER_ARGS=()
           if [ -n "$APP_STORE_CONNECT_PROVIDER" ]; then
             echo "→ Using provider: $APP_STORE_CONNECT_PROVIDER"
-            PROVIDER_FLAG=(-itc_provider "$APP_STORE_CONNECT_PROVIDER")
-          else
-            echo "→ No APP_STORE_CONNECT_PROVIDER set; proceeding without provider flag"
+            PROVIDER_ARGS+=(--itc_provider "$APP_STORE_CONNECT_PROVIDER")
           fi
 
-          echo "→ Using iTMSTransporter"
-          echo "  Key ID: ${APP_STORE_CONNECT_KEY_ID:0:3}******"
-          echo "  Issuer: ${APP_STORE_CONNECT_ISSUER_ID:0:8}******"
-
-          xcrun iTMSTransporter \
-            -m upload \
-            -assetFile "$IPA_PATH" \
-            -apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-            "${PROVIDER_FLAG[@]}" \
-            -v informational
-
-          echo "✅ Upload submitted to App Store Connect (TestFlight processing will start shortly)"
+          echo "→ Uploading to TestFlight with fastlane pilot"
+          fastlane pilot upload \
+            --ipa "$IPA_PATH" \
+            --api_key_path api_key.json \
+            --skip_submission true \
+            --skip_waiting_for_build_processing true \
+            "${PROVIDER_ARGS[@]}" \
+            --verbose
 
     artifacts:
       - build/ios/ipa/*.ipa
