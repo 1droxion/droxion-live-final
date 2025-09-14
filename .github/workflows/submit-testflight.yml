@@ -1,52 +1,43 @@
 name: Submit to TestFlight (upload IPA artifact)
+
 on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: "Direct URL to App.ipa artifact from Codemagic"
+        description: "Direct URL to App.ipa artifact (public link)"
         required: true
 
 jobs:
   upload:
     runs-on: macos-14
     steps:
-      - name: Download IPA
-        run: |
-          curl -L "$IPA_URL" -o App.ipa
-          ls -lh App.ipa
+      - name: Download IPA (public URL required)
         env:
           IPA_URL: ${{ github.event.inputs.ipa_url }}
+        run: |
+          set -e
+          curl -L --fail --retry 5 "$IPA_URL" -o App.ipa
+          ls -lh App.ipa
+          file App.ipa
+
+      - name: Verify IPA zip
+        run: unzip -t App.ipa >/dev/null
 
       - name: Show Xcode / Transporter versions
         run: |
           xcodebuild -version || true
           /usr/bin/xcrun iTMSTransporter -version || true
 
-      - name: Install fastlane
-        run: sudo gem install fastlane --no-document
-
-      - name: Create api_key.json from secrets
-        shell: bash
-        run: |
-          ESCAPED_PEM=$(printf '%s' "$APP_STORE_CONNECT_API_KEY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-          printf '{"key_id":"%s","issuer_id":"%s","key":%s,"in_house":false}\n' \
-            "$APP_STORE_CONNECT_KEY_ID" "$APP_STORE_CONNECT_ISSUER_ID" "$ESCAPED_PEM" > api_key.json
+      - name: Upload with iTMSTransporter (API key)
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-
-      - name: Upload with iTMSTransporter (API key)
-  shell: bash
-  run: |
-    set -e
-    xcrun iTMSTransporter \
-      -m upload \
-      -assetFile App.ipa \
-      -apiKey "$APP_STORE_CONNECT_KEY_ID" \
-      -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-      -v informational ${PROVIDER:+-itc_provider "$PROVIDER"}
-  env:
-    APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-    APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-    PROVIDER: ${{ secrets.APP_STORE_CONNECT_PROVIDER }}
+          PROVIDER: ${{ secrets.APP_STORE_CONNECT_PROVIDER }}
+        run: |
+          set -e
+          /usr/bin/xcrun iTMSTransporter \
+            -m upload \
+            -assetFile App.ipa \
+            -apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            -v informational ${PROVIDER:+-itc_provider "$PROVIDER"}
