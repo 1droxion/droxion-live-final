@@ -43,10 +43,12 @@ workflows:
           echo "→ npm install (recreate package-lock.json with optional deps)"
           npm install --include=optional --no-audit --no-fund
 
-      - name: Build web app
-        script: |
-          set -e
-          npm run build
+      - name: Build IPA
+  script: |
+    set -e
+    xcode-project build-ipa \
+      --workspace "ios/App/App.xcworkspace" \
+      --scheme "App"
 
       - name: Generate iOS project (Capacitor)
         script: |
