@@ -4,13 +4,10 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m4
 
-    integrations:
-      app_store_connect: codemagic_key   # replace with your key name
-
     environment:
       groups:
-        - Add
-      vars:
+        - Add                 # your group with build vars + (optionally) ASC vars
+      vars:                   # safe defaults so YAML validates even if group not loaded
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
@@ -33,6 +30,7 @@ workflows:
           echo "APP_NAME=$APP_NAME"
           echo "BUNDLE_ID=$BUNDLE_ID"
           echo "WEB_DIR=$WEB_DIR"
+          test -n "$APP_NAME" && test -n "$BUNDLE_ID" && test -n "$WEB_DIR"
 
       - name: Install dependencies
         script: npm ci
@@ -50,8 +48,14 @@ workflows:
             npx cap add ios
           fi
 
-      - name: Sync and update bundle id
+      - name: Force bundle id and sync
         script: |
+          # Update capacitor config (ts/json/js)
+          for f in capacitor.config.ts capacitor.config.json capacitor.config.js; do
+            [ -f "$f" ] || continue
+            sed -i '' "s/appId: *['\"][^'\"]*['\"]/appId: '$BUNDLE_ID'/g" "$f" || true
+            sed -i '' "s/\"appId\" *: *\"[^\"]*\"/\"appId\": \"$BUNDLE_ID\"/g" "$f" || true
+          done
           npx cap sync ios
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/App/App/Info.plist || true
           perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
@@ -60,12 +64,19 @@ workflows:
       - name: Use automatic signing profiles
         script: xcode-project use-profiles
 
-      - name: Build IPA
+      - name: Build IPA (workspace preferred)
         script: |
-          xcode-project build-ipa \
-            --workspace "ios/App/App.xcworkspace" \
-            --scheme "${IOS_SCHEME:-App}" \
-            --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
+            xcode-project build-ipa \
+              --workspace "ios/App/App.xcworkspace" \
+              --scheme "${IOS_SCHEME:-App}" \
+              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          else
+            xcode-project build-ipa \
+              --project "ios/App/App.xcodeproj" \
+              --scheme "${IOS_SCHEME:-App}" \
+              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          fi
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -73,5 +84,8 @@ workflows:
 
     publishing:
       app_store_connect:
-        auth: integration
+        # use env vars (no integration name required)
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
