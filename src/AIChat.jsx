@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
-import "./AIChat.css"; // ⬅️ add this line
+import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
@@ -49,7 +49,7 @@ const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.t
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 
-// ✅ tolerant to “wether / wheather / whether”
+// tolerant to “wether / wheather / whether”
 const wantsWeather = (s = "") => {
   const q = s.trim().toLowerCase();
   if (/\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/.test(q)) return true;
@@ -61,7 +61,7 @@ const wantsWeather = (s = "") => {
 
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
-// ---- intent gate: show sources only when it makes sense (for SOURCES grid, not pills)
+// gate for showing “Sources”
 const isSearchy = (s="") => {
   const q = s.toLowerCase();
   return (
@@ -211,12 +211,72 @@ const normalizeWeatherCard = (raw) => {
   };
 };
 
+/* ---------------------- ORGANIZER ---------------------- */
+/** Turn raw markdown into: Title → Summary → Steps → Chart → Full Answer */
+const extractTitle = (md="") => {
+  const h1 = md.match(/^\s*#\s+(.+)/m);
+  if (h1) return h1[1].trim();
+  const firstLine = md.split("\n").find(x => x.trim());
+  if (!firstLine) return "Answer";
+  // bold first sentence
+  const s = firstLine.replace(/[*_#>]+/g,"").trim();
+  const end = s.indexOf(". ") >= 0 ? s.indexOf(". ") + 1 : Math.min(90, s.length);
+  return s.slice(0,end).trim();
+};
+
+const extractSummary = (md="") => {
+  const lines = md.split("\n").map(l=>l.trim()).filter(Boolean);
+  const bullets = lines.filter(l => /^[-*•]\s+/.test(l)).slice(0,4).map(l => l.replace(/^[-*•]\s+/, ""));
+  if (bullets.length >= 2) return bullets.slice(0,3);
+  const para = lines.find(l => /^[A-Za-z0-9]/.test(l));
+  if (!para) return [];
+  const sents = para.split(/(?<=[.!?])\s+/).slice(0,3);
+  return sents;
+};
+
+const extractSteps = (md="") => {
+  const blocks = md.split("\n");
+  const numbered = blocks.filter(l => /^\d+\.\s+/.test(l)).slice(0,12).map(l => l.replace(/^\d+\.\s+/,""));
+  if (numbered.length) return numbered;
+  const dots = blocks.filter(l => /^[-*•]\s+/.test(l)).slice(0,8).map(l => l.replace(/^[-*•]\s+/, ""));
+  return dots;
+};
+
+const parsePairs = (md="") => {
+  // lines like "Label: 12" => for a simple bar chart
+  const out = [];
+  md.split("\n").forEach(l => {
+    const m = l.match(/^\s*[-*]?\s*([^:]{2,40})\s*:\s*(-?\d+(\.\d+)?)/);
+    if (m) out.push({ label: m[1].trim(), value: parseFloat(m[2]) });
+  });
+  return out.slice(0,8);
+};
+
+/* ---------- Weather card ---------- */
 const WeatherCard = ({ card }) => {
   if (!card) return null;
-  const T = fmtTemp(card.temp_c, card.temp_f);
-  const FEELS = fmtTemp(card.feels_c, card.feels_f);
-  const WIND = fmtSpeed(card.wind_kph, card.wind_mph);
-  const RH = (n(card.humidity)!=null) ? `${Math.round(card.humidity)}%` : "";
+  const T = (() => {
+    const c = card.temp_c, f = card.temp_f;
+    if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+    if (typeof c==="number") return `${Math.round(c)}°C`;
+    if (typeof f==="number") return `${Math.round(f)}°F`;
+    return "";
+  })();
+  const FEELS = (() => {
+    const c = card.feels_c, f = card.feels_f;
+    if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+    if (typeof c==="number") return `${Math.round(c)}°C`;
+    if (typeof f==="number") return `${Math.round(f)}°F`;
+    return "";
+  })();
+  const WIND = (() => {
+    const k = card.wind_kph, m = card.wind_mph;
+    if (typeof k==="number" && typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`;
+    if (typeof k==="number") return `${Math.round(k)} km/h`;
+    if (typeof m==="number") return `${Math.round(m)} mph`;
+    return "";
+  })();
+  const RH = (typeof card.humidity==="number") ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip!=null && card.precip!=="") ? `${card.precip}${typeof card.precip==="number" ? " mm" : ""}` : "";
 
   const hrs = (card.hourly || []).slice(0, 8).map(h => ({
@@ -235,6 +295,16 @@ const WeatherCard = ({ card }) => {
     max_f: pick(d, ["max_f","maxF","high_f","highF"]),
     text: pick(d, ["text","condition","desc"])
   }));
+
+  const hourLabel = (ts) => {
+    try {
+      const d = new Date(ts);
+      let h = d.getHours();
+      const am = h < 12;
+      h = h % 12 || 12;
+      return `${h}${am ? "am" : "pm"}`;
+    } catch { return ""; }
+  };
 
   return (
     <div className="weather-card glass rounded-xl p-3">
@@ -264,7 +334,13 @@ const WeatherCard = ({ card }) => {
               <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
                 <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
                 {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                <div className="text-sm font-semibold">{fmtTemp(h.c, h.f) || "-"}</div>
+                <div className="text-sm font-semibold">{(() => {
+                  const c=h.c, f=h.f;
+                  if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+                  if (typeof c==="number") return `${Math.round(c)}°C`;
+                  if (typeof f==="number") return `${Math.round(f)}°F`;
+                  return "-";
+                })()}</div>
               </div>
             ))}
           </div>
@@ -279,7 +355,13 @@ const WeatherCard = ({ card }) => {
               <div key={i} className="glass rounded-lg p-2 text-center">
                 <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
                 {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                <div className="text-xs font-semibold">{fmtTemp(d.max_c, d.max_f)} <span className="text-gray-400">/ {fmtTemp(d.min_c, d.min_f)}</span></div>
+                <div className="text-xs font-semibold">{(() => {
+                  const c=d.max_c, f=d.max_f;
+                  const labelHi = (typeof c==="number" && typeof f==="number") ? `${Math.round(c)}°C / ${Math.round(f)}°F` : (typeof c==="number" ? `${Math.round(c)}°C` : (typeof f==="number" ? `${Math.round(f)}°F` : ""));
+                  const lc=d.min_c, lf=d.min_f;
+                  const labelLo = (typeof lc==="number" && typeof lf==="number") ? `${Math.round(lc)}°C / ${Math.round(lf)}°F` : (typeof lc==="number" ? `${Math.round(lc)}°C` : (typeof lf==="number" ? `${Math.round(lf)}°F` : ""));
+                  return `${labelHi} / ${labelLo}`;
+                })()}</div>
                 {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
               </div>
             ))}
@@ -291,6 +373,26 @@ const WeatherCard = ({ card }) => {
 };
 
 /* ---------------------- component ---------------------- */
+
+// local memory (device)
+const STORAGE_KEY = "droxion.chat.v1";
+const MEM_KEY = "droxion.mem.v1";
+const loadMem = () => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; } };
+const saveMem = (arr) => { try { localStorage.setItem(MEM_KEY, JSON.stringify(arr.slice(-100))); } catch {} };
+
+// ensure we always have some media (images) for bland answers
+const ensureImagesFor = async (query) => {
+  try {
+    const r = await axios.post(`${API_BASE}/realtime`, { query, intent: "images" });
+    const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+    const grid = cards.find(c => c.type === "images-grid" && Array.isArray(c.images));
+    if (grid) return [grid];
+    const imgs = cards.flatMap(c => Array.isArray(c.images) ? c.images : (c.image ? [c.image] : []));
+    if (imgs.length) return [{ type: "gallery", images: imgs.slice(0,12) }];
+  } catch {}
+  return [];
+};
+
 function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -310,7 +412,18 @@ function AIChat() {
   const cancelPrev = useRef({ cancel: () => {} });
   const scrollRef = useRef(null);
 
-  /* keyboard-safe (no inline style injection anymore) */
+  // restore chat from local storage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      if (Array.isArray(saved) && saved.length) setMessages(saved);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
+  }, [messages]);
+
+  /* keyboard-safe */
   useEffect(() => {
     const vv = window.visualViewport;
     const handleVV = () => {
@@ -411,8 +524,28 @@ function AIChat() {
     setTextSug([]);
 
     try {
+      // memory commands
+      if (/^remember\s*:/i.test(content)) {
+        const fact = content.replace(/^remember\s*:/i,"").trim();
+        if (fact) {
+          const mem = loadMem(); mem.push({ fact, t: Date.now() }); saveMem(mem);
+          await pushWithFollowups(`✅ Remembered: **${fact}**`, [], content);
+        } else {
+          await pushWithFollowups("What should I remember? Use `remember: your fact`.", [], content);
+        }
+        return;
+      }
+      if (/^what did you remember|^show memory/i.test(content)) {
+        const mem = loadMem();
+        const md = mem.length
+          ? `### Memory\n${mem.map(m => `- ${m.fact}`).join("\n")}`
+          : "I haven't saved any memory yet. Use `remember: <fact>`.";
+        await pushWithFollowups(md, [], content);
+        return;
+      }
+
       if (isGreeting(content)) {
-        const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
+        const r = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
         await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
         return;
       }
@@ -440,8 +573,13 @@ function AIChat() {
         const q = content.replace(/^google:\s*/i, "");
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
-          const cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
+          let cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
+
+          // ensure media
+          const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
+          if (!hasMedia) cards = cards.concat(await ensureImagesFor(q));
+
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
         return;
@@ -451,10 +589,14 @@ function AIChat() {
         const q = content.replace(/^search:\s*/i, "");
         try {
           const r = await axios.post(`${API_BASE}/search`, { prompt: q });
-          const results = rankAndTrim(
+          let cards = rankAndTrim(
             (r.data?.results || []).filter(Boolean).map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })), 12, true
           );
-          await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
+          // ensure media
+          const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
+          if (!hasMedia) cards = cards.concat(await ensureImagesFor(q));
+
+          await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         return;
       }
@@ -467,6 +609,9 @@ function AIChat() {
             .filter(c => !!bestPreview(c, true));
         } catch {}
         if (!cards.length && news.length) cards = news.slice(0,10);
+        // ensure media
+        const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
+        if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         return;
       }
@@ -485,27 +630,21 @@ function AIChat() {
 
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
-        const cards = (r.data?.cards || []).filter(Boolean);
+        let cards = (r.data?.cards || []).filter(Boolean);
+        // ensure media
+        const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
+        if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
         return;
       }
 
-      if (wantsImages(content)) {
-        const q = content.replace(/^images?:\s*/i, "") || content;
-        try {
-          const rr = await axios.post(`${API_BASE}/realtime`, { query: q, intent: "images" });
-          let cards = Array.isArray(rr.data?.cards) ? rr.data.cards.filter(Boolean) : [];
-          await pushWithFollowups(`### Images for **${q}**`, cards, content);
-        } catch {
-          await pushWithFollowups(`### Images for **${q}**`, [{ type:"gallery", images:[unsplash(q)] }], content);
-        }
-        return;
-      }
-
       // default chat
-      const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
+      const res = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
       const md = res.data?.reply || res.data?.text || "";
-      const cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
+      let cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
+      // ensure media
+      const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
+      if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
       await pushWithFollowups(md, cards, content);
     } catch {
       await pushWithFollowups("⚠️ Error or connection failed.", [], content);
@@ -516,7 +655,6 @@ function AIChat() {
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
     const elRef = useRef(null);
-
     const proxyFirst = (() => {
       try {
         const h = new URL(url).hostname;
@@ -537,7 +675,18 @@ function AIChat() {
       if (step === "proxy")  { el.dataset.step = "fallback"; el.src = unsplash(title || "image") || ""; return; }
       el.style.display = "none";
     };
-    return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
+    return (
+      <img
+        ref={elRef}
+        alt=""
+        className="w-full rounded-lg glass"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={onErr}
+        onLoad={(e)=>{ e.currentTarget.style.opacity = 1; }}
+        style={{ opacity: 0, transition: "opacity .2s ease" }}
+      />
+    );
   };
 
   const LinkPreview = ({ card }) => {
@@ -654,6 +803,91 @@ function AIChat() {
     return { quickActions, grid };
   };
 
+  /* ---------------------- UI: organized answer ---------------------- */
+  const OrganizedAnswer = ({ md, index }) => {
+    const title = extractTitle(md);
+    const summary = extractSummary(md);
+    const steps = extractSteps(md);
+    const pairs = parsePairs(md); // label: number
+    return (
+      <>
+        <div className="org-title">{title}</div>
+
+        {summary.length > 0 && (
+          <div className="org-section">
+            <div className="org-sub">Summary</div>
+            <ul className="org-list">
+              {summary.map((s, i) => <li key={i}>{s}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {steps.length > 0 && (
+          <div className="org-section">
+            <div className="org-sub">Step-by-step</div>
+            <ol className="org-steps">
+              {steps.map((s, i) => <li key={i}>{s}</li>)}
+            </ol>
+          </div>
+        )}
+
+        {pairs.length > 0 && (
+          <div className="org-section">
+            <div className="org-sub">Quick Chart</div>
+            <div className="bars">
+              {pairs.map((p, i) => {
+                const max = Math.max(...pairs.map(x=>Math.abs(x.value)), 1);
+                const w = Math.round(Math.min(100, (Math.abs(p.value)/max)*100));
+                return (
+                  <div key={i} className="bar-row">
+                    <div className="bar-label">{p.label}</div>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width: `${w}%` }} />
+                    </div>
+                    <div className="bar-val">{p.value}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="org-section">
+          <div className="org-sub">Full answer</div>
+          <div className="answer expanded">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
+              components={{
+                img: (props) => {
+                  const src = props.src;
+                  return (
+                    <img
+                      {...props}
+                      src={src}
+                      className="rounded-lg my-2 w-full glass"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e)=>{
+                        const el=e.currentTarget;
+                        const step=el.dataset.step||"orig";
+                        if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
+                        if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
+                        el.style.display="none";
+                      }}
+                    />
+                  );
+                },
+                iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
+                a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
+              }}
+            >
+              {md}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </>
+    );
+  };
+
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
@@ -677,7 +911,9 @@ function AIChat() {
               const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
               const showSearchy = isSearchy(userPrompt);
               const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
-              const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard);
+
+              const hasPreviewable = (cards||[]).some(c => firstImageUrl(c) || (c.url && !isFilteredSource(c.url)));
+              const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard) && hasPreviewable;
 
               const linkSets = buildLinkSets(cards, shouldShowSources);
 
@@ -696,50 +932,25 @@ function AIChat() {
                     )}
                   </div>
 
-                  {/* Answer */}
+                  {/* User text */}
+                  {isUser && <div className="answer expanded">{msg.content}</div>}
+
+                  {/* Assistant: Organized view */}
                   {!isUser && msg.content && (
                     <>
-                      <div className={`answer ${expandedIdx===i ? "expanded" : ""}`}>
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeRaw]}
-                          components={{
-                            img: (props) => {
-                              const src = props.src;
-                              return (
-                                <img
-                                  {...props}
-                                  src={src}
-                                  className="rounded-lg my-2 w-full glass"
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                  onError={(e)=>{
-                                    const el=e.currentTarget;
-                                    const step=el.dataset.step||"orig";
-                                    if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
-                                    if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
-                                    el.style.display="none";
-                                  }}
-                                />
-                              );
-                            },
-                            iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
-                            a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
-                          }}
-                        >
-                          {msg.content}
-                        </ReactMarkdown>
-                      </div>
+                      <OrganizedAnswer md={msg.content} index={i} />
+                      {/* manual toggle if you ever want compact view:
                       <button className="toggle-more underline decoration-gray-600" onClick={()=>setExpandedIdx(expandedIdx===i?null:i)}>
                         {expandedIdx===i ? "Show less" : "Show more"}
                       </button>
+                      */}
                     </>
                   )}
 
                   {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* Quick actions – base pills + HQ pills */}
+                  {/* Quick actions – base pills + HQ pills (max 2) */}
                   {!isUser && (
                     <div className="actions-row">
                       <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
@@ -748,7 +959,7 @@ function AIChat() {
                       <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
                           search: {userPrompt ? `${userPrompt} latest news` : "latest news"}
                       </a>
-                      {linkSets.quickActions.slice(0,3).map((c,idx)=>(
+                      {linkSets.quickActions.slice(0,2).map((c,idx)=>(
                         <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
                           {displaySource(c).replace(/^m\./,"")}
                         </a>
@@ -756,7 +967,7 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Sources grid – only when helpful */}
+                  {/* Sources grid – trimmed */}
                   {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
