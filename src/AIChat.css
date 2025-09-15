@@ -1,277 +1,220 @@
-/* =========================
-   Base + Layout
-   ========================= */
-:root{
-  --kb:0px;
-  --maxw: 960px;
-  --card-bg: rgba(255,255,255,.04);
-  --card-bd: rgba(255,255,255,.10);
-  --glass: rgba(255,255,255,.06);
-  --fg: #eaeaea;
-  --fg-dim:#a9a9a9;
-  --bg:#0b0b0b;
-}
-html,body{
-  height:100%;
-  background:var(--bg);
-  color:var(--fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text",
-               "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  -webkit-text-size-adjust:100%;
-}
-[data-theme="light"]{
-  --bg:#ffffff;
-  --fg:#0b0b0b;
-  --fg-dim:#4b4b4b;
-  --card-bg: rgba(0,0,0,.03);
-  --card-bd: rgba(0,0,0,.10);
-  --glass: rgba(0,0,0,.04);
+/* Phone-first, no blue tap highlight */
+:root {
+  --bg: #0b0b0b;
+  --panel: rgba(255,255,255,.06);
+  --panel-2: rgba(255,255,255,.04);
+  --text: #f3f3f3;
+  --muted: #a1a1aa;
+  --border: rgba(255,255,255,.12);
+  --glass: rgba(255,255,255,.08);
+  --shadow: 0 6px 24px rgba(0,0,0,.35);
 }
 
-/* tighter phone baseline */
-@media (max-width: 420px){
-  html{ font-size: 15.5px; }
-}
-
-/* app container */
-.max-w-4xl{ max-width: var(--maxw); }
-
-/* =========================
-   Header
-   ========================= */
-header{
-  backdrop-filter: blur(10px);
-}
-.brand{
-  font-weight:700;
-  letter-spacing:.2px;
-}
-header .pill-btn{
-  display:inline-flex;
-  align-items:center;
-  gap:.35rem;
-  height:34px;
-  padding:0 .7rem;
-  border-radius:18px;
-  border:1px solid var(--card-bd);
-  background:var(--card-bg);
-  color:var(--fg);
-  line-height:1;
-  transition:.15s ease;
-}
-header .pill-btn:hover{ background:var(--glass); }
-
-/* Put all header controls on the right, compact on phones */
-header .ml-auto{
-  margin-left:auto;
-  display:flex;
-  gap:.45rem;
-  flex-wrap:nowrap;
-}
-
-/* icons only on small screens */
-@media (max-width: 640px){
-  header .pill-btn span{ display:none; }
-  header .pill-btn{ padding:0 .6rem; height:32px; }
-}
-
-/* the Image upload label looks like a button */
-label.pill-btn input{ display:none; }
-
-/* three-dots menu container (absolute) */
-header .absolute{
-  z-index:70;
-}
-
-/* =========================
-   Tools Menu
-   ========================= */
-.menu-panel{
-  position:absolute;
-  right:0;
-  top:44px;          /* drops under the "…" button */
-  width: 260px;
+html, body {
+  height: 100%;
   background: var(--bg);
-  border:1px solid var(--card-bd);
-  border-radius:14px;
-  box-shadow: 0 12px 36px rgba(0,0,0,.35);
-  padding:.25rem;
-}
-.menu-item{
-  width:100%;
-  display:flex;
-  align-items:center;
-  gap:.6rem;
-  padding:.65rem .75rem;
-  border-radius:10px;
-  color:var(--fg);
-  text-align:left;
-  background: transparent;
-}
-.menu-item:hover{ background: var(--glass); }
-.menu-item .icon{ font-size: 1rem; opacity:.9; }
-.menu-item.active{ background: rgba(99,102,241,.15); border:1px solid rgba(99,102,241,.25); }
-.menu-sep{
-  border:none; height:1px; margin:.25rem .35rem;
-  background: var(--card-bd);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* =========================
-   Cards / Messages
-   ========================= */
-.glass{
-  background: var(--card-bg);
-  border:1px solid var(--card-bd);
-  border-radius: 14px;
-  padding: 14px;
-}
-.glass-2{
-  background: transparent;
-  border:1px dashed var(--card-bd);
-  border-radius: 14px;
-  padding: 14px;
-}
-.msg .small-label{
-  font-size:.78rem;
-  color:var(--fg-dim);
-  margin-bottom:.15rem;
-}
-.answer.expanded{
-  white-space:pre-wrap;
-  word-wrap:break-word;
-  line-height:1.6;
-}
-/* organized sections */
-.org-title{
-  font-size:1.05rem;
-  font-weight:700;
-  margin-bottom:.35rem;
-}
-.org-section{ margin-top:.75rem; }
-.org-sub{ font-size:.8rem; color:var(--fg-dim); margin-bottom:.25rem; }
-
-.actions-row{
-  display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.75rem;
-}
-.action-btn{
-  display:inline-flex; align-items:center; gap:.4rem;
-  padding:.45rem .65rem; border-radius:999px;
-  border:1px solid var(--card-bd); background:var(--card-bg);
-  font-size:.85rem; color:var(--fg);
-}
-.action-btn:hover{ background:var(--glass); }
-
-.sources-grid{
-  display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:.6rem;
-}
-@media (min-width:640px){ .sources-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
-
-/* link preview fallback */
-.favicon-only{
-  display:flex; align-items:center; gap:.55rem;
-  padding:.55rem .6rem; border-radius:12px;
-  background:var(--card-bg); border:1px solid var(--card-bd);
-  min-height:42px;
-}
-.favicon-only .src-title{ font-weight:600; font-size:.92rem; }
-.favicon-only .src-sub{ font-size:.78rem; color:var(--fg-dim); }
-
-/* embed helpers */
-.embed-responsive{ position:relative; width:100%; }
-.embed-16by9{ padding-bottom:56.25%; }
-.embed-responsive iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
-
-/* quick chart bars */
-.bars{ display:flex; flex-direction:column; gap:.45rem; }
-.bar-row{ display:grid; grid-template-columns: 110px 1fr auto; align-items:center; gap:.5rem; }
-.bar-label{ font-size:.85rem; color:var(--fg-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.bar-track{ background:rgba(255,255,255,.07); border-radius:999px; height:8px; overflow:hidden; }
-.bar-fill{ background:#888; height:100%; border-radius:999px; }
-
-/* =========================
-   Weather card
-   ========================= */
-.weather-card .wstat{ background:transparent; padding:.35rem .5rem; border-radius:10px; }
-.weather-card .wlabel{ font-size:.72rem; color:var(--fg-dim); }
-.weather-card .wval{ font-size:.9rem; font-weight:600; }
-.w-hscroll{ scrollbar-width:none; }
-.w-hscroll::-webkit-scrollbar{ display:none; }
-.skel{ background: rgba(255,255,255,.06); }
-
-/* =========================
-   Scroll area
-   ========================= */
-.chat-scroll{
-  min-height: 0;
+html[data-theme="light"] {
+  --bg: #fcfcfd;
+  --panel: rgba(0,0,0,.06);
+  --panel-2: rgba(0,0,0,.04);
+  --text: #0b0b0b;
+  --muted: #555;
+  --border: rgba(0,0,0,.12);
+  --glass: rgba(0,0,0,.06);
+  --shadow: 0 8px 28px rgba(0,0,0,.10);
 }
 
-/* =========================
-   Fixed preview panel while typing
-   ========================= */
-.fixed-panel{
-  position: fixed;
-  left: 0; right: 0; bottom: calc(68px + var(--kb)); /* sits above composer */
+* { box-sizing: border-box; }
+
+/* Utility */
+.glass { background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.glass-2 { background: var(--panel-2); border: 1px dashed var(--border); }
+
+.small-label { font-size: 11px; color: var(--muted); }
+.skel { background: var(--panel-2); }
+
+/* Header */
+header {
+  position: sticky;
+  top: 0;
   z-index: 40;
-  pointer-events:none;   /* non-blocking for scroll */
+  backdrop-filter: blur(10px);
+  background: color-mix(in oklab, var(--bg) 86%, transparent);
+  border-bottom: 1px solid var(--border);
 }
-.fixed-panel .panel{ pointer-events:auto; }
-.dim-while-typing .panel{ opacity:.95; }
 
-/* =========================
-   Composer (bottom)
-   ========================= */
-.fixed-bottom{
-  position: sticky;       /* keeps it anchored to bottom */
+.header-row {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+/* Left tools (icons) */
+.left-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 6px 0;
+  scrollbar-width: none;
+}
+.left-tools::-webkit-scrollbar { display: none; }
+
+/* Right tools (Image + menu) */
+.right-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Pills */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: background .15s ease, transform .05s ease;
+}
+.pill-btn:active { transform: scale(.98); }
+.pill-btn:focus { outline: none; box-shadow: none; }
+
+/* Menu */
+.menu-panel {
+  width: 280px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+}
+.menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+}
+.menu-item .icon { width: 18px; height: 18px; opacity: .9; }
+.menu-item:hover { background: var(--panel); border-color: var(--border); }
+.menu-item.active { outline: 2px solid rgba(88,101,242,.35); background: color-mix(in oklab, var(--panel) 80%, transparent); }
+.menu-sep { border: none; height: 1px; background: var(--border); margin: 8px 0; }
+
+/* Chat area */
+.chat-scroll { overscroll-behavior: contain; }
+.msg { border-radius: 16px; padding: 14px; }
+.answer { font-size: 15px; line-height: 1.6; }
+.answer.expanded p { margin: 0 0 10px; }
+
+/* Sources grid */
+.sources-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .sources-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Link preview fallback */
+.favicon-only {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+}
+
+/* Weather */
+.wstat .wlabel { color: var(--muted); font-size: 11px; }
+.wstat .wval { font-weight: 600; margin-top: 2px; }
+
+/* Markdown */
+code, pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+pre { padding: 10px; overflow: auto; }
+.code-copy-btn {
+  position: absolute; right: 8px; top: 8px;
+  font-size: 11px; padding: 4px 8px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* Media */
+.embed-responsive { position: relative; width: 100%; }
+.embed-16by9 { padding-top: 56.25%; }
+.embed-responsive iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+/* Fixed typing bar */
+.fixed-bottom {
+  position: sticky;
   bottom: 0;
   z-index: 50;
+  background: color-mix(in oklab, var(--bg) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
+}
+textarea {
+  width: 100%;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  outline: none;
+  resize: none;
 }
 
-/* input */
-.fixed-bottom textarea{
-  font-size:1rem;
+/* Hide the old control panel entirely on phone */
+.control-panel { display: none !important; }
+
+/* Fixed preview panel while typing */
+.fixed-preview {
+  position: sticky;
+  bottom: 70px;
+  z-index: 30;
+}
+.fixed-panel .panel { border: 1px solid var(--border); }
+.hscroll { overflow-x: auto; }
+.hitem { width: 280px; flex: 0 0 auto; }
+.line-clamp-2 {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
-/* ❌ Hide camera button in composer (we want only text + send) */
-.fixed-bottom .pill-btn{ display:none; }
-
-/* ❌ Hide the preset chips row under the composer */
-.fixed-bottom .flex.gap-2.flex-wrap.mt-2{ display:none !important; }
-
-/* Composer shell */
-.fixed-bottom .rounded-2xl{
-  background: var(--card-bg);
-  border:1px solid var(--card-bd);
-}
-
-/* Send button look */
-.fixed-bottom .shrink-0{
-  background:#fff !important;
-  color:#000 !important;
-}
-
-/* =========================
-   Utilities
-   ========================= */
-.rounded-xl{ border-radius: 16px; }
-.rounded-lg{ border-radius: 12px; }
-.rounded-2xl{ border-radius: 22px; }
-
-.text-gray-400{ color: var(--fg-dim); }
-.text-gray-500{ color: color-mix(in oklab, var(--fg-dim) 88%, var(--fg) 12%); }
-
-.underline{ text-decoration: underline; text-underline-offset: 2px; }
-
-/* copy button in code blocks */
-.code-copy-btn{
-  position:absolute; top:8px; right:8px;
-  background: var(--bg); border:1px solid var(--card-bd);
-  border-radius:8px; padding:.25rem .45rem;
-  font-size:.78rem; color:var(--fg);
-}
-pre{ background: rgba(0,0,0,.35); padding:12px; border-radius:12px; overflow:auto; }
-
-/* keep panels above iOS bottom bar */
-@supports(padding: max(0px)){
-  .fixed-bottom{ padding-bottom: max(env(safe-area-inset-bottom), 12px); }
-}
+/* org answer */
+.org-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+.org-section { margin-top: 12px; }
+.org-sub { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.org-list, .org-steps { margin: 0; padding-left: 18px; }
+.bar-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 8px; align-items: center; margin: 6px 0; }
+.bar-label { font-size: 12px; color: var(--muted); }
+.bar-track { height: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; background: linear-gradient(90deg, #7aa2ff, #c38bff); }
