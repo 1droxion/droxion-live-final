@@ -1,15 +1,19 @@
-// src/AIChat.jsx  — Droxion (full file, part 1/6)
+// src/AIChat.jsx — Droxion (clean, emoji-free, matches AIChat.css)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
+import {
+  FiMoon, FiSun, FiCode, FiStar, FiVolume2, FiVolumeX,
+  FiMic, FiImage, FiCamera, FiArrowRight
+} from "react-icons/fi";
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-// ---------- url & image helpers ----------
+/* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try { return new URL(u).hostname.toLowerCase().replace(/^www\./,"").replace(/^m\./,""); }
   catch { return ""; }
@@ -41,7 +45,7 @@ const timeAgo = (d) => {
   const dd = Math.floor(h/24); return `${dd}d ago`;
 };
 
-// ---------- query intent ----------
+/* ---------------------- query intent ---------------------- */
 const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
@@ -63,7 +67,7 @@ const isSearchy = (s="") => {
   );
 };
 
-// ---------- youtube helpers ----------
+/* ---------------------- youtube helpers ---------------------- */
 const getYouTubeId = (raw="") => {
   try {
     const txt = raw.trim();
@@ -88,7 +92,7 @@ const isYouTube = (u="") => {
   return h.includes("youtube.com") || h.includes("youtu.be");
 };
 
-// ---------- ranking & cleaning ----------
+/* ---------------------- ranking & cleaning ---------------------- */
 const HQ = [
   "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
   "theguardian.com","bbc.com","bbc.co.uk","npr.org","hindustantimes.com","livemint.com","moneycontrol.com","economictimes.com",
@@ -143,7 +147,7 @@ const bestPreview = (card, allowFallback=false) => {
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
 };
 
-// ---------- weather helpers ----------
+/* ---------------------- weather helpers ---------------------- */
 const pick = (obj, keys, d=null) => { for (const k of keys) if (obj && obj[k] != null && obj[k] !== "") return obj[k]; return d; };
 const normalizeWeatherCard = (raw) => {
   if (!raw) return null;
@@ -164,8 +168,8 @@ const normalizeWeatherCard = (raw) => {
   const when = pick(raw, ["when","time","as_of","updated"]);
   return { type:"weather", title: loc ? `${title} — ${loc}` : title, subtitle: subtitle || (when ? `As of ${new Date(when).toLocaleTimeString()}` : ""), icon, temp_c, temp_f, feels_c, feels_f, humidity, wind_kph, wind_mph, precip, hourly, daily };
 };
-// src/AIChat.jsx — part 2/6
 
+/* ---------------------- storage & image fetch ---------------------- */
 const STORAGE_KEY = "droxion.chat.v1";
 const MEM_KEY = "droxion.mem.v1";
 const loadMem = () => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; } };
@@ -183,6 +187,7 @@ const ensureImagesFor = async (query) => {
   return [];
 };
 
+/* ---------------------- UI blocks ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
   const T = (() => {
@@ -293,11 +298,12 @@ function WeatherCard({ card }) {
   );
 }
 
+/* ---------------------- main component ---------------------- */
 function AIChat() {
   // chat + ui
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
+  const [typing] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
   // live preview
@@ -355,9 +361,8 @@ function AIChat() {
       window.removeEventListener("orientationchange", handleVV);
     };
   }, []);
-  // src/AIChat.jsx — part 3/6
 
-  // suggestions as user types
+  /* ---------------------- suggestions as user types ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -371,7 +376,7 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  // live previews (news/weather/crypto)
+  /* ---------------------- live previews ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
@@ -418,8 +423,8 @@ function AIChat() {
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
-  const pushWithFollowups = async (md, cards, q) => {
-    setMessages((p) => [...p, { role: "assistant", content: md, cards }]);
+  const pushWithFollowups = async (md, cards, q, meta={}) => {
+    setMessages((p) => [...p, { role: "assistant", content: md, cards, meta }]);
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
@@ -431,7 +436,7 @@ function AIChat() {
     }
   };
 
-  // MAIN send
+  /* ---------------------- MAIN send ---------------------- */
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
     setMessages((p) => [...p, { role: "user", content }]);
@@ -441,19 +446,19 @@ function AIChat() {
       // memory commands
       if (/^remember\s*:/i.test(content)) {
         const fact = content.replace(/^remember\s*:/i,"").trim();
-        if (fact) { const mem = loadMem(); mem.push({ fact, t: Date.now() }); saveMem(mem); await pushWithFollowups(`✅ Remembered: **${fact}**`, [], content); }
-        else { await pushWithFollowups("What should I remember? Use `remember: your fact`.", [], content); }
+        if (fact) { const mem = loadMem(); mem.push({ fact, t: Date.now() }); saveMem(mem); await pushWithFollowups(`Remembered: **${fact}**`, [], content, {suppressSources:true}); }
+        else { await pushWithFollowups("What should I remember? Use `remember: your fact`.", [], content, {suppressSources:true}); }
         return;
       }
       if (/^what did you remember|^show memory/i.test(content)) {
         const mem = loadMem();
         const md = mem.length ? `### Memory\n${mem.map(m => `- ${m.fact}`).join("\n")}` : "I haven't saved any memory yet. Use `remember: <fact>`.";
-        await pushWithFollowups(md, [], content); return;
+        await pushWithFollowups(md, [], content, {suppressSources:true}); return;
       }
 
       if (isGreeting(content)) {
         const r = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
-        await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
+        await pushWithFollowups(r.data?.reply || r.data?.text || "Hello!", [], content, {suppressSources:true});
         return;
       }
 
@@ -466,8 +471,8 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/search-youtube`, { prompt: q });
           const url = r.data?.url;
           if (url) await pushWithFollowups(`### YouTube\nFound a video for **${q}**.`, [{ type: "youtube", url, title: q }], content);
-          else await pushWithFollowups(`Couldn't find a YouTube result for **${q}**.`, [], content);
-        } catch { await pushWithFollowups("YouTube search is unavailable right now.", [], content); }
+          else await pushWithFollowups(`Couldn't find a YouTube result for **${q}**.`, [], content, {suppressSources:true});
+        } catch { await pushWithFollowups("YouTube search is unavailable right now.", [], content, {suppressSources:true}); }
         return;
       }
 
@@ -480,7 +485,7 @@ function AIChat() {
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
           if (!hasMedia && (wantsImages(q) || isSearchy(q))) cards = cards.concat(await ensureImagesFor(q));
           await pushWithFollowups(md, cards, content);
-        } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
+        } catch { await pushWithFollowups("Preview is unavailable right now.", [], content, {suppressSources:true}); }
         return;
       }
 
@@ -494,7 +499,7 @@ function AIChat() {
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
           if (!hasMedia && (wantsImages(q) || isSearchy(q))) cards = cards.concat(await ensureImagesFor(q));
           await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
-        } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
+        } catch { await pushWithFollowups("Search is unavailable right now.", [], content, {suppressSources:true}); }
         return;
       }
 
@@ -538,12 +543,11 @@ function AIChat() {
       if (!hasMedia && (wantsImages(content) || isSearchy(content))) cards = cards.concat(await ensureImagesFor(content));
       await pushWithFollowups(md, cards, content);
     } catch {
-      await pushWithFollowups("⚠️ Error or connection failed.", [], content);
+      await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
-  // src/AIChat.jsx — part 4/6
 
-  // ---- render helpers ----
+  /* ---------------------- render helpers ---------------------- */
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
     const elRef = useRef(null);
@@ -572,7 +576,7 @@ function AIChat() {
     if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
     const fav = faviconFor(card.url);
     return (
-      <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
+      <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only">
         {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
         <div className="min-w-0">
           <div className="src-title truncate">{card.title || displaySource(card)}</div>
@@ -651,7 +655,6 @@ function AIChat() {
     return { quickActions, grid };
   };
 
-  // extractors for organized answer
   const extractTitle = (md="") => {
     const h1 = md.match(/^\s*#\s+(.+)/m); if (h1) return h1[1].trim();
     const firstLine = md.split("\n").find(x => x.trim()); if (!firstLine) return "Answer";
@@ -678,7 +681,7 @@ function AIChat() {
     return out.slice(0,8);
   };
 
-  const OrganizedAnswer = ({ md, index }) => {
+  const OrganizedAnswer = ({ md }) => {
     const title = extractTitle(md);
     const summary = extractSummary(md);
     const steps = extractSteps(md);
@@ -743,7 +746,7 @@ function AIChat() {
     );
   };
 
-  // ---- Image analysis ----
+  /* ---------------------- Image analysis ---------------------- */
   const sendImageForAnalysis = async (file) => {
     try {
       const form = new FormData();
@@ -761,11 +764,11 @@ function AIChat() {
       await pushWithFollowups(md, cards, input || "image analysis");
       setInput("");
     } catch {
-      await pushWithFollowups("⚠️ Image analysis failed.", [], "vision failed");
+      await pushWithFollowups("Image analysis failed.", [], "vision failed", { suppressSources: true });
     }
   };
 
-  // ---- Speech to text (browser) ----
+  /* ---------------------- Speech to text (browser) ---------------------- */
   const startMic = async () => {
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Rec) {
@@ -773,7 +776,10 @@ function AIChat() {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         alert("Mic captured, but this browser lacks SpeechRecognition. Connect an STT backend.");
       } catch {
-        await pushWithFollowups("🎙️ Microphone access denied.\n\n**How to fix**\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) On iPhone: Settings → Safari → Microphone → Allow.", [], "mic denied");
+        await pushWithFollowups(
+          "Microphone access denied.\n\nHow to fix:\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) On iPhone: Settings → Safari → Microphone → Allow.",
+          [], "mic denied", {suppressSources:true}
+        );
       }
       return;
     }
@@ -787,24 +793,35 @@ function AIChat() {
       alert("Mic access denied. Please enable microphone permissions.");
     }
   };
-  // src/AIChat.jsx — part 5/6
 
+  /* ---------------------- render ---------------------- */
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
     <div className={`flex flex-col min-h-[100svh] ${codeMode ? "code-mode" : ""}`}>
+      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap">
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">{theme==="dark"?"🌙 Dark":"☀️ Light"}</button>
-            <button onClick={()=>setCodeMode(v=>!v)} className="pill-btn" title="Code mode">{"</>"} Code</button>
-            <button onClick={()=>setProMode(v=>!v)} className="pill-btn" title="Premium">{proMode?"⭐ Pro On":"⭐ Pro Off"}</button>
-            <button onClick={()=>setSpeakOn(v=>!v)} className="pill-btn" title="Speak replies">{speakOn?"🔊 On":"🔇 Off"}</button>
-            <button onClick={startMic} className="pill-btn" title="Speak your message">🎤 Mic</button>
-            <label className="pill-btn cursor-pointer" title="Upload image to analyze">
-              🖼 Image
+            <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
+              {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
+            </button>
+            <button onClick={()=>setCodeMode(v=>!v)} className="pill-btn" title="Code mode">
+              <FiCode /><span style={{marginLeft:6}}>Code</span>
+            </button>
+            <button onClick={()=>setProMode(v=>!v)} className="pill-btn" title="Premium">
+              <FiStar /><span style={{marginLeft:6}}>Pro {proMode?"On":"Off"}</span>
+            </button>
+            <button onClick={()=>setSpeakOn(v=>!v)} className="pill-btn" title="Speak replies">
+              {speakOn ? <FiVolume2 /> : <FiVolumeX />}<span style={{marginLeft:6}}>{speakOn?"On":"Off"}</span>
+            </button>
+            <button onClick={startMic} className="pill-btn" title="Speak your message">
+              <FiMic /><span style={{marginLeft:6}}>Mic</span>
+            </button>
+            <label className="pill-btn cursor-pointer" title="Upload image to analyze" style={{display:"inline-flex",alignItems:"center"}}>
+              <FiImage /><span style={{marginLeft:6}}>Image</span>
               <input type="file" accept="image/*" hidden ref={fileRef}
                 onChange={(e)=>{ const f=e.target.files?.[0]; if(f) sendImageForAnalysis(f); e.target.value=""; }} />
             </label>
@@ -826,7 +843,11 @@ function AIChat() {
               const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki","images"].includes(c.type));
 
               const hasPreviewable = (cards||[]).some(c => firstImageUrl(c) || (c.url && !isFilteredSource(c.url)));
-              const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard) && hasPreviewable;
+              const shouldShowSources =
+                (!isUser) &&
+                (showSearchy || isRealtimeCard) &&
+                hasPreviewable &&
+                !(msg.meta && msg.meta.suppressSources);
 
               const linkSets = buildLinkSets(cards, shouldShowSources);
 
@@ -846,36 +867,30 @@ function AIChat() {
                   </div>
 
                   {isUser && <div className="answer expanded">{msg.content}</div>}
-
-                  {!isUser && msg.content && (
-                    <><OrganizedAnswer md={msg.content} index={i} /></>
-                  )}
-
+                  {!isUser && msg.content && (<OrganizedAnswer md={msg.content} index={i} />)}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {!isUser && (
-                    <div className="actions-row">
-                      <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
-                          google: {userPrompt || "search"}
-                      </a>
-                      <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
-                          search: {userPrompt ? `${userPrompt} latest news` : "latest news"}
-                      </a>
-                      {linkSets.quickActions.slice(0,2).map((c,idx)=>(
-                        <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
-                          {displaySource(c).replace(/^m\./,"")}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-
-                  {shouldShowSources && linkSets.grid.length>0 && (
-                    <div className="mt-3">
-                      <div className="small-label mb-1">Sources</div>
-                      <div className="sources-grid">
-                        {linkSets.grid.map((c,idx)=> (<div key={idx}><LinkPreview card={c} /></div>))}
+                  {!isUser && shouldShowSources && (
+                    <>
+                      <div className="actions-row">
+                        <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn">google: {userPrompt || "search"}</a>
+                        <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn">search: {userPrompt ? `${userPrompt} latest news` : "latest news"}</a>
+                        {linkSets.quickActions.slice(0,2).map((c,idx)=>(
+                          <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn">
+                            {displaySource(c).replace(/^m\./,"")}
+                          </a>
+                        ))}
                       </div>
-                    </div>
+
+                      {linkSets.grid.length>0 && (
+                        <div className="mt-3">
+                          <div className="small-label mb-1">Sources</div>
+                          <div className="sources-grid">
+                            {linkSets.grid.map((c,idx)=> (<div key={idx}><LinkPreview card={c} /></div>))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
@@ -903,6 +918,7 @@ function AIChat() {
         </div>
       </div>
 
+      {/* Fixed preview while typing */}
       {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
@@ -995,8 +1011,12 @@ function AIChat() {
                 aria-label="Type your message"
               />
             </div>
-            <button onClick={()=>fileRef.current?.click()} className="pill-btn" title="Analyze an image">📷</button>
-            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">➤</button>
+            <button onClick={()=>fileRef.current?.click()} className="pill-btn" title="Analyze an image">
+              <FiCamera />
+            </button>
+            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
+              <FiArrowRight />
+            </button>
           </div>
 
           <div className="flex gap-2 flex-wrap mt-2">
@@ -1008,20 +1028,19 @@ function AIChat() {
           </div>
         </div>
       </div>
-      // src/AIChat.jsx — part 6/6
 
-      {/* ===== PART 4: CONTROL PANEL / TOGGLES (bottom) ===== */}
+      {/* Control panel */}
       <div className="control-panel flex flex-wrap justify-center gap-3 mt-6 mb-24">
         <button
           onClick={() => { setMessages([]); localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(MEM_KEY); }}
-          className="pill-btn" title="Clear chat history + memory">🗑️ Clear Chat + Memory</button>
+          className="pill-btn" title="Clear chat history + memory">Clear Chat + Memory</button>
 
         <button
           onClick={() => { setMessages([]); localStorage.removeItem(STORAGE_KEY); setInput(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-          className="pill-btn" title="Start a fresh chat (keep memory)">✨ New Chat</button>
+          className="pill-btn" title="Start a fresh chat (keep memory)">New Chat</button>
       </div>
-      {/* ===== /PART 4 ===== */}
     </div>
   );
 }
+
 export default AIChat;
