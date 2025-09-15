@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (clean, emoji-free, matches AIChat.css)
+// src/AIChat.jsx — Droxion (fixed + tools menu, emoji-free)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -7,7 +7,8 @@ import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
 import {
   FiMoon, FiSun, FiCode, FiStar, FiVolume2, FiVolumeX,
-  FiMic, FiImage, FiCamera, FiArrowRight
+  FiMic, FiImage, FiCamera, FiArrowRight, FiMoreHorizontal,
+  FiFile, FiGlobe, FiCpu, FiBook, FiSearch, FiAperture
 } from "react-icons/fi";
 import "./AIChat.css";
 
@@ -187,6 +188,66 @@ const ensureImagesFor = async (query) => {
   return [];
 };
 
+/* ---------------------- Tools Menu ---------------------- */
+function ToolsMenu({
+  onSendImageFile,
+  onSendAnyFile,
+  onToggleAgent, agentOn,
+  onDeepResearch,
+  onSetPersona,
+  onCreateImage,
+  webSearchOn, onToggleWebSearch
+}) {
+  const camRef = useRef(null);
+  const photosRef = useRef(null);
+  const filesRef = useRef(null);
+
+  const pickCamera = () => camRef.current?.click();
+  const pickPhotos = () => photosRef.current?.click();
+  const pickFiles  = () => filesRef.current?.click();
+
+  const handleCamFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendImageFile(f, { source: "camera" });
+    e.target.value = "";
+  };
+  const handlePhotoFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendImageFile(f, { source: "photos" });
+    e.target.value = "";
+  };
+  const handleAnyFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendAnyFile?.(f);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="menu-panel">
+      {/* hidden inputs */}
+      <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCamFile} />
+      <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
+      <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
+
+      <button className="menu-item" onClick={pickCamera}><FiCamera className="icon"/><span>Camera</span></button>
+      <button className="menu-item" onClick={pickPhotos}><FiImage className="icon"/><span>Photos</span></button>
+      <button className="menu-item" onClick={pickFiles}><FiFile className="icon"/><span>Files</span></button>
+
+      <hr className="menu-sep" />
+
+      <button className={`menu-item ${agentOn ? "active":""}`} onClick={onToggleAgent}>
+        <FiCpu className="icon"/><span>Agent mode {agentOn?"On":"Off"}</span>
+      </button>
+      <button className="menu-item" onClick={onDeepResearch}><FiSearch className="icon"/><span>Deep research</span></button>
+      <button className="menu-item" onClick={()=>onSetPersona?.("teacher")}><FiBook className="icon"/><span>Study & learn</span></button>
+      <button className="menu-item" onClick={onCreateImage}><FiAperture className="icon"/><span>Create image</span></button>
+      <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={onToggleWebSearch}>
+        <FiGlobe className="icon"/><span>Web search {webSearchOn?"On":"Off"}</span>
+      </button>
+    </div>
+  );
+}
+
 /* ---------------------- UI blocks ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
@@ -283,8 +344,8 @@ function WeatherCard({ card }) {
                 <div className="text-xs font-semibold">
                   {(() => {
                     const c=d.max_c,f=d.max_f; const lc=d.min_c,lf=d.min_f;
-                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number"?`${Math.round(c)}°C`:(typeof f==="number"?`${Math.round(f)}°F`:""));
-                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number"?`${Math.round(lc)}°C`:(typeof lf==="number"?`${Math.round(lf)}°F`:""));
+                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number"?`${Math.round(c)}°C`:(typeof f==="number)?`${Math.round(f)}°F`:""));
+                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number"?`${Math.round(lc)}°C`:(typeof lf==="number)?`${Math.round(lf)}°F`:""));
                     return `${hi} / ${lo}`;
                   })()}
                 </div>
@@ -318,6 +379,12 @@ function AIChat() {
   const [codeMode, setCodeMode] = useState(() => localStorage.getItem("drox.code") === "1");
   const [proMode, setProMode] = useState(() => localStorage.getItem("drox.pro") === "1");
   const [speakOn, setSpeakOn] = useState(() => localStorage.getItem("drox.speak") === "1");
+
+  // tools menu states
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [agentOn, setAgentOn] = useState(false);
+  const [webSearchOn, setWebSearchOn] = useState(true);
+  const [persona, setPersona] = useState(""); // e.g., "teacher"
 
   const inputRef = useRef(null);
   const suggestTimer = useRef(null);
@@ -457,7 +524,13 @@ function AIChat() {
       }
 
       if (isGreeting(content)) {
-        const r = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
+        const r = await axios.post(`${API_BASE}/chat`, {
+          prompt: content,
+          memory: loadMem().slice(-5).map(m=>m.fact),
+          persona,
+          web: webSearchOn,
+          agent: agentOn
+        });
         await pushWithFollowups(r.data?.reply || r.data?.text || "Hello!", [], content, {suppressSources:true});
         return;
       }
@@ -479,7 +552,7 @@ function AIChat() {
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         try {
-          const r = await axios.post(`${API_BASE}/realtime`, { query: q });
+          const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
           let cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
@@ -492,7 +565,7 @@ function AIChat() {
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
         try {
-          const r = await axios.post(`${API_BASE}/search`, { prompt: q });
+          const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
           let cards = rankAndTrim(
             (r.data?.results || []).filter(Boolean).map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })), 12, true
           );
@@ -506,7 +579,7 @@ function AIChat() {
       if (wantsNews(content)) {
         let r = null, cards = [];
         try {
-          r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
+          r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
           cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 12, true)
             .filter(c => !!bestPreview(c, true));
         } catch {}
@@ -527,7 +600,7 @@ function AIChat() {
       }
 
       if (wantsCrypto(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
         let cards = (r.data?.cards || []).filter(Boolean);
         const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
         if (!hasMedia && (wantsImages(content) || isSearchy(content))) cards = cards.concat(await ensureImagesFor(content));
@@ -536,7 +609,13 @@ function AIChat() {
       }
 
       // default chat
-      const res = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
+      const res = await axios.post(`${API_BASE}/chat`, {
+        prompt: content,
+        memory: loadMem().slice(-5).map(m=>m.fact),
+        persona,
+        web: webSearchOn,
+        agent: agentOn
+      });
       const md = res.data?.reply || res.data?.text || "";
       let cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
       const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
@@ -746,21 +825,18 @@ function AIChat() {
     );
   };
 
-  /* ---------------------- Image analysis ---------------------- */
+  /* ---------------------- Image & File endpoints ---------------------- */
   const sendImageForAnalysis = async (file) => {
     try {
       const form = new FormData();
       form.append("image", file);
       form.append("prompt", input || "Analyze this image and explain key details.");
-      const r = await axios.post(`${API_BASE}/vision`, form, { headers: { "Content-Type":"multipart/form-data" } });
-      const md = r.data?.reply || "No result.";
-      let cards = [];
-      if (proMode || wantsImages(input || "")) {
-        try {
-          const rr = await axios.post(`${API_BASE}/realtime`, { query: input || "related images", intent: "images" });
-          cards = (rr.data?.cards || []).filter(Boolean);
-        } catch {}
-      }
+      form.append("agent", String(agentOn));
+      form.append("web", String(webSearchOn));
+      form.append("persona", persona);
+      const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type":"multipart/form-data" } });
+      const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
+      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
       await pushWithFollowups(md, cards, input || "image analysis");
       setInput("");
     } catch {
@@ -768,29 +844,29 @@ function AIChat() {
     }
   };
 
-  /* ---------------------- Speech to text (browser) ---------------------- */
-  const startMic = async () => {
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Rec) {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        alert("Mic captured, but this browser lacks SpeechRecognition. Connect an STT backend.");
-      } catch {
-        await pushWithFollowups(
-          "Microphone access denied.\n\nHow to fix:\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) On iPhone: Settings → Safari → Microphone → Allow.",
-          [], "mic denied", {suppressSources:true}
-        );
-      }
-      return;
-    }
+  const sendAnyFile = async (file) => {
     try {
-      const rec = new Rec();
-      rec.lang = "en-US"; rec.interimResults = false; rec.maxAlternatives = 1;
-      rec.onresult = (e) => { const t = e.results?.[0]?.[0]?.transcript || ""; if (t) handleSend(t); };
-      rec.onerror = () => { alert("Mic error. Please try again."); };
-      rec.start();
+      const form = new FormData();
+      form.append("file", file);
+      const r = await axios.post(`${API_BASE}/file-analyze`, form);
+      const md = r.data?.title || "File uploaded.";
+      const md2 = r.data?.preview ? `\n\n${r.data.preview}` : "";
+      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+      await pushWithFollowups(`### ${md}${md2}`, cards, file.name);
     } catch {
-      alert("Mic access denied. Please enable microphone permissions.");
+      await pushWithFollowups("File analysis failed.", [], "file failed", { suppressSources: true });
+    }
+  };
+
+  const runDeepResearch = async () => {
+    const q = (input || "").trim();
+    if (!q) return;
+    setInput("");
+    try {
+      const r = await axios.post(`${API_BASE}/deepsearch`, { q, agent: agentOn });
+      await pushWithFollowups(r.data?.answer || `Deep research on **${q}**`, r.data?.cards || [], q);
+    } catch {
+      await pushWithFollowups("Deep research failed.", [], q, { suppressSources: true });
     }
   };
 
@@ -801,7 +877,7 @@ function AIChat() {
     <div className={`flex flex-col min-h-[100svh] ${codeMode ? "code-mode" : ""}`}>
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
-        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap">
+        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
           <div className="ml-auto flex items-center gap-2">
@@ -825,6 +901,26 @@ function AIChat() {
               <input type="file" accept="image/*" hidden ref={fileRef}
                 onChange={(e)=>{ const f=e.target.files?.[0]; if(f) sendImageForAnalysis(f); e.target.value=""; }} />
             </label>
+
+            <button onClick={()=>setMenuOpen(v=>!v)} className="pill-btn" title="More">
+              <FiMoreHorizontal />
+            </button>
+
+            {/* Tools dropdown */}
+            {menuOpen && (
+              <div className="absolute right-2 top-[110%]" onMouseLeave={()=>setMenuOpen(false)}>
+                <ToolsMenu
+                  onSendImageFile={(f)=>sendImageForAnalysis(f)}
+                  onSendAnyFile={(f)=>sendAnyFile(f)}
+                  onToggleAgent={()=>setAgentOn(v=>!v)} agentOn={agentOn}
+                  onDeepResearch={runDeepResearch}
+                  onSetPersona={(p)=>setPersona(p)}
+                  onCreateImage={()=>handleSend(`create image: ${input||"cinematic portrait"}`)}
+                  webSearchOn={webSearchOn}
+                  onToggleWebSearch={()=>setWebSearchOn(v=>!v)}
+                />
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -940,7 +1036,7 @@ function AIChat() {
                             <div className="p-3">
                               <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
                               <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
-                              <div className="text-[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
                             </div>
                           </div>
                         </a>
