@@ -941,7 +941,40 @@ function AIChat() {
       await pushWithFollowups("Deep research failed.", [], q, { suppressSources: true });
     }
   };
-
+/* ---------------------- Speech to text (browser) ---------------------- */
+const startMic = async () => {
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Rec) {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      alert(
+        "Mic captured, but this browser lacks SpeechRecognition.\nUse HTTPS (or localhost) and/or wire your backend STT."
+      );
+    } catch {
+      await pushWithFollowups(
+        "Microphone access denied.\n\nHow to fix:\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) iPhone: Settings → Safari → Microphone → Allow.",
+        [],
+        "mic denied",
+        { suppressSources: true }
+      );
+    }
+    return;
+  }
+  try {
+    const rec = new Rec();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      const t = e.results?.[0]?.[0]?.transcript || "";
+      if (t) handleSend(t);
+    };
+    rec.onerror = () => { alert("Mic error. Please try again."); };
+    rec.start();
+  } catch {
+    alert("Mic access denied. Please enable microphone permissions.");
+  }
+};
   /* ---------------------- render ---------------------- */
   const [expandedIdx, setExpandedIdx] = useState(null);
 
