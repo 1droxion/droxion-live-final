@@ -2,133 +2,61 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
+    instance_type: mac_mini_m4
 
     environment:
       groups:
-        - Add          # contains APP_STORE_CONNECT_* vars
-      vars:
-        APP_NAME: Droxion
-        BUNDLE_ID: com.droxion.app
-        WEB_DIR: dist
-      node: 20
+        - Add   # <--- this matches the group name you used
       xcode: 15.4
+      node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app
+        bundle_identifier: $BUNDLE_ID
 
     cache:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
-        - $CM_BUILD_DIR/ios/Pods
+        - ios/Pods
 
     scripts:
-      - name: Show versions
-        script: |
-          set -e
-          echo "Node: $(node -v)"
-          echo "npm : $(npm -v)"
-          echo "CocoaPods: $(pod --version)"
-          xcodebuild -version
-
-      - name: Install dependencies (fresh lock; include optional deps)
-        script: |
-          set -e
-          rm -rf node_modules package-lock.json
-          unset npm_config_optional || true
-          unset npm_config_omit || true
-          printf "fund=false\naudit=false\n" > .npmrc
-          echo "→ npm install (includes optional deps)"
-          npm install --include=optional --no-audit --no-fund
+      - name: Install dependencies
+        script: npm ci
 
       - name: Build web app
-        script: |
-          set -e
-          npm run build
+        script: npm run build
 
-      - name: Generate iOS project (Capacitor)
+      - name: Ensure Capacitor iOS project exists
         script: |
-          set -e
           npm i -D @capacitor/cli
-          npm i @capacitor/core @capacitor/ios
-
-          echo "→ Ensure capacitor.config.json exists"
-          if [ ! -f capacitor.config.json ]; then
-            node -e 'const fs=require("fs");const e=process.env;
-              const id=(e.BUNDLE_ID&&e.BUNDLE_ID.includes("."))?e.BUNDLE_ID:"com.droxion.app";
-              const name=e.APP_NAME||"Droxion";
-              const web=e.WEB_DIR||"dist";
-              const json={appId:id,appName:name,webDir:web,bundledWebRuntime:false};
-              fs.writeFileSync("capacitor.config.json",JSON.stringify(json,null,2));'
+          if ! npx cap ls | grep -q "Capacitor"; then
+            npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --yes
           fi
-          cat capacitor.config.json
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
 
-          echo "→ Add/sync iOS platform"
-          [ -d ios ] || npx cap add ios
-          npx cap copy ios
+      - name: Sync web build into iOS project
+        script: |
           npx cap sync ios
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/App/App/Info.plist || true
+          agvtool new-version -all ${BUILD_NUMBER:-1} || true
 
-          echo "→ Add iOS privacy strings"
-          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Camera is used to take photos for chat." ios/App/App/Info.plist || true
-          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Microphone is used for voice input." ios/App/App/Info.plist || true
-
-      - name: Install CocoaPods
-        script: |
-          set -e
-          if [ -d ios/App ]; then cd ios/App; elif [ -d ios ]; then cd ios; else echo "❌ ios folder missing"; exit 1; fi
-          pod install --repo-update
-
-      - name: Apply provisioning profiles (Automatic signing)
-        script: |
-          set -e
-          cd ios/App
-          xcode-project use-profiles
-
-      - name: Validate App Store Connect key format
-        script: |
-          set -e
-          echo "Key ID: ${APP_STORE_CONNECT_KEY_ID:-MISSING}"
-          echo "Issuer: ${APP_STORE_CONNECT_ISSUER_ID:-MISSING}"
-          echo "First line:" ; echo "${APP_STORE_CONNECT_API_KEY}" | head -n1
-          echo "Last  line:" ; echo "${APP_STORE_CONNECT_API_KEY}" | tail -n1
-          FIRST="$(echo "${APP_STORE_CONNECT_API_KEY}" | head -n1)"
-          LAST="$(echo  "${APP_STORE_CONNECT_API_KEY}" | tail -n1)"
-          if [ "$FIRST" != "-----BEGIN PRIVATE KEY-----" ] || [ "$LAST" != "-----END PRIVATE KEY-----" ]; then
-            echo "❌ APP_STORE_CONNECT_API_KEY must be the full multi-line .p8"
-            exit 1
-          fi
-          echo "✅ PEM looks good."
-
-      - name: Bump build number (required for upload)
-        script: |
-          set -e
-          BUILD_NO=${CM_BUILD_ID:-$(date +%Y%m%d%H%M%S)}
-          echo "Using build number: $BUILD_NO"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NO" ios/App/App/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool NO" ios/App/App/Info.plist || true
-          /usr/libexec/PlistBuddy -c "Print" ios/App/App/Info.plist | head -n 50
+      - name: Use automatic signing profiles
+        script: xcode-project use-profiles
 
       - name: Build IPA
         script: |
-          set -e
           xcode-project build-ipa \
-            --workspace "ios/App/App.xcworkspace" \
-            --scheme "App"
-
-    # ✅ Let Codemagic handle the upload & TestFlight submission (no CLI/fastlane)
-    publishing:
-      app_store_connect:
-        # Use your env vars directly
-        api_key: $APP_STORE_CONNECT_API_KEY
-        key_id: $APP_STORE_CONNECT_KEY_ID
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-
-        # Optional: automatically submit to TestFlight
-        submit_to_testflight: true
-        # If you have multiple Apple teams, you can also set:
-        # provider: $APP_STORE_CONNECT_PROVIDER
+            --project "ios/App/App.xcodeproj" \
+            --scheme "${IOS_SCHEME:-App}" \
+            --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.log
+      - $CM_BUILD_DIR/ios_archive.xcarchive
+
+    publishing:
+      app_store_connect:
+        submit_to_testflight: true
