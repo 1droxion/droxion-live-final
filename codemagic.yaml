@@ -2,20 +2,19 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m1       # ✅ Switch to M1 instance for widest Xcode support
+    instance_type: mac_mini_m1
 
     environment:
-      groups:
-        - Add
       vars:
-        APP_NAME: ${APP_NAME:-Droxion}
-        WEB_DIR: ${WEB_DIR:-dist}
-      xcode: 15.2                   # ✅ Stable version available on all M1 instances
+        # Inline defaults so validation always passes
+        APP_NAME: Droxion
+        WEB_DIR: dist
+      xcode: 15.2
       node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app  # Hardcoded for now
+        bundle_identifier: com.droxion.app   # hardcoded to avoid env visibility issues
 
     cache:
       cache_paths:
@@ -49,14 +48,13 @@ workflows:
         script: |
           npx cap sync ios
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droxion.app" ios/App/App/Info.plist || true
-          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.droxion.app/g" \
-            ios/App/App.xcodeproj/project.pbxproj || true
+          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.droxion.app/g" ios/App/App.xcodeproj/project.pbxproj || true
           agvtool new-version -all ${BUILD_NUMBER:-1} || true
 
       - name: Use automatic signing profiles
         script: xcode-project use-profiles
 
-      - name: Build IPA
+      - name: Build IPA (workspace preferred)
         script: |
           if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
             xcode-project build-ipa \
