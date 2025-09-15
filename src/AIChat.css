@@ -324,3 +324,70 @@ a{ color:var(--fg); } a:hover{ opacity:.92; }
   .hitem{ width:220px; }
   .org-title{ font-size:1rem; }
 }
+/* ===== FIX PACK: keep + FAB off the composer, show only plane send ===== */
+
+/* 1) Move the “+” (we reuse the Image button as the FAB) fully outside */
+button[title="Analyze an image"]{
+  position:fixed !important;
+  right:calc(16px + env(safe-area-inset-right, 0px)) !important;
+  bottom:calc(16px + var(--safe) + var(--kb)) !important;  /* clears keyboard & composer */
+  z-index:50 !important;
+
+  width:56px !important;
+  height:56px !important;
+  border-radius:50% !important;
+
+  background:#111 !important;
+  border:1px solid var(--border) !important;
+  color:var(--fg) !important;
+  box-shadow:0 10px 28px rgba(0,0,0,.45) !important;
+
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+}
+
+/* Use + glyph only (hide the camera glyph) */
+button[title="Analyze an image"] svg{ display:none !important; }
+button[title="Analyze an image"]::before{
+  content:"+"; font-size:28px; line-height:1; transform:translateY(-1px);
+}
+
+/* 2) Ensure no “ghost” camera pill sits in the composer */
+.fixed-bottom button[title="Analyze an image"]{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  width:0 !important;
+  height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+
+/* 3) Lift the typing preview so it never collides with the FAB */
+.fixed-panel{
+  bottom:calc(104px + var(--safe) + var(--kb)) !important;
+}
+
+/* 4) Menu (Clear / New Chat) anchored to the FAB and never overlapping */
+.control-panel{
+  position:fixed !important;
+  right:calc(16px + env(safe-area-inset-right, 0px)) !important;
+  bottom:calc(84px + var(--safe) + var(--kb)) !important;
+  inset:auto auto auto auto !important;
+  z-index:49 !important;
+  pointer-events:none;
+}
+.control-panel .pill-btn{
+  display:none; pointer-events:auto;
+  min-width:200px; justify-content:flex-start;
+  background:var(--card) !important; border:1px solid var(--border) !important;
+  border-radius:12px; padding:.55rem .8rem;
+}
+/* Show menu when the FAB is hovered/focused (tap brings focus on mobile) */
+button[title="Analyze an image"]:hover ~ .control-panel .pill-btn,
+button[title="Analyze an image"]:focus ~ .control-panel .pill-btn{
+  display:flex;
+}
+/* Vertical stack above the FAB */
+.control-panel .pill-btn:nth-child(1){ margin-bottom:.5rem; }
