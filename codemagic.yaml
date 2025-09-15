@@ -4,6 +4,7 @@ workflows:
     max_build_duration: 60
 
     instance_type: mac_mini_m2
+
     environment:
       vars:
         APP_NAME: Droxion
@@ -35,6 +36,7 @@ workflows:
           npm -v
           xcodebuild -version
           pod --version || true
+          git --version
 
       - name: Speed up npm config
         script: |
@@ -49,22 +51,43 @@ workflows:
         script: |
           set -e
           npm ci || (rm -rf node_modules package-lock.json && npm install)
-          # ✅ Force install the darwin-arm64 rollup binary for Apple Silicon
+          # Ensure Rollup binary is present for Apple Silicon
           npm install @rollup/rollup-darwin-arm64 --save-dev --no-fund --no-audit
 
       - name: Build web app
         script: npm run build
 
-      - name: Sync Capacitor iOS
-        script: npx cap sync ios
+      - name: Ensure Capacitor CLI & iOS, then Sync
+        script: |
+          set -e
+          # Make sure Capacitor CLI exists
+          if ! npx --yes @capacitor/cli --version >/dev/null 2>&1; then
+            echo "Installing @capacitor/cli..."
+            npm i -D @capacitor/cli
+          fi
+          # Make sure core is present
+          if ! npm ls @capacitor/core >/dev/null 2>&1; then
+            echo "Installing @capacitor/core..."
+            npm i @capacitor/core
+          fi
+          # Make sure iOS platform exists
+          if [ ! -d "ios" ]; then
+            echo "Adding @capacitor/ios platform..."
+            npm i @capacitor/ios
+            npx --yes @capacitor/cli add ios
+          fi
+          # Sync iOS
+          npx --yes @capacitor/cli sync ios
 
       - name: Install CocoaPods (fast, using CDN)
         script: |
+          set -e
           cd "$IOS_PROJECT_PATH"
           pod install --repo-update --silent
 
       - name: Configure signing (from Codemagic)
         script: |
+          set -e
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
@@ -72,11 +95,13 @@ workflows:
 
       - name: Increment build number
         script: |
+          set -e
           cd "$IOS_PROJECT_PATH"
           agvtool new-version -all $(date +%s)
 
       - name: Build IPA
         script: |
+          set -e
           xcode-project build-ipa \
             --workspace "$IOS_PROJECT_PATH/App.xcworkspace" \
             --scheme "App"
@@ -85,3 +110,12 @@ workflows:
       - $CM_EXPORT_DIR/*.ipa
       - $CM_EXPORT_DIR/*.dSYM.zip
       - $CM_EXPORT_DIR/*.xcarchive
+
+    # Optional: enable to push straight to TestFlight after a successful build
+    # publishing:
+    #   app_store_connect:
+    #     auth: api_key
+    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
+    #     submit_to_testflight: true
+    #     beta_groups:
+    #       - Internal Testers
