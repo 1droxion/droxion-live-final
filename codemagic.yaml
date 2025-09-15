@@ -9,14 +9,13 @@ workflows:
         - Add
       vars:
         APP_NAME: ${APP_NAME:-Droxion}
-        BUNDLE_ID: ${BUNDLE_ID:-com.droxion.app}
         WEB_DIR: ${WEB_DIR:-dist}
-      xcode: 15.3              # ✅ FIXED to a supported Xcode version
+      xcode: 15.3             # ✅ FIXED to a supported version
       node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app
+        bundle_identifier: com.droxion.app  # ✅ Hardcoded for now
 
     cache:
       cache_paths:
@@ -28,10 +27,7 @@ workflows:
       - name: Sanity check env
         script: |
           echo "APP_NAME=$APP_NAME"
-          echo "BUNDLE_ID=$BUNDLE_ID"
           echo "WEB_DIR=$WEB_DIR"
-          test -n "$APP_NAME" && test -n "$BUNDLE_ID" && test -n "$WEB_DIR" || \
-            (echo "❌ Missing APP_NAME/BUNDLE_ID/WEB_DIR"; exit 1)
 
       - name: Install dependencies
         script: npm ci
@@ -43,7 +39,7 @@ workflows:
         script: |
           npm i -D @capacitor/cli
           if ! npx cap ls | grep -q "Capacitor"; then
-            npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --yes
+            npx cap init "$APP_NAME" "com.droxion.app" --web-dir="$WEB_DIR" --npm-client=npm --yes
           fi
           if [ ! -d ios ]; then
             npx cap add ios
@@ -51,22 +47,16 @@ workflows:
 
       - name: Force bundle id + sync project
         script: |
-          for f in capacitor.config.ts capacitor.config.json capacitor.config.js; do
-            [ -f "$f" ] || continue
-            sed -i '' "s/appId: *['\"][^'\"]*['\"]/appId: '$BUNDLE_ID'/g" "$f" || true
-            sed -i '' "s/\"appId\" *: *\"[^\"]*\"/\"appId\": \"$BUNDLE_ID\"/g" "$f" || true
-          done
-
           npx cap sync ios
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/App/App/Info.plist || true
-          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID/g" \
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droxion.app" ios/App/App/Info.plist || true
+          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.droxion.app/g" \
             ios/App/App.xcodeproj/project.pbxproj || true
           agvtool new-version -all ${BUILD_NUMBER:-1} || true
 
       - name: Use automatic signing profiles
         script: xcode-project use-profiles
 
-      - name: Build IPA (workspace preferred)
+      - name: Build IPA
         script: |
           if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
             xcode-project build-ipa \
