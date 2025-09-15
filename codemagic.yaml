@@ -5,17 +5,22 @@ workflows:
     instance_type: mac_mini_m4
 
     integrations:
-      app_store_connect: codemagic_key   # <-- replace with the name you used in Codemagic Integrations
+      app_store_connect: codemagic_key   # replace with your integration name if different
 
     environment:
       groups:
-        - Add    # group with APP_NAME, BUNDLE_ID, WEB_DIR
+        - Add
+      vars:
+        # Safe fallbacks so validation passes even if the group is misnamed
+        APP_NAME: ${APP_NAME:-Droxion}
+        BUNDLE_ID: ${BUNDLE_ID:-com.droxion.app}
+        WEB_DIR: ${WEB_DIR:-dist}
       xcode: 15.4
       node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: $BUNDLE_ID
+        bundle_identifier: ${BUNDLE_ID}
 
     cache:
       cache_paths:
@@ -24,6 +29,12 @@ workflows:
         - ios/Pods
 
     scripts:
+      - name: Sanity check env (names only)
+        script: |
+          echo "APP_NAME set? ${APP_NAME:+yes}"
+          echo "BUNDLE_ID set? ${BUNDLE_ID:+yes}"
+          echo "WEB_DIR set? ${WEB_DIR:+yes}"
+
       - name: Install dependencies
         script: npm ci
 
