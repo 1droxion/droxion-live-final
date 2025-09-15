@@ -3,22 +3,17 @@ workflows:
     name: Droxion iOS Build
     max_build_duration: 60
 
-    # M2 host with Xcode 15.x is fastest/stable
     instance_type: mac_mini_m2
-
     environment:
       vars:
-        # ---------- App vars ----------
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
         IOS_PROJECT_PATH: ios/App
-
-        # ---------- Speed knobs ----------
-        CM_CLONE_DEPTH: "1"               # ✅ shallow clone to speed "Fetching app sources"
-        GIT_LFS_SKIP_SMUDGE: "1"          # ✅ don't pull large LFS blobs on checkout
-        COCOAPODS_DISABLE_STATS: "true"   # ✅ faster pods
-        HUSKY: "0"                        # ✅ skip git hooks if repo uses husky
+        CM_CLONE_DEPTH: "1"
+        GIT_LFS_SKIP_SMUDGE: "1"
+        COCOAPODS_DISABLE_STATS: "true"
+        HUSKY: "0"
         CI: "true"
       node: 20
       xcode: 15.4
@@ -36,13 +31,10 @@ workflows:
     scripts:
       - name: Show tools
         script: |
-          set -e
           node -v
           npm -v
           xcodebuild -version
           pod --version || true
-          git --version
-          echo "Clone depth: ${CM_CLONE_DEPTH:-full}"
 
       - name: Speed up npm config
         script: |
@@ -53,11 +45,12 @@ workflows:
           npm config set fetch-retries 5
           npm config set fetch-timeout 600000
 
-      - name: Install dependencies (handle rollup optional binaries)
+      - name: Install dependencies (force rollup darwin binary)
         script: |
           set -e
-          # Try reproducible install; if lock is out-of-sync, fall back once
-          npm ci --omit=optional || (rm -rf node_modules package-lock.json && npm install --omit=optional)
+          npm ci || (rm -rf node_modules package-lock.json && npm install)
+          # ✅ Force install the darwin-arm64 rollup binary for Apple Silicon
+          npm install @rollup/rollup-darwin-arm64 --save-dev --no-fund --no-audit
 
       - name: Build web app
         script: npm run build
@@ -67,14 +60,11 @@ workflows:
 
       - name: Install CocoaPods (fast, using CDN)
         script: |
-          set -e
           cd "$IOS_PROJECT_PATH"
-          # Using --repo-update hits CDN; no need for 'pod repo update' (slow)
           pod install --repo-update --silent
 
       - name: Configure signing (from Codemagic)
         script: |
-          set -e
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
@@ -82,13 +72,11 @@ workflows:
 
       - name: Increment build number
         script: |
-          set -e
           cd "$IOS_PROJECT_PATH"
           agvtool new-version -all $(date +%s)
 
       - name: Build IPA
         script: |
-          set -e
           xcode-project build-ipa \
             --workspace "$IOS_PROJECT_PATH/App.xcworkspace" \
             --scheme "App"
@@ -97,12 +85,3 @@ workflows:
       - $CM_EXPORT_DIR/*.ipa
       - $CM_EXPORT_DIR/*.dSYM.zip
       - $CM_EXPORT_DIR/*.xcarchive
-
-    # Optional: turn on to push straight to TestFlight after build
-    # publishing:
-    #   app_store_connect:
-    #     auth: api_key
-    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
-    #     submit_to_testflight: true
-    #     beta_groups:
-    #       - Internal Testers
