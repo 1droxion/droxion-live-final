@@ -10,8 +10,8 @@ workflows:
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
         IOS_PROJECT_PATH: ios/App
-        CM_CLONE_DEPTH: "1"
-        GIT_LFS_SKIP_SMUDGE: "1"
+        CM_CLONE_DEPTH: "1"            # shallow clone speeds up “Fetching app sources”
+        GIT_LFS_SKIP_SMUDGE: "1"       # skip pulling large LFS blobs on checkout
         COCOAPODS_DISABLE_STATS: "true"
         HUSKY: "0"
         CI: "true"
@@ -47,21 +47,25 @@ workflows:
           npm config set fetch-retries 5
           npm config set fetch-timeout 600000
 
-      - name: Install dependencies (fix rollup on Apple Silicon)
+      - name: Install dependencies (fix Rollup on Apple Silicon)
         script: |
           set -e
           npm ci || (rm -rf node_modules package-lock.json && npm install)
+          # ensure rollup binary exists for darwin/arm64 so Vite doesn't crash
           npm install @rollup/rollup-darwin-arm64 --save-dev --no-fund --no-audit
 
       - name: Build web app
         script: npm run build
 
-            - name: Ensure Capacitor CLI & iOS, then sync
+      - name: Ensure Capacitor CLI & iOS, then sync
         script: |
           set -e
+          # self-heal: always ensure these are present
           npm install --save-dev @capacitor/cli
           npm install @capacitor/core
           npm install @capacitor/ios
+          # run the local binary explicitly (more reliable than npx on CI)
+          ./node_modules/.bin/cap --version
           ./node_modules/.bin/cap sync ios || npx cap sync ios
 
       - name: Force target bundle id to match
@@ -83,8 +87,10 @@ workflows:
         script: |
           set -e
           keychain initialize
+          # requires App Store Connect API key connected in Codemagic Integrations
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
+          # apply fetched profiles
           xcode-project use-profiles --project "$IOS_PROJECT_PATH/App.xcodeproj" || xcode-project use-profiles
 
       - name: Increment build number
@@ -104,3 +110,12 @@ workflows:
       - $CM_EXPORT_DIR/*.ipa
       - $CM_EXPORT_DIR/*.dSYM.zip
       - $CM_EXPORT_DIR/*.xcarchive
+
+    # Optional: auto-upload to TestFlight after successful build
+    # publishing:
+    #   app_store_connect:
+    #     auth: api_key
+    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
+    #     submit_to_testflight: true
+    #     beta_groups:
+    #       - Internal Testers
