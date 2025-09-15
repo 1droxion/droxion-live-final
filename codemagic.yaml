@@ -10,7 +10,7 @@ workflows:
       vars:
         APP_NAME: ${APP_NAME:-Droxion}
         WEB_DIR: ${WEB_DIR:-dist}
-      xcode: 15.3             # ✅ FIXED to a supported version
+      xcode: 15.2             # ✅ FIXED to a supported version
       node: 20
       cocoapods: default
       ios_signing:
