@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (fixed + tools menu, emoji-free)
+ // src/AIChat.jsx — Droxion (fixed + tools menu, emoji-free)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -343,10 +343,23 @@ function WeatherCard({ card }) {
                 {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-xs font-semibold">
                   {(() => {
-                    const c=d.max_c,f=d.max_f; const lc=d.min_c,lf=d.min_f;
-                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number"?`${Math.round(c)}°C`:(typeof f==="number)?`${Math.round(f)}°F`:""));
-                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number"?`${Math.round(lc)}°C`:(typeof lf==="number)?`${Math.round(lf)}°F`:""));
-                    return `${hi} / ${lo}`;
+                    - const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number"?`${Math.round(c)}°C`:(typeof f==="number)?`${Math.round(f)}°F`:""));
++ const hi = (typeof c === "number" && typeof f === "number")
++   ? `${Math.round(c)}°C / ${Math.round(f)}°F`
++   : (typeof c === "number"
++       ? `${Math.round(c)}°C`
++       : (typeof f === "number"
++           ? `${Math.round(f)}°F`
++           : ""));
+
+- const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number"?`${Math.round(lc)}°C`:(typeof lf==="number)?`${Math.round(lf)}°F`:""));
++ const lo = (typeof lc === "number" && typeof lf === "number")
++   ? `${Math.round(lc)}°C / ${Math.round(lf)}°F`
++   : (typeof lc === "number"
++       ? `${Math.round(lc)}°C`
++       : (typeof lf === "number"
++           ? `${Math.round(lf)}°F`
++           : ""));
                   })()}
                 </div>
                 {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
