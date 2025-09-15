@@ -1194,24 +1194,27 @@ function AIChat() {
 }
 
 export default AIChat;
-{/* ===== PART 4: CLEAR / NEW CHAT ===== */}
-<div className="flex gap-2 justify-center mt-4 mb-20">
+{/* ===== PART 4: CONTROL PANEL / TOGGLES ===== */}
+<div className="control-panel flex flex-wrap justify-center gap-3 mt-6 mb-24">
+
+  {/* 🗑️ CLEAR CHAT + MEMORY */}
   <button
     onClick={() => {
       setMessages([]);
       localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(MEM_KEY); // also wipes local memory
+      localStorage.removeItem(MEM_KEY);
     }}
     className="pill-btn"
-    title="Clear chat history and saved memory"
+    title="Clear chat history + memory"
   >
     🗑️ Clear Chat + Memory
   </button>
 
+  {/* ✨ NEW CHAT */}
   <button
     onClick={() => {
       setMessages([]);
-      localStorage.removeItem(STORAGE_KEY); // start fresh chat, keep memory
+      localStorage.removeItem(STORAGE_KEY);
       setInput("");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }}
@@ -1220,5 +1223,85 @@ export default AIChat;
   >
     ✨ New Chat
   </button>
+
+  {/* 🌙 / ☀️ THEME TOGGLE */}
+  <button
+    onClick={() => {
+      const html = document.documentElement;
+      const cur = html.getAttribute("data-theme") || "dark";
+      const next = cur === "dark" ? "light" : "dark";
+      html.setAttribute("data-theme", next);
+      localStorage.setItem("theme", next);
+    }}
+    className="pill-btn"
+    title="Toggle Dark/Light Theme"
+  >
+    🌙 / ☀️ Theme
+  </button>
+
+  {/* </> CODE MODE TOGGLE */}
+  <button
+    onClick={() => {
+      document.body.classList.toggle("code-mode");
+    }}
+    className="pill-btn"
+    title="Toggle Code Mode Font"
+  >
+    {"</>"} Code
+  </button>
+
+  {/* ⭐ PREMIUM TOGGLE */}
+  <button
+    onClick={() => {
+      const current = localStorage.getItem("droxion.pro") === "true";
+      localStorage.setItem("droxion.pro", String(!current));
+      alert(`Premium is now ${!current ? "ON" : "OFF"}`);
+    }}
+    className="pill-btn"
+    title="Toggle Premium Mode"
+  >
+    ⭐ Premium
+  </button>
+
+  {/* 🎤 MIC BUTTON */}
+  <button
+    onClick={async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Here you would connect to your STT API
+        alert("🎤 Mic captured! (Hook up to STT backend)");
+        stream.getTracks().forEach(track => track.stop());
+      } catch {
+        alert("Mic access denied. Please enable microphone permissions.");
+      }
+    }}
+    className="pill-btn"
+    title="Speak your message"
+  >
+    🎤 Mic
+  </button>
+
+  {/* 🖼️ IMAGE ANALYSIS */}
+  <label className="pill-btn cursor-pointer" title="Upload image to analyze">
+    🖼️ Image
+    <input
+      type="file"
+      accept="image/*"
+      hidden
+      onChange={async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        // send file to your backend for analysis
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const r = await axios.post(`${API_BASE}/analyze-image`, formData);
+          setMessages((p) => [...p, { role: "assistant", content: r.data?.result || "Image analyzed!" }]);
+        } catch {
+          setMessages((p) => [...p, { role: "assistant", content: "❌ Image analysis failed." }]);
+        }
+      }}
+    />
+  </label>
 </div>
 {/* ===== /PART 4 ===== */}
