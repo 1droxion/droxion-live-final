@@ -18,8 +18,8 @@ workflows:
       node: 20
       cocoapods: default
       ios_signing:
-        distribution_type: app_store
-        bundle_identifier: $BUNDLE_ID   # <-- IMPORTANT: no ${...:-...}
+  distribution_type: app_store
+  bundle_identifier: com.droxion.app
 
     cache:
       cache_paths:
