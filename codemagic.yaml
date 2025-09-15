@@ -5,13 +5,12 @@ workflows:
     instance_type: mac_mini_m4
 
     integrations:
-      app_store_connect: codemagic_key   # replace with your integration name if different
+      app_store_connect: codemagic_key   # <- your integration name
 
     environment:
       groups:
         - Add
       vars:
-        # Safe fallbacks so validation passes even if the group is misnamed
         APP_NAME: ${APP_NAME:-Droxion}
         BUNDLE_ID: ${BUNDLE_ID:-com.droxion.app}
         WEB_DIR: ${WEB_DIR:-dist}
@@ -20,7 +19,7 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: ${BUNDLE_ID}
+        bundle_identifier: $BUNDLE_ID   # <-- IMPORTANT: no ${...:-...}
 
     cache:
       cache_paths:
@@ -29,11 +28,11 @@ workflows:
         - ios/Pods
 
     scripts:
-      - name: Sanity check env (names only)
+      - name: Sanity check env
         script: |
-          echo "APP_NAME set? ${APP_NAME:+yes}"
-          echo "BUNDLE_ID set? ${BUNDLE_ID:+yes}"
-          echo "WEB_DIR set? ${WEB_DIR:+yes}"
+          echo "APP_NAME=$APP_NAME"
+          echo "BUNDLE_ID=$BUNDLE_ID"
+          echo "WEB_DIR=$WEB_DIR"
 
       - name: Install dependencies
         script: npm ci
@@ -51,10 +50,20 @@ workflows:
             npx cap add ios
           fi
 
+      - name: Force bundle id in Capacitor config (ts/json/js)
+        script: |
+          for f in capacitor.config.ts capacitor.config.json capacitor.config.js; do
+            [ -f "$f" ] || continue
+            sed -i '' "s/appId: *['\"][^'\"]*['\"]/appId: '$BUNDLE_ID'/g" "$f" || true
+            sed -i '' "s/\"appId\" *: *\"[^\"]*\"/\"appId\": \"$BUNDLE_ID\"/g" "$f" || true
+          done
+
       - name: Sync web build into iOS project
         script: |
           npx cap sync ios
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/App/App/Info.plist || true
+          # also update Xcode build setting (PRODUCT_BUNDLE_IDENTIFIER) in project file
+          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
           agvtool new-version -all ${BUILD_NUMBER:-1} || true
 
       - name: Use automatic signing profiles
