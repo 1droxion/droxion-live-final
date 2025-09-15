@@ -391,3 +391,26 @@ button[title="Analyze an image"]:focus ~ .control-panel .pill-btn{
 }
 /* Vertical stack above the FAB */
 .control-panel .pill-btn:nth-child(1){ margin-bottom:.5rem; }
+/* === FIX: force show paper-plane send icon === */
+.fixed-bottom button[title="Send"] {
+  background:#fff !important;
+  color:#000 !important;
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  font-size:20px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.35);
+  transition:transform .15s ease;
+}
+.fixed-bottom button[title="Send"]::before {
+  content:"✈";   /* fallback plane glyph */
+  font-size:18px;
+  transform:rotate(45deg); /* tilt like paper plane */
+  display:block;
+}
+.fixed-bottom button[title="Send"]:active {
+  transform:scale(0.95);
+}
