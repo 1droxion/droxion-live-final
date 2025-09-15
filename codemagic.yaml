@@ -5,7 +5,7 @@ workflows:
 
     environment:
       groups:
-        - Droxion Codemagic CI          # contains APP_STORE_CONNECT_* vars
+        - Add          # contains APP_STORE_CONNECT_* vars
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
