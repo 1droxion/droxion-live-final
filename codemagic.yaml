@@ -5,11 +5,11 @@ workflows:
     instance_type: mac_mini_m4
 
     integrations:
-      app_store_connect: codemagic_key   # <-- replace with the exact name of your API key in Codemagic Integrations
+      app_store_connect: codemagic_key   # <-- replace with the name you used in Codemagic Integrations
 
     environment:
       groups:
-        - Add    # group you already created with APP_NAME, BUNDLE_ID, WEB_DIR
+        - Add    # group with APP_NAME, BUNDLE_ID, WEB_DIR
       xcode: 15.4
       node: 20
       cocoapods: default
