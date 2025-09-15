@@ -2,7 +2,7 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m4
+    instance_type: mac_mini_m1       # ✅ Switch to M1 instance for widest Xcode support
 
     environment:
       groups:
@@ -10,12 +10,12 @@ workflows:
       vars:
         APP_NAME: ${APP_NAME:-Droxion}
         WEB_DIR: ${WEB_DIR:-dist}
-      xcode: 15.2             # ✅ FIXED to a supported version
+      xcode: 15.2                   # ✅ Stable version available on all M1 instances
       node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app  # ✅ Hardcoded for now
+        bundle_identifier: com.droxion.app  # Hardcoded for now
 
     cache:
       cache_paths:
@@ -45,7 +45,7 @@ workflows:
             npx cap add ios
           fi
 
-      - name: Force bundle id + sync project
+      - name: Sync + force bundle id
         script: |
           npx cap sync ios
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droxion.app" ios/App/App/Info.plist || true
