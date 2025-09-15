@@ -7,16 +7,16 @@ workflows:
     environment:
       vars:
         APP_NAME: Droxion
-        WEB_DIR: dist              # vite build output from your package.json
+        WEB_DIR: dist
         CI: "true"
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
-      xcode: 15.2                  # stable + widely available
+      xcode: 15.2
       node: 20
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app   # hardcoded for first successful build
+        bundle_identifier: com.droxion.app
 
     cache:
       cache_paths:
@@ -32,16 +32,14 @@ workflows:
 
       - name: Install dependencies (fix rollup optional binaries)
         script: |
-          # Avoid fetching platform-specific optional deps that aren't needed
           export npm_config_optional=false
-          # Faster, quieter CI install; don't fail build on optional-binary misses
           npm ci --no-audit --no-fund --progress=false || true
-          # Rebuild rollup so Vite can compile even if prebuilt bins weren't fetched
           npm rebuild rollup --verbose || true
 
       - name: Build web app (Vite)
         script: |
-          npm run build --silent
+          chmod +x ./node_modules/.bin/vite || true
+          npx vite build --silent
 
       - name: Ensure Capacitor packages are installed
         script: |
