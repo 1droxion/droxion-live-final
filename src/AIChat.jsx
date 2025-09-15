@@ -1,4 +1,5 @@
 // src/AIChat.jsx — Droxion Power Edition
+import "./AIChat.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
