@@ -333,45 +333,62 @@ function WeatherCard({ card }) {
           </div>
         </div>
       )}
-      {days.length>0 && (
-        <div className="mt-3">
-          <div className="text-[11px] text-gray-400 mb-1">Next days</div>
-          <div className="grid grid-cols-3 gap-2">
-            {days.map((d,i)=>(
-              <div key={i} className="glass rounded-lg p-2 text-center">
-                <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
-                {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                <div className="text-xs font-semibold">
-                  {(() => {
-                    - const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number"?`${Math.round(c)}°C`:(typeof f==="number)?`${Math.round(f)}°F`:""));
-+ const hi = (typeof c === "number" && typeof f === "number")
-+   ? `${Math.round(c)}°C / ${Math.round(f)}°F`
-+   : (typeof c === "number"
-+       ? `${Math.round(c)}°C`
-+       : (typeof f === "number"
-+           ? `${Math.round(f)}°F`
-+           : ""));
-
-- const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number"?`${Math.round(lc)}°C`:(typeof lf==="number)?`${Math.round(lf)}°F`:""));
-+ const lo = (typeof lc === "number" && typeof lf === "number")
-+   ? `${Math.round(lc)}°C / ${Math.round(lf)}°F`
-+   : (typeof lc === "number"
-+       ? `${Math.round(lc)}°C`
-+       : (typeof lf === "number"
-+           ? `${Math.round(lf)}°F`
-+           : ""));
-                  })()}
-                </div>
-                {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
-              </div>
-            ))}
+      {days.length > 0 && (
+  <div className="mt-3">
+    <div className="text-[11px] text-gray-400 mb-1">Next days</div>
+    <div className="grid grid-cols-3 gap-2">
+      {days.map((d, i) => (
+        <div key={i} className="glass rounded-lg p-2 text-center">
+          <div className="text-[11px] text-gray-400 truncate">
+            {d.day || `Day ${i + 1}`}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
+          {d.icon && (
+            <img
+              src={d.icon}
+              alt=""
+              className="mx-auto my-1 h-8 w-8 object-contain"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          <div className="text-xs font-semibold">
+            {(() => {
+              const c = d.max_c,
+                f = d.max_f,
+                lc = d.min_c,
+                lf = d.min_f;
 
+              const hi =
+                typeof c === "number" && typeof f === "number"
+                  ? `${Math.round(c)}°C / ${Math.round(f)}°F`
+                  : typeof c === "number"
+                  ? `${Math.round(c)}°C`
+                  : typeof f === "number"
+                  ? `${Math.round(f)}°F`
+                  : "";
+
+              const lo =
+                typeof lc === "number" && typeof lf === "number"
+                  ? `${Math.round(lc)}°C / ${Math.round(lf)}°F`
+                  : typeof lc === "number"
+                  ? `${Math.round(lc)}°C`
+                  : typeof lf === "number"
+                  ? `${Math.round(lf)}°F`
+                  : "";
+
+              return `${hi} / ${lo}`;
+            })()}
+          </div>
+          {d.text && (
+            <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">
+              {d.text}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 /* ---------------------- main component ---------------------- */
 function AIChat() {
   // chat + ui
