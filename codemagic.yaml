@@ -1,16 +1,18 @@
 workflows:
   ios-capacitor:
-    name: Droxion iOS Build (Vite + Capacitor)
+    name: Droxion iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m4   # use m1 if your plan doesn’t allow m4
 
+    # Force Codemagic to use a compatible machine that has Xcode 15.4
+    instance_type: mac_mini_m2          # ✅ known-good for Xcode 15.x
     environment:
       vars:
         APP_NAME: Droxion
-        WEB_DIR: dist
         BUNDLE_ID: com.droxion.app
+        WEB_DIR: dist
+        IOS_PROJECT_PATH: ios/App
       node: 20
-      xcode: 15.4                 # or: latest
+      xcode: 15.4                       # ✅ pin to available version
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -20,71 +22,57 @@ workflows:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
-        - ios/Pods
+      cache_clear: true                 # clear stale cache
 
     scripts:
-      - name: Sanity check
+      - name: Show tools
         script: |
-          echo "APP_NAME=$APP_NAME"
-          echo "WEB_DIR=$WEB_DIR"
-          echo "BUNDLE_ID=$BUNDLE_ID"
+          node -v
+          npm -v
+          xcodebuild -version
+          pod --version || true
 
-      - name: Install dependencies (handle rollup binaries)
+      - name: Install dependencies
+        script: npm ci
+
+      - name: Build web app
+        script: npm run build
+
+      - name: Sync Capacitor iOS
+        script: npx cap sync ios
+
+      - name: Install CocoaPods
         script: |
-          export npm_config_optional=false
-          npm ci --no-audit --no-fund --progress=false || npm install
-          npm rebuild rollup --verbose || true
+          cd "$IOS_PROJECT_PATH"
+          pod repo update
+          pod install
 
-      - name: Build web app (Vite)
+      - name: Configure signing (from Codemagic)
         script: |
-          chmod +x ./node_modules/.bin/vite || true
-          npx vite build --silent
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
 
-      - name: Ensure Capacitor deps
+      - name: Increment build number
         script: |
-          npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core@latest
-          npm ls @capacitor/cli  >/dev/null 2>&1 || npm i -D @capacitor/cli@latest
-          npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios@latest
+          cd "$IOS_PROJECT_PATH"
+          agvtool new-version -all $(date +%s)
 
-      - name: Init/Add iOS if missing
+      - name: Build IPA
         script: |
-          if ! npx cap ls | grep -q "Capacitor"; then
-            npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --yes
-          fi
-          [ -d ios ] || npx cap add ios
-
-      - name: Sync + force bundle id
-        script: |
-          npx cap sync ios
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/App/App/Info.plist || true
-          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
-          agvtool new-version -all ${BUILD_NUMBER:-1} || true
-
-      - name: Use automatic signing profiles
-        script: xcode-project use-profiles
-
-      - name: Build IPA (workspace preferred)
-        script: |
-          if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
-            xcode-project build-ipa \
-              --workspace "ios/App/App.xcworkspace" \
-              --scheme "${IOS_SCHEME:-App}" \
-              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
-          else
-            xcode-project build-ipa \
-              --project "ios/App/App.xcodeproj" \
-              --scheme "${IOS_SCHEME:-App}" \
-              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
-          fi
+          xcode-project build-ipa \
+            --workspace "$IOS_PROJECT_PATH/App.xcworkspace" \
+            --scheme "App"
 
     artifacts:
-      - build/ios/ipa/*.ipa
-      - $CM_BUILD_DIR/ios_archive.xcarchive
+      - $CM_EXPORT_DIR/*.ipa
+      - $CM_EXPORT_DIR/*.dSYM.zip
+      - $CM_EXPORT_DIR/*.xcarchive
 
-    publishing:
-      app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER   # <-- THIS NAME FIXES THE VALIDATION
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true
-        # submit_to_app_store: true   # enable later when you’re ready
+    # Uncomment to auto-upload to TestFlight (after adding API key JSON in Codemagic env)
+    # publishing:
+    #   app_store_connect:
+    #     auth: api_key
+    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
+    #     submit_to_testflight: true
