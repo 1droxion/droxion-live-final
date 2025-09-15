@@ -1194,3 +1194,31 @@ function AIChat() {
 }
 
 export default AIChat;
+{/* ===== PART 4: CLEAR / NEW CHAT ===== */}
+<div className="flex gap-2 justify-center mt-4 mb-20">
+  <button
+    onClick={() => {
+      setMessages([]);
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(MEM_KEY); // also wipes local memory
+    }}
+    className="pill-btn"
+    title="Clear chat history and saved memory"
+  >
+    🗑️ Clear Chat + Memory
+  </button>
+
+  <button
+    onClick={() => {
+      setMessages([]);
+      localStorage.removeItem(STORAGE_KEY); // start fresh chat, keep memory
+      setInput("");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }}
+    className="pill-btn"
+    title="Start a fresh chat (keep memory)"
+  >
+    ✨ New Chat
+  </button>
+</div>
+{/* ===== /PART 4 ===== */}
