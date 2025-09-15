@@ -1,27 +1,88 @@
-{
-  "name": "droxion-frontend",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview --port 4173"
-  },
-  "dependencies": {
-    "axios": "^1.7.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-icons": "^5.2.1",
-    "react-markdown": "^9.0.1",
-    "rehype-raw": "^7.0.0",
-    "remark-gfm": "^4.0.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.0",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.13",
-    "vite": "^5.4.0"
-  }
-}
+workflows:
+  ios-capacitor:
+    name: Droxion iOS Build (Vite + Capacitor auto-init)
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+
+    environment:
+      vars:
+        APP_NAME: Droxion
+        WEB_DIR: dist           # Vite build output from your package.json
+        CI: "true"
+        NPM_CONFIG_AUDIT: "false"
+        NPM_CONFIG_FUND: "false"
+      xcode: 15.2               # safe, widely available
+      node: 20
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.droxion.app   # hardcoded for first working build
+
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+
+    scripts:
+      - name: Sanity check env
+        script: |
+          echo "APP_NAME=$APP_NAME"
+          echo "WEB_DIR=$WEB_DIR"
+
+      - name: Install dependencies (faster npm)
+        script: |
+          npm ci --no-audit --no-fund --progress=false
+
+      - name: Build web app (Vite)
+        script: |
+          npm run build --silent
+
+      - name: Ensure Capacitor toolchain is installed
+        script: |
+          # Install Capacitor packages if missing
+          npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core@latest
+          npm ls @capacitor/cli  >/dev/null 2>&1 || npm i -D @capacitor/cli@latest
+          npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios@latest
+
+      - name: Initialize Capacitor & add iOS (if not present)
+        script: |
+          if ! npx cap ls | grep -q "Capacitor"; then
+            npx cap init "$APP_NAME" "com.droxion.app" --web-dir="$WEB_DIR" --npm-client=npm --yes
+          fi
+          [ -d ios ] || npx cap add ios
+
+      - name: Sync + force bundle id for Xcode project
+        script: |
+          npx cap sync ios
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droxion.app" ios/App/App/Info.plist || true
+          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.droxion.app/g" ios/App/App.xcodeproj/project.pbxproj || true
+          agvtool new-version -all ${BUILD_NUMBER:-1} || true
+
+      - name: Use automatic signing profiles
+        script: xcode-project use-profiles
+
+      - name: Build IPA (workspace preferred)
+        script: |
+          if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
+            xcode-project build-ipa \
+              --workspace "ios/App/App.xcworkspace" \
+              --scheme "${IOS_SCHEME:-App}" \
+              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          else
+            xcode-project build-ipa \
+              --project "ios/App/App.xcodeproj" \
+              --scheme "${IOS_SCHEME:-App}" \
+              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          fi
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/ios_archive.xcarchive
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
