@@ -31,13 +31,14 @@ workflows:
     scripts:
       - name: Show tools
         script: |
+          set -e
           node -v
           npm -v
           xcodebuild -version
           pod --version || true
           git --version
 
-      - name: Speed up npm config
+      - name: NPM config (faster)
         script: |
           npm config set prefer-offline true
           npm config set audit false
@@ -46,7 +47,7 @@ workflows:
           npm config set fetch-retries 5
           npm config set fetch-timeout 600000
 
-      - name: Install dependencies (force rollup darwin binary)
+      - name: Install dependencies (fix rollup on Apple Silicon)
         script: |
           set -e
           npm ci || (rm -rf node_modules package-lock.json && npm install)
@@ -55,39 +56,22 @@ workflows:
       - name: Build web app
         script: npm run build
 
-      - name: Ensure Capacitor CLI & iOS, then Sync
+      - name: Ensure Capacitor CLI & iOS, then sync
         script: |
           set -e
-          if ! npx --yes @capacitor/cli --version >/dev/null 2>&1; then
-            npm i -D @capacitor/cli
-          fi
-          if ! npm ls @capacitor/core >/dev/null 2>&1; then
-            npm i @capacitor/core
-          fi
-          if [ ! -d "ios" ]; then
-            npm i @capacitor/ios
-            npx --yes @capacitor/cli add ios
-          fi
-          if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ]; then
-            cat > capacitor.config.json <<EOF
-            {
-              "appId": "${BUNDLE_ID}",
-              "appName": "${APP_NAME}",
-              "webDir": "${WEB_DIR}"
-            }
-EOF
-          fi
-          npx --yes @capacitor/cli sync ios
+          npx --yes @capacitor/cli --version >/dev/null 2>&1 || npm i -D @capacitor/cli
+          npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core
+          npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios
+          npx --yes cap sync ios
 
       - name: Force target bundle id to match
         script: |
           set -e
-          TARGET_NAME="App"
-          INFO_PLIST="${IOS_PROJECT_PATH}/${TARGET_NAME}/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$INFO_PLIST" || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$INFO_PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$INFO_PLIST" || true
-          echo "Ensured CFBundleIdentifier=${BUNDLE_ID}"
+          PLIST="${IOS_PROJECT_PATH}/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$PLIST" || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$PLIST" || true
+          echo "CFBundleIdentifier ensured: ${BUNDLE_ID}"
 
       - name: Install CocoaPods (fast, using CDN)
         script: |
