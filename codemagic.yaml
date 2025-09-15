@@ -10,7 +10,6 @@ workflows:
         BUNDLE_ID: com.droxion.app
         WEB_DIR: dist
         IOS_PROJECT_PATH: ios/App
-        # speed knobs
         CM_CLONE_DEPTH: "1"
         GIT_LFS_SKIP_SMUDGE: "1"
         COCOAPODS_DISABLE_STATS: "true"
@@ -21,7 +20,7 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app   # must match the target’s bundle id
+        bundle_identifier: com.droxion.app
 
     cache:
       cache_paths:
@@ -69,10 +68,7 @@ workflows:
             npm i @capacitor/ios
             npx --yes @capacitor/cli add ios
           fi
-          # Ensure capacitor config has correct appId/appName/webDir (safe no-op if already correct)
-          if [ -f capacitor.config.ts ]; then
-            echo "capacitor.config.ts present (leave as is)."
-          else
+          if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ]; then
             cat > capacitor.config.json <<EOF
             {
               "appId": "${BUNDLE_ID}",
@@ -83,21 +79,15 @@ EOF
           fi
           npx --yes @capacitor/cli sync ios
 
-      - name: FORCE target bundle id to match (surgery)
+      - name: Force target bundle id to match
         script: |
           set -e
-          # For Capacitor iOS template the target is usually "App"
           TARGET_NAME="App"
-          PROJECT_DIR="${IOS_PROJECT_PATH}"
-          INFO_PLIST="${PROJECT_DIR}/${TARGET_NAME}/Info.plist"
-
+          INFO_PLIST="${IOS_PROJECT_PATH}/${TARGET_NAME}/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$INFO_PLIST" || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$INFO_PLIST" || true
-
-          # Also set PRODUCT_BUNDLE_IDENTIFIER at build settings level to be safe
           /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$INFO_PLIST" || true
-
-          echo "Ensured Info.plist CFBundleIdentifier=${BUNDLE_ID}"
+          echo "Ensured CFBundleIdentifier=${BUNDLE_ID}"
 
       - name: Install CocoaPods (fast, using CDN)
         script: |
@@ -109,10 +99,8 @@ EOF
         script: |
           set -e
           keychain initialize
-          # Fetch or create profiles for our BUNDLE_ID (requires App Store Connect API key in Codemagic)
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
-          # Apply the fetched profiles to the Xcode project
           xcode-project use-profiles --project "$IOS_PROJECT_PATH/App.xcodeproj" || xcode-project use-profiles
 
       - name: Increment build number
@@ -132,12 +120,3 @@ EOF
       - $CM_EXPORT_DIR/*.ipa
       - $CM_EXPORT_DIR/*.dSYM.zip
       - $CM_EXPORT_DIR/*.xcarchive
-
-    # Uncomment to auto-upload to TestFlight after a successful build
-    # publishing:
-    #   app_store_connect:
-    #     auth: api_key
-    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
-    #     submit_to_testflight: true
-    #     beta_groups:
-    #       - Internal Testers
