@@ -56,13 +56,13 @@ workflows:
       - name: Build web app
         script: npm run build
 
-      - name: Ensure Capacitor CLI & iOS, then sync
+            - name: Ensure Capacitor CLI & iOS, then sync
         script: |
           set -e
-          npx --yes @capacitor/cli --version >/dev/null 2>&1 || npm i -D @capacitor/cli
-          npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core
-          npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios
-          npx --yes cap sync ios
+          npm install --save-dev @capacitor/cli
+          npm install @capacitor/core
+          npm install @capacitor/ios
+          ./node_modules/.bin/cap sync ios || npx cap sync ios
 
       - name: Force target bundle id to match
         script: |
