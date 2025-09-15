@@ -1,71 +1,56 @@
-:root { --vvh: 100vh; }
+:root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); --kb:0px; }
+html, body { height: 100%; background:#000; color:#fff; margin:0; padding:0; }
+* { -webkit-tap-highlight-color: transparent; }
 
-.wrap {
-  position: fixed; inset: 0; display: grid;
-  grid-template-rows: auto 1fr auto; background: #0b0b0f; color: #eee;
-}
+/* Glass utilities */
+.glass { background: var(--glass); border:1px solid var(--border); backdrop-filter: blur(10px); }
+.glass-2 { background: var(--glass-2); border:1px solid var(--border); backdrop-filter: blur(10px); }
 
-.topbar { padding: 10px 14px; backdrop-filter: blur(8px);
-  display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid #222; }
-.topbar .brand { font-weight: 700; letter-spacing: 0.3px; }
-.topbar .sub { opacity: 0.6; font-size: 12px; }
+/* Responsive embeds */
+.embed-responsive { position: relative; width: 100%; }
+.embed-16by9 { padding-top: 56.25%; }
+.embed-responsive iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
 
-.chat {
-  overflow-y: auto; padding: 14px; scroll-behavior: smooth;
-  height: calc(var(--vvh) - 160px);
-}
-.bubble { max-width: 860px; margin: 8px auto; padding: 14px; border-radius: 12px; }
-.bubble-user { background:#1a1a22; }
-.bubble-bot { background:#121218; border:1px solid #1f1f28; }
-.bubble-bot .md p { margin: 8px 0; }
+/* Suggestion panel */
+.suggestions-panel { max-height: min(52vh, calc(100svh - 180px - var(--kb))); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
 
-.typing { opacity: 0.7; font-style: italic; }
-.error { background:#2a1010; border-color:#4d1b1b; color:#ffb3b3; }
+/* Horizontal scroll */
+.hscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
+.hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
+@media (min-width:480px){ .hitem{ min-width: 52%; max-width: 52%; } }
+@media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
 
-.msg-head { display:flex; justify-content:flex-end; gap:8px; }
-.copy-btn { background:transparent; border:0; color:#aaa; cursor:pointer; }
-.copy-btn:hover { color:#fff; }
-.copied { font-size:12px; opacity:.7; }
+/* Skeletons */
+.skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
+@keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
 
-.grid { display:grid; gap:10px; }
-.grid.links { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-.grid.images { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-.grid.youtube { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+/* Layout helpers */
+.fixed-bottom { position: fixed; left:0; right:0; bottom: calc(env(safe-area-inset-bottom) + var(--kb)); }
+.fixed-preview { position: fixed; left:0; right:0; bottom: calc(88px + var(--kb)); overflow-anchor: none; }
+.chat-scroll { scroll-padding-bottom: 160px; overscroll-behavior: contain; }
 
-.card { background:#0e0e14; border:1px solid #1f1f28; border-radius:12px; overflow:hidden; }
-.card img { width:100%; height:180px; object-fit:cover; display:block; }
-.card-body { padding:10px; }
-.card-title { font-weight:600; margin-bottom:6px; }
-.card-snippet { opacity:0.8; font-size: 13px; line-height: 1.3; }
-.card-meta { opacity:0.6; font-size:12px; margin-top:6px; }
+/* Message blocks */
+.msg { padding:12px; border-radius:12px; }
+.answer { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
+.answer.expanded { -webkit-line-clamp:unset; max-height:none; }
 
-.yt-card .yt-wrap { position:relative; width:100%; padding-top:56.25%; }
-.yt-card .yt-wrap iframe {
-  position:absolute; inset:0; width:100%; height:100%; border:0; border-radius: 8px;
-}
+/* Tiny labels, actions */
+.small-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#9ca3af; }
+.actions-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.action-btn { font-size:12px; padding:6px 10px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(255,255,255,.06); }
 
-.weather-card .weather-row { display:flex; align-items:center; gap:12px; padding:10px; }
-.weather-big { font-size:34px; font-weight:700; }
-.weather-minor { opacity:0.8; }
+/* Sources grid */
+.sources-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+.src-title { font-size:12px; line-height:1.3; color:#e5e7eb; }
+.src-sub { font-size:11px; color:#9ca3af; }
+.favicon-only { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.14); }
 
-.composer {
-  position: sticky; bottom: 0; padding: 10px; background: rgba(10,10,14,0.75);
-  backdrop-filter: blur(10px); border-top: 1px solid #1f1f28;
-}
-.input-row { display:flex; gap:8px; max-width: 860px; margin: 0 auto; }
-.input-row textarea {
-  flex:1; resize:none; max-height: 120px; min-height: 44px;
-  background:#0e0e14; color:#fff; border:1px solid #242432; border-radius: 10px;
-  padding:10px 12px; outline: none;
-}
-.input-row .send {
-  min-width:80px; border:0; background:#fff; color:#000; border-radius:10px; font-weight:600;
-}
+.toggle-more { margin-top:6px; font-size:12px; color:#cbd5e1; }
+.dim-while-typing { opacity:.7; filter:blur(1px); transition:opacity .2s, filter .2s; }
 
-.suggestion-panel { max-width:860px; margin: 8px auto 0; display: grid; gap:10px; }
-.suggestions.scroller { display:flex; gap:8px; overflow:auto; padding-bottom:2px; }
-.suggestion {
-  white-space:nowrap; border:1px solid #2a2a39; background:#121219; color:#ddd;
-  border-radius: 999px; padding: 6px 10px; font-size: 13px;
-}
-.preview .grid { margin-top: 4px; }
+/* Weather card tweaks */
+.weather-card .wstat { text-align:left; }
+.weather-card .wlabel { color:#9ca3af; margin-bottom:2px; }
+.weather-card .wval { font-weight:600; }
+.w-hscroll { -webkit-overflow-scrolling:touch; }
+.w-hour { border:1px solid rgba(255,255,255,.08); }
