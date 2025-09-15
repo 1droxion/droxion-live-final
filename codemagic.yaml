@@ -3,8 +3,7 @@ workflows:
     name: Droxion iOS Build
     max_build_duration: 60
 
-    # Force Codemagic to use a compatible machine that has Xcode 15.4
-    instance_type: mac_mini_m2          # ✅ known-good for Xcode 15.x
+    instance_type: mac_mini_m2        # use M2 machine with Xcode 15.x
     environment:
       vars:
         APP_NAME: Droxion
@@ -12,7 +11,7 @@ workflows:
         WEB_DIR: dist
         IOS_PROJECT_PATH: ios/App
       node: 20
-      xcode: 15.4                       # ✅ pin to available version
+      xcode: 15.4                    # ✅ stable Xcode version
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -22,7 +21,6 @@ workflows:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
-      cache_clear: true                 # clear stale cache
 
     scripts:
       - name: Show tools
@@ -69,10 +67,3 @@ workflows:
       - $CM_EXPORT_DIR/*.ipa
       - $CM_EXPORT_DIR/*.dSYM.zip
       - $CM_EXPORT_DIR/*.xcarchive
-
-    # Uncomment to auto-upload to TestFlight (after adding API key JSON in Codemagic env)
-    # publishing:
-    #   app_store_connect:
-    #     auth: api_key
-    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
-    #     submit_to_testflight: true
