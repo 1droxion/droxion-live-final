@@ -1,8 +1,8 @@
 workflows:
   ios-capacitor:
-    name: Droxion iOS Build (Vite + Capacitor)
+    name: Droxion iOS Build (Vite + Capacitor, optimized)
     max_build_duration: 60
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m4          # ✅ faster than M1
 
     environment:
       vars:
@@ -11,6 +11,8 @@ workflows:
         CI: "true"
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
+        NPM_CONFIG_CACHE: "/Users/builder/.npm"      # ensure cache path
+        NPM_CONFIG_PREFER_OFFLINE: "true"            # prefer cache over network
       xcode: 15.2
       node: 20
       cocoapods: default
@@ -30,10 +32,27 @@ workflows:
           echo "APP_NAME=$APP_NAME"
           echo "WEB_DIR=$WEB_DIR"
 
-      - name: Install dependencies (fix rollup optional binaries)
+      - name: Install dependencies (fast + resilient)
         script: |
+          # Tighten npm settings for CI speed & reliability
+          npm config set cache "$NPM_CONFIG_CACHE"
+          npm config set prefer-offline "$NPM_CONFIG_PREFER_OFFLINE"
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
           export npm_config_optional=false
-          npm ci --no-audit --no-fund --progress=false || true
+
+          # First try: offline-prefer + quiet
+          echo "▶ npm ci (prefer-offline)…"
+          npm ci --no-audit --no-fund --progress=false --prefer-offline || CI_NPM_OFFLINE_FAIL=$?
+
+          # If that didn’t complete (cold cache / network hiccup), do a normal ci
+          if [ -n "$CI_NPM_OFFLINE_FAIL" ]; then
+            echo "⚠️  prefer-offline failed, retrying npm ci online…"
+            npm ci --no-audit --no-fund --progress=false
+          fi
+
+          # Rebuild rollup binaries when prebuilt ones aren’t present
           npm rebuild rollup --verbose || true
 
       - name: Build web app (Vite)
