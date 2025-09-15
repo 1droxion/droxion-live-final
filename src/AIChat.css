@@ -1,56 +1,92 @@
+/* ========== Base Theme & Resets ========== */
 :root { --glass: rgba(255,255,255,0.06); --glass-2: rgba(255,255,255,0.10); --border: rgba(255,255,255,0.12); --kb:0px; }
 html, body { height: 100%; background:#000; color:#fff; margin:0; padding:0; }
 * { -webkit-tap-highlight-color: transparent; }
 
-/* Glass utilities */
+/* ========== Glass Utilities ========== */
 .glass { background: var(--glass); border:1px solid var(--border); backdrop-filter: blur(10px); }
 .glass-2 { background: var(--glass-2); border:1px solid var(--border); backdrop-filter: blur(10px); }
 
-/* Responsive embeds */
+/* ========== Responsive Embeds ========== */
 .embed-responsive { position: relative; width: 100%; }
 .embed-16by9 { padding-top: 56.25%; }
 .embed-responsive iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
 
-/* Suggestion panel */
-.suggestions-panel { max-height: min(52vh, calc(100svh - 180px - var(--kb))); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
+/* ========== Suggestion Panel ========== */
+.suggestions-panel {
+  max-height: min(52vh, calc(100svh - 180px - var(--kb)));
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain; touch-action: pan-y;
+}
 
-/* Horizontal scroll */
+/* ========== Horizontal Scroll ========== */
 .hscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
 .hitem { min-width: 78%; max-width: 78%; scroll-snap-align:start; }
 @media (min-width:480px){ .hitem{ min-width: 52%; max-width: 52%; } }
 @media (min-width:768px){ .hitem{ min-width: 33%; max-width: 33%; } }
 
-/* Skeletons */
-.skel { background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size: 200% 100%; animation: shimmer 1.1s infinite; }
+/* ========== Skeletons ========== */
+.skel {
+  background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06));
+  background-size: 200% 100%; animation: shimmer 1.1s infinite;
+}
 @keyframes shimmer { 0%{background-position: 200% 0} 100%{background-position: -200% 0} }
 
-/* Layout helpers */
+/* ========== Layout Helpers ========== */
 .fixed-bottom { position: fixed; left:0; right:0; bottom: calc(env(safe-area-inset-bottom) + var(--kb)); }
 .fixed-preview { position: fixed; left:0; right:0; bottom: calc(88px + var(--kb)); overflow-anchor: none; }
 .chat-scroll { scroll-padding-bottom: 160px; overscroll-behavior: contain; }
 
-/* Message blocks */
+/* ========== Message Blocks ========== */
 .msg { padding:12px; border-radius:12px; }
 .answer { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
 .answer.expanded { -webkit-line-clamp:unset; max-height:none; }
 
-/* Tiny labels, actions */
+/* ========== Labels & Actions ========== */
 .small-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#9ca3af; }
 .actions-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .action-btn { font-size:12px; padding:6px 10px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(255,255,255,.06); }
-
-/* Sources grid */
-.sources-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
-.src-title { font-size:12px; line-height:1.3; color:#e5e7eb; }
-.src-sub { font-size:11px; color:#9ca3af; }
-.favicon-only { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.14); }
-
 .toggle-more { margin-top:6px; font-size:12px; color:#cbd5e1; }
 .dim-while-typing { opacity:.7; filter:blur(1px); transition:opacity .2s, filter .2s; }
 
-/* Weather card tweaks */
+/* ========== Sources Grid ========== */
+.sources-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+.src-title { font-size:12px; line-height:1.3; color:#e5e7eb; }
+.src-sub { font-size:11px; color:#9ca3af; }
+.favicon-only {
+  display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px;
+  background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.14);
+}
+
+/* ========== Weather Card ========== */
 .weather-card .wstat { text-align:left; }
 .weather-card .wlabel { color:#9ca3af; margin-bottom:2px; }
 .weather-card .wval { font-weight:600; }
 .w-hscroll { -webkit-overflow-scrolling:touch; }
 .w-hour { border:1px solid rgba(255,255,255,.08); }
+
+/* ===================================================== */
+/*                   Organized Answer UI                 */
+/* ===================================================== */
+.org-title { font-weight:800; font-size:16px; margin-bottom:6px; }
+.org-section { margin-top:10px; }
+.org-sub { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#a1a1aa; margin-bottom:6px; }
+.org-list { padding-left:18px; margin:0; }
+.org-list li { margin:4px 0; }
+.org-steps { padding-left:18px; margin:0; }
+.org-steps li { margin:4px 0; }
+
+/* Mini horizontal bar chart */
+.bars { display:grid; gap:8px; }
+.bar-row {
+  display:grid;
+  grid-template-columns: 1fr 3fr auto;
+  align-items:center; gap:8px;
+}
+.bar-label {
+  font-size:12px; color:#e5e7eb;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.bar-track { height:8px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; }
+.bar-fill { height:100%; background:white; }
+.bar-val { font-size:12px; color:#cbd5e1; min-width:40px; text-align:right; }
