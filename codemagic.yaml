@@ -1,18 +1,16 @@
 workflows:
   ios-capacitor:
-    name: Droxion iOS Build
+    name: Droxion iOS Build (Vite + Capacitor)
     max_build_duration: 60
-    instance_type: mac_mini_m4
+    instance_type: mac_mini_m4   # use m1 if your plan doesn’t allow m4
 
     environment:
-      groups:
-        - appstore_credentials  # <-- Make sure this group exists in Codemagic
       vars:
         APP_NAME: Droxion
         WEB_DIR: dist
         BUNDLE_ID: com.droxion.app
       node: 20
-      xcode: 15.4
+      xcode: 15.4                 # or: latest
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -22,33 +20,71 @@ workflows:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
+        - ios/Pods
 
     scripts:
-      - name: Install dependencies (fix rollup issues)
+      - name: Sanity check
         script: |
-          npm ci || npm install
-          npm rebuild rollup --ignore-scripts || true
+          echo "APP_NAME=$APP_NAME"
+          echo "WEB_DIR=$WEB_DIR"
+          echo "BUNDLE_ID=$BUNDLE_ID"
+
+      - name: Install dependencies (handle rollup binaries)
+        script: |
+          export npm_config_optional=false
+          npm ci --no-audit --no-fund --progress=false || npm install
+          npm rebuild rollup --verbose || true
 
       - name: Build web app (Vite)
         script: |
-          chmod +x node_modules/.bin/vite || true
-          npm run build
+          chmod +x ./node_modules/.bin/vite || true
+          npx vite build --silent
 
-      - name: Add Capacitor iOS project if missing
+      - name: Ensure Capacitor deps
+        script: |
+          npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core@latest
+          npm ls @capacitor/cli  >/dev/null 2>&1 || npm i -D @capacitor/cli@latest
+          npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios@latest
+
+      - name: Init/Add iOS if missing
+        script: |
+          if ! npx cap ls | grep -q "Capacitor"; then
+            npx cap init "$APP_NAME" "$BUNDLE_ID" --web-dir="$WEB_DIR" --npm-client=npm --yes
+          fi
+          [ -d ios ] || npx cap add ios
+
+      - name: Sync + force bundle id
         script: |
           npx cap sync ios
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/App/App/Info.plist || true
+          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID/g" ios/App/App.xcodeproj/project.pbxproj || true
+          agvtool new-version -all ${BUILD_NUMBER:-1} || true
 
-      - name: Update bundle id in iOS project
+      - name: Use automatic signing profiles
+        script: xcode-project use-profiles
+
+      - name: Build IPA (workspace preferred)
         script: |
-          npx cap sync ios --inline
+          if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
+            xcode-project build-ipa \
+              --workspace "ios/App/App.xcworkspace" \
+              --scheme "${IOS_SCHEME:-App}" \
+              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          else
+            xcode-project build-ipa \
+              --project "ios/App/App.xcodeproj" \
+              --scheme "${IOS_SCHEME:-App}" \
+              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
+          fi
 
     artifacts:
       - build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/ios_archive.xcarchive
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY        # <-- must exist in group
-        key_identifier: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER   # <-- THIS NAME FIXES THE VALIDATION
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_app_store: true
         submit_to_testflight: true
+        # submit_to_app_store: true   # enable later when you’re ready
