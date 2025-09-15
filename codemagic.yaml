@@ -6,7 +6,7 @@ workflows:
 
     environment:
       groups:
-        - appstore_credentials   # Create this group in Codemagic → Settings → Env Vars
+        - appstore_credentials  # <-- Make sure this group exists in Codemagic
       vars:
         APP_NAME: Droxion
         WEB_DIR: dist
@@ -47,7 +47,7 @@ workflows:
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY        # <-- must exist in group
         key_identifier: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_app_store: true
