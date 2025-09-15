@@ -2,7 +2,7 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build (Vite + Capacitor, optimized)
     max_build_duration: 60
-    instance_type: mac_mini_m4          # ✅ faster than M1
+    instance_type: mac_mini_m4
 
     environment:
       vars:
@@ -11,9 +11,9 @@ workflows:
         CI: "true"
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
-        NPM_CONFIG_CACHE: "/Users/builder/.npm"      # ensure cache path
-        NPM_CONFIG_PREFER_OFFLINE: "true"            # prefer cache over network
-      xcode: 15.2
+        NPM_CONFIG_CACHE: "/Users/builder/.npm"
+        NPM_CONFIG_PREFER_OFFLINE: "true"
+      xcode: 15.4        # ✅ Fixed Xcode version
       node: 20
       cocoapods: default
       ios_signing:
