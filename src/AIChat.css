@@ -1,5 +1,5 @@
-/* src/AIChat.css — Droxion Minimal (3 dots menu + pencil send) */
-/* ------------------------------------------------------------- */
+/* src/AIChat.css — Droxion Minimal v2 (3-dots header + bottom FAB “+”) */
+/* ==================================================================== */
 /* TOKENS */
 :root{
   --bg:#000;
@@ -11,11 +11,10 @@
   --border:rgba(255,255,255,.12);
   --glass:rgba(255,255,255,.08);
   --safe:env(safe-area-inset-bottom,0px);
-  --kb:0px;
+  --kb:0px; /* set live from JS */
 }
 
 [data-theme="light"]{
-  /* keep dark canvas but slightly brighter foreground for the “Lite” label */
   --fg:#fafafa;
   --card:rgba(255,255,255,.10);
   --card-2:rgba(255,255,255,.06);
@@ -32,8 +31,8 @@ html,body{
   text-rendering:optimizeLegibility;
 }
 
-/* ------------------------------------------------------------- */
-/* UTILS (kept tiny) */
+/* ==================================================================== */
+/* UTILS */
 .max-w-4xl{max-width:72rem;}
 .mx-auto{margin-inline:auto;}
 .px-3{padding-inline:.75rem;}
@@ -73,7 +72,7 @@ html,body{
 .inline-flex{display:inline-flex;}
 .overflow-hidden{overflow:hidden}
 
-/* ------------------------------------------------------------- */
+/* ==================================================================== */
 /* GLOBAL LOOK */
 .glass{
   background:var(--card);
@@ -89,21 +88,14 @@ html,body{
   border-radius:14px;
   padding:12px;
 }
-
 .small-label{color:var(--muted);font-size:.75rem;letter-spacing:.2px}
-
-/* Scroll Area */
 .chat-scroll{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; }
 
-/* ------------------------------------------------------------- */
-/* HEADER → collapse all controls into a single 3-dot trigger   */
-/* No JSX changes required. We treat the FIRST pill as the menu */
-/* and hide the rest into a dropdown that appears on hover/focus */
+/* ==================================================================== */
+/* HEADER → collapse to 3-dots menu */
 header.sticky{ position:sticky; top:0; z-index:40; }
 header .brand{ letter-spacing:.2px; }
 header .text-gray-400{ color:var(--muted); }
-
-/* Base “pill” */
 .pill-btn{
   appearance:none; cursor:pointer;
   border:1px solid var(--border);
@@ -116,36 +108,29 @@ header .text-gray-400{ color:var(--muted); }
 .pill-btn:hover{ border-color:#fff; }
 .pill-btn:active{ transform:scale(.98); }
 
-/* — Toolbar wrapper — */
-header .ml-auto{
-  position:relative;
-  display:flex; gap:.5rem; align-items:center;
-}
+/* toolbar container */
+header .ml-auto{ position:relative; display:flex; gap:.5rem; align-items:center; }
 
-/* Hide all controls by default */
+/* show only first pill = ⋯ trigger */
 header .ml-auto .pill-btn{ display:none; }
-
-/* Use the FIRST button as the kebab (⋯) trigger */
 header .ml-auto .pill-btn:first-child{
   display:inline-flex;
   width:42px;height:42px;padding:0;justify-content:center;align-items:center;
-  font-size:0; /* hide inner label/icon */
+  font-size:0;
 }
 header .ml-auto .pill-btn:first-child::before{
   content:"⋯";
   font-size:22px; line-height:1; color:var(--fg);
 }
 
-/* Dropdown list (pure CSS, positions each item) */
+/* reveal the rest as a vertical dropdown */
 header .ml-auto:hover .pill-btn:not(:first-child),
 header .ml-auto:focus-within .pill-btn:not(:first-child){
   display:flex; position:absolute; right:0; width:220px;
-  justify-content:flex-start; gap:8px;
-  border-radius:12px; background:var(--card); border:1px solid var(--border);
+  justify-content:flex-start; gap:8px; border-radius:12px;
+  background:var(--card); border:1px solid var(--border);
   padding:.55rem .8rem;
 }
-
-/* Stack items vertically with per-item offsets (no wrapper needed) */
 header .ml-auto .pill-btn:nth-child(2){ top:48px;  }
 header .ml-auto .pill-btn:nth-child(3){ top:92px;  }
 header .ml-auto .pill-btn:nth-child(4){ top:136px; }
@@ -153,7 +138,7 @@ header .ml-auto .pill-btn:nth-child(5){ top:180px; }
 header .ml-auto .pill-btn:nth-child(6){ top:224px; }
 header .ml-auto .pill-btn:nth-child(7){ top:268px; }
 
-/* ------------------------------------------------------------- */
+/* ==================================================================== */
 /* MESSAGES */
 .msg{position:relative;}
 .msg .answer{white-space:pre-wrap; word-wrap:break-word; line-height:1.6;}
@@ -164,7 +149,6 @@ header .ml-auto .pill-btn:nth-child(7){ top:268px; }
 }
 .msg .action-btn:hover{ background:#fff; color:#000; }
 
-/* Link/Sources grid — subtle, clean */
 .sources-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
 @media (min-width:560px){ .sources-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
 
@@ -175,7 +159,6 @@ header .ml-auto .pill-btn:nth-child(7){ top:268px; }
 .favicon-only .src-title{ font-size:.875rem; font-weight:600; }
 .favicon-only .src-sub{ font-size:.75rem; color:var(--muted); }
 
-/* Markdown */
 pre{ background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:12px; padding:12px; overflow:auto; }
 code{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 .code-copy-btn{
@@ -184,19 +167,16 @@ code{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
   border-radius:8px; background:var(--glass); color:var(--fg); cursor:pointer;
 }
 
-/* YouTube etc */
 .embed-responsive{ position:relative; width:100%; }
 .embed-16by9{ padding-top:56.25%; }
 .embed-responsive>iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
 
-/* Organized answer */
 .org-title{ font-size:1.06rem; font-weight:800; margin-bottom:.3rem; }
 .org-section{ margin-top:.6rem; }
 .org-sub{ font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.25rem; }
 .org-list{ padding-left:1rem; } .org-list li{ list-style:disc; margin:.2rem 0; }
 .org-steps{ padding-left:1.1rem; } .org-steps li{ list-style:decimal; margin:.2rem 0; }
 
-/* Tiny bar chart */
 .bars{ display:flex; flex-direction:column; gap:.4rem; }
 .bar-row{ display:grid; grid-template-columns:1fr 5fr auto; gap:.5rem; align-items:center; }
 .bar-label{ font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -204,13 +184,16 @@ code{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 .bar-fill{ background:#fff; height:100%; }
 .bar-val{ font-size:.8rem; color:var(--muted); }
 
-/* Images */
 img.rounded-lg.glass{ background:var(--card-2); border:1px solid var(--border); }
 .answer img{ display:block; max-width:100%; height:auto; }
 
-/* ------------------------------------------------------------- */
-/* FIXED PREVIEW WHILE TYPING (cleaned) */
-.fixed-panel{ position:fixed; left:0; right:0; bottom:calc(64px + var(--safe) + var(--kb)); z-index:30; pointer-events:none; }
+/* ==================================================================== */
+/* FIXED PREVIEW WHILE TYPING */
+.fixed-panel{
+  position:fixed; left:0; right:0;
+  bottom:calc(80px + var(--safe) + var(--kb)); /* leave space for composer + FAB */
+  z-index:30; pointer-events:none;
+}
 .fixed-panel .panel{ pointer-events:auto; box-shadow:0 14px 60px rgba(0,0,0,.45); }
 .hscroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .hscroll .flex{ min-width:max-content; }
@@ -219,57 +202,85 @@ img.rounded-lg.glass{ background:var(--card-2); border:1px solid var(--border); 
 .skel::after{ content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); transform:translateX(-100%); animation:shimmer 1.2s infinite; }
 @keyframes shimmer{ to { transform:translateX(100%);} }
 
-/* Weather */
 .weather-card .wstat{ background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:.75rem; padding:.5rem; }
 .weather-card .wlabel{ font-size:.7rem; color:var(--muted); }
 .weather-card .wval{ font-size:.9rem; font-weight:600; }
 .w-hscroll{ -webkit-overflow-scrolling:touch; }
 .w-hour{ border:1px solid var(--border); background:var(--card-2); }
 
-/* ------------------------------------------------------------- */
-/* COMPOSER — pencil send + minimal controls */
+/* ==================================================================== */
+/* COMPOSER — ONLY field + SEND. Camera becomes a floating FAB “+”. */
 .fixed-bottom{
   position:sticky; bottom:0; left:0; right:0;
   border-top:1px solid var(--border);
   background:rgba(0,0,0,.82); backdrop-filter:blur(10px);
   transform:translateZ(0);
   padding-bottom:max(var(--safe),12px);
+  z-index:35;
 }
 textarea{
-  font-size:16px; /* avoid iOS zoom */
-  color:var(--fg); background:transparent; outline:none; resize:none; line-height:1.6;
+  font-size:16px; color:var(--fg); background:transparent; outline:none; resize:none; line-height:1.6;
 }
 textarea::placeholder{ color:var(--muted); }
 
-/* camera and send — all monochrome, send shows a pencil */
-button[title="Analyze an image"]{
-  width:42px; height:42px; border-radius:14px;
-  border:1px solid var(--border); background:var(--card); color:var(--fg);
-  display:inline-flex; align-items:center; justify-content:center;
-}
-
-/* Replace the arrow with a pencil using CSS only */
-button[title="Send"]{
-  width:46px; height:46px; border-radius:16px;
-  background:#fff; color:#000; position:relative;
-  display:inline-flex; align-items:center; justify-content:center;
-  font-size:0; box-shadow:0 2px 0 rgba(0,0,0,.35);
-}
-button[title="Send"] svg{ opacity:0; }            /* hide arrow icon */
-button[title="Send"]::before{
-  content:"🖊️";                                  /* pencil */
-  font-size:20px; line-height:1; transform:translateY(1px);
-}
-button[title="Send"]:active{ transform:scale(.99); }
-
-/* Input box */
+/* Input field wrapper */
 .fixed-bottom .rounded-2xl{
   border-radius:16px; border:1px solid var(--border);
-  background:var(--card-2); transition:border-color .15s ease, background .15s ease;
+  background:var(--card-2);
+  transition:border-color .15s ease, background .15s ease;
 }
 .fixed-bottom .rounded-2xl:focus-within{ border-color:#fff; background:rgba(255,255,255,.07); }
 
-/* Quick style chips */
+/* --- SEND button: keep the original arrow (no pencil override) --- */
+button[title="Send"]{
+  width:46px; height:46px; border-radius:16px;
+  background:#fff; color:#000; display:inline-flex; align-items:center; justify-content:center;
+  box-shadow:0 2px 0 rgba(0,0,0,.35);
+  font-size:0; /* keep icon only */
+}
+button[title="Send"] svg{ opacity:1; }          /* show the plane */
+button[title="Send"]:active{ transform:scale(.99); }
+
+/* --- Hide camera from the composer FLOW and turn it into a floating FAB “+” --- */
+button[title="Analyze an image"]{
+  position:fixed; right:16px; bottom:calc(68px + var(--safe)); z-index:50;
+  width:52px; height:52px; border-radius:50%;
+  border:1px solid var(--border); background:#111; color:var(--fg);
+  display:inline-flex; align-items:center; justify-content:center;
+  box-shadow:0 8px 26px rgba(0,0,0,.45);
+}
+button[title="Analyze an image"] svg{ display:none; }
+button[title="Analyze an image"]::before{
+  content:"+"; font-size:28px; line-height:1; transform:translateY(-1px);
+}
+
+/* ==================================================================== */
+/* PLUS MENU CONTENT: reuse the existing control-panel buttons */
+.control-panel{ position:fixed; inset:auto 16px calc(132px + var(--safe)) auto; z-index:49; }
+.control-panel .pill-btn{
+  display:none; /* hidden by default */
+  width:auto; min-width:180px; justify-content:flex-start;
+  background:var(--card); border:1px solid var(--border);
+  border-radius:12px; padding:.55rem .8rem;
+}
+
+/* Show the two items as a vertical menu when FAB is hovered/focused */
+button[title="Analyze an image"]:hover ~ .control-panel .pill-btn,
+button[title="Analyze an image"]:focus ~ .control-panel .pill-btn{
+  display:flex;
+  pointer-events:auto;
+}
+
+/* Position the items with offsets (stack) */
+.control-panel .pill-btn:nth-child(1){ position:absolute; right:0; bottom:92px; }
+.control-panel .pill-btn:nth-child(2){ position:absolute; right:0; bottom:48px; }
+
+/* Keep the original “panel” below the chat out of the layout */
+.control-panel.flex{ pointer-events:none; }
+.control-panel.flex .pill-btn{ pointer-events:auto; }
+
+/* ==================================================================== */
+/* QUICK CHIPS (style) */
 .fixed-bottom .px-3.py-1{
   border:1px solid var(--border);
   background:var(--card-2);
@@ -278,12 +289,7 @@ button[title="Send"]:active{ transform:scale(.99); }
 }
 .fixed-bottom .px-3.py-1:hover{ background:#fff; color:#000; }
 
-/* Control panel (bottom of page) */
-.control-panel .pill-btn{
-  background:var(--card-2);
-}
-
-/* ------------------------------------------------------------- */
+/* ==================================================================== */
 /* COLORS/TEXT HELPERS */
 .border-b{ border-bottom:1px solid var(--border); }
 .border-t{ border-top:1px solid var(--border); }
@@ -299,14 +305,14 @@ button[title="Send"]:active{ transform:scale(.99); }
 .text-green-400{ color:#39e57b; }
 .text-red-400{ color:#ff6b6b; }
 
-/* ------------------------------------------------------------- */
+/* ==================================================================== */
 /* SCROLLBARS */
 *{ scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.25) transparent; }
 *::-webkit-scrollbar{ height:10px; width:10px; }
 *::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.25); border-radius:8px; }
 *::-webkit-scrollbar-track{ background:transparent; }
 
-/* Code mode: slightly brighter cards */
+/* Code mode */
 .code-mode .glass{ background:rgba(255,255,255,.10); }
 .code-mode .glass-2{ background:rgba(255,255,255,.06); }
 
