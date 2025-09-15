@@ -16,7 +16,7 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app   # hardcoded for first working build
+        bundle_identifier: com.droxion.app   # hardcoded for first successful build
 
     cache:
       cache_paths:
@@ -30,9 +30,14 @@ workflows:
           echo "APP_NAME=$APP_NAME"
           echo "WEB_DIR=$WEB_DIR"
 
-      - name: Install dependencies (faster npm)
+      - name: Install dependencies (fix rollup optional binaries)
         script: |
-          npm ci --no-audit --no-fund --progress=false
+          # Avoid fetching platform-specific optional deps that aren't needed
+          export npm_config_optional=false
+          # Faster, quieter CI install; don't fail build on optional-binary misses
+          npm ci --no-audit --no-fund --progress=false || true
+          # Rebuild rollup so Vite can compile even if prebuilt bins weren't fetched
+          npm rebuild rollup --verbose || true
 
       - name: Build web app (Vite)
         script: |
