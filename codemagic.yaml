@@ -4,9 +4,12 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m4
 
+    integrations:
+      app_store_connect: codemagic_key   # <-- replace with the exact name of your API key in Codemagic Integrations
+
     environment:
       groups:
-        - Add   # <--- this matches the group name you used
+        - Add    # group you already created with APP_NAME, BUNDLE_ID, WEB_DIR
       xcode: 15.4
       node: 20
       cocoapods: default
@@ -59,4 +62,5 @@ workflows:
 
     publishing:
       app_store_connect:
+        auth: integration
         submit_to_testflight: true
