@@ -2,17 +2,17 @@ workflows:
   ios-capacitor:
     name: Droxion iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m4   # ✅ Use faster M4 machines
+    instance_type: mac_mini_m4
 
     environment:
       groups:
-        - appstore_credentials   # Make sure this group exists in Codemagic UI
+        - appstore_credentials   # Create this group in Codemagic → Settings → Env Vars
       vars:
         APP_NAME: Droxion
         WEB_DIR: dist
         BUNDLE_ID: com.droxion.app
       node: 20
-      xcode: 15.4               # ✅ Supported Xcode version
+      xcode: 15.4
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -50,3 +50,5 @@ workflows:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
         key_identifier: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_app_store: true
+        submit_to_testflight: true
