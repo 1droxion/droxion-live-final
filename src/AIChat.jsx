@@ -1,6 +1,4 @@
-// src/AIChat.jsx  (Droxion — voice-in/out + cards + memory)
-// PART 1/3
-
+// src/AIChat.jsx  — Droxion (full file, part 1/6)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -11,20 +9,17 @@ import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-/* ---------------------- helpers ---------------------- */
+// ---------- url & image helpers ----------
 const normHost = (u = "") => {
   try { return new URL(u).hostname.toLowerCase().replace(/^www\./,"").replace(/^m\./,""); }
   catch { return ""; }
 };
 const host = (u) => normHost(u);
-
-// allow google/wiki/etc; keep only placeholders blocked
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => {
   const h = host(u);
   return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
 };
-
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
@@ -35,7 +30,6 @@ const faviconFor = (u="") => {
   const h = host(u); if (!h) return null;
   return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}`;
 };
-
 const timeAgo = (d) => {
   if (!d) return "";
   const t = typeof d === "string" ? new Date(d).getTime() : +d;
@@ -47,23 +41,18 @@ const timeAgo = (d) => {
   const dd = Math.floor(h/24); return `${dd}d ago`;
 };
 
+// ---------- query intent ----------
 const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
-
-// tolerant to “wether / wheather / whether”
-const wantsWeather = (s = "") => {
+const wantsWeather = (s="") => {
   const q = s.trim().toLowerCase();
   if (/\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/.test(q)) return true;
-  if (/\bwether\b/.test(q)) return true;
-  if (/\bwheather\b/.test(q)) return true;
+  if (/\bwether\b|\bwheather\b/.test(q)) return true;
   if (/^(whether|wether)$/i.test(q)) return true;
   return false;
 };
-
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-
-// gate for showing “Sources”
 const isSearchy = (s="") => {
   const q = s.toLowerCase();
   return (
@@ -74,7 +63,7 @@ const isSearchy = (s="") => {
   );
 };
 
-/* --------- YouTube helpers --------- */
+// ---------- youtube helpers ----------
 const getYouTubeId = (raw="") => {
   try {
     const txt = raw.trim();
@@ -99,18 +88,13 @@ const isYouTube = (u="") => {
   return h.includes("youtube.com") || h.includes("youtu.be");
 };
 
-/* --------- ranking & cleaning --------- */
+// ---------- ranking & cleaning ----------
 const HQ = [
-  // News / Biz
   "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
   "theguardian.com","bbc.com","bbc.co.uk","npr.org","hindustantimes.com","livemint.com","moneycontrol.com","economictimes.com",
-  // Crypto
   "coindesk.com","cointelegraph.com","coinmarketcap.com","coingecko.com","messari.io","defillama.com",
-  // Finance trackers
   "finance.yahoo.com","google.com","tradingview.com","marketwatch.com","morningstar.com","nasdaq.com","seekingalpha.com","sec.gov",
-  // Weather / Time
   "weather.com","accuweather.com","time.is","timeanddate.com",
-  // Tech / Knowledge
   "techcrunch.com","theverge.com","wired.com","arstechnica.com","wikipedia.org","medium.com"
 ];
 const rankHost = (h) => {
@@ -159,22 +143,8 @@ const bestPreview = (card, allowFallback=false) => {
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
 };
 
-/* ---------- WEATHER HELPERS & CARD ---------- */
-const n = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : null);
-const pick = (obj, keys, d=null) => {
-  for (const k of keys) if (obj && obj[k] != null && obj[k] !== "") return obj[k];
-  return d;
-};
-const hourLabel = (ts) => {
-  try {
-    const d = new Date(ts);
-    let h = d.getHours();
-    const am = h < 12;
-    h = h % 12 || 12;
-    return `${h}${am ? "am" : "pm"}`;
-  } catch { return ""; }
-};
-
+// ---------- weather helpers ----------
+const pick = (obj, keys, d=null) => { for (const k of keys) if (obj && obj[k] != null && obj[k] !== "") return obj[k]; return d; };
 const normalizeWeatherCard = (raw) => {
   if (!raw) return null;
   const title = pick(raw, ["title","location","name"], "Weather");
@@ -192,24 +162,15 @@ const normalizeWeatherCard = (raw) => {
   const daily = Array.isArray(raw.daily) ? raw.daily : (Array.isArray(raw.days) ? raw.days : []);
   const loc = pick(raw, ["loc","place","city"]);
   const when = pick(raw, ["when","time","as_of","updated"]);
-
-  return {
-    type: "weather",
-    title: loc ? `${title} — ${loc}` : title,
-    subtitle: subtitle || (when ? `As of ${new Date(when).toLocaleTimeString()}` : ""),
-    icon, temp_c, temp_f, feels_c, feels_f, humidity, wind_kph, wind_mph, precip, hourly, daily
-  };
+  return { type:"weather", title: loc ? `${title} — ${loc}` : title, subtitle: subtitle || (when ? `As of ${new Date(when).toLocaleTimeString()}` : ""), icon, temp_c, temp_f, feels_c, feels_f, humidity, wind_kph, wind_mph, precip, hourly, daily };
 };
+// src/AIChat.jsx — part 2/6
 
-/* ---------------------- component ---------------------- */
-
-// local memory (device)
 const STORAGE_KEY = "droxion.chat.v1";
 const MEM_KEY = "droxion.mem.v1";
 const loadMem = () => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; } };
 const saveMem = (arr) => { try { localStorage.setItem(MEM_KEY, JSON.stringify(arr.slice(-100))); } catch {} };
 
-// ensure we always have some media (images) for bland answers
 const ensureImagesFor = async (query) => {
   try {
     const r = await axios.post(`${API_BASE}/realtime`, { query, intent: "images" });
@@ -222,33 +183,144 @@ const ensureImagesFor = async (query) => {
   return [];
 };
 
+function WeatherCard({ card }) {
+  if (!card) return null;
+  const T = (() => {
+    const c = card.temp_c, f = card.temp_f;
+    if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+    if (typeof c==="number") return `${Math.round(c)}°C`;
+    if (typeof f==="number") return `${Math.round(f)}°F`;
+    return "";
+  })();
+  const FEELS = (() => {
+    const c = card.feels_c, f = card.feels_f;
+    if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+    if (typeof c==="number") return `${Math.round(c)}°C`;
+    if (typeof f==="number") return `${Math.round(f)}°F`;
+    return "";
+  })();
+  const WIND = (() => {
+    const k = card.wind_kph, m = card.wind_mph;
+    if (typeof k==="number" && typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`;
+    if (typeof k==="number") return `${Math.round(k)} km/h`;
+    if (typeof m==="number") return `${Math.round(m)} mph`;
+    return "";
+  })();
+  const RH = (typeof card.humidity==="number") ? `${Math.round(card.humidity)}%` : "";
+  const RAIN = (card.precip!=null && card.precip!=="") ? `${card.precip}${typeof card.precip==="number" ? " mm" : ""}` : "";
+  const hourLabel = (ts) => { try { const d=new Date(ts); let h=d.getHours(); const am=h<12; h=h%12||12; return `${h}${am?"am":"pm"}`; } catch { return ""; } };
+
+  const hrs = (card.hourly || []).slice(0, 8).map(h => ({
+    t: pick(h, ["time","ts","timestamp","date"]),
+    icon: pick(h, ["icon","icon_url","image"]),
+    c: pick(h, ["temp_c","tempC","temperature_c","temperatureC","temp"]),
+    f: pick(h, ["temp_f","tempF","temperature_f","temperatureF"]),
+    text: pick(h, ["text","condition","desc"])
+  }));
+  const days = (card.daily || []).slice(0, 3).map(d => ({
+    day: pick(d, ["day","name","weekday","label"]),
+    icon: pick(d, ["icon","icon_url","image"]),
+    min_c: pick(d, ["min_c","minC","low_c","lowC","min"]),
+    min_f: pick(d, ["min_f","minF","low_f","lowF"]),
+    max_c: pick(d, ["max_c","maxC","high_c","highC","max"]),
+    max_f: pick(d, ["max_f","maxF","high_f","highF"]),
+    text: pick(d, ["text","condition","desc"])
+  }));
+
+  return (
+    <div className="weather-card glass rounded-xl p-3">
+      <div className="flex items-center gap-3">
+        {card.icon && <img src={card.icon} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold truncate">{card.title || "Weather"}</div>
+          <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
+        </div>
+      </div>
+      {(T || FEELS || RH || WIND || RAIN) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
+          {T && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
+          {FEELS && <div className="wstat"><div className="wlabel">Feels like</div><div className="wval">{FEELS}</div></div>}
+          {RH && <div className="wstat"><div className="wlabel">Humidity</div><div className="wval">{RH}</div></div>}
+          {WIND && <div className="wstat"><div className="wlabel">Wind</div><div className="wval">{WIND}</div></div>}
+          {RAIN && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
+        </div>
+      )}
+      {hrs.length>0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
+          <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
+            {hrs.map((h,i)=>(
+              <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
+                <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
+                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-sm font-semibold">
+                  {(() => {
+                    const c=h.c,f=h.f;
+                    if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+                    if (typeof c==="number") return `${Math.round(c)}°C`;
+                    if (typeof f==="number") return `${Math.round(f)}°F`;
+                    return "-";
+                  })()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {days.length>0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next days</div>
+          <div className="grid grid-cols-3 gap-2">
+            {days.map((d,i)=>(
+              <div key={i} className="glass rounded-lg p-2 text-center">
+                <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
+                {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-xs font-semibold">
+                  {(() => {
+                    const c=d.max_c,f=d.max_f; const lc=d.min_c,lf=d.min_f;
+                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number"?`${Math.round(c)}°C`:(typeof f==="number"?`${Math.round(f)}°F`:""));
+                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number"?`${Math.round(lc)}°C`:(typeof lf==="number"?`${Math.round(lf)}°F`:""));
+                    return `${hi} / ${lo}`;
+                  })()}
+                </div>
+                {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AIChat() {
+  // chat + ui
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
 
-  // live preview (while typing)
+  // live preview
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
   const [news, setNews] = useState([]);
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
 
+  // toggles
+  const [theme, setTheme] = useState(() => localStorage.getItem("drox.theme") || "dark");
+  const [codeMode, setCodeMode] = useState(() => localStorage.getItem("drox.code") === "1");
+  const [proMode, setProMode] = useState(() => localStorage.getItem("drox.pro") === "1");
+  const [speakOn, setSpeakOn] = useState(() => localStorage.getItem("drox.speak") === "1");
+
   const inputRef = useRef(null);
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
   const scrollRef = useRef(null);
+  const fileRef = useRef(null);
 
-  // 🎙️ Voice I/O
-  const [recStatus, setRecStatus] = useState("idle"); // idle | recording | processing
-  const [speakBack, setSpeakBack] = useState(true);
-  const mediaRef = useRef({ stream: null, rec: null, chunks: [] });
-  const audioRef = useRef(null); // audio element for TTS playback
-// PART 2/3 (continue inside AIChat)
-
-  // restore chat from local storage
+  // restore & persist chat
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -259,7 +331,13 @@ function AIChat() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
 
-  /* keyboard-safe */
+  // theme/code/speak persistence
+  useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => { localStorage.setItem("drox.code", codeMode ? "1" : "0"); }, [codeMode]);
+  useEffect(() => { localStorage.setItem("drox.pro",  proMode ? "1" : "0"); }, [proMode]);
+  useEffect(() => { localStorage.setItem("drox.speak", speakOn ? "1" : "0"); }, [speakOn]);
+
+  // keyboard-safe viewport
   useEffect(() => {
     const vv = window.visualViewport;
     const handleVV = () => {
@@ -277,8 +355,9 @@ function AIChat() {
       window.removeEventListener("orientationchange", handleVV);
     };
   }, []);
+  // src/AIChat.jsx — part 3/6
 
-  /* text suggestions */
+  // suggestions as user types
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -292,16 +371,14 @@ function AIChat() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* live previews (news/weather/crypto) while typing */
+  // live previews (news/weather/crypto)
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
     if (!focused || q.length < 1) return;
-
     cancelPrev.current.cancel?.();
     const src = axios.CancelToken.source();
     cancelPrev.current = { cancel: () => src.cancel("new query") };
-
     previewTimer.current = setTimeout(async () => {
       try {
         const reqs = [
@@ -310,19 +387,17 @@ function AIChat() {
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
         ];
         const [rn, rw, rc] = await Promise.all(reqs);
-
         const newsRanked = rankAndTrim(
-          (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })),
-          10, true
+          (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 10, true
         ).filter(c => !!bestPreview(c, true));
-        setNews(newsRanked.length ? newsRanked : news);
+        if (newsRanked.length) setNews(newsRanked);
 
         const wcards = (rw?.data?.cards || []).filter(Boolean);
         const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
         setWeather(w ? normalizeWeatherCard(w) : null);
 
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
-      } catch { /* silent */ }
+      } catch {}
     }, 350);
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
@@ -343,64 +418,37 @@ function AIChat() {
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
-  // 🔊 TTS speak helper
-  const speak = async (text) => {
-    if (!speakBack) return;
-    if (!text) return;
-    try {
-      const shortText = text.replace(/\s+/g," ").trim();
-      const r = await axios.post(`${API_BASE}/tts`, { text: shortText, voice: "alloy", format: "mp3" }, { responseType: "arraybuffer" });
-      const blob = new Blob([r.data], { type: "audio/mpeg" });
-      const url = URL.createObjectURL(blob);
-      if (!audioRef.current) audioRef.current = new Audio();
-      audioRef.current.src = url;
-      await audioRef.current.play().catch(()=>{ /* autoplay may be blocked */ });
-    } catch { /* ignore TTS errors silently */ }
-  };
-
   const pushWithFollowups = async (md, cards, q) => {
     setMessages((p) => [...p, { role: "assistant", content: md, cards }]);
-    speak(md); // speak after assistant replies
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
       const copy = [...p]; copy[copy.length-1] = { ...last, followups }; return copy;
     });
+    // speak reply if enabled
+    if (speakOn && md) {
+      try { window.speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(md.replace(/[#*_`>]/g," ")); speechSynthesis.speak(u);} catch {}
+    }
   };
 
-  /* ---------------------- send ---------------------- */
+  // MAIN send
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
     setMessages((p) => [...p, { role: "user", content }]);
-    setInput("");
-    setTextSug([]);
+    setInput(""); setTextSug([]);
 
     try {
       // memory commands
       if (/^remember\s*:/i.test(content)) {
         const fact = content.replace(/^remember\s*:/i,"").trim();
-        if (fact) {
-          const mem = loadMem(); mem.push({ fact, t: Date.now() }); saveMem(mem);
-          await pushWithFollowups(`✅ Remembered: **${fact}**`, [], content);
-        } else {
-          await pushWithFollowups("What should I remember? Use `remember: your fact`.", [], content);
-        }
+        if (fact) { const mem = loadMem(); mem.push({ fact, t: Date.now() }); saveMem(mem); await pushWithFollowups(`✅ Remembered: **${fact}**`, [], content); }
+        else { await pushWithFollowups("What should I remember? Use `remember: your fact`.", [], content); }
         return;
       }
-      if (/^(what did you remember|show memory)/i.test(content)) {
+      if (/^what did you remember|^show memory/i.test(content)) {
         const mem = loadMem();
-        const md = mem.length
-          ? `### Memory\n${mem.map(m => `- ${m.fact}`).join("\n")}`
-          : "I haven't saved any memory yet. Use `remember: <fact>`.";
-        await pushWithFollowups(md, [], content);
-        return;
-      }
-      if (/^forget\s*:/i.test(content)) {
-        const fact = content.replace(/^forget\s*:/i,"").trim();
-        const mem = loadMem().filter(m => (m.fact||"").toLowerCase() !== fact.toLowerCase());
-        saveMem(mem);
-        await pushWithFollowups(`🧹 Forgotten: **${fact}**`, [], content);
-        return;
+        const md = mem.length ? `### Memory\n${mem.map(m => `- ${m.fact}`).join("\n")}` : "I haven't saved any memory yet. Use `remember: <fact>`.";
+        await pushWithFollowups(md, [], content); return;
       }
 
       if (isGreeting(content)) {
@@ -411,20 +459,15 @@ function AIChat() {
 
       const lower = content.toLowerCase();
 
-      // YouTube search / embed
+      // YouTube
       if (lower.startsWith("youtube:") || /\byoutube( video)?\b/.test(lower)) {
         const q = content.replace(/^youtube:\s*/i, "").trim() || content;
         try {
           const r = await axios.post(`${API_BASE}/search-youtube`, { prompt: q });
           const url = r.data?.url;
-          if (url) {
-            await pushWithFollowups(`### YouTube\nFound a video for **${q}**.`, [{ type: "youtube", url, title: q }], content);
-          } else {
-            await pushWithFollowups(`Couldn't find a YouTube result for **${q}**.`, [], content);
-          }
-        } catch {
-          await pushWithFollowups("YouTube search is unavailable right now.", [], content);
-        }
+          if (url) await pushWithFollowups(`### YouTube\nFound a video for **${q}**.`, [{ type: "youtube", url, title: q }], content);
+          else await pushWithFollowups(`Couldn't find a YouTube result for **${q}**.`, [], content);
+        } catch { await pushWithFollowups("YouTube search is unavailable right now.", [], content); }
         return;
       }
 
@@ -434,11 +477,8 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
-
-          // ensure media
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
-          if (!hasMedia) cards = cards.concat(await ensureImagesFor(q));
-
+          if (!hasMedia && (wantsImages(q) || isSearchy(q))) cards = cards.concat(await ensureImagesFor(q));
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
         return;
@@ -451,10 +491,8 @@ function AIChat() {
           let cards = rankAndTrim(
             (r.data?.results || []).filter(Boolean).map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })), 12, true
           );
-          // ensure media
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
-          if (!hasMedia) cards = cards.concat(await ensureImagesFor(q));
-
+          if (!hasMedia && (wantsImages(q) || isSearchy(q))) cards = cards.concat(await ensureImagesFor(q));
           await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         return;
@@ -468,9 +506,8 @@ function AIChat() {
             .filter(c => !!bestPreview(c, true));
         } catch {}
         if (!cards.length && news.length) cards = news.slice(0,10);
-        // ensure media
         const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
-        if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
+        if (!hasMedia && (wantsImages(content) || isSearchy(content))) cards = cards.concat(await ensureImagesFor(content));
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         return;
       }
@@ -478,10 +515,7 @@ function AIChat() {
       if (wantsWeather(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const rawCards = (r.data?.cards || []).filter(Boolean);
-        const normalized = rawCards
-          .map(c => (c.type==="weather" ? c : { ...c, type:"weather" }))
-          .map(normalizeWeatherCard)
-          .filter(Boolean);
+        const normalized = rawCards.map(c => (c.type==="weather" ? c : { ...c, type:"weather" })).map(normalizeWeatherCard).filter(Boolean);
         const cards = normalized.length ? normalized : rawCards;
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         return;
@@ -490,9 +524,8 @@ function AIChat() {
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
         let cards = (r.data?.cards || []).filter(Boolean);
-        // ensure media
         const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
-        if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
+        if (!hasMedia && (wantsImages(content) || isSearchy(content))) cards = cards.concat(await ensureImagesFor(content));
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
         return;
       }
@@ -501,187 +534,24 @@ function AIChat() {
       const res = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
       const md = res.data?.reply || res.data?.text || "";
       let cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
-      // ensure media
       const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
-      if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
+      if (!hasMedia && (wantsImages(content) || isSearchy(content))) cards = cards.concat(await ensureImagesFor(content));
       await pushWithFollowups(md, cards, content);
     } catch {
       await pushWithFollowups("⚠️ Error or connection failed.", [], content);
     }
   };
+  // src/AIChat.jsx — part 4/6
 
-  /* ---------------------- 🎙️ Voice record helpers ---------------------- */
-  const startRecording = async () => {
-    if (recStatus !== "idle") return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      mediaRef.current = { stream, rec, chunks: [] };
-      rec.ondataavailable = (e) => { if (e.data && e.data.size) mediaRef.current.chunks.push(e.data); };
-      rec.onstop = async () => {
-        setRecStatus("processing");
-        try {
-          const blob = new Blob(mediaRef.current.chunks, { type: "audio/webm" });
-          const form = new FormData();
-          form.append("audio", blob, "speech.webm");
-          const r = await axios.post(`${API_BASE}/transcribe`, form, { headers: { "Content-Type": "multipart/form-data" } });
-          const text = (r.data?.text || "").trim();
-          if (text) {
-            setInput(text);
-            await handleSend(text); // auto-send; remove to let user edit first
-          }
-        } catch {
-          await pushWithFollowups("🎙️ Couldn’t transcribe. Try again.", [], "transcribe failed");
-        } finally {
-          mediaRef.current.stream.getTracks().forEach(t => t.stop());
-          mediaRef.current = { stream: null, rec: null, chunks: [] };
-          setRecStatus("idle");
-        }
-      };
-      rec.start(100);
-      setRecStatus("recording");
-    } catch {
-      await pushWithFollowups("🎙️ Microphone access denied.", [], "mic denied");
-      setRecStatus("idle");
-    }
-  };
-
-  const stopRecording = () => {
-    if (recStatus !== "recording") return;
-    try { mediaRef.current.rec?.stop(); } catch {}
-  };
-
-  const toggleMic = () => {
-    if (recStatus === "idle") startRecording();
-    else if (recStatus === "recording") stopRecording();
-  };
-
-  /* ---------------------- render helpers ---------------------- */
-  const WeatherCard = ({ card }) => {
-    if (!card) return null;
-    const T = (() => {
-      const c = card.temp_c, f = card.temp_f;
-      if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-      if (typeof c==="number") return `${Math.round(c)}°C`;
-      if (typeof f==="number") return `${Math.round(f)}°F`;
-      return "";
-    })();
-    const FEELS = (() => {
-      const c = card.feels_c, f = card.feels_f;
-      if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-      if (typeof c==="number") return `${Math.round(c)}°C`;
-      if (typeof f==="number") return `${Math.round(f)}°F`;
-      return "";
-    })();
-    const WIND = (() => {
-      const k = card.wind_kph, m = card.wind_mph;
-      if (typeof k==="number" && typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`;
-      if (typeof k==="number") return `${Math.round(k)} km/h`;
-      if (typeof m==="number") return `${Math.round(m)} mph`;
-      return "";
-    })();
-    const RH = (typeof card.humidity==="number") ? `${Math.round(card.humidity)}%` : "";
-    const RAIN = (card.precip!=null && card.precip!=="") ? `${card.precip}${typeof card.precip==="number" ? " mm" : ""}` : "";
-
-    const hrs = (card.hourly || []).slice(0, 8).map(h => ({
-      t: pick(h, ["time","ts","timestamp","date"]),
-      icon: pick(h, ["icon","icon_url","image"]),
-      c: pick(h, ["temp_c","tempC","temperature_c","temperatureC","temp"]),
-      f: pick(h, ["temp_f","tempF","temperature_f","temperatureF"]),
-      text: pick(h, ["text","condition","desc"])
-    }));
-    const days = (card.daily || []).slice(0, 3).map(d => ({
-      day: pick(d, ["day","name","weekday","label"]),
-      icon: pick(d, ["icon","icon_url","image"]),
-      min_c: pick(d, ["min_c","minC","low_c","lowC","min"]),
-      min_f: pick(d, ["min_f","minF","low_f","lowF"]),
-      max_c: pick(d, ["max_c","maxC","high_c","highC","max"]),
-      max_f: pick(d, ["max_f","maxF","high_f","highF"]),
-      text: pick(d, ["text","condition","desc"])
-    }));
-
-    return (
-      <div className="weather-card glass rounded-xl p-3">
-        <div className="flex items-center gap-3">
-          {card.icon && <img src={card.icon} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-          <div className="min-w-0">
-            <div className="text-sm font-semibold truncate">{card.title || "Weather"}</div>
-            <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
-          </div>
-        </div>
-
-        {(T || FEELS || RH || WIND || RAIN) && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
-            {T && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
-            {FEELS && <div className="wstat"><div className="wlabel">Feels like</div><div className="wval">{FEELS}</div></div>}
-            {RH && <div className="wstat"><div className="wlabel">Humidity</div><div className="wval">{RH}</div></div>}
-            {WIND && <div className="wstat"><div className="wlabel">Wind</div><div className="wval">{WIND}</div></div>}
-            {RAIN && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
-          </div>
-        )}
-
-        {hrs.length > 0 && (
-          <div className="mt-3">
-            <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
-            <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
-              {hrs.map((h, i) => (
-                <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
-                  <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
-                  {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                  <div className="text-sm font-semibold">{(() => {
-                    const c=h.c, f=h.f;
-                    if (typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-                    if (typeof c==="number") return `${Math.round(c)}°C`;
-                    if (typeof f==="number") return `${Math.round(f)}°F`;
-                    return "-";
-                  })()}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {days.length > 0 && (
-          <div className="mt-3">
-            <div className="text-[11px] text-gray-400 mb-1">Next days</div>
-            <div className="grid grid-cols-3 gap-2">
-              {days.map((d, i) => (
-                <div key={i} className="glass rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
-                  {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                  <div className="text-xs font-semibold">{(() => {
-                    const c=d.max_c, f=d.max_f;
-                    const labelHi = (typeof c==="number" && typeof f==="number") ? `${Math.round(c)}°C / ${Math.round(f)}°F` : (typeof c==="number" ? `${Math.round(c)}°C` : (typeof f==="number" ? `${Math.round(f)}°F` : ""));
-                    const lc=d.min_c, lf=d.min_f;
-                    const labelLo = (typeof lc==="number" && typeof lf==="number") ? `${Math.round(lc)}°C / ${Math.round(lf)}°F` : (typeof lc==="number" ? `${Math.round(lc)}°C` : (typeof lf==="number" ? `${Math.round(lf)}°F` : ""));
-                    return `${labelHi} / ${labelLo}`;
-                  })()}</div>
-                  {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
+  // ---- render helpers ----
   const SmartImage = ({ url, title }) => {
     if (!url) return null;
     const elRef = useRef(null);
     const proxyFirst = (() => {
-      try {
-        const h = new URL(url).hostname;
-        return /(^|\.)(images\.unsplash\.com|source\.unsplash\.com|lexica\.art|cdn\.stability\.ai)$/i.test(h);
-      } catch { return false; }
+      try { const h = new URL(url).hostname; return /(^|\.)(images\.unsplash\.com|source\.unsplash\.com|lexica\.art|cdn\.stability\.ai)$/i.test(h); }
+      catch { return false; }
     })();
-
-    useEffect(() => {
-      const el = elRef.current; if (!el) return;
-      el.dataset.step = proxyFirst ? "proxy" : "orig";
-      el.src = proxyFirst ? toProxy(url) : url;
-    }, [url]); // eslint-disable-line
-
+    useEffect(() => { const el = elRef.current; if (!el) return; el.dataset.step = proxyFirst ? "proxy" : "orig"; el.src = proxyFirst ? toProxy(url) : url; }, [url]);
     const onErr = (e) => {
       const el = e.currentTarget;
       const step = el.dataset.step || "orig";
@@ -690,43 +560,16 @@ function AIChat() {
       el.style.display = "none";
     };
     return (
-      <img
-        ref={elRef}
-        alt=""
-        className="w-full rounded-lg glass"
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={onErr}
-        onLoad={(e)=>{ e.currentTarget.style.opacity = 1; }}
-        style={{ opacity: 0, transition: "opacity .2s ease" }}
-      />
+      <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer"
+           onError={onErr} onLoad={(e)=>{ e.currentTarget.style.opacity = 1; }}
+           style={{ opacity: 0, transition: "opacity .2s ease" }} />
     );
   };
 
   const LinkPreview = ({ card }) => {
-    const [img, setImg] = useState(null);
-    const [tried, setTried] = useState(false);
     const pv = bestPreview(card, true);
-
-    useEffect(() => {
-      let mounted = true;
-      const need = !firstImageUrl(card) && !pv;
-      const run = async () => {
-        if (!need || tried || !card?.url) return;
-        setTried(true);
-        try {
-          const { data } = await axios.get(`${API_BASE}/preview`, { params: { url: card.url } });
-          if (mounted && data?.image) setImg(data.image);
-        } catch {}
-      };
-      run();
-      return () => { mounted = false; };
-    }, [card?.url]); // eslint-disable-line
-
     if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
     if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
-    if (img) return <SmartImage url={img} title={card.title} />;
-
     const fav = faviconFor(card.url);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
@@ -761,17 +604,12 @@ function AIChat() {
               </div>
             );
           }
-
-          if (card.type === "weather") {
-            return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
-          }
-
+          if (card.type === "weather") return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
           if (card.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
             if (!urls.length) return null;
             return <div key={i} className="grid grid-cols-2 gap-2">{urls.map((u,j)=><SmartImage key={j} url={u} title="image" />)}</div>;
           }
-
           if (card.type === "youtube" || isYouTube(card.url || "")) {
             const id = getYouTubeId(card.url || ""); if (!id) return null;
             return (
@@ -793,36 +631,30 @@ function AIChat() {
 
   const buildLinkSets = (cards = [], searchy = false) => {
     const links = (cards || []).filter(c =>
-      ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
+      ["web","link","wiki","news","stock","crypto","images"].includes(c.type) &&
       c.url && !isFilteredSource(c.url)
     );
     const sorted = dedupeCards(links).sort((a,b) => scoreCard(b) - scoreCard(a));
     const byHost = {};
     for (const c of sorted) { const h = host(c.url); if (!byHost[h]) byHost[h] = c; }
-
     const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com"];
     if (searchy) pref.push("google.com","wikipedia.org","youtube.com","youtu.be");
-
     const quickActions = [];
     for (const ph of pref) {
       const k = Object.keys(byHost).find(h => h===ph || h.endsWith("."+ph));
       if (k) quickActions.push(byHost[k]);
     }
-
     const grid = Object.values(byHost)
       .filter(c => !/^(google\.com|wikipedia\.org)$/.test(host(c.url)) || searchy)
       .sort((a,b)=> scoreCard(b)-scoreCard(a))
       .slice(0,6);
-
     return { quickActions, grid };
   };
 
-  /* ---------------------- UI: organized answer ---------------------- */
+  // extractors for organized answer
   const extractTitle = (md="") => {
-    const h1 = md.match(/^\s*#\s+(.+)/m);
-    if (h1) return h1[1].trim();
-    const firstLine = md.split("\n").find(x => x.trim());
-    if (!firstLine) return "Answer";
+    const h1 = md.match(/^\s*#\s+(.+)/m); if (h1) return h1[1].trim();
+    const firstLine = md.split("\n").find(x => x.trim()); if (!firstLine) return "Answer";
     const s = firstLine.replace(/[*_#>]+/g,"").trim();
     const end = s.indexOf(". ") >= 0 ? s.indexOf(". ") + 1 : Math.min(90, s.length);
     return s.slice(0,end).trim();
@@ -831,10 +663,8 @@ function AIChat() {
     const lines = md.split("\n").map(l=>l.trim()).filter(Boolean);
     const bullets = lines.filter(l => /^[-*•]\s+/.test(l)).slice(0,4).map(l => l.replace(/^[-*•]\s+/, ""));
     if (bullets.length >= 2) return bullets.slice(0,3);
-    const para = lines.find(l => /^[A-Za-z0-9]/.test(l));
-    if (!para) return [];
-    const sents = para.split(/(?<=[.!?])\s+/).slice(0,3);
-    return sents;
+    const para = lines.find(l => /^[A-Za-z0-9]/.test(l)); if (!para) return [];
+    const sents = para.split(/(?<=[.!?])\s+/).slice(0,3); return sents;
   };
   const extractSteps = (md="") => {
     const blocks = md.split("\n");
@@ -844,11 +674,7 @@ function AIChat() {
     return dots;
   };
   const parsePairs = (md="") => {
-    const out = [];
-    md.split("\n").forEach(l => {
-      const m = l.match(/^\s*[-*]?\s*([^:]{2,40})\s*:\s*(-?\d+(\.\d+)?)/);
-      if (m) out.push({ label: m[1].trim(), value: parseFloat(m[2]) });
-    });
+    const out = []; md.split("\n").forEach(l => { const m = l.match(/^\s*[-*]?\s*([^:]{2,40})\s*:\s*(-?\d+(\.\d+)?)/); if (m) out.push({ label: m[1].trim(), value: parseFloat(m[2]) }); });
     return out.slice(0,8);
   };
 
@@ -856,30 +682,13 @@ function AIChat() {
     const title = extractTitle(md);
     const summary = extractSummary(md);
     const steps = extractSteps(md);
-    const pairs = parsePairs(md); // label: number
+    const pairs = parsePairs(md);
     return (
       <>
         <div className="org-title">{title}</div>
-
-        {summary.length > 0 && (
-          <div className="org-section">
-            <div className="org-sub">Summary</div>
-            <ul className="org-list">
-              {summary.map((s, i) => <li key={i}>{s}</li>)}
-            </ul>
-          </div>
-        )}
-
-        {steps.length > 0 && (
-          <div className="org-section">
-            <div className="org-sub">Step-by-step</div>
-            <ol className="org-steps">
-              {steps.map((s, i) => <li key={i}>{s}</li>)}
-            </ol>
-          </div>
-        )}
-
-        {pairs.length > 0 && (
+        {summary.length>0 && (<div className="org-section"><div className="org-sub">Summary</div><ul className="org-list">{summary.map((s,i)=><li key={i}>{s}</li>)}</ul></div>)}
+        {steps.length>0 && (<div className="org-section"><div className="org-sub">Step-by-step</div><ol className="org-steps">{steps.map((s,i)=><li key={i}>{s}</li>)}</ol></div>)}
+        {pairs.length>0 && (
           <div className="org-section">
             <div className="org-sub">Quick Chart</div>
             <div className="bars">
@@ -889,9 +698,7 @@ function AIChat() {
                 return (
                   <div key={i} className="bar-row">
                     <div className="bar-label">{p.label}</div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${w}%` }} />
-                    </div>
+                    <div className="bar-track"><div className="bar-fill" style={{ width: `${w}%` }} /></div>
                     <div className="bar-val">{p.value}</div>
                   </div>
                 );
@@ -899,7 +706,6 @@ function AIChat() {
             </div>
           </div>
         )}
-
         <div className="org-section">
           <div className="org-sub">Full answer</div>
           <div className="answer expanded">
@@ -908,24 +714,25 @@ function AIChat() {
                 img: (props) => {
                   const src = props.src;
                   return (
-                    <img
-                      {...props}
-                      src={src}
-                      className="rounded-lg my-2 w-full glass"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      onError={(e)=>{
-                        const el=e.currentTarget;
-                        const step=el.dataset.step||"orig";
+                    <img {...props} src={src} className="rounded-lg my-2 w-full glass" loading="lazy" referrerPolicy="no-referrer"
+                      onError={(e)=>{ const el=e.currentTarget; const step=el.dataset.step||"orig";
                         if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
                         if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
-                        el.style.display="none";
-                      }}
-                    />
+                        el.style.display="none"; }} />
                   );
                 },
                 iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
-                a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
+                a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />,
+                code: ({node, inline, className, children, ...props}) => {
+                  const txt = String(children || "");
+                  if (inline) return <code className={className} {...props}>{children}</code>;
+                  return (
+                    <pre className={className} style={{ position:"relative" }}>
+                      <button className="code-copy-btn" onClick={() => navigator.clipboard.writeText(txt)} title="Copy code">Copy</button>
+                      <code {...props}>{children}</code>
+                    </pre>
+                  );
+                },
               }}
             >
               {md}
@@ -935,35 +742,72 @@ function AIChat() {
       </>
     );
   };
-  // PART 3/3 (final)
+
+  // ---- Image analysis ----
+  const sendImageForAnalysis = async (file) => {
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      form.append("prompt", input || "Analyze this image and explain key details.");
+      const r = await axios.post(`${API_BASE}/vision`, form, { headers: { "Content-Type":"multipart/form-data" } });
+      const md = r.data?.reply || "No result.";
+      let cards = [];
+      if (proMode || wantsImages(input || "")) {
+        try {
+          const rr = await axios.post(`${API_BASE}/realtime`, { query: input || "related images", intent: "images" });
+          cards = (rr.data?.cards || []).filter(Boolean);
+        } catch {}
+      }
+      await pushWithFollowups(md, cards, input || "image analysis");
+      setInput("");
+    } catch {
+      await pushWithFollowups("⚠️ Image analysis failed.", [], "vision failed");
+    }
+  };
+
+  // ---- Speech to text (browser) ----
+  const startMic = async () => {
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Rec) {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        alert("Mic captured, but this browser lacks SpeechRecognition. Connect an STT backend.");
+      } catch {
+        await pushWithFollowups("🎙️ Microphone access denied.\n\n**How to fix**\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) On iPhone: Settings → Safari → Microphone → Allow.", [], "mic denied");
+      }
+      return;
+    }
+    try {
+      const rec = new Rec();
+      rec.lang = "en-US"; rec.interimResults = false; rec.maxAlternatives = 1;
+      rec.onresult = (e) => { const t = e.results?.[0]?.[0]?.transcript || ""; if (t) handleSend(t); };
+      rec.onerror = () => { alert("Mic error. Please try again."); };
+      rec.start();
+    } catch {
+      alert("Mic access denied. Please enable microphone permissions.");
+    }
+  };
+  // src/AIChat.jsx — part 5/6
 
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className={`flex flex-col min-h-[100svh] ${codeMode ? "code-mode" : ""}`}>
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
-        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
-          <div className="font-bold tracking-tight text-lg">Droxion</div>
+        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap">
+          <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
-
           <div className="ml-auto flex items-center gap-2">
-            {/* Speak-back toggle */}
-            <button
-              onClick={()=>setSpeakBack(v=>!v)}
-              className={`px-2 py-1 rounded-md text-[11px] border ${speakBack ? "bg-white text-black border-white":"border-white/15 text-gray-300 hover:bg-white/10"}`}
-              title="Toggle voice reply"
-            >
-              🔊 {speakBack ? "On" : "Off"}
-            </button>
-
-            {/* Mic control */}
-            <button
-              onClick={() => (recStatus==="recording" ? stopRecording() : startRecording())}
-              className={`px-2 py-1 rounded-md text-[11px] border ${recStatus==="recording" ? "bg-red-500 text-white border-red-500":"border-white/15 text-gray-300 hover:bg-white/10"}`}
-              title={recStatus==="recording" ? "Stop recording" : "Start recording"}
-            >
-              {recStatus==="recording" ? "⏺ Stop" : "🎙️ Mic"}
-            </button>
+            <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">{theme==="dark"?"🌙 Dark":"☀️ Light"}</button>
+            <button onClick={()=>setCodeMode(v=>!v)} className="pill-btn" title="Code mode">{"</>"} Code</button>
+            <button onClick={()=>setProMode(v=>!v)} className="pill-btn" title="Premium">{proMode?"⭐ Pro On":"⭐ Pro Off"}</button>
+            <button onClick={()=>setSpeakOn(v=>!v)} className="pill-btn" title="Speak replies">{speakOn?"🔊 On":"🔇 Off"}</button>
+            <button onClick={startMic} className="pill-btn" title="Speak your message">🎤 Mic</button>
+            <label className="pill-btn cursor-pointer" title="Upload image to analyze">
+              🖼 Image
+              <input type="file" accept="image/*" hidden ref={fileRef}
+                onChange={(e)=>{ const f=e.target.files?.[0]; if(f) sendImageForAnalysis(f); e.target.value=""; }} />
+            </label>
           </div>
         </div>
       </header>
@@ -979,7 +823,7 @@ function AIChat() {
 
               const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
               const showSearchy = isSearchy(userPrompt);
-              const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
+              const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki","images"].includes(c.type));
 
               const hasPreviewable = (cards||[]).some(c => firstImageUrl(c) || (c.url && !isFilteredSource(c.url)));
               const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard) && hasPreviewable;
@@ -1001,25 +845,14 @@ function AIChat() {
                     )}
                   </div>
 
-                  {/* User text */}
                   {isUser && <div className="answer expanded">{msg.content}</div>}
 
-                  {/* Assistant: Organized view */}
                   {!isUser && msg.content && (
-                    <>
-                      <OrganizedAnswer md={msg.content} index={i} />
-                      {/* manual toggle if you ever want compact view:
-                      <button className="toggle-more underline decoration-gray-600" onClick={()=>setExpandedIdx(expandedIdx===i?null:i)}>
-                        {expandedIdx===i ? "Show less" : "Show more"}
-                      </button>
-                      */}
-                    </>
+                    <><OrganizedAnswer md={msg.content} index={i} /></>
                   )}
 
-                  {/* Media between answer and sources */}
                   {!isUser && <MediaBlock cards={mediaCards} />}
 
-                  {/* Quick actions – base pills + HQ pills (max 2) */}
                   {!isUser && (
                     <div className="actions-row">
                       <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
@@ -1036,21 +869,15 @@ function AIChat() {
                     </div>
                   )}
 
-                  {/* Sources grid – trimmed */}
                   {shouldShowSources && linkSets.grid.length>0 && (
                     <div className="mt-3">
                       <div className="small-label mb-1">Sources</div>
                       <div className="sources-grid">
-                        {linkSets.grid.map((c,idx)=> (
-                          <div key={idx}>
-                            <LinkPreview card={c} />
-                          </div>
-                        ))}
+                        {linkSets.grid.map((c,idx)=> (<div key={idx}><LinkPreview card={c} /></div>))}
                       </div>
                     </div>
                   )}
 
-                  {/* Follow-ups */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
                     <div className="mt-3 flex flex-wrap gap-8">
                       {msg.followups.slice(0,3).map((s,idx)=>(
@@ -1076,7 +903,6 @@ function AIChat() {
         </div>
       </div>
 
-      {/* LIVE PREVIEW PANEL */}
       {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
@@ -1119,13 +945,7 @@ function AIChat() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>
-                  {weather ? (
-                    <WeatherCard card={weather} />
-                  ) : (
-                    <div className="glass rounded-lg p-6 skel" />
-                  )}
-                </div>
+                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
                 <div className="grid grid-cols-1 gap-2">
                   {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
                     <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
@@ -1175,9 +995,8 @@ function AIChat() {
                 aria-label="Type your message"
               />
             </div>
-            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
-              ➤
-            </button>
+            <button onClick={()=>fileRef.current?.click()} className="pill-btn" title="Analyze an image">📷</button>
+            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">➤</button>
           </div>
 
           <div className="flex gap-2 flex-wrap mt-2">
@@ -1189,119 +1008,20 @@ function AIChat() {
           </div>
         </div>
       </div>
+      // src/AIChat.jsx — part 6/6
+
+      {/* ===== PART 4: CONTROL PANEL / TOGGLES (bottom) ===== */}
+      <div className="control-panel flex flex-wrap justify-center gap-3 mt-6 mb-24">
+        <button
+          onClick={() => { setMessages([]); localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(MEM_KEY); }}
+          className="pill-btn" title="Clear chat history + memory">🗑️ Clear Chat + Memory</button>
+
+        <button
+          onClick={() => { setMessages([]); localStorage.removeItem(STORAGE_KEY); setInput(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+          className="pill-btn" title="Start a fresh chat (keep memory)">✨ New Chat</button>
+      </div>
+      {/* ===== /PART 4 ===== */}
     </div>
   );
 }
-
 export default AIChat;
-{/* ===== PART 4: CONTROL PANEL / TOGGLES ===== */}
-<div className="control-panel flex flex-wrap justify-center gap-3 mt-6 mb-24">
-
-  {/* 🗑️ CLEAR CHAT + MEMORY */}
-  <button
-    onClick={() => {
-      setMessages([]);
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(MEM_KEY);
-    }}
-    className="pill-btn"
-    title="Clear chat history + memory"
-  >
-    🗑️ Clear Chat + Memory
-  </button>
-
-  {/* ✨ NEW CHAT */}
-  <button
-    onClick={() => {
-      setMessages([]);
-      localStorage.removeItem(STORAGE_KEY);
-      setInput("");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }}
-    className="pill-btn"
-    title="Start a fresh chat (keep memory)"
-  >
-    ✨ New Chat
-  </button>
-
-  {/* 🌙 / ☀️ THEME TOGGLE */}
-  <button
-    onClick={() => {
-      const html = document.documentElement;
-      const cur = html.getAttribute("data-theme") || "dark";
-      const next = cur === "dark" ? "light" : "dark";
-      html.setAttribute("data-theme", next);
-      localStorage.setItem("theme", next);
-    }}
-    className="pill-btn"
-    title="Toggle Dark/Light Theme"
-  >
-    🌙 / ☀️ Theme
-  </button>
-
-  {/* </> CODE MODE TOGGLE */}
-  <button
-    onClick={() => {
-      document.body.classList.toggle("code-mode");
-    }}
-    className="pill-btn"
-    title="Toggle Code Mode Font"
-  >
-    {"</>"} Code
-  </button>
-
-  {/* ⭐ PREMIUM TOGGLE */}
-  <button
-    onClick={() => {
-      const current = localStorage.getItem("droxion.pro") === "true";
-      localStorage.setItem("droxion.pro", String(!current));
-      alert(`Premium is now ${!current ? "ON" : "OFF"}`);
-    }}
-    className="pill-btn"
-    title="Toggle Premium Mode"
-  >
-    ⭐ Premium
-  </button>
-
-  {/* 🎤 MIC BUTTON */}
-  <button
-    onClick={async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Here you would connect to your STT API
-        alert("🎤 Mic captured! (Hook up to STT backend)");
-        stream.getTracks().forEach(track => track.stop());
-      } catch {
-        alert("Mic access denied. Please enable microphone permissions.");
-      }
-    }}
-    className="pill-btn"
-    title="Speak your message"
-  >
-    🎤 Mic
-  </button>
-
-  {/* 🖼️ IMAGE ANALYSIS */}
-  <label className="pill-btn cursor-pointer" title="Upload image to analyze">
-    🖼️ Image
-    <input
-      type="file"
-      accept="image/*"
-      hidden
-      onChange={async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        // send file to your backend for analysis
-        const formData = new FormData();
-        formData.append("file", file);
-        try {
-          const r = await axios.post(`${API_BASE}/analyze-image`, formData);
-          setMessages((p) => [...p, { role: "assistant", content: r.data?.result || "Image analyzed!" }]);
-        } catch {
-          setMessages((p) => [...p, { role: "assistant", content: "❌ Image analysis failed." }]);
-        }
-      }}
-    />
-  </label>
-</div>
-{/* ===== /PART 4 ===== */}
