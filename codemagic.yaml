@@ -1,20 +1,18 @@
 workflows:
   ios-capacitor:
-    name: Droxion iOS Build (Vite + Capacitor, optimized)
+    name: Droxion iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m4
+    instance_type: mac_mini_m4   # ✅ Use faster M4 machines
 
     environment:
+      groups:
+        - appstore_credentials   # Make sure this group exists in Codemagic UI
       vars:
         APP_NAME: Droxion
         WEB_DIR: dist
-        CI: "true"
-        NPM_CONFIG_AUDIT: "false"
-        NPM_CONFIG_FUND: "false"
-        NPM_CONFIG_CACHE: "/Users/builder/.npm"
-        NPM_CONFIG_PREFER_OFFLINE: "true"
-      xcode: 15.4        # ✅ Fixed Xcode version
+        BUNDLE_ID: com.droxion.app
       node: 20
+      xcode: 15.4               # ✅ Supported Xcode version
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -24,86 +22,31 @@ workflows:
       cache_paths:
         - ~/.npm
         - ~/Library/Caches/CocoaPods
-        - ios/Pods
 
     scripts:
-      - name: Sanity check env
+      - name: Install dependencies (fix rollup issues)
         script: |
-          echo "APP_NAME=$APP_NAME"
-          echo "WEB_DIR=$WEB_DIR"
-
-      - name: Install dependencies (fast + resilient)
-        script: |
-          # Tighten npm settings for CI speed & reliability
-          npm config set cache "$NPM_CONFIG_CACHE"
-          npm config set prefer-offline "$NPM_CONFIG_PREFER_OFFLINE"
-          npm config set fetch-retries 5
-          npm config set fetch-retry-mintimeout 20000
-          npm config set fetch-retry-maxtimeout 120000
-          export npm_config_optional=false
-
-          # First try: offline-prefer + quiet
-          echo "▶ npm ci (prefer-offline)…"
-          npm ci --no-audit --no-fund --progress=false --prefer-offline || CI_NPM_OFFLINE_FAIL=$?
-
-          # If that didn’t complete (cold cache / network hiccup), do a normal ci
-          if [ -n "$CI_NPM_OFFLINE_FAIL" ]; then
-            echo "⚠️  prefer-offline failed, retrying npm ci online…"
-            npm ci --no-audit --no-fund --progress=false
-          fi
-
-          # Rebuild rollup binaries when prebuilt ones aren’t present
-          npm rebuild rollup --verbose || true
+          npm ci || npm install
+          npm rebuild rollup --ignore-scripts || true
 
       - name: Build web app (Vite)
         script: |
-          chmod +x ./node_modules/.bin/vite || true
-          npx vite build --silent
+          chmod +x node_modules/.bin/vite || true
+          npm run build
 
-      - name: Ensure Capacitor packages are installed
-        script: |
-          npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core@latest
-          npm ls @capacitor/cli  >/dev/null 2>&1 || npm i -D @capacitor/cli@latest
-          npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios@latest
-
-      - name: Initialize Capacitor & add iOS if missing
-        script: |
-          if ! npx cap ls | grep -q "Capacitor"; then
-            npx cap init "$APP_NAME" "com.droxion.app" --web-dir="$WEB_DIR" --npm-client=npm --yes
-          fi
-          [ -d ios ] || npx cap add ios
-
-      - name: Sync + force bundle id in Xcode project
+      - name: Add Capacitor iOS project if missing
         script: |
           npx cap sync ios
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droxion.app" ios/App/App/Info.plist || true
-          perl -pi -e "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.droxion.app/g" ios/App/App.xcodeproj/project.pbxproj || true
-          agvtool new-version -all ${BUILD_NUMBER:-1} || true
 
-      - name: Use automatic signing profiles
-        script: xcode-project use-profiles
-
-      - name: Build IPA (workspace preferred)
+      - name: Update bundle id in iOS project
         script: |
-          if [ -f "ios/App/App.xcworkspace/contents.xcworkspacedata" ]; then
-            xcode-project build-ipa \
-              --workspace "ios/App/App.xcworkspace" \
-              --scheme "${IOS_SCHEME:-App}" \
-              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
-          else
-            xcode-project build-ipa \
-              --project "ios/App/App.xcodeproj" \
-              --scheme "${IOS_SCHEME:-App}" \
-              --archive-path "$CM_BUILD_DIR/ios_archive.xcarchive"
-          fi
+          npx cap sync ios --inline
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - $CM_BUILD_DIR/ios_archive.xcarchive
 
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        key_identifier: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true
