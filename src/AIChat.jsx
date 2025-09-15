@@ -169,21 +169,6 @@ const fmtTemp = (c, f) => {
   if (n(f)!=null) return `${Math.round(f)}°F`;
   return "";
 };
-const fmtSpeed = (kph, mph) => {
-  if (n(kph)!=null && n(mph)!=null) return `${Math.round(kph)} km/h • ${Math.round(mph)} mph`;
-  if (n(kph)!=null) return `${Math.round(kph)} km/h`;
-  if (n(mph)!=null) return `${Math.round(mph)} mph`;
-  return "";
-};
-const hourLabel = (ts) => {
-  try {
-    const d = new Date(ts);
-    let h = d.getHours();
-    const am = h < 12;
-    h = h % 12 || 12;
-    return `${h}${am ? "am" : "pm"}`;
-  } catch { return ""; }
-};
 
 const normalizeWeatherCard = (raw) => {
   if (!raw) return null;
@@ -218,7 +203,6 @@ const extractTitle = (md="") => {
   if (h1) return h1[1].trim();
   const firstLine = md.split("\n").find(x => x.trim());
   if (!firstLine) return "Answer";
-  // bold first sentence
   const s = firstLine.replace(/[*_#>]+/g,"").trim();
   const end = s.indexOf(". ") >= 0 ? s.indexOf(". ") + 1 : Math.min(90, s.length);
   return s.slice(0,end).trim();
@@ -377,8 +361,14 @@ const WeatherCard = ({ card }) => {
 // local memory (device)
 const STORAGE_KEY = "droxion.chat.v1";
 const MEM_KEY = "droxion.mem.v1";
-const loadMem = () => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; } };
-const saveMem = (arr) => { try { localStorage.setItem(MEM_KEY, JSON.stringify(arr.slice(-100))); } catch {} };
+const PREF_KEY = "droxion.prefs.v1";
+const loadJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(d)); } catch { return d; } };
+const saveJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+const loadMem = () => loadJSON(MEM_KEY, []);
+const saveMem = (arr) => saveJSON(MEM_KEY, arr.slice(-100));
+const loadPrefs = () => loadJSON(PREF_KEY, { persona: "default" });
+const savePrefs = (p) => saveJSON(PREF_KEY, p);
 
 // ensure we always have some media (images) for bland answers
 const ensureImagesFor = async (query) => {
@@ -398,6 +388,7 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  const [prefs, setPrefs] = useState(loadPrefs());
 
   // live preview (while typing)
   const [focused, setFocused] = useState(false);
@@ -414,14 +405,11 @@ function AIChat() {
 
   // restore chat from local storage
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      if (Array.isArray(saved) && saved.length) setMessages(saved);
-    } catch {}
+    const saved = loadJSON(STORAGE_KEY, []);
+    if (saved.length) setMessages(saved);
   }, []);
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
-  }, [messages]);
+  useEffect(() => { saveJSON(STORAGE_KEY, messages.slice(-50)); }, [messages]);
+  useEffect(() => { savePrefs(prefs); }, [prefs]);
 
   /* keyboard-safe */
   useEffect(() => {
@@ -535,6 +523,13 @@ function AIChat() {
         }
         return;
       }
+      if (/^forget\s*:/i.test(content)) {
+        const fact = content.replace(/^forget\s*:/i,"").trim();
+        const mem = loadMem().filter(m => m.fact.toLowerCase() !== fact.toLowerCase());
+        saveMem(mem);
+        await pushWithFollowups(`🗑️ Forgotten: **${fact}**`, [], content);
+        return;
+      }
       if (/^what did you remember|^show memory/i.test(content)) {
         const mem = loadMem();
         const md = mem.length
@@ -543,9 +538,46 @@ function AIChat() {
         await pushWithFollowups(md, [], content);
         return;
       }
+      // persona switch
+      if (/^persona\s*:/i.test(content)) {
+        const p = content.replace(/^persona\s*:/i,"").trim().toLowerCase();
+        const allowed = ["default","business mentor","coder","news reporter","astrologer"];
+        const pick = allowed.find(x => x===p);
+        setPrefs({ ...prefs, persona: pick || "default" });
+        await pushWithFollowups(`🎭 Persona set to **${pick || "default"}**.`, [], content);
+        return;
+      }
+
+      // compare mode
+      if (content.toLowerCase().startsWith("compare:")) {
+        const q = content.replace(/^compare:\s*/i,"").trim();
+        const r = await axios.post(`${API_BASE}/chat`, { prompt: `Compare side-by-side with a table and pros/cons and a recommendation: ${q}`, persona: prefs.persona, memory: loadMem().slice(-5).map(m=>m.fact) });
+        await pushWithFollowups(r.data?.reply || r.data?.text || `Comparison for **${q}**`, r.data?.cards || [], content);
+        return;
+      }
+      // table mode
+      if (content.toLowerCase().startsWith("table:")) {
+        const q = content.replace(/^table:\s*/i,"").trim();
+        const r = await axios.post(`${API_BASE}/chat`, { prompt: `Return a concise markdown table only for: ${q}`, persona: prefs.persona, memory: loadMem().slice(-5).map(m=>m.fact) });
+        await pushWithFollowups(r.data?.reply || r.data?.text || `Table: **${q}**`, r.data?.cards || [], content);
+        return;
+      }
+      // image generation
+      if (wantsImages(content) || content.toLowerCase().startsWith("generate image:")) {
+        const q = content.replace(/^images?:\s*/i,"").replace(/^generate image:\s*/i,"").trim() || content;
+        try {
+          const r = await axios.post(`${API_BASE}/generate-image`, { prompt: q });
+          const imgs = Array.isArray(r.data?.images) ? r.data.images : (r.data?.url ? [r.data.url] : []);
+          const cards = imgs.length ? [{ type: "gallery", images: imgs }] : await ensureImagesFor(q);
+          await pushWithFollowups(`### Images for **${q}**`, cards, content);
+        } catch {
+          await pushWithFollowups("Image generator is unavailable right now.", [], content);
+        }
+        return;
+      }
 
       if (isGreeting(content)) {
-        const r = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
+        const r = await axios.post(`${API_BASE}/chat`, { prompt: content, persona: prefs.persona, memory: loadMem().slice(-5).map(m=>m.fact) });
         await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
         return;
       }
@@ -575,11 +607,8 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/realtime`, { query: q });
           let cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
           const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
-
-          // ensure media
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
           if (!hasMedia) cards = cards.concat(await ensureImagesFor(q));
-
           await pushWithFollowups(md, cards, content);
         } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
         return;
@@ -592,10 +621,8 @@ function AIChat() {
           let cards = rankAndTrim(
             (r.data?.results || []).filter(Boolean).map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })), 12, true
           );
-          // ensure media
           const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
           if (!hasMedia) cards = cards.concat(await ensureImagesFor(q));
-
           await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
         } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
         return;
@@ -609,7 +636,6 @@ function AIChat() {
             .filter(c => !!bestPreview(c, true));
         } catch {}
         if (!cards.length && news.length) cards = news.slice(0,10);
-        // ensure media
         const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
         if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
@@ -631,7 +657,6 @@ function AIChat() {
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
         let cards = (r.data?.cards || []).filter(Boolean);
-        // ensure media
         const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
         if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
@@ -639,10 +664,9 @@ function AIChat() {
       }
 
       // default chat
-      const res = await axios.post(`${API_BASE}/chat`, { prompt: content, memory: loadMem().slice(-5).map(m=>m.fact) });
+      const res = await axios.post(`${API_BASE}/chat`, { prompt: content, persona: prefs.persona, memory: loadMem().slice(-5).map(m=>m.fact) });
       const md = res.data?.reply || res.data?.text || "";
       let cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
-      // ensure media
       const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
       if (!hasMedia) cards = cards.concat(await ensureImagesFor(content));
       await pushWithFollowups(md, cards, content);
@@ -727,9 +751,11 @@ function AIChat() {
 
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
+    const playable = cards.filter(c => ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || ""));
+    if (!playable.length) return null;
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
-        {cards.map((card, i) => {
+        {playable.map((card, i) => {
           if (card.type === "images-grid" && Array.isArray(card.images)) {
             const items = card.images.slice(0, 12);
             return (
@@ -804,7 +830,7 @@ function AIChat() {
   };
 
   /* ---------------------- UI: organized answer ---------------------- */
-  const OrganizedAnswer = ({ md, index }) => {
+  const OrganizedAnswer = ({ md }) => {
     const title = extractTitle(md);
     const summary = extractSummary(md);
     const steps = extractSteps(md);
@@ -888,7 +914,7 @@ function AIChat() {
     );
   };
 
-  const [expandedIdx, setExpandedIdx] = useState(null);
+  const personaList = ["default","business mentor","coder","news reporter","astrologer"];
 
   return (
     <div className="flex flex-col min-h-[100svh]">
@@ -896,6 +922,18 @@ function AIChat() {
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
           <div className="font-bold tracking-tight text-lg">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
+          <div className="ml-auto flex items-center gap-2">
+            {personaList.map(p => (
+              <button
+                key={p}
+                onClick={()=>setPrefs({...prefs, persona:p})}
+                className={`px-2 py-1 rounded-md text-[11px] border ${prefs.persona===p ? "bg-white text-black border-white":"border-white/15 text-gray-300 hover:bg-white/10"}`}
+                title={`Persona: ${p}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -937,14 +975,7 @@ function AIChat() {
 
                   {/* Assistant: Organized view */}
                   {!isUser && msg.content && (
-                    <>
-                      <OrganizedAnswer md={msg.content} index={i} />
-                      {/* manual toggle if you ever want compact view:
-                      <button className="toggle-more underline decoration-gray-600" onClick={()=>setExpandedIdx(expandedIdx===i?null:i)}>
-                        {expandedIdx===i ? "Show less" : "Show more"}
-                      </button>
-                      */}
-                    </>
+                    <OrganizedAnswer md={msg.content} />
                   )}
 
                   {/* Media between answer and sources */}
@@ -1111,9 +1142,10 @@ function AIChat() {
             </button>
           </div>
 
+          {/* Quick style/image generator chips */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
-              <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+              <button key={s} onClick={()=>handleSend(`generate image: ${s} style wallpaper of ${new Date().getFullYear()} tech vibes`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
                 {s}
               </button>
             ))}
