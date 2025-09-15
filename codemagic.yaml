@@ -1,17 +1,17 @@
 workflows:
   ios-capacitor:
-    name: Droxion iOS Build (Vite + Capacitor auto-init)
+    name: Droxion iOS Build (Vite + Capacitor)
     max_build_duration: 60
     instance_type: mac_mini_m1
 
     environment:
       vars:
         APP_NAME: Droxion
-        WEB_DIR: dist           # Vite build output from your package.json
+        WEB_DIR: dist              # vite build output from your package.json
         CI: "true"
         NPM_CONFIG_AUDIT: "false"
         NPM_CONFIG_FUND: "false"
-      xcode: 15.2               # safe, widely available
+      xcode: 15.2                  # stable + widely available
       node: 20
       cocoapods: default
       ios_signing:
@@ -38,21 +38,20 @@ workflows:
         script: |
           npm run build --silent
 
-      - name: Ensure Capacitor toolchain is installed
+      - name: Ensure Capacitor packages are installed
         script: |
-          # Install Capacitor packages if missing
           npm ls @capacitor/core >/dev/null 2>&1 || npm i @capacitor/core@latest
           npm ls @capacitor/cli  >/dev/null 2>&1 || npm i -D @capacitor/cli@latest
           npm ls @capacitor/ios  >/dev/null 2>&1 || npm i @capacitor/ios@latest
 
-      - name: Initialize Capacitor & add iOS (if not present)
+      - name: Initialize Capacitor & add iOS if missing
         script: |
           if ! npx cap ls | grep -q "Capacitor"; then
             npx cap init "$APP_NAME" "com.droxion.app" --web-dir="$WEB_DIR" --npm-client=npm --yes
           fi
           [ -d ios ] || npx cap add ios
 
-      - name: Sync + force bundle id for Xcode project
+      - name: Sync + force bundle id in Xcode project
         script: |
           npx cap sync ios
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droxion.app" ios/App/App/Info.plist || true
