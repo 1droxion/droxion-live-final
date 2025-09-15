@@ -1,319 +1,624 @@
-// src/AIChat.jsx — Droxion Power Edition
-import "./AIChat.css";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/AIChat.jsx
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
+import "./AIChat.css"; // ⬅️ add this line
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
 /* ---------------------- helpers ---------------------- */
-const host = (u) => {
-  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; }
+const normHost = (u = "") => {
+  try { return new URL(u).hostname.toLowerCase().replace(/^www\./,"").replace(/^m\./,""); }
+  catch { return ""; }
+};
+const host = (u) => normHost(u);
+
+// allow google/wiki/etc; keep only placeholders blocked
+const BAD_HOSTS = ["example.com","example.org"];
+const isFilteredSource = (u="") => {
+  const h = host(u);
+  return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
 };
 
-const isPlaceholderUrl = (u = "") => {
+const firstImageUrl = (c) =>
+  c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
+
+const IMAGE_PROXY = `${API_BASE}/img?url=`;
+const toProxy = (u) => `${IMAGE_PROXY}${encodeURIComponent(u)}`;
+const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
+const faviconFor = (u="") => {
+  const h = host(u); if (!h) return null;
+  return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}`;
+};
+
+const timeAgo = (d) => {
+  if (!d) return "";
+  const t = typeof d === "string" ? new Date(d).getTime() : +d;
+  if (!t || Number.isNaN(t)) return "";
+  const s = Math.floor((Date.now() - t) / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s/60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m/60); if (h < 24) return `${h}h ago`;
+  const dd = Math.floor(h/24); return `${dd}d ago`;
+};
+
+const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
+const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
+const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
+
+// ✅ tolerant to “wether / wheather / whether”
+const wantsWeather = (s = "") => {
+  const q = s.trim().toLowerCase();
+  if (/\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/.test(q)) return true;
+  if (/\bwether\b/.test(q)) return true;
+  if (/\bwheather\b/.test(q)) return true;
+  if (/^(whether|wether)$/i.test(q)) return true;
+  return false;
+};
+
+const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
+
+// ---- intent gate: show sources only when it makes sense (for SOURCES grid, not pills)
+const isSearchy = (s="") => {
+  const q = s.toLowerCase();
+  return (
+    q.startsWith("google:") || q.startsWith("search:") ||
+    /\b(now|today|latest|breaking|live|update|news)\b/.test(q) ||
+    /\b(price|stock|chart|net worth|time|weather|forecast|crypto|btc|eth)\b/.test(q) ||
+    wantsNews(q) || wantsWeather(q) || wantsCrypto(q)
+  );
+};
+
+/* --------- YouTube helpers --------- */
+const getYouTubeId = (raw="") => {
   try {
-    const h = new URL(u).hostname.replace(/^www\./, "");
-    return ["example.com", "example.org"].includes(h);
-  } catch { return true; }
-};
-
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-
-const cn = (...xs) => xs.filter(Boolean).join(" ");
-
-const copyText = async (t = "") => {
-  try { await navigator.clipboard.writeText(t); return true; } catch { return false; }
-};
-
-const imgProxy = (url = "") => {
-  if (!url) return "";
-  // Use backend img proxy if available, else return original
-  try {
-    const u = new URL(url);
-    if (u.protocol.startsWith("http")) {
-      return `${API_BASE}/img?u=${encodeURIComponent(url)}`;
+    const txt = raw.trim();
+    if (/^[A-Za-z0-9_-]{11}$/.test(txt)) return txt;
+    const url = new URL(txt);
+    const h = url.hostname.replace(/^www\./,"");
+    if (h.includes("youtube.com")) {
+      if (url.searchParams.get("v")) return url.searchParams.get("v");
+      const p = url.pathname.split("/").filter(Boolean);
+      if (p[0]==="shorts" || p[0]==="embed") return p[1];
+    }
+    if (h.includes("youtu.be")) {
+      const p = url.pathname.split("/").filter(Boolean);
+      if (p[0]) return p[0];
     }
   } catch {}
-  return url;
+  const m = raw.match(/([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+};
+const isYouTube = (u="") => {
+  const h = host(u);
+  return h.includes("youtube.com") || h.includes("youtu.be");
 };
 
-/* ---------------------- UI cards ---------------------- */
-const LinkCard = ({ item }) => {
-  if (!item?.url || isPlaceholderUrl(item.url)) return null;
-  const h = host(item.url);
+/* --------- ranking & cleaning --------- */
+const HQ = [
+  // News / Biz
+  "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
+  "theguardian.com","bbc.com","bbc.co.uk","npr.org","hindustantimes.com","livemint.com","moneycontrol.com","economictimes.com",
+  // Crypto
+  "coindesk.com","cointelegraph.com","coinmarketcap.com","coingecko.com","messari.io","defillama.com",
+  // Finance trackers
+  "finance.yahoo.com","google.com","tradingview.com","marketwatch.com","morningstar.com","nasdaq.com","seekingalpha.com","sec.gov",
+  // Weather / Time
+  "weather.com","accuweather.com","time.is","timeanddate.com",
+  // Tech / Knowledge
+  "techcrunch.com","theverge.com","wired.com","arstechnica.com","wikipedia.org","medium.com"
+];
+const rankHost = (h) => {
+  if (!h) return -50;
+  if (BAD_HOSTS.some(b => h===b || h.endsWith("."+b))) return -200;
+  if (HQ.some(g => h===g || h.endsWith("."+g))) return 100;
+  if (/\b(news|finance|market|money|business|times|post|today)\b/.test(h)) return 40;
+  return 10;
+};
+const scoreCard = (c) => {
+  const h = host(c.url || "");
+  let s = rankHost(h);
+  if (c.type === "news") s += 10;
+  if (firstImageUrl(c)) s += 6;
+  if ((c.title||"").length > 0) s += 3;
+  return s;
+};
+const dedupeCards = (arr=[]) => {
+  const seen = new Set();
+  return arr.filter(c => {
+    const key = (host(c.url||"")||"")+ "::" + (c.title||"").toLowerCase().slice(0,80);
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+};
+const rankAndTrim = (cards=[], limit=12, allowWikiFallback=false) => {
+  let filtered = (cards||[]).filter(Boolean).filter(c => !!c.url && !(c?.url && isFilteredSource(c.url)));
+  filtered = dedupeCards(filtered).sort((a,b) => scoreCard(b) - scoreCard(a));
+  if (!filtered.length && allowWikiFallback) {
+    const wiki = (cards||[]).find(c => (host(c.url||"")||"").includes("wikipedia.org"));
+    if (wiki && wiki.url) filtered = [wiki];
+  }
+  return filtered.slice(0, limit);
+};
+const displaySource = (c) => host(c?.url || "") || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
+
+const bestPreview = (card, allowFallback=false) => {
+  const direct = firstImageUrl(card);
+  if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" };
+  if (!allowFallback) return null;
+  if (card.url && !isFilteredSource(card.url)) {
+    const shot = `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`;
+    return { prox: shot, orig: card.url, title: card.title || "preview" };
+  }
+  const ph = unsplash(card.title || card.source || "news");
+  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
+};
+
+/* ---------- WEATHER HELPERS & CARD ---------- */
+const n = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : null);
+const pick = (obj, keys, d=null) => {
+  for (const k of keys) if (obj && obj[k] != null && obj[k] !== "") return obj[k];
+  return d;
+};
+const fmtTemp = (c, f) => {
+  if (n(c)!=null && n(f)!=null) return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+  if (n(c)!=null) return `${Math.round(c)}°C`;
+  if (n(f)!=null) return `${Math.round(f)}°F`;
+  return "";
+};
+const fmtSpeed = (kph, mph) => {
+  if (n(kph)!=null && n(mph)!=null) return `${Math.round(kph)} km/h • ${Math.round(mph)} mph`;
+  if (n(kph)!=null) return `${Math.round(kph)} km/h`;
+  if (n(mph)!=null) return `${Math.round(mph)} mph`;
+  return "";
+};
+const hourLabel = (ts) => {
+  try {
+    const d = new Date(ts);
+    let h = d.getHours();
+    const am = h < 12;
+    h = h % 12 || 12;
+    return `${h}${am ? "am" : "pm"}`;
+  } catch { return ""; }
+};
+
+const normalizeWeatherCard = (raw) => {
+  if (!raw) return null;
+  const title = pick(raw, ["title","location","name"], "Weather");
+  const subtitle = pick(raw, ["subtitle","meta","condition","text","desc"], "");
+  const icon = pick(raw, ["icon","icon_url","image"]);
+  const temp_c = pick(raw, ["temp_c","tempC","temperature_c","temperatureC","temp"]);
+  const temp_f = pick(raw, ["temp_f","tempF","temperature_f","temperatureF"]);
+  const feels_c = pick(raw, ["feels_like_c","feels_c","feelsLike_c","feelsLikeC","feels_like"]);
+  const feels_f = pick(raw, ["feels_like_f","feels_f","feelsLike_f","feelsLikeF"]);
+  const humidity = pick(raw, ["humidity","humid","rh"]);
+  const wind_kph = pick(raw, ["wind_kph","windKph","wind_km_h"]);
+  const wind_mph = pick(raw, ["wind_mph","windMph"]);
+  const precip = pick(raw, ["precip_mm","precip","rain_mm","rainChance","rain_chance"]);
+  const hourly = Array.isArray(raw.hourly) ? raw.hourly : (Array.isArray(raw.hours) ? raw.hours : []);
+  const daily = Array.isArray(raw.daily) ? raw.daily : (Array.isArray(raw.days) ? raw.days : []);
+  const loc = pick(raw, ["loc","place","city"]);
+  const when = pick(raw, ["when","time","as_of","updated"]);
+
+  return {
+    type: "weather",
+    title: loc ? `${title} — ${loc}` : title,
+    subtitle: subtitle || (when ? `As of ${new Date(when).toLocaleTimeString()}` : ""),
+    icon, temp_c, temp_f, feels_c, feels_f, humidity, wind_kph, wind_mph, precip, hourly, daily
+  };
+};
+
+const WeatherCard = ({ card }) => {
+  if (!card) return null;
+  const T = fmtTemp(card.temp_c, card.temp_f);
+  const FEELS = fmtTemp(card.feels_c, card.feels_f);
+  const WIND = fmtSpeed(card.wind_kph, card.wind_mph);
+  const RH = (n(card.humidity)!=null) ? `${Math.round(card.humidity)}%` : "";
+  const RAIN = (card.precip!=null && card.precip!=="") ? `${card.precip}${typeof card.precip==="number" ? " mm" : ""}` : "";
+
+  const hrs = (card.hourly || []).slice(0, 8).map(h => ({
+    t: pick(h, ["time","ts","timestamp","date"]),
+    icon: pick(h, ["icon","icon_url","image"]),
+    c: pick(h, ["temp_c","tempC","temperature_c","temperatureC","temp"]),
+    f: pick(h, ["temp_f","tempF","temperature_f","temperatureF"]),
+    text: pick(h, ["text","condition","desc"])
+  }));
+  const days = (card.daily || []).slice(0, 3).map(d => ({
+    day: pick(d, ["day","name","weekday","label"]),
+    icon: pick(d, ["icon","icon_url","image"]),
+    min_c: pick(d, ["min_c","minC","low_c","lowC","min"]),
+    min_f: pick(d, ["min_f","minF","low_f","lowF"]),
+    max_c: pick(d, ["max_c","maxC","high_c","highC","max"]),
+    max_f: pick(d, ["max_f","maxF","high_f","highF"]),
+    text: pick(d, ["text","condition","desc"])
+  }));
+
   return (
-    <a href={item.url} target="_blank" rel="noreferrer" className="card link-card">
-      {item.image && (
-        <img
-          loading="lazy"
-          src={imgProxy(item.image)}
-          alt={item.title || h}
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
-        />
+    <div className="weather-card glass rounded-xl p-3">
+      <div className="flex items-center gap-3">
+        {card.icon && <img src={card.icon} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold truncate">{card.title || "Weather"}</div>
+          <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
+        </div>
+      </div>
+
+      {(T || FEELS || RH || WIND || RAIN) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
+          {T && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
+          {FEELS && <div className="wstat"><div className="wlabel">Feels like</div><div className="wval">{FEELS}</div></div>}
+          {RH && <div className="wstat"><div className="wlabel">Humidity</div><div className="wval">{RH}</div></div>}
+          {WIND && <div className="wstat"><div className="wlabel">Wind</div><div className="wval">{WIND}</div></div>}
+          {RAIN && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
+        </div>
       )}
-      <div className="card-body">
-        <div className="card-title">{item.title || h}</div>
-        {item.snippet && <div className="card-snippet">{item.snippet}</div>}
-        <div className="card-meta">{h}</div>
-      </div>
-    </a>
-  );
-};
 
-const ImageCard = ({ src, alt }) => {
-  if (!src) return null;
-  return (
-    <div className="card img-card">
-      <img
-        loading="lazy"
-        src={imgProxy(src)}
-        alt={alt || "image"}
-        onError={(e) => { e.currentTarget.src = "https://source.unsplash.com/800x600/?abstract"; }}
-      />
-    </div>
-  );
-};
+      {hrs.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
+          <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
+            {hrs.map((h, i) => (
+              <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
+                <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
+                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-sm font-semibold">{fmtTemp(h.c, h.f) || "-"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-const YouTubeCard = ({ videoId, title }) => {
-  if (!videoId) return null;
-  const src = `https://www.youtube.com/embed/${videoId}`;
-  return (
-    <div className="card yt-card">
-      <div className="yt-wrap">
-        <iframe
-          src={src}
-          title={title || "YouTube"}
-          frameBorder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-        />
-      </div>
-      {title && <div className="card-meta">{title}</div>}
+      {days.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next days</div>
+          <div className="grid grid-cols-3 gap-2">
+            {days.map((d, i) => (
+              <div key={i} className="glass rounded-lg p-2 text-center">
+                <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
+                {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-xs font-semibold">{fmtTemp(d.max_c, d.max_f)} <span className="text-gray-400">/ {fmtTemp(d.min_c, d.min_f)}</span></div>
+                {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 /* ---------------------- component ---------------------- */
-export default function AIChat() {
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: "Hi! I’m Droxion — ask me anything. Try: *news, weather, crypto, YouTube, images*." }
-  ]);
+function AIChat() {
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [preview, setPreview] = useState(null); // live cards beneath composer
-  const [error, setError] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [typing, setTyping] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState(null);
 
-  const chatRef = useRef(null);
-  const composerRef = useRef(null);
-  const typingRef = useRef(false); // prevent scroll fights
-  const vvListenerSet = useRef(false);
+  // live preview (while typing)
+  const [focused, setFocused] = useState(false);
+  const [textSug, setTextSug] = useState([]);
+  const [news, setNews] = useState([]);
+  const [weather, setWeather] = useState(null);
+  const [crypto, setCrypto] = useState([]);
 
-  /* ----- keyboard-aware (mobile) ----- */
+  const inputRef = useRef(null);
+  const suggestTimer = useRef(null);
+  const previewTimer = useRef(null);
+  const cancelPrev = useRef({ cancel: () => {} });
+  const scrollRef = useRef(null);
+
+  /* keyboard-safe (no inline style injection anymore) */
   useEffect(() => {
-    if (vvListenerSet.current) return;
     const vv = window.visualViewport;
-    if (!vv) return;
-    const onResize = () => {
-      document.body.style.setProperty("--vvh", `${vv.height}px`);
+    const handleVV = () => {
+      if (!vv) return;
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--kb", kb + "px");
     };
-    onResize();
-    vv.addEventListener("resize", onResize);
-    vvListenerSet.current = true;
-    return () => vv.removeEventListener("resize", onResize);
+    handleVV();
+    vv?.addEventListener("resize", handleVV);
+    vv?.addEventListener("scroll", handleVV);
+    window.addEventListener("orientationchange", handleVV);
+    return () => {
+      vv?.removeEventListener("resize", handleVV);
+      vv?.removeEventListener("scroll", handleVV);
+      window.removeEventListener("orientationchange", handleVV);
+    };
   }, []);
 
-  /* ----- fetch live suggestions (debounced) ----- */
+  /* text suggestions */
   useEffect(() => {
-    if (!input.trim()) { setSuggestions([]); setPreview(null); return; }
-
-    const id = setTimeout(async () => {
+    const q = (input || "").trim();
+    clearTimeout(suggestTimer.current);
+    if (!focused || q.length < 1) { setTextSug([]); return; }
+    suggestTimer.current = setTimeout(async () => {
       try {
-        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q: input.trim() } });
-        setSuggestions(Array.isArray(data?.suggestions) ? data.suggestions.slice(0, 10) : []);
-        setPreview(data?.preview || null); // { news:[], images:[], youtube:[], links:[] }
-      } catch (e) {
-        // soft fail — suggestions are optional
-      }
-    }, 180);
+        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
+        setTextSug((data?.suggestions || []).slice(0, 8));
+      } catch { setTextSug([]); }
+    }, 250);
+    return () => clearTimeout(suggestTimer.current);
+  }, [input, focused]);
 
-    return () => clearTimeout(id);
-  }, [input]);
+  /* live previews (news/weather/crypto) while typing */
+  useEffect(() => {
+    const q = (input || "").trim();
+    clearTimeout(previewTimer.current);
+    if (!focused || q.length < 1) return;
 
-  /* ----- scroll to bottom AFTER a send or bot reply, not while typing ----- */
-  const scrollToBottom = () => {
-    const el = chatRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    cancelPrev.current.cancel?.();
+    const src = axios.CancelToken.source();
+    cancelPrev.current = { cancel: () => src.cancel("new query") };
+
+    previewTimer.current = setTimeout(async () => {
+      try {
+        const reqs = [
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
+        ];
+        const [rn, rw, rc] = await Promise.all(reqs);
+
+        const newsRanked = rankAndTrim(
+          (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })),
+          10, true
+        ).filter(c => !!bestPreview(c, true));
+        setNews(newsRanked.length ? newsRanked : news);
+
+        const wcards = (rw?.data?.cards || []).filter(Boolean);
+        const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
+        setWeather(w ? normalizeWeatherCard(w) : null);
+
+        setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
+      } catch { /* silent */ }
+    }, 350);
+    return () => clearTimeout(previewTimer.current);
+  }, [input, focused]);
+
+  const copyMessage = async (i) => {
+    try {
+      const msg = messages[i]; if (!msg) return;
+      await navigator.clipboard.writeText(msg.content || "");
+      setCopiedIdx(i); setTimeout(() => setCopiedIdx(null), 1000);
+    } catch {}
   };
 
-  useEffect(() => {
-    if (!typingRef.current) return; // only scroll when we flagged a send/reply
-    scrollToBottom();
-    const t = setTimeout(() => (typingRef.current = false), 250);
-    return () => clearTimeout(t);
-  }, [messages]);
+  const fetchFollowups = async (q) => {
+    try {
+      const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q, mode: "followup" } });
+      const arr = (data?.suggestions || []).filter(Boolean);
+      return (arr.length ? arr : ["Explain more","Pros & cons","Give steps"]).slice(0,3);
+    } catch { return ["Explain more","Pros & cons","Give steps"]; }
+  };
 
-  /* ----- send message ----- */
-  const onSend = async (text) => {
-    const q = (text ?? input).trim();
-    if (!q || sending) return;
-    setError("");
-    setSending(true);
-    setShowSuggestions(false);
+  const pushWithFollowups = async (md, cards, q) => {
+    setMessages((p) => [...p, { role: "assistant", content: md, cards }]);
+    const followups = await fetchFollowups(q);
+    setMessages((p) => {
+      const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
+      const copy = [...p]; copy[copy.length-1] = { ...last, followups }; return copy;
+    });
+  };
 
-    const userMsg = { role: "user", content: q };
-    setMessages((m) => [...m, userMsg]);
+  /* ---------------------- send ---------------------- */
+  const handleSend = async (text = input) => {
+    const content = (text || "").trim(); if (!content) return;
+    setMessages((p) => [...p, { role: "user", content }]);
     setInput("");
-    typingRef.current = true;
+    setTextSug([]);
 
     try {
-      const { data } = await axios.post(`${API_BASE}/chat`, {
-        q,
-        // Let backend decide: realtime/weather/news/cards/youtube/images based on prompt
-      });
-
-      // data: { answer, links[], images[], youtube[], cards{news,weather,crypto,stocks}, sources[] }
-      const botParts = [];
-
-      if (data?.answer) {
-        botParts.push({ type: "markdown", value: data.answer });
+      if (isGreeting(content)) {
+        const r = await axios.post(`${API_BASE}/chat`, { prompt: content });
+        await pushWithFollowups(r.data?.reply || r.data?.text || "👋", [], content);
+        return;
       }
 
-      // Cards: news/weather/crypto/stocks
-      if (data?.cards?.news?.length) {
-        botParts.push({ type: "links", value: data.cards.news });
-      }
-      if (data?.cards?.weather) {
-        botParts.push({ type: "weather", value: data.cards.weather });
-      }
-      if (data?.cards?.crypto?.length) {
-        botParts.push({ type: "links", value: data.cards.crypto });
-      }
-      if (data?.cards?.stocks?.length) {
-        botParts.push({ type: "links", value: data.cards.stocks });
-      }
+      const lower = content.toLowerCase();
 
-      if (Array.isArray(data?.images) && data.images.length) {
-        botParts.push({ type: "images", value: data.images });
-      }
-
-      if (Array.isArray(data?.youtube) && data.youtube.length) {
-        // support items as {id,title} or {url}
-        const items = data.youtube.map((y) => {
-          if (y.id) return y;
-          if (y.url) {
-            try {
-              const u = new URL(y.url);
-              const id = u.searchParams.get("v");
-              return id ? { id, title: y.title } : null;
-            } catch { return null; }
+      // YouTube search / embed
+      if (lower.startsWith("youtube:") || /\byoutube( video)?\b/.test(lower)) {
+        const q = content.replace(/^youtube:\s*/i, "").trim() || content;
+        try {
+          const r = await axios.post(`${API_BASE}/search-youtube`, { prompt: q });
+          const url = r.data?.url;
+          if (url) {
+            await pushWithFollowups(`### YouTube\nFound a video for **${q}**.`, [{ type: "youtube", url, title: q }], content);
+          } else {
+            await pushWithFollowups(`Couldn't find a YouTube result for **${q}**.`, [], content);
           }
-          return null;
-        }).filter(Boolean);
-        if (items.length) botParts.push({ type: "youtube", value: items });
+        } catch {
+          await pushWithFollowups("YouTube search is unavailable right now.", [], content);
+        }
+        return;
       }
 
-      if (Array.isArray(data?.links) && data.links.length) {
-        botParts.push({ type: "links", value: data.links });
+      if (lower.startsWith("google:")) {
+        const q = content.replace(/^google:\s*/i, "");
+        try {
+          const r = await axios.post(`${API_BASE}/realtime`, { query: q });
+          const cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
+          const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
+          await pushWithFollowups(md, cards, content);
+        } catch { await pushWithFollowups("Preview is unavailable right now.", [], content); }
+        return;
       }
 
-      setMessages((m) => [...m, { role: "assistant", content: botParts }]);
-      typingRef.current = true;
-    } catch (e) {
-      setError(e?.response?.data?.error || "Something went wrong. Try again.");
-    } finally {
-      setSending(false);
-      setPreview(null);
+      if (lower.startsWith("search:")) {
+        const q = content.replace(/^search:\s*/i, "");
+        try {
+          const r = await axios.post(`${API_BASE}/search`, { prompt: q });
+          const results = rankAndTrim(
+            (r.data?.results || []).filter(Boolean).map(it => ({ type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet })), 12, true
+          );
+          await pushWithFollowups(results.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, results, content);
+        } catch { await pushWithFollowups("Search is unavailable right now.", [], content); }
+        return;
+      }
+
+      if (wantsNews(content)) {
+        let r = null, cards = [];
+        try {
+          r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news" });
+          cards = rankAndTrim((r.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 12, true)
+            .filter(c => !!bestPreview(c, true));
+        } catch {}
+        if (!cards.length && news.length) cards = news.slice(0,10);
+        await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
+        return;
+      }
+
+      if (wantsWeather(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
+        const rawCards = (r.data?.cards || []).filter(Boolean);
+        const normalized = rawCards
+          .map(c => (c.type==="weather" ? c : { ...c, type:"weather" }))
+          .map(normalizeWeatherCard)
+          .filter(Boolean);
+        const cards = normalized.length ? normalized : rawCards;
+        await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
+        return;
+      }
+
+      if (wantsCrypto(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto" });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
+        return;
+      }
+
+      if (wantsImages(content)) {
+        const q = content.replace(/^images?:\s*/i, "") || content;
+        try {
+          const rr = await axios.post(`${API_BASE}/realtime`, { query: q, intent: "images" });
+          let cards = Array.isArray(rr.data?.cards) ? rr.data.cards.filter(Boolean) : [];
+          await pushWithFollowups(`### Images for **${q}**`, cards, content);
+        } catch {
+          await pushWithFollowups(`### Images for **${q}**`, [{ type:"gallery", images:[unsplash(q)] }], content);
+        }
+        return;
+      }
+
+      // default chat
+      const res = await axios.post(`${API_BASE}/chat`, { prompt: content });
+      const md = res.data?.reply || res.data?.text || "";
+      const cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
+      await pushWithFollowups(md, cards, content);
+    } catch {
+      await pushWithFollowups("⚠️ Error or connection failed.", [], content);
     }
   };
 
-  /* ----- render message ----- */
-  const renderMsg = (msg, idx) => {
-    if (msg.role === "user") {
-      return (
-        <div className="bubble bubble-user" key={idx}>
-          <div className="bubble-content">{msg.content}</div>
-        </div>
-      );
-    }
+  /* ---------------------- render helpers ---------------------- */
+  const SmartImage = ({ url, title }) => {
+    if (!url) return null;
+    const elRef = useRef(null);
 
-    // assistant: either string markdown or structured parts array
-    if (typeof msg.content === "string") {
-      return (
-        <div className="bubble bubble-bot" key={idx}>
-          <MessageHeader text={msg.content} />
-          <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
-            {msg.content}
-          </ReactMarkdown>
-        </div>
-      );
-    }
+    const proxyFirst = (() => {
+      try {
+        const h = new URL(url).hostname;
+        return /(^|\.)(images\.unsplash\.com|source\.unsplash\.com|lexica\.art|cdn\.stability\.ai)$/i.test(h);
+      } catch { return false; }
+    })();
 
-    const parts = Array.isArray(msg.content) ? msg.content : [];
+    useEffect(() => {
+      const el = elRef.current; if (!el) return;
+      el.dataset.step = proxyFirst ? "proxy" : "orig";
+      el.src = proxyFirst ? toProxy(url) : url;
+    }, [url]);
+
+    const onErr = (e) => {
+      const el = e.currentTarget;
+      const step = el.dataset.step || "orig";
+      if (step === "orig")   { el.dataset.step = "proxy";    el.src = toProxy(url); return; }
+      if (step === "proxy")  { el.dataset.step = "fallback"; el.src = unsplash(title || "image") || ""; return; }
+      el.style.display = "none";
+    };
+    return <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer" onError={onErr} />;
+  };
+
+  const LinkPreview = ({ card }) => {
+    const [img, setImg] = useState(null);
+    const [tried, setTried] = useState(false);
+    const pv = bestPreview(card, true);
+
+    useEffect(() => {
+      let mounted = true;
+      const need = !firstImageUrl(card) && !pv;
+      const run = async () => {
+        if (!need || tried || !card?.url) return;
+        setTried(true);
+        try {
+          const { data } = await axios.get(`${API_BASE}/preview`, { params: { url: card.url } });
+          if (mounted && data?.image) setImg(data.image);
+        } catch {}
+      };
+      run();
+      return () => { mounted = false; };
+    }, [card?.url]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (firstImageUrl(card)) return <SmartImage url={firstImageUrl(card)} title={card.title} />;
+    if (pv?.prox) return <SmartImage url={pv.prox} title={card.title} />;
+    if (img) return <SmartImage url={img} title={card.title} />;
+
+    const fav = faviconFor(card.url);
     return (
-      <div className="bubble bubble-bot" key={idx}>
-        {parts.map((p, i) => {
-          if (p.type === "markdown") {
+      <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only hover:bg-white/10 transition">
+        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
+        <div className="min-w-0">
+          <div className="src-title truncate">{card.title || displaySource(card)}</div>
+          <div className="src-sub truncate">{displaySource(card)}</div>
+        </div>
+      </a>
+    );
+  };
+
+  const MediaBlock = ({ cards = [] }) => {
+    if (!cards.length) return null;
+    return (
+      <div className="grid grid-cols-1 gap-8 mt-3">
+        {cards.map((card, i) => {
+          if (card.type === "images-grid" && Array.isArray(card.images)) {
+            const items = card.images.slice(0, 12);
             return (
-              <div className="md" key={i}>
-                <MessageHeader text={p.value} />
-                <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
-                  {p.value}
-                </ReactMarkdown>
+              <div key={i} className="grid grid-cols-2 gap-2">
+                {items.map((it, j) => {
+                  const u = typeof it === "string" ? it : (it.url || "");
+                  const href = typeof it === "object" ? (it.pageUrl || it.url || "#") : u;
+                  return (
+                    <a key={j} href={href} target="_blank" rel="noreferrer" className="block">
+                      <SmartImage url={u} title={it.title || "image"} />
+                      {it.source && <div className="mt-1 text-[10px] text-gray-400">{it.source}</div>}
+                    </a>
+                  );
+                })}
               </div>
             );
           }
-          if (p.type === "links") {
-            const list = (p.value || []).filter((x) => x?.url && !isPlaceholderUrl(x.url));
-            if (!list.length) return null;
-            return (
-              <div className="grid links" key={i}>
-                {list.slice(0, 8).map((item, k) => (
-                  <LinkCard key={k} item={item} />
-                ))}
-              </div>
-            );
+
+          if (card.type === "weather") {
+            return <WeatherCard key={i} card={normalizeWeatherCard(card)} />;
           }
-          if (p.type === "images") {
-            const imgs = (p.value || []).map((x) => typeof x === "string" ? { url: x } : x);
-            if (!imgs.length) return null;
-            return (
-              <div className="grid images" key={i}>
-                {imgs.slice(0, 6).map((im, k) => (
-                  <ImageCard key={k} src={im.url} alt={im.alt || "image"} />
-                ))}
-              </div>
-            );
+
+          if (card.type === "gallery" && Array.isArray(card.images)) {
+            const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
+            if (!urls.length) return null;
+            return <div key={i} className="grid grid-cols-2 gap-2">{urls.map((u,j)=><SmartImage key={j} url={u} title="image" />)}</div>;
           }
-          if (p.type === "youtube") {
-            const vids = p.value || [];
-            if (!vids.length) return null;
+
+          if (card.type === "youtube" || isYouTube(card.url || "")) {
+            const id = getYouTubeId(card.url || ""); if (!id) return null;
             return (
-              <div className="grid youtube" key={i}>
-                {vids.slice(0, 3).map((v, k) => (
-                  <YouTubeCard key={k} videoId={v.id} title={v.title} />
-                ))}
-              </div>
-            );
-          }
-          if (p.type === "weather" && p.value) {
-            const w = p.value;
-            return (
-              <div className="card weather-card" key={i}>
-                <div className="card-title">Weather</div>
-                <div className="card-snippet">{w.location || ""}</div>
-                <div className="weather-row">
-                  <div className="weather-big">{w.temp_now ?? "--"}°</div>
-                  <div className="weather-minor">
-                    H {w.high ?? "--"}° · L {w.low ?? "--"}° · {w.condition || ""}
-                  </div>
-                </div>
+              <div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${id}`}
+                  title={card.title || "YouTube"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
               </div>
             );
           }
@@ -323,126 +628,289 @@ export default function AIChat() {
     );
   };
 
-  /* ----- composer actions ----- */
-  const onKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onSend();
+  const buildLinkSets = (cards = [], searchy = false) => {
+    const links = (cards || []).filter(c =>
+      ["web","link","wiki","news","stock","crypto"].includes(c.type) &&
+      c.url && !isFilteredSource(c.url)
+    );
+    const sorted = dedupeCards(links).sort((a,b) => scoreCard(b) - scoreCard(a));
+    const byHost = {};
+    for (const c of sorted) { const h = host(c.url); if (!byHost[h]) byHost[h] = c; }
+
+    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com"];
+    if (searchy) pref.push("google.com","wikipedia.org","youtube.com","youtu.be");
+
+    const quickActions = [];
+    for (const ph of pref) {
+      const k = Object.keys(byHost).find(h => h===ph || h.endsWith("."+ph));
+      if (k) quickActions.push(byHost[k]);
     }
+
+    const grid = Object.values(byHost)
+      .filter(c => !/^(google\.com|wikipedia\.org)$/.test(host(c.url)) || searchy)
+      .sort((a,b)=> scoreCard(b)-scoreCard(a))
+      .slice(0,6);
+
+    return { quickActions, grid };
   };
 
-  const onSuggestionClick = (s) => {
-    setInput(s);
-    setShowSuggestions(false);
-    // don’t send immediately; let user hit enter
-  };
-
-  /* ----- memo UI bits ----- */
-  const hasPreview = !!preview && (preview.news?.length || preview.links?.length || preview.images?.length || preview.youtube?.length);
+  const [expandedIdx, setExpandedIdx] = useState(null);
 
   return (
-    <div className="wrap">
-      <header className="topbar">
-        <div className="brand">Droxion</div>
-        <div className="sub">AI • Realtime • Images • YouTube</div>
+    <div className="flex flex-col min-h-[100svh]">
+      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
+        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-3">
+          <div className="font-bold tracking-tight text-lg">Droxion</div>
+          <div className="text-xs text-gray-400">• Lite</div>
+        </div>
       </header>
 
-      <main className="chat" ref={chatRef}>
-        {messages.map(renderMsg)}
-        {sending && (
-          <div className="bubble bubble-bot">
-            <div className="typing">Thinking…</div>
-          </div>
-        )}
-        {error && (
-          <div className="bubble bubble-bot error">{error}</div>
-        )}
-        <div style={{ height: 12 }} />
-      </main>
+      {/* chat scroll area */}
+      <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch" }}>
+        <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
+          <div className="space-y-4">
+            {messages.map((msg, i) => {
+              const isUser = msg.role === "user";
+              const cards = msg.cards || [];
+              const mediaCards = cards.filter(c => ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || ""));
 
-      <footer className="composer" ref={composerRef}>
-        <div className="input-row">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Ask anything… (news, weather, crypto, images, YouTube)"
-            rows={1}
-          />
-          <button
-            className="send"
-            disabled={sending || !input.trim()}
-            onClick={() => onSend()}
-            aria-label="Send"
-            title="Send"
-          >
-            Send
-          </button>
+              const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
+              const showSearchy = isSearchy(userPrompt);
+              const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki"].includes(c.type));
+              const shouldShowSources = (!isUser) && (showSearchy || isRealtimeCard);
+
+              const linkSets = buildLinkSets(cards, shouldShowSources);
+
+              const qp = encodeURIComponent(userPrompt || "");
+              const googleUrl = `https://www.google.com/search?q=${qp}`;
+              const newsUrl = `https://www.google.com/search?q=${qp ? qp + "+latest+news" : "latest+news"}`;
+
+              return (
+                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
+                    {!isUser && msg.content && (
+                      <button onClick={()=>copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
+                        <FaRegCopy /> {copiedIdx===i ? "Copied" : "Copy"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Answer */}
+                  {!isUser && msg.content && (
+                    <>
+                      <div className={`answer ${expandedIdx===i ? "expanded" : ""}`}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeRaw]}
+                          components={{
+                            img: (props) => {
+                              const src = props.src;
+                              return (
+                                <img
+                                  {...props}
+                                  src={src}
+                                  className="rounded-lg my-2 w-full glass"
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e)=>{
+                                    const el=e.currentTarget;
+                                    const step=el.dataset.step||"orig";
+                                    if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
+                                    if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
+                                    el.style.display="none";
+                                  }}
+                                />
+                              );
+                            },
+                            iframe: (props) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...props} allowFullScreen /></div>,
+                            a: ({node, ...props}) => <a {...props} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                      <button className="toggle-more underline decoration-gray-600" onClick={()=>setExpandedIdx(expandedIdx===i?null:i)}>
+                        {expandedIdx===i ? "Show less" : "Show more"}
+                      </button>
+                    </>
+                  )}
+
+                  {/* Media between answer and sources */}
+                  {!isUser && <MediaBlock cards={mediaCards} />}
+
+                  {/* Quick actions – base pills + HQ pills */}
+                  {!isUser && (
+                    <div className="actions-row">
+                      <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                          google: {userPrompt || "search"}
+                      </a>
+                      <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                          search: {userPrompt ? `${userPrompt} latest news` : "latest news"}
+                      </a>
+                      {linkSets.quickActions.slice(0,3).map((c,idx)=>(
+                        <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn hover:bg-white hover:text-black transition">
+                          {displaySource(c).replace(/^m\./,"")}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Sources grid – only when helpful */}
+                  {shouldShowSources && linkSets.grid.length>0 && (
+                    <div className="mt-3">
+                      <div className="small-label mb-1">Sources</div>
+                      <div className="sources-grid">
+                        {linkSets.grid.map((c,idx)=> (
+                          <div key={idx}>
+                            <LinkPreview card={c} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Follow-ups */}
+                  {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
+                    <div className="mt-3 flex flex-wrap gap-8">
+                      {msg.followups.slice(0,3).map((s,idx)=>(
+                        <button key={idx} onClick={()=>handleSend(s)} className="action-btn">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {typing && (
+              <div className="glass rounded-xl p-4">
+                <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
+                <div className="h-3 w-full bg-white/10 mb-1 rounded" />
+                <div className="h-3 w-4/5 bg-white/10 mb-1 rounded" />
+                <div className="h-3 w-3/5 bg-white/10 rounded" />
+              </div>
+            )}
+          </div>
         </div>
+      </div>
 
-        {/* scrollable suggestions below input; never blocks keyboard */}
-        {showSuggestions && (suggestions?.length > 0 || hasPreview) && (
-          <div className="suggestion-panel">
-            {suggestions?.length > 0 && (
-              <div className="suggestions scroller">
-                {suggestions.map((s, i) => (
-                  <button key={i} className="suggestion" onClick={() => onSuggestionClick(s)}>
-                    {s}
-                  </button>
-                ))}
+      {/* LIVE PREVIEW PANEL */}
+      {focused && (
+        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
+          <div className="max-w-4xl mx-auto px-3">
+            <div className="panel glass rounded-xl p-2 suggestions-panel">
+              <div className="mb-2">
+                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                  <div className="flex gap-2">
+                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
+                      c ? (
+                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            {(() => {
+                              const pv = bestPreview(c, true);
+                              return pv
+                                ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
+                                : <div className="aspect-[16/9] skel" />;
+                            })()}
+                            <div className="p-3">
+                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                              <div className="text-[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                            </div>
+                          </div>
+                        </a>
+                      ) : (
+                        <div key={i} className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            <div className="aspect-[16/9] skel" />
+                            <div className="p-3">
+                              <div className="h-3 w-24 skel rounded mb-2" />
+                              <div className="h-3 w-40 skel rounded" />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
 
-            {/* Live preview cards under suggestions (non-blinky) */}
-            {hasPreview && (
-              <div className="preview">
-                {preview?.news?.length > 0 && (
-                  <div className="grid links">
-                    {preview.news.slice(0, 6).map((n, i) => <LinkCard key={`pn${i}`} item={n} />)}
-                  </div>
-                )}
-                {preview?.images?.length > 0 && (
-                  <div className="grid images">
-                    {preview.images.slice(0, 6).map((im, i) => <ImageCard key={`pi${i}`} src={im.url || im} alt={im.alt || "image"} />)}
-                  </div>
-                )}
-                {preview?.youtube?.length > 0 && (
-                  <div className="grid youtube">
-                    {preview.youtube.slice(0, 3).map((v, i) => <YouTubeCard key={`py${i}`} videoId={v.id} title={v.title} />)}
-                  </div>
-                )}
-                {preview?.links?.length > 0 && (
-                  <div className="grid links">
-                    {preview.links.slice(0, 6).map((l, i) => <LinkCard key={`pl${i}`} item={l} />)}
-                  </div>
-                )}
+              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+                <div>
+                  {weather ? (
+                    <WeatherCard card={weather} />
+                  ) : (
+                    <div className="glass rounded-lg p-6 skel" />
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
+                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                      {c.price && <div className="text-base mt-1">{c.price}</div>}
+                      {typeof c.change!=="undefined" && (
+                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
+                      )}
+                    </a>
+                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
+                </div>
               </div>
-            )}
+
+              {textSug.length>0 && (
+                <div className="mt-1">
+                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
+                  {textSug.map((s,i)=>(
+                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </footer>
+        </div>
+      )}
+
+      {/* Composer */}
+      <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
+        <div className="max-w-4xl mx-auto px-3 pt-2">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e)=>setInput(e.target.value)}
+                onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSend(); }}}
+                onFocus={()=>setFocused(true)}
+                onBlur={()=>setTimeout(()=>setFocused(false),150)}
+                rows={1}
+                inputMode="text"
+                placeholder=""
+                className="w-full bg-transparent outline-none resize-none leading-[1.6]"
+                style={{ height:44, maxHeight:44, overflowY:"auto" }}
+                aria-label="Type your message"
+              />
+            </div>
+            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
+              ➤
+            </button>
+          </div>
+
+          <div className="flex gap-2 flex-wrap mt-2">
+            {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
+              <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-/* ---------------------- tiny header w/ copy ---------------------- */
-function MessageHeader({ text }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="msg-head">
-      <button
-        className="copy-btn"
-        onClick={async () => {
-          const ok = await copyText(text);
-          setCopied(ok);
-          setTimeout(() => setCopied(false), 1000);
-        }}
-        title="Copy"
-        aria-label="Copy"
-      >
-        <FaRegCopy />
-      </button>
-      {copied && <span className="copied">Copied</span>}
-    </div>
-  );
-}
+export default AIChat;
