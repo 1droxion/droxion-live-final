@@ -918,6 +918,3 @@ const sendImageForAnalysis = async (file) => {
 }
 
 export default AIChat;
-
-
-What can improve now ?
