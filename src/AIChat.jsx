@@ -277,7 +277,6 @@ function ToolsMenu({
     </div>
   );
 }
-
 /* ---------------- Weather Card ---------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
