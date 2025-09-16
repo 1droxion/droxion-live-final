@@ -728,38 +728,49 @@ function MediaBlock({ cards = [] }) {
         <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
           <div className="space-y-4">
             {messages.map((msg, i) => {
-              const isUser = msg.role === "user";
-              const mediaCards = (msg.cards || []).filter(c =>
-                ["youtube","image","gallery","images-grid","weather"].includes(c.type) || (c.url && isYouTube(c.url))
-              );
+  const isUser = msg.role === "user";
 
-              return (
-                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
-                    {!isUser && msg.content && (
-                      <button onClick={()=>copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
-                        <FaRegCopy /> Copy
-                      </button>
-                    )}
-                  </div>
+  // ✅ include "images" type in filter
+  const mediaCards = (msg.cards || []).filter(c =>
+    ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
+    (c.url && isYouTube(c.url))
+  );
 
-                  {isUser && <div className="answer expanded">{msg.content}</div>}
-                  {!isUser && msg.content && (<OrganizedAnswer md={msg.content} />)}
-                  {!isUser && <MediaBlock cards={mediaCards} />}
+  return (
+    <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="small-label">{isUser ? "You" : "Droxion"}</div>
+        {!isUser && msg.content && (
+          <button
+            onClick={() => copyMessage(i)}
+            className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+            title="Copy"
+          >
+            <FaRegCopy /> Copy
+          </button>
+        )}
+      </div>
 
-                  {!isUser && Array.isArray(msg.followups) && msg.followups.length>0 && (
-                    <div className="mt-3 flex flex-wrap gap-8">
-                      {msg.followups.slice(0,3).map((s,idx)=>(
-                        <button key={idx} onClick={()=>handleSend(s)} className="action-btn">
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+      {/* User vs Assistant message text */}
+      {isUser && <div className="answer expanded">{msg.content}</div>}
+      {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
+
+      {/* ✅ Render images, galleries, youtube, weather */}
+      {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
+
+      {/* Follow-up suggestions */}
+      {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-8">
+          {msg.followups.slice(0, 3).map((s, idx) => (
+            <button key={idx} onClick={() => handleSend(s)} className="action-btn">
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+})}
 
             {typing && (
               <div className="glass rounded-xl p-4">
