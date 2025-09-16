@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (single + menu, instant image preview, tidy steps/sources)
+// src/AIChat.jsx — Droxion (single + menu, robust images, instant preview)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -29,21 +29,26 @@ const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p ==
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
 
+/* STRONG image picker */
 const firstImageUrl = (c = {}) => {
   if (!c) return null;
 
   // common single fields
   const single =
-    c.image_url || c.image || c.preview || c.thumbnail || c.thumb || c.thumb_url || c.ogImage;
+    c.image_url || c.image || c.preview || c.thumbnail || c.thumb || c.thumb_url || c.ogImage || c.src;
   if (single) return single;
 
-  // direct image in `url` (png/jpg/webp/gif/svg/bmp)
+  // direct image in `url`
   if (c.url && /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(c.url)) return c.url;
 
-  // image objects in arrays
+  // nested arrays
   const arr = Array.isArray(c.images) ? c.images : [];
   for (const it of arr) {
-    if (typeof it === "string") return it;
+    if (typeof it === "string") {
+      if (/\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(it)) return it;
+      // even if no extension, try it anyway
+      if (/^https?:|^data:|^blob:/.test(it)) return it;
+    }
     if (it?.url) return it.url;
     if (it?.src) return it.src;
     if (it?.thumbnail) return it.thumbnail;
@@ -117,61 +122,34 @@ function WeatherCard({ card }) {
         </div>
       </div>
       {(T || FEELS || RH || WIND || RAIN) && (
-        return (
-  <div className="grid grid-cols-1 gap-8 mt-3">
-    {mediaCards.map((card, i) => {
-      // NEW: render a single image card
-      if (card.type === "image") {
-        const u = firstImageUrl(card) || card.url || card.src;
-        return u ? <SmartImage key={i} url={u} title={card.title || "image"} /> : null;
-      }
-
-      if (card.type === "images-grid" && Array.isArray(card.images)) {
-        const items = card.images.slice(0, 12);
-        return (
-          <div key={i} className="grid grid-cols-2 gap-2">
-            {items.map((it, j) => {
-              const u = typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb || "");
-              return u ? <SmartImage key={j} url={u} title={it.title || "image"} /> : null;
-            })}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
+          {T     && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
+          {FEELS && <div className="wstat"><div className="wlabel">Feels like</div><div className="wval">{FEELS}</div></div>}
+          {RH    && <div className="wstat"><div className="wlabel">Humidity</div><div className="wval">{RH}</div></div>}
+          {WIND  && <div className="wstat"><div className="wlabel">Wind</div><div className="wval">{WIND}</div></div>}
+          {RAIN  && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
+        </div>
+      )}
+      {hrs.length>0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
+          <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
+            {hrs.map((h,i)=>(
+              <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
+                <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
+                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                <div className="text-sm font-semibold">{(()=>{
+                  const c=h.c, f=h.f;
+                  if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+                  if(typeof c==="number") return `${Math.round(c)}°C`;
+                  if(typeof f==="number") return `${Math.round(f)}°F`;
+                  return "-";
+                })()}</div>
+              </div>
+            ))}
           </div>
-        );
-      }
-
-      if (card.type === "weather") return <WeatherCard key={i} card={card} />;
-
-      if (card.type === "gallery" && Array.isArray(card.images)) {
-        const urls = card.images
-          .map(it => typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb))
-          .filter(Boolean)
-          .slice(0, 10);
-        if (!urls.length) return null;
-        return (
-          <div key={i} className="grid grid-cols-2 gap-2">
-            {urls.map((u, j) => <SmartImage key={j} url={u} title="image" />)}
-          </div>
-        );
-      }
-
-      if (card.type === "youtube" || isYouTube(card.url || "")) {
-        const id = getYouTubeId(card.url || "");
-        if (!id) return null;
-        return (
-          <div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
-            <iframe
-              src={`https://www.youtube.com/embed/${id}`}
-              title={card.title || "YouTube"}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
-          </div>
-        );
-      }
-
-      return null;
-    })}
-  </div>
-);
+        </div>
+      )}
       {days.length>0 && (
         <div className="mt-3">
           <div className="text-[11px] text-gray-400 mb-1">Next days</div>
@@ -376,8 +354,8 @@ function AIChat() {
   const fetchFollowups = async (q) => {
     try {
       const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q, mode: "followup" } });
-      const arr = (data?.suggestions || []).filter(Boolean);
-      return (arr.length ? arr : ["Explain more","Pros & cons","Give steps"]).slice(0,3);
+        const arr = (data?.suggestions || []).filter(Boolean);
+        return (arr.length ? arr : ["Explain more","Pros & cons","Give steps"]).slice(0,3);
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
@@ -454,7 +432,7 @@ function AIChat() {
     }
   };
 
-  /* ---------------------- Image uploader (instant preview) ---------------------- */
+  /* ---------------------- Image uploader (instant preview + robust) ---------------------- */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -490,13 +468,21 @@ function AIChat() {
       const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
       const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
 
-      const backendHasImage = cards.some((c) => c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c)));
+      // If backend didn't return an image card, keep the local preview
+      const backendHasImage = cards.some((c) =>
+        c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
+      );
       const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
 
       await pushWithFollowups(md, finalCards, input || "image analysis");
       setInput("");
     } catch {
-      await pushWithFollowups("Image analysis failed. Please try again.", localUrl ? [{ type: "gallery", images: [localUrl] }] : [], "vision failed", { suppressSources: true });
+      await pushWithFollowups(
+        "Image analysis failed. Please try again.",
+        localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
+        "vision failed",
+        { suppressSources: true }
+      );
     } finally {
       if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
     }
@@ -613,28 +599,47 @@ function AIChat() {
 
   const MediaBlock = ({ cards = [] }) => {
     if (!cards.length) return null;
-    const mediaCards = cards.filter(c => ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || ""));
+    const mediaCards = cards.filter(c =>
+      ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || "")
+    );
     if (!mediaCards.length) return null;
+
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {mediaCards.map((card, i) => {
+          // NEW: plain image card
+          if (card.type === "image") {
+            const u = firstImageUrl(card) || card.url || card.src;
+            return u ? <SmartImage key={i} url={u} title={card.title || "image"} /> : null;
+          }
+
           if (card.type === "images-grid" && Array.isArray(card.images)) {
             const items = card.images.slice(0, 12);
             return (
               <div key={i} className="grid grid-cols-2 gap-2">
                 {items.map((it, j) => {
-                  const u = typeof it === "string" ? it : (it.url || "");
-                  return <SmartImage key={j} url={u} title={it.title || "image"} />;
+                  const u = typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb || "");
+                  return u ? <SmartImage key={j} url={u} title={it.title || "image"} /> : null;
                 })}
               </div>
             );
           }
+
           if (card.type === "weather") return <WeatherCard key={i} card={card} />;
+
           if (card.type === "gallery" && Array.isArray(card.images)) {
-            const urls = card.images.map((it)=> typeof it==="string" ? it : (it.url || it.thumbnail || it.thumb)).filter(Boolean).slice(0,10);
+            const urls = card.images
+              .map(it => typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb))
+              .filter(Boolean)
+              .slice(0, 10);
             if (!urls.length) return null;
-            return <div key={i} className="grid grid-cols-2 gap-2">{urls.map((u,j)=><SmartImage key={j} url={u} title="image" />)}</div>;
+            return (
+              <div key={i} className="grid grid-cols-2 gap-2">
+                {urls.map((u, j) => <SmartImage key={j} url={u} title="image" />)}
+              </div>
+            );
           }
+
           if (card.type === "youtube" || isYouTube(card.url || "")) {
             const id = getYouTubeId(card.url || ""); if (!id) return null;
             return (
@@ -648,6 +653,7 @@ function AIChat() {
               </div>
             );
           }
+
           return null;
         })}
       </div>
@@ -694,7 +700,7 @@ function AIChat() {
             <div style={{ position:"fixed", right:8, top:56, zIndex:1000 }} onMouseLeave={()=>setMenuOpen(false)}>
               <ToolsMenu
                 onSendImageFile={(f)=>sendImageForAnalysis(f)}
-                onSendAnyFile={(f)=>{/* optional generic files; pass to backend if you like */}}
+                onSendAnyFile={(f)=>{/* optional generic files */}}
                 onToggleAgent={()=>setAgentOn(v=>!v)} agentOn={agentOn}
                 onDeepResearch={()=>{ const q=(input||"").trim(); if(!q) return; axios.post(`${API_BASE}/deepsearch`,{q,agent:agentOn}).then(r=>pushWithFollowups(r.data?.answer||`Deep research on **${q}**`, r.data?.cards||[], q)).catch(()=>pushWithFollowups("Deep research failed.", [], q, {suppressSources:true})); }}
                 onSetPersona={(p)=>setPersona(p)}
@@ -715,7 +721,7 @@ function AIChat() {
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               const mediaCards = (msg.cards || []).filter(c =>
-                ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || "")
+                ["youtube","image","gallery","images-grid","weather"].includes(c.type) || (c.url && isYouTube(c.url))
               );
 
               return (
