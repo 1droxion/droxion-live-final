@@ -742,39 +742,48 @@ function AIChat() {
   /* ---------------- UI ---------------- */
   return (
     <div className={`flex flex-col min-h-[100svh] ${codeMode ? "code-mode" : ""}`}>
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
-        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
-          <div className="brand text-lg font-bold">Droxion</div>
-          <div className="text-xs text-gray-400">• Lite</div>
+   {/* Header */}
+<header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
+  <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
+    <div className="brand text-lg font-bold">Droxion</div>
+    <div className="text-xs text-gray-400">• Lite</div>
 
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
-              {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
-            </button>
-            
-            {/* SINGLE plus button — everything lives inside */}
-            <button onClick={()=>setMenuOpen(v=>!v)} className="pill-btn" title="Tools">
-              <FiPlus />
-            </button>
+    <div className="ml-auto flex items-center gap-2">
+      {/* Theme toggle */}
+      <button
+        onClick={() => setTheme(t => (t === "dark" ? "light" : "dark"))}
+        className="pill-btn"
+        title="Toggle theme"
+      >
+        {theme === "dark" ? <FiMoon /> : <FiSun />}
+        <span style={{ marginLeft: 6 }}>{theme === "dark" ? "Dark" : "Light"}</span>
+      </button>
 
-            {menuOpen && (
-              <div className="absolute right-2 top-[110%]" onMouseLeave={()=>setMenuOpen(false)}>
-                <ToolsMenu
-                  onSendImageFile={(f)=>sendImageForAnalysis(f)}
-                  onSendAnyFile={(f)=>sendAnyFile(f)}
-                  onToggleAgent={()=>setAgentOn(v=>!v)} agentOn={agentOn}
-                  onDeepResearch={runDeepResearch}
-                  onSetPersona={(p)=>setPersona(p)}
-                  onCreateImage={()=>handleSend(`create image: ${input||"cinematic portrait"}`)}
-                  webSearchOn={webSearchOn}
-                  onToggleWebSearch={()=>setWebSearchOn(v=>!v)}
-                />
-              </div>
-            )}
-          </div>
+      {/* SINGLE plus button — opens tools */}
+      <button onClick={() => setMenuOpen(v => !v)} className="pill-btn" title="Tools">
+        <FiPlus />
+      </button>
+
+      {menuOpen && (
+        <div className="absolute right-2 top-[110%]" onMouseLeave={() => setMenuOpen(false)}>
+          <ToolsMenu
+            onSendImageFile={(f) => sendImageForAnalysis(f)}
+            onSendAnyFile={(f) => sendAnyFile(f)}
+            onToggleAgent={() => setAgentOn(v => !v)}
+            agentOn={agentOn}
+            onDeepResearch={runDeepResearch}
+            onSetPersona={(p) => setPersona(p)}
+            onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
+            webSearchOn={webSearchOn}
+            onToggleWebSearch={() => setWebSearchOn(v => !v)}
+            onClearAll={clearAll}      // ✅ new
+            onNewChat={newChat}        // ✅ new
+          />
         </div>
-      </header>
+      )}
+    </div>
+  </div>
+</header>
 
       {/* Chat area */}
       <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch" }}>
