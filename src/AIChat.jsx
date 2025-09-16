@@ -1059,8 +1059,7 @@ const sendImageForAnalysis = async (file) => {
           </div>
         </div>
       </div>
-
-  );
-}
-
+      );
+    }
+    
 export default AIChat;
