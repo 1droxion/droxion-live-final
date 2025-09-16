@@ -552,111 +552,121 @@ function AIChat() {
     );
   };
 
-  /* ---------------------- message media (images/weather/youtube) ---------------------- */
-  const isYouTube = (u="") => { const h = host(u); return h.includes("youtube.com") || h.includes("youtu.be"); };
-  const getYouTubeId = (raw="") => {
+  /* ---------------------- Media block (images, youtube, weather) ---------------------- */
+function MediaBlock({ cards = [] }) {
+  if (!cards || cards.length === 0) return null;
+
+  const getYouTubeId = (raw = "") => {
     try {
-      const txt = raw.trim();
-      if (/^[A-Za-z0-9_-]{11}$/.test(txt)) return txt;
-      const url = new URL(txt);
-      const h = url.hostname.replace(/^www\./,"");
+      const u = new URL(raw);
+      const h = u.hostname.replace(/^www\./, "");
       if (h.includes("youtube.com")) {
-        if (url.searchParams.get("v")) return url.searchParams.get("v");
-        const p = url.pathname.split("/").filter(Boolean);
-        if (p[0]==="shorts" || p[0]==="embed") return p[1];
+        const v = u.searchParams.get("v");
+        if (v) return v;
+        const p = u.pathname.split("/").filter(Boolean);
+        if (p[0] === "shorts" || p[0] === "embed") return p[1];
       }
       if (h.includes("youtu.be")) {
-        const p = url.pathname.split("/").filter(Boolean);
+        const p = u.pathname.split("/").filter(Boolean);
         if (p[0]) return p[0];
       }
     } catch {}
-    const m = raw.match(/([A-Za-z0-9_-]{11})/);
+    const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
     return m ? m[1] : null;
   };
 
-  const SmartImage = ({ url, title }) => {
-    if (!url) return null;
-    const elRef = useRef(null);
-    const proxyFirst = (() => {
-      try { const h = new URL(url).hostname; return /(^|\.)(images\.unsplash\.com|source\.unsplash\.com|lexica\.art|cdn\.stability\.ai)$/i.test(h); }
-      catch { return false; }
-    })();
-    useEffect(() => { const el = elRef.current; if (!el) return; el.dataset.step = proxyFirst ? "proxy" : "orig"; el.src = proxyFirst ? toProxy(url) : url; }, [url]);
-    const onErr = (e) => {
-      const el = e.currentTarget;
-      const step = el.dataset.step || "orig";
-      if (step === "orig")   { el.dataset.step = "proxy";    el.src = toProxy(url); return; }
-      if (step === "proxy")  { el.dataset.step = "fallback"; el.src = unsplash(title || "image") || ""; return; }
-      el.style.display = "none";
-    };
-    return (
-      <img ref={elRef} alt="" className="w-full rounded-lg glass" loading="lazy" referrerPolicy="no-referrer"
-           onError={onErr} onLoad={(e)=>{ e.currentTarget.style.opacity = 1; }}
-           style={{ opacity: 0, transition: "opacity .2s ease" }} />
-    );
-  };
+  return (
+    <div className="grid grid-cols-1 gap-8 mt-3">
+      {cards.map((card, i) => {
+        // Images grid (array of urls or {url})
+        if (card?.type === "images-grid" && Array.isArray(card.images)) {
+          const items = card.images.slice(0, 12);
+          return (
+            <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
+              {items.map((it, j) => {
+                const u = typeof it === "string" ? it : (it?.url || "");
+                if (!u) return null;
+                return (
+                  <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={u}
+                      alt=""
+                      className="w-full rounded-lg glass"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  </a>
+                );
+              })}
+            </div>
+          );
+        }
 
-  const mediaCards = cards.filter(c =>
-  ["youtube","image","gallery","images-grid","images","weather"].includes(c.type) ||
-  isYouTube(c.url || "")
-);
-    if (!mediaCards.length) return null;
-
-    return (
-      <div className="grid grid-cols-1 gap-8 mt-3">
-        {mediaCards.map((card, i) => {
-          // single image card
-          if (card.type === "image") {
-            const u = firstImageUrl(card) || card.url || card.src;
-            return u ? <SmartImage key={i} url={u} title={card.title || "image"} /> : null;
-          }
-
-          if (card.type === "images-grid" && Array.isArray(card.images)) {
-            const items = card.images.slice(0, 12);
-            return (
-              <div key={i} className="grid grid-cols-2 gap-2">
-                {items.map((it, j) => {
-                  const u = typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb || "");
-                  return u ? <SmartImage key={j} url={u} title={it.title || "image"} /> : null;
-                })}
-              </div>
-            );
-          }
-
-          if (card.type === "weather") return <WeatherCard key={i} card={card} />;
-
-          if (card.type === "gallery" && Array.isArray(card.images)) {
-            const urls = card.images
-              .map(it => typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb))
-              .filter(Boolean)
-              .slice(0, 10);
-            if (!urls.length) return null;
-            return (
-              <div key={i} className="grid grid-cols-2 gap-2">
-                {urls.map((u, j) => <SmartImage key={j} url={u} title="image" />)}
-              </div>
-            );
-          }
-
-          if (card.type === "youtube" || isYouTube(card.url || "")) {
-            const id = getYouTubeId(card.url || ""); if (!id) return null;
-            return (
-              <div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
-                <iframe
-                  src={`https://www.youtube.com/embed/${id}`}
-                  title={card.title || "YouTube"}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
+        // Gallery (same idea)
+        if (card?.type === "gallery" && Array.isArray(card.images)) {
+          const urls = card.images
+            .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
+            .filter(Boolean)
+            .slice(0, 12);
+          return (
+            <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
+              {urls.map((u, j) => (
+                <img
+                  key={`gal-${i}-${j}`}
+                  src={u}
+                  alt=""
+                  className="w-full rounded-lg glass"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
                 />
-              </div>
-            );
-          }
+              ))}
+            </div>
+          );
+        }
 
-          return null;
-        })}
-      </div>
-    );
-  };
+        // Single image card (backend might return {type:"image", url})
+        if (card?.type === "image" && card.url) {
+          return (
+            <img
+              key={`image-${i}`}
+              src={card.url}
+              alt=""
+              className="w-full rounded-lg glass"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          );
+        }
+
+        // Weather (pass through to your WeatherCard if present)
+        if (card?.type === "weather") {
+          return <WeatherCard key={`wx-${i}`} card={card} />;
+        }
+
+        // YouTube
+        if (card?.type === "youtube" || (card?.url && /youtu\.?be/.test(card.url))) {
+          const id = getYouTubeId(card.url || "");
+          if (!id) return null;
+          return (
+            <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${id}`}
+                title={card.title || "YouTube"}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
 
   /* ---------------------- + menu helpers ---------------------- */
   const clearAll = () => {
