@@ -195,8 +195,7 @@ const stripBranding = (md="", userPrompt="") => {
   return md.replace(/^\s*—?\s*Powered by Droxion\s*$/gmi, "").trim();
 };
 
-/* ---------------- Tools Menu (inside + only) ---------------- */
-/* ---------------------- Tools Menu ---------------------- */
+/* ---------------------- Tools Menu (single + menu) ---------------------- */
 function ToolsMenu({
   onSendImageFile,
   onSendAnyFile,
@@ -204,7 +203,9 @@ function ToolsMenu({
   onDeepResearch,
   onSetPersona,
   onCreateImage,
-  webSearchOn, onToggleWebSearch
+  webSearchOn, onToggleWebSearch,
+  onClearAll,
+  onNewChat,
 }) {
   const camRef = useRef(null);
   const photosRef = useRef(null);
@@ -214,30 +215,64 @@ function ToolsMenu({
   const pickPhotos = () => photosRef.current?.click();
   const pickFiles  = () => filesRef.current?.click();
 
-  const handleCamFile = (e) => { const f = e.target.files?.[0]; if (f) onSendImageFile(f, { source: "camera" }); e.target.value = ""; };
-  const handlePhotoFile = (e) => { const f = e.target.files?.[0]; if (f) onSendImageFile(f, { source: "photos" }); e.target.value = ""; };
-  const handleAnyFile = (e) => { const f = e.target.files?.[0]; if (f) onSendAnyFile?.(f); e.target.value = ""; };
+  const handleCamFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendImageFile?.(f, { source: "camera" });
+    e.target.value = "";
+  };
+  const handlePhotoFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendImageFile?.(f, { source: "photos" });
+    e.target.value = "";
+  };
+  const handleAnyFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendAnyFile?.(f);
+    e.target.value = "";
+  };
 
   return (
     <div className="menu-panel">
+      {/* hidden inputs */}
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCamFile} />
       <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
       <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
 
-      <button className="menu-item" onClick={pickCamera}><FiCamera className="icon"/><span>Camera</span></button>
-      <button className="menu-item" onClick={pickPhotos}><FiImage className="icon"/><span>Photos</span></button>
-      <button className="menu-item" onClick={pickFiles}><FiFile className="icon"/><span>Files</span></button>
+      <button className="menu-item" onClick={pickCamera}>
+        <FiCamera className="icon" /><span>Camera</span>
+      </button>
+      <button className="menu-item" onClick={pickPhotos}>
+        <FiImage className="icon" /><span>Photos</span>
+      </button>
+      <button className="menu-item" onClick={pickFiles}>
+        <FiFile className="icon" /><span>Files</span>
+      </button>
 
       <hr className="menu-sep" />
 
       <button className={`menu-item ${agentOn ? "active":""}`} onClick={onToggleAgent}>
-        <FiCpu className="icon"/><span>Agent mode {agentOn?"On":"Off"}</span>
+        <FiCpu className="icon" /><span>Agent mode {agentOn ? "On" : "Off"}</span>
       </button>
-      <button className="menu-item" onClick={onDeepResearch}><FiSearch className="icon"/><span>Deep research</span></button>
-      <button className="menu-item" onClick={()=>onSetPersona?.("teacher")}><FiBook className="icon"/><span>Study & learn</span></button>
-      <button className="menu-item" onClick={onCreateImage}><FiAperture className="icon"/><span>Create image</span></button>
+      <button className="menu-item" onClick={onDeepResearch}>
+        <FiSearch className="icon" /><span>Deep research</span>
+      </button>
+      <button className="menu-item" onClick={() => onSetPersona?.("teacher")}>
+        <FiBook className="icon" /><span>Study &amp; learn</span>
+      </button>
+      <button className="menu-item" onClick={onCreateImage}>
+        <FiAperture className="icon" /><span>Create image</span>
+      </button>
       <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={onToggleWebSearch}>
-        <FiGlobe className="icon"/><span>Web search {webSearchOn?"On":"Off"}</span>
+        <FiGlobe className="icon" /><span>Web search {webSearchOn ? "On" : "Off"}</span>
+      </button>
+
+      <hr className="menu-sep" />
+
+      <button className="menu-item" onClick={onNewChat}>
+        <FiPlus className="icon" /><span>New chat</span>
+      </button>
+      <button className="menu-item danger" onClick={onClearAll}>
+        <FiMoreHorizontal className="icon" /><span>Clear chat + memory</span>
       </button>
     </div>
   );
