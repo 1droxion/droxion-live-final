@@ -1,9 +1,8 @@
-// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — ENHANCED
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FIXED
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
 import {
@@ -40,7 +39,7 @@ const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURICo
 const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
 const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
 
-// small youtube helpers
+/* small youtube helpers */
 const isYouTube = (raw="") => {
   try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
 };
@@ -62,9 +61,6 @@ const youTubeIdFromUrl = (raw="") => {
   const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 };
-
-// uid for safe message replacement
-const uid = () => Math.random().toString(36).slice(2);
 
 /* ---------------------- quick intent ---------------------- */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
@@ -277,7 +273,6 @@ function AIChat() {
 
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
-  const SRC_MODE_KEY = "drox.sources.mode";
 
   // restore & persist chat
   useEffect(() => {
@@ -290,15 +285,6 @@ function AIChat() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
   useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
-
-  // chat memory + citations mode
-  const [memory, setMemory] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; }
-  });
-  useEffect(()=>{ try { localStorage.setItem(MEM_KEY, JSON.stringify(memory.slice(-50))); } catch {} }, [memory]);
-
-  const [sourcesMode, setSourcesMode] = useState(() => localStorage.getItem(SRC_MODE_KEY) || "auto");
-  useEffect(()=> localStorage.setItem(SRC_MODE_KEY, sourcesMode), [sourcesMode]);
 
   // keyboard-safe viewport
   useEffect(() => {
@@ -343,9 +329,9 @@ function AIChat() {
     previewTimer.current = setTimeout(async () => {
       try {
         const reqs = [
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "news",    web: webSearchOn, memory, sourcesMode }, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather",                       memory, sourcesMode }, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto",  web: webSearchOn,    memory, sourcesMode }, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
         ];
         const [rn, rw, rc] = await Promise.all(reqs);
 
@@ -362,7 +348,7 @@ function AIChat() {
       } catch {}
     }, 350);
     return () => clearTimeout(previewTimer.current);
-  }, [input, focused, webSearchOn, memory, sourcesMode]);
+  }, [input, focused]);
 
   const copyMessage = async (i) => {
     try {
@@ -397,53 +383,12 @@ function AIChat() {
     try {
       const lower = content.toLowerCase();
 
-      // Report mode (structured output)
-      if (/^report:\s*/i.test(lower)) {
-        const topic = content.replace(/^report:\s*/i, "");
-        const r = await axios.post(`${API_BASE}/chat`, {
-          prompt: topic,
-          mode: "report",
-          web: true,
-          agent: agentOn,
-          persona,
-          memory,
-          sourcesMode: (sourcesMode === "auto" ? "strict" : sourcesMode)
-        });
-        const md = r.data?.ai_description || r.data?.reply || r.data?.markdown || `Report on **${topic}**`;
-        const cards = (r.data?.cards || []).filter(Boolean);
-        await pushWithFollowups(md, cards, content);
-        return;
-      }
-
-      // If user pasted a YouTube link, embed instantly
-      const ytLink = content.match(/https?:\/\/[^\s]+/g)?.find(u => isYouTube(u));
-      if (ytLink) {
-        const id = youTubeIdFromUrl(ytLink);
-        if (id) {
-          await pushWithFollowups("YouTube video:", [{ type:"youtube", url:`https://www.youtube.com/watch?v=${id}` }], content, { suppressSources: true });
-          return;
-        }
-      }
-
-      // YouTube search command
-      if (lower.startsWith("youtube:") || lower.startsWith("yt:")) {
-        const q = content.replace(/^(youtube:|yt:)\s*/i, "");
-        const r = await axios.post(`${API_BASE}/search-youtube`, { q });
-        const vids = (r.data?.results || []).slice(0, 4).map(v => ({
-          type: "youtube",
-          url: v.url || (v.id ? `https://www.youtube.com/watch?v=${v.id}` : ""),
-          title: v.title
-        })).filter(v => v.url);
-        await pushWithFollowups(vids.length ? `Top results for **${q}**` : `No videos for **${q}**.`, vids, content, { suppressSources: true });
-        return;
-      }
-
       /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
       if (wantsImages(content)) {
         // Try backend first (intent: images). If it gives us cards, use them.
         let cards = [];
         try {
-          const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn, memory, sourcesMode });
+          const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
           cards = (r.data?.cards || []).filter(Boolean);
         } catch {}
 
@@ -468,7 +413,7 @@ function AIChat() {
       // ---- existing special cases (keep yours) ----
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
-        const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn, memory, sourcesMode });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
         const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
         await pushWithFollowups(md, cards, content);
@@ -486,21 +431,21 @@ function AIChat() {
       }
 
       if (wantsNews(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn, memory, sourcesMode });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         return;
       }
 
       if (wantsWeather(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather", memory, sourcesMode });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         return;
       }
 
       if (wantsCrypto(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn, memory, sourcesMode });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
         return;
@@ -508,7 +453,7 @@ function AIChat() {
 
       // ---- default chat ----
       const res = await axios.post(`${API_BASE}/chat`, {
-        prompt: content, memory, persona, web: webSearchOn, agent: agentOn, sourcesMode
+        prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
       });
       const md = res.data?.reply || res.data?.text || "";
       const cards = (res.data?.cards || []).filter(Boolean);
@@ -517,58 +462,65 @@ function AIChat() {
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
+    /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+const sendImageForAnalysis = async (file) => {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) {
+    await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
+    return;
+  }
 
-  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
-  const sendImageForAnalysis = async (file) => {
-    if (!file) return;
-    if (!/^image\//.test(file.type)) {
-      await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
-      return;
-    }
+  // Generate local preview URL
+  let localUrl = "";
+  try { localUrl = URL.createObjectURL(file); } catch {}
 
-    // Generate local preview URL
-    let localUrl = "";
-    try { localUrl = URL.createObjectURL(file); } catch {}
-
-    // Insert placeholder message with id, then replace by id
-    const id = uid();
-    const tempMsg = {
-      id,
-      role: "assistant",
-      content: "Analyzing your image...",
-      cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
-      meta: { suppressSources: true, localPreview: true }
-    };
-    setMessages((prev) => [...prev, tempMsg]);
-
-    try {
-      const form = new FormData();
-      form.append("image", file);
-      form.append("prompt", input || "Analyze this image and explain key details.");
-      form.append("agent", String(agentOn));
-      form.append("web", String(webSearchOn));
-      form.append("persona", persona);
-
-      const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
-
-      const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
-      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-      const backendHasImage = cards.some((c) =>
-        c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
-      );
-      const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
-
-      setMessages((prev) => prev.map(m => m.id === id
-        ? { ...m, content: md, cards: finalCards, meta: { fromImage: true } }
-        : m
-      ));
-      setInput("");
-    } catch {
-      setMessages((prev) => prev.map(m => m.id === id ? { ...m, content: "Image analysis failed. Please try again." } : m));
-    } finally {
-      if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
-    }
+  // Insert placeholder message and keep index for later replacement
+  const tempMsg = {
+    role: "assistant",
+    content: "Analyzing your image...",
+    cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
+    meta: { suppressSources: true, localPreview: true }
   };
+  setMessages((prev) => [...prev, tempMsg]);
+  const index = messages.length + 1; // predicted index after set
+
+  try {
+    const form = new FormData();
+    form.append("image", file);
+    form.append("prompt", input || "Analyze this image and explain key details.");
+    form.append("agent", String(agentOn));
+    form.append("web", String(webSearchOn));
+    form.append("persona", persona);
+
+    const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
+
+    const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
+    const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+    const backendHasImage = cards.some((c) =>
+      c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
+    );
+    const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
+
+    // ✅ Replace temp message instead of pushing a new one
+    setMessages((prev) => {
+      const copy = [...prev];
+      copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
+      return copy;
+    });
+    setInput("");
+  } catch {
+    setMessages((prev) => {
+      const copy = [...prev];
+      copy[index] = {
+        ...copy[index],
+        content: "Image analysis failed. Please try again."
+      };
+      return copy;
+    });
+  } finally {
+    if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
+  }
+};
 
   /* ---------------------- organized render helpers ---------------------- */
   const extractTitle = (md="") => {
@@ -605,9 +557,7 @@ function AIChat() {
         <div className="org-section">
           <div className="org-sub">Full answer</div>
           <div className="answer expanded">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw, rehypeSanitize]}
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
               components={{
                 img: (props) => {
                   const src = props.src || "";
@@ -619,7 +569,7 @@ function AIChat() {
                         el.style.display="none"; }} />
                   );
                 },
-                iframe: (p) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...p} loading="lazy" referrerPolicy="no-referrer" allowFullScreen /></div>,
+                iframe: (p) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...p} allowFullScreen /></div>,
                 a: ({node, ...p}) => <a {...p} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />,
                 code: ({node, inline, className, children, ...p}) => inline
                   ? <code className={className} {...p}>{children}</code>
@@ -719,10 +669,8 @@ function AIChat() {
             return (
               <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
                 <iframe
-                  src={`https://www.youtube.com/embed/${id}?rel=0`}
+                  src={`https://www.youtube.com/embed/${id}`}
                   title={card.title || "YouTube"}
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
                 />
@@ -735,14 +683,6 @@ function AIChat() {
       </div>
     );
   }
-
-  // Helper to pick source cards for citations
-  const pickSourceCards = (cards=[]) => {
-    const webish = (cards || []).filter(c =>
-      c?.type === "web" || (c?.url && !["image","images","gallery","youtube","weather"].includes(c.type||""))
-    );
-    return rankAndTrim(webish, sourcesMode === "strict" ? 8 : sourcesMode === "min" ? 3 : 5);
-  };
 
   /* ---------------------- + menu helpers ---------------------- */
   const clearAll = () => {
@@ -769,30 +709,6 @@ function AIChat() {
           <div className="text-xs text-gray-400">• Lite</div>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Memory chip */}
-            <button
-              onClick={()=>{
-                const val = prompt("Edit chat memory (one fact per line):", (memory || []).join("\n"));
-                if (val !== null) setMemory(val.split("\n").map(s=>s.trim()).filter(Boolean));
-              }}
-              className="pill-btn"
-              title="Chat memory"
-            >
-              🧠 <span style={{marginLeft:6}}>{memory.length ? `${memory.length} mem` : "Add memory"}</span>
-            </button>
-
-            {/* Sources mode */}
-            <select
-              value={sourcesMode}
-              onChange={(e)=>setSourcesMode(e.target.value)}
-              className="pill-btn text-xs"
-              title="Citations mode"
-            >
-              <option value="auto">Sources: Auto</option>
-              <option value="min">Sources: Minimal</option>
-              <option value="strict">Sources: Strict</option>
-            </select>
-
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
               {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
             </button>
@@ -863,31 +779,6 @@ function AIChat() {
 
                   {/* ✅ Render images, galleries, youtube, weather */}
                   {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
-
-                  {/* Sources (citations) */}
-                  {!isUser && msg.cards && sourcesMode !== "min" && (() => {
-                    const srcs = pickSourceCards(msg.cards);
-                    if (!srcs.length && sourcesMode === "strict") {
-                      return <div className="mt-3 text-xs text-amber-300">No high-quality sources returned. Try enabling Web search or re-asking.</div>;
-                    }
-                    if (!srcs.length) return null;
-                    return (
-                      <div className="mt-3">
-                        <div className="org-sub mb-1">Sources</div>
-                        <ul className="text-sm space-y-2">
-                          {srcs.map((c, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              {c.url && <img src={faviconFor(c.url)} alt="" className="h-4 w-4 mt-0.5 rounded-sm" loading="lazy" referrerPolicy="no-referrer" />}
-                              <a href={c.url} target="_blank" rel="noreferrer" className="underline decoration-gray-600 hover:text-gray-200">
-                                {c.title || host(c.url) || "Source"}
-                              </a>
-                              <span className="text-[11px] text-gray-500 ml-2">{displaySource(c)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })()}
 
                   {/* Follow-up suggestions */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
@@ -1000,19 +891,6 @@ function AIChat() {
                 onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSend(); }}}
                 onFocus={()=>setFocused(true)}
                 onBlur={()=>setTimeout(()=>setFocused(false),150)}
-                onPaste={(e)=> {
-                  const item = Array.from(e.clipboardData?.items || []).find(i => i.type && i.type.startsWith("image/"));
-                  if (item) {
-                    const file = item.getAsFile();
-                    if (file) { e.preventDefault(); sendImageForAnalysis(file); }
-                  }
-                }}
-                onDrop={(e)=> {
-                  e.preventDefault();
-                  const file = Array.from(e.dataTransfer?.files || [])[0];
-                  if (file && /^image\//.test(file.type)) sendImageForAnalysis(file);
-                }}
-                onDragOver={(e)=> e.preventDefault()}
                 rows={1}
                 inputMode="text"
                 placeholder=""
@@ -1032,12 +910,6 @@ function AIChat() {
                 {s}
               </button>
             ))}
-            <button
-              onClick={()=>handleSend(`report: ${input || "market research for my niche"}`)}
-              className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
-            >
-              Report
-            </button>
           </div>
         </div>
       </div>
