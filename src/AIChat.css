@@ -1,392 +1,257 @@
-/* =========================================
-   Droxion — AIChat.css (phone-first, no Tailwind)
-   Works with AIChat.jsx you shared
-   ========================================= */
+/* =========================================================
+   Droxion — AIChat.css
+   For: src/AIChat.jsx (no JSX changes required)
+   Notes:
+   - Dark/Light via [data-theme] (JS already toggles it)
+   - Glass surfaces, subtle borders, crisp shadows
+   - Utilities for the Tailwind-like classes used in JSX
+   - Includes the 4 requested layout rules (see §7 Overrides)
+   ========================================================= */
 
-/* ---------- Theme & variables ---------- */
-:root {
-  --bg: #0b0b0c;
-  --bg-2: #0f1012;
-  --panel: #121316cc;
-  --glass: rgba(255,255,255,0.06);
-  --glass-2: rgba(255,255,255,0.04);
-  --border: rgba(255,255,255,0.12);
-  --border-soft: rgba(255,255,255,0.10);
-  --text: #ffffff;
-  --text-dim: #b7bcc5;
-  --text-muted: #8c919a;
-  --accent: #ffffff;  /* buttons: white only per your rule */
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
-  --radius-lg: 16px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --kb: 0px; /* set by JS visualViewport handler */
+/* ========== 1) THEME & TOKENS ================================== */
+:root{
+  --bg:#0b0b0c;            /* page */
+  --bg-2:#111214;          /* panels/cards */
+  --panel:rgba(18,19,22,.86);
+  --glass:rgba(255,255,255,.06);
+  --glass-2:rgba(255,255,255,.04);
+  --border:rgba(255,255,255,.12);
+  --border-soft:rgba(255,255,255,.10);
+  --text:#fff;
+  --text-dim:#c7cbd3;
+  --text-muted:#8e93a0;
+  --accent:#fff;           /* white-only accents */
+  --shadow:0 12px 34px rgba(0,0,0,.35);
+  --r-lg:16px; --r-md:12px; --r-sm:8px;
+  --kb:0px; /* set by visualViewport */
+}
+:root[data-theme="light"]{
+  --bg:#f7f8fb; --bg-2:#fff; --panel:rgba(255,255,255,.86);
+  --glass:rgba(0,0,0,.06); --glass-2:rgba(0,0,0,.04);
+  --border:rgba(0,0,0,.12); --border-soft:rgba(0,0,0,.08);
+  --text:#0b0c0e; --text-dim:#2a2e35; --text-muted:#606773;
+  --accent:#000; --shadow:0 10px 28px rgba(0,0,0,.12);
 }
 
-:root[data-theme="light"] {
-  --bg: #f7f8fb;
-  --bg-2: #ffffff;
-  --panel: rgba(255,255,255,.85);
-  --glass: rgba(0,0,0,0.06);
-  --glass-2: rgba(0,0,0,0.04);
-  --border: rgba(0,0,0,0.12);
-  --border-soft: rgba(0,0,0,0.08);
-  --text: #0a0b0d;
-  --text-dim: #2a2d33;
-  --text-muted: #60656f;
-  --accent: #000000; /* black in light mode */
-  --shadow: 0 10px 28px rgba(0,0,0,.10);
+/* ========== 2) GLOBAL BASE ===================================== */
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0; color:var(--text);
+  background: radial-gradient(1200px 800px at 50% -10%, #20242a 0%, var(--bg) 42%, var(--bg) 100%);
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+}
+html,body{overscroll-behavior-y:none}
+a{color:var(--text); text-decoration:none}
+a:hover{opacity:.92}
+
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ========== 3) SURFACES & BUTTONS ============================== */
+.glass{
+  background:
+    linear-gradient(180deg,var(--glass),transparent 120%),
+    var(--bg-2);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow);
+}
+.glass-2{
+  background:linear-gradient(180deg,var(--glass-2),transparent 120%),var(--bg-2);
+  border:1px solid var(--border-soft);
+  border-radius:var(--r-lg);
 }
 
-/* ---------- Reset-ish base ---------- */
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; }
-body {
-  margin: 0;
-  background: radial-gradient(1200px 800px at 50% -10%, #20242a 0%, var(--bg) 40%, var(--bg) 100%);
-  color: var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+.pill-btn{
+  appearance:none; background:transparent; color:var(--text);
+  border:1px solid var(--border); border-radius:999px;
+  padding:8px 12px; display:inline-flex; align-items:center; gap:8px;
+  cursor:pointer; transition:background .15s,border-color .15s,transform .06s;
+}
+.pill-btn:hover{background:var(--glass)}
+.pill-btn:active{transform:scale(.985)}
+.pill-btn svg{width:18px;height:18px;color:var(--text)}
+
+/* action chips / small buttons */
+.action-btn{
+  border:1px solid var(--border); background:var(--glass-2); color:var(--text);
+  border-radius:999px; padding:8px 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;
+}
+.action-btn:hover{background:var(--glass)}
+
+/* ========== 4) HEADER ========================================== */
+header{
+  position:sticky; top:0; z-index:40;
+  backdrop-filter:blur(10px); background:var(--panel);
+  border-bottom:1px solid var(--border);
+}
+.brand{font-weight:800;letter-spacing:.2px}
+
+/* ---- (Rule #2) Clean header: keep only the last pill (menu) ---- */
+header .pill-btn{display:none !important;}
+header .pill-btn:last-of-type{display:inline-flex !important;}
+/* turn the last pill into a PLUS, hide the icon inside */
+header .pill-btn:last-of-type{width:36px;height:36px;padding:0;justify-content:center;border-radius:999px}
+header .pill-btn:last-of-type svg{display:none !important;}
+header .pill-btn:last-of-type::before{content:"+";font-size:22px;line-height:1;color:var(--text);}
+
+/* ========== 5) CHAT AREA ======================================= */
+.chat-scroll{
+  height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  scroll-behavior:smooth; scroll-padding-bottom:calc(140px + var(--kb));
+}
+.msg{padding:16px;border-radius:var(--r-lg)}
+.small-label{font-size:12px;color:var(--text-muted)}
+/* copy button inside code blocks */
+.code-copy-btn{
+  position:absolute; top:8px; right:8px; font-size:12px;
+  background:var(--bg-2); color:var(--text);
+  border:1px solid var(--border); border-radius:8px; padding:6px 8px; cursor:pointer;
+}
+.code-copy-btn:hover{background:var(--glass)}
+
+/* organized answer */
+.org-title{font-size:18px;font-weight:800;margin:0 0 8px}
+.org-section{margin-top:12px}
+.org-sub{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.org-list,.org-steps{margin:0;padding-left:18px}
+.org-steps li{margin-bottom:4px}
+
+/* mini-bars */
+.bars{display:grid;gap:8px}
+.bar-row{display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center}
+.bar-label{font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{height:8px;background:var(--glass-2);border:1px solid var(--border-soft);border-radius:999px;overflow:hidden}
+.bar-fill{height:100%;background:var(--accent)}
+
+/* markdown */
+.answer.expanded{line-height:1.6}
+.answer.expanded h1,.answer.expanded h2,.answer.expanded h3{margin:14px 0 6px}
+.answer.expanded p{margin:8px 0}
+.answer.expanded blockquote{
+  margin:8px 0;padding:8px 12px;border-left:3px solid var(--border);
+  background:var(--glass-2);border-radius:6px;
+}
+.answer.expanded pre{
+  background:#0c0d10;color:#e8e8ea;padding:14px;border-radius:10px;overflow:auto;border:1px solid var(--border);
+}
+:root[data-theme="light"] .answer.expanded pre{background:#f2f3f6;color:#141519}
+.answer.expanded code:not(pre code){
+  background:var(--glass-2);padding:2px 6px;border:1px solid var(--border);border-radius:6px;
 }
 
-/* Prevent rubber-band pulling content under the fixed composer on iOS */
-html, body { overscroll-behavior-y: none; }
-
-/* Scrollbars, subtle */
-::-webkit-scrollbar { height: 10px; width: 10px; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
-::-webkit-scrollbar-track { background: transparent; }
-
-/* ---------- Utility pack (subset) ---------- */
-.hidden { display: none !important; }
-.rounded-xl { border-radius: var(--radius-lg); }
-.rounded-lg { border-radius: var(--radius-md); }
-.rounded-md { border-radius: var(--radius-sm); }
-.p-3 { padding: 12px; }
-.p-2 { padding: 8px; }
-.p-4 { padding: 16px; }
-.pb-32 { padding-bottom: 8rem; } /* for chat area bottom gap */
-.pt-3 { padding-top: 12px; }
-.mb-1 { margin-bottom: 4px; }
-.mb-2 { margin-bottom: 8px; }
-.mb-3 { margin-bottom: 12px; }
-.mt-1 { margin-top: 4px; }
-.mt-2 { margin-top: 8px; }
-.mt-3 { margin-top: 12px; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-.w-full { width: 100%; }
-.h-12 { height: 48px; }
-.h-10 { height: 40px; }
-.min-w-\[86px\] { min-width: 86px; }
-.text-sm { font-size: 14px; line-height: 1.45; }
-.text-xs { font-size: 12px; line-height: 1.4; }
-.font-semibold { font-weight: 600; }
-.leading-tight { line-height: 1.25; }
-.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* line-clamp-2 */
-.line-clamp-2 {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+/* media / previews */
+.embed-responsive{position:relative;width:100%}
+.embed-16by9{padding-top:56.25%}
+.embed-responsive iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.favicon-only{
+  display:inline-flex;align-items:center;gap:10px;min-height:44px;
+  background:var(--glass-2);border:1px solid var(--border-soft);border-radius:10px;padding:8px 10px;
 }
-/* text-[11px] */
-.text-\[11px\] { font-size: 11px; line-height: 1.25; }
-/* aspect-[16/9] */
-.aspect-\[16\/9\] { aspect-ratio: 16 / 9; }
+.src-title{font-size:13px;font-weight:700;color:var(--text)}
+.src-sub{font-size:11px;color:var(--text-muted)}
+.sources-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 
-/* ---------- Header ---------- */
-header {
-  backdrop-filter: blur(10px);
-  background: var(--panel);
-  border-color: var(--border);
+/* typing preview panel */
+.fixed-panel{
+  position:fixed;left:0;right:0;bottom:calc(74px + var(--kb));z-index:45;padding-bottom:8px;
 }
-.brand { font-weight: 800; letter-spacing: .2px; }
+.fixed-panel .panel{background:var(--panel);border:1px solid var(--border)}
+.dim-while-typing{opacity:.98}
 
-/* ---------- Glass surfaces ---------- */
-.glass {
-  background: linear-gradient(180deg, var(--glass), transparent 120%),
-              linear-gradient(0deg, transparent, transparent),
-              var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+/* skeletons */
+.skel{
+  background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));
+  background-size:300% 100%;
+  animation:skel 1.2s ease-in-out infinite;border-radius:12px;
 }
-.glass-2 {
-  background: linear-gradient(180deg, var(--glass-2), transparent 120%),
-              var(--bg-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
+@keyframes skel{0%{background-position:0 0}100%{background-position:-200% 0}}
+
+/* ========== 6) COMPOSER ======================================== */
+.fixed-bottom{
+  position:sticky;bottom:0;left:0;right:0;z-index:50;
+  backdrop-filter:blur(10px); background:rgba(0,0,0,.80);
+  border-top:1px solid var(--border);
+  padding-bottom:max(env(safe-area-inset-bottom),12px);
+}
+textarea{font-size:16px;color:var(--text)} /* prevent iOS zoom */
+
+/* ========== 7) LAYOUT RULE OVERRIDES (YOUR 4 REQUESTS) ========= */
+/* (1) Bottom: only type bar + send button (hide the camera pill) */
+.fixed-bottom .pill-btn{display:none !important;}
+
+/* (2) Top: show only a single "+" menu button (converted from More) */
+/* implemented above in §4 header rules */
+
+/* (3) Prompt chips: single line, sideways scroll */
+.fixed-bottom .flex.gap-2.flex-wrap.mt-2{
+  flex-wrap:nowrap !important; overflow-x:auto !important;
+  -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.fixed-bottom .flex.gap-2.flex-wrap.mt-2::-webkit-scrollbar{display:none}
+.fixed-bottom .flex.gap-2.flex-wrap.mt-2 > button{
+  flex:0 0 auto; white-space:nowrap;
 }
 
-/* ---------- Buttons & chips ---------- */
-.pill-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 8px 12px;
-  display: inline-flex; align-items: center; gap: 8px;
-  cursor: pointer;
-  transition: background .15s ease, border-color .15s ease, transform .06s ease;
-}
-.pill-btn:hover { background: var(--glass); }
-.pill-btn:active { transform: scale(0.985); }
-.pill-btn svg { width: 18px; height: 18px; color: var(--text); } /* black/white only icon */
+/* (4) Keep chat shadows crisp */
+.msg.glass,.msg.glass-2{box-shadow:var(--shadow)}
 
-/* ---------- Tools dropdown ---------- */
-.menu-panel {
-  width: 280px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
-  padding: 6px;
-  animation: fadeIn .12s ease;
-}
-.menu-item {
-  width: 100%;
-  background: transparent;
-  border: 0;
-  color: var(--text);
-  border-radius: 10px;
-  padding: 10px 10px;
-  display: flex; align-items: center; gap: 10px;
-  cursor: pointer;
-}
-.menu-item:hover { background: var(--glass); }
-.menu-item.active { outline: 1px dashed var(--border); background: var(--glass); }
-.menu-item .icon { width: 18px; height: 18px; color: var(--text); }
-.menu-sep {
-  border: 0; height: 1px; background: var(--border); margin: 6px 4px;
-}
+/* ========== 8) WEATHER CARD ==================================== */
+.weather-card .wstat{background:var(--glass-2);border:1px solid var(--border-soft);border-radius:10px;padding:8px}
+.weather-card .wlabel{font-size:11px;color:var(--text-muted)}
+.weather-card .wval{font-size:13px;font-weight:600}
+.w-hscroll{-webkit-overflow-scrolling:touch}
+.w-hour{border:1px solid var(--border-soft);background:var(--glass-2)}
 
-/* ---------- Chat area ---------- */
-.chat-scroll {
-  height: 100%;
-  overscroll-behavior: contain;
-  scroll-behavior: smooth;
-  scroll-padding-bottom: calc(140px + var(--kb)); /* prevents auto jump */
-  -webkit-overflow-scrolling: touch;
+/* ========== 9) UTILITIES USED BY JSX =========================== */
+/* spacing / sizing */
+.rounded-xl{border-radius:var(--r-lg)} .rounded-lg{border-radius:var(--r-md)} .rounded-md{border-radius:var(--r-sm)}
+.p-2{padding:8px} .p-3{padding:12px} .p-4{padding:16px} .px-1{padding-left:4px;padding-right:4px}
+.px-2{padding-left:8px;padding-right:8px} .px-3{padding-left:12px;padding-right:12px}
+.py-1{padding-top:4px;padding-bottom:4px} .py-2{padding-top:8px;padding-bottom:8px}
+.pt-3{padding-top:12px} .pb-32{padding-bottom:8rem}
+.mt-1{margin-top:4px} .mt-2{margin-top:8px} .mt-3{margin-top:12px}
+.mb-1{margin-bottom:4px} .mb-2{margin-bottom:8px} .mb-3{margin-bottom:12px}
+.mx-auto{margin-left:auto;margin-right:auto}
+
+.w-full{width:100%} .w-24{width:6rem} .w-40{width:10rem}
+.h-3{height:.75rem} .h-4{height:1rem} .h-10{height:40px} .h-12{height:48px}
+.shrink-0{flex-shrink:0} .min-w-\[86px\]{min-width:86px}
+.max-w-4xl{max-width:64rem} .max-h-\[280px\]{max-height:280px}
+
+.flex{display:flex} .grid{display:grid} .block{display:block}
+.flex-wrap{flex-wrap:wrap} .items-center{align-items:center}
+.justify-between{justify-content:space-between}
+.gap-2{gap:8px} .gap-3{gap:12px} .gap-8{gap:32px}
+.text-sm{font-size:14px;line-height:1.45} .text-xs{font-size:12px;line-height:1.4}
+.font-semibold{font-weight:600} .leading-tight{line-height:1.25}
+.text-gray-400{color:var(--text-muted)} .text-gray-500{color:#8e94a1}
+.text-black{color:#000} .bg-white{background:#fff;color:#000}
+.bg-white\/5{background:rgba(255,255,255,.05)!important}
+.bg-black\/80{background:rgba(0,0,0,.80)!important}
+.border{border:1px solid var(--border)}
+.border-b{border-bottom:1px solid var(--border)}
+.border-white\/10{border-color:rgba(255,255,255,.10)!important}
+.border-white\/12{border-color:rgba(255,255,255,.12)!important}
+.focus-within\:border-white\/25:focus-within{border-color:rgba(255,255,255,.25)!important}
+.underline{text-decoration:underline}
+.truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.aspect-\[16\/9\]{aspect-ratio:16/9}
+.transition{transition:all .15s ease}
+.hover\:bg-gray-200:hover{background:#e5e7eb}
+.active\:scale-\[0\.99\]:active{transform:scale(0.99)}
+.overflow-hidden{overflow:hidden}
+
+/* images that get "glass" style from JSX */
+img.glass{background:var(--glass-2);border:1px solid var(--border-soft);border-radius:var(--r-md)}
+
+/* ========== 10) RESPONSIVE ===================================== */
+@media (max-width:640px){
+  .sources-grid{grid-template-columns:1fr}
+  .bar-row{grid-template-columns:1fr;gap:6px}
+  .fixed-panel{bottom:calc(84px + var(--kb))}
 }
-
-/* Each message bubble */
-.msg {
-  padding: 16px;
-  border-radius: var(--radius-lg);
-}
-.small-label {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-/* Copy code button inside <pre> blocks */
-.code-copy-btn {
-  position: absolute; top: 8px; right: 8px;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.code-copy-btn:hover { background: var(--glass); }
-
-/* ---------- Organized answer ---------- */
-.org-title {
-  font-size: 18px; font-weight: 700; margin-bottom: 8px;
-}
-.org-section { margin-top: 12px; }
-.org-sub {
-  font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em;
-  margin-bottom: 6px;
-}
-.org-list, .org-steps { margin: 0; padding-left: 18px; }
-.org-steps li { margin-bottom: 4px; }
-
-/* Bars mini-chart */
-.bars { display: grid; gap: 8px; }
-.bar-row { display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 8px; }
-.bar-label { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bar-track { height: 8px; background: var(--glass-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border-soft); }
-.bar-fill { height: 100%; background: var(--accent); }
-
-/* Markdown content */
-.answer.expanded {
-  line-height: 1.6;
-}
-.answer.expanded h1, .answer.expanded h2, .answer.expanded h3 { margin: 14px 0 6px; }
-.answer.expanded p { margin: 8px 0; }
-.answer.expanded blockquote {
-  margin: 8px 0; padding: 8px 12px;
-  border-left: 3px solid var(--border);
-  background: var(--glass-2);
-  border-radius: 6px;
-}
-.answer.expanded pre {
-  background: #0c0d10;
-  color: #e8e8ea;
-  padding: 14px; border-radius: 10px; overflow: auto;
-  border: 1px solid var(--border);
-}
-:root[data-theme="light"] .answer.expanded pre {
-  background: #f2f3f6; color: #141519;
-}
-.answer.expanded code:not(pre code) {
-  background: var(--glass-2); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border);
-}
-
-/* ---------- Media blocks ---------- */
-.embed-responsive { position: relative; width: 100%; }
-.embed-16by9 { padding-top: 56.25%; }
-.embed-responsive iframe {
-  position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
-}
-.favicon-only {
-  display: inline-flex; align-items: center; gap: 10px;
-  background: var(--glass-2); border: 1px solid var(--border-soft);
-  border-radius: 10px; padding: 8px 10px; min-height: 44px;
-}
-.src-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.src-sub { font-size: 11px; color: var(--text-muted); }
-
-/* Sources */
-.actions-row {
-  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
-}
-.action-btn {
-  appearance: none; border: 1px solid var(--border);
-  background: var(--glass-2); color: var(--text);
-  border-radius: 999px; padding: 8px 12px; font-size: 12px;
-  text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
-}
-.action-btn:hover { background: var(--glass); }
-.sources-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
-}
-
-/* ---------- Weather ---------- */
-.weather-card .wstat { background: var(--glass-2); border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px; }
-.weather-card .wlabel { font-size: 11px; color: var(--text-muted); }
-.weather-card .wval { font-size: 13px; font-weight: 600; }
-
-/* horizontal scroll helpers */
-.w-hscroll { -webkit-overflow-scrolling: touch; }
-.w-hour { border: 1px solid var(--border-soft); background: var(--glass-2); }
-
-/* ---------- Typing preview (fixed while focused) ---------- */
-.fixed-panel {
-  position: fixed; left: 0; right: 0; bottom: calc(74px + var(--kb)); /* stays above composer */
-  z-index: 45;
-  padding-bottom: 8px;
-}
-.fixed-panel .panel { background: var(--panel); border: 1px solid var(--border); }
-.dim-while-typing { opacity: .98; }
-
-/* Headlines scroller */
-.hscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.hitem { min-width: 260px; }
-
-/* ---------- Skeletons ---------- */
-.skel {
-  background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.14), rgba(255,255,255,.06));
-  background-size: 300% 100%;
-  animation: skel 1.2s ease-in-out infinite;
-  border-radius: 12px;
-}
-@keyframes skel {
-  0% { background-position: 0% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ---------- Fixed composer ---------- */
-.fixed-bottom {
-  position: sticky; bottom: 0; left: 0; right: 0;
-  backdrop-filter: blur(10px);
-}
-.fixed-bottom .pill-btn svg { color: var(--text); }
-
-/* Textarea: iOS no-zoom, smooth scroll within */
-textarea {
-  font-size: 16px; /* >=16px prevents iOS zoom */
-  color: var(--text);
-}
-
-/* Composer input container (the rounded one) */
-.focus-within\:border-white\/25:focus-within { border-color: rgba(255,255,255,.25) !important; }
-
-/* Rounded input look */
-.border { border: 1px solid var(--border); }
-.border-white\/10 { border-color: rgba(255,255,255,.10) !important; }
-.border-white\/12 { border-color: rgba(255,255,255,.12) !important; }
-.bg-white\/5 { background: rgba(255,255,255,.05) !important; }
-.bg-black\/80 { background: rgba(0,0,0,.80) !important; }
-.backdrop-blur { backdrop-filter: blur(10px); }
-
-/* ---------- Images ---------- */
-img.glass { background: var(--glass-2); border: 1px solid var(--border-soft); }
-
-/* ---------- Links ---------- */
-a { color: var(--text); }
-a:hover { opacity: .9; }
-
-/* ---------- Max width wrapper mimic ---------- */
-.max-w-4xl { max-width: 64rem; }
-.w-4\/5 { width: 80%; }
-.w-3\/5 { width: 60%; }
-.w-24 { width: 6rem; }
-.w-40 { width: 10rem; }
-
-/* ---------- Spacing helpers used in skeleton ---------- */
-.h-3 { height: 0.75rem; }
-.h-4 { height: 1rem; }
-
-/* ---------- Animations ---------- */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ---------- Responsive tweaks ---------- */
-@media (max-width: 640px) {
-  .sources-grid { grid-template-columns: 1fr; }
-  .bar-row { grid-template-columns: 1fr; gap: 6px; }
-  .fixed-panel { bottom: calc(84px + var(--kb)); } /* slightly higher on phones */
-}
-
-/* ---------- Safety margins for safe areas ---------- */
-@supports (padding: max(0px)) {
-  .fixed-bottom { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
-}
-
-/* ---------- Helpers used in JSX (class names from strings) ---------- */
-.text-gray-400 { color: var(--text-muted); }
-.text-gray-500 { color: #8e94a1; }
-.underline { text-decoration: underline; }
-.overflow-hidden { overflow: hidden; }
-.block { display: block; }
-.flex { display: flex; }
-.grid { display: grid; }
-.gap-2 { gap: 8px; }
-.gap-3 { gap: 12px; }
-.gap-8 { gap: 32px; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.flex-wrap { flex-wrap: wrap; }
-.shrink-0 { flex-shrink: 0; }
-.border-b { border-bottom: 1px solid var(--border); }
-.backdrop-blur { backdrop-filter: blur(10px); }
-.px-1 { padding-left: 4px; padding-right: 4px; }
-.px-2 { padding-left: 8px; padding-right: 8px; }
-.px-3 { padding-left: 12px; padding-right: 12px; }
-.py-1 { padding-top: 4px; padding-bottom: 4px; }
-.py-2 { padding-top: 8px; padding-bottom: 8px; }
-.block { display: block; }
-.text-black { color: #000; }
-.bg-white { background: #fff; color: #000; }
-.hover\:bg-gray-200:hover { background: #e5e7eb; }
-.active\:scale-\[0\.99\]:active { transform: scale(0.99); }
-.transition { transition: all .15s ease; }
-
-/* ---------- Misc from JSX ---------- */
-.max-h-\[280px\] { max-height: 280px; }
-.overflow-hidden { overflow: hidden; }
