@@ -849,44 +849,42 @@ const sendImageForAnalysis = async (file) => {
         <span style={{ marginLeft: 6 }}>{theme === "dark" ? "Dark" : "Light"}</span>
       </button>
 
-      {/* SINGLE plus button — opens tools */}
+      {/* SINGLE plus button */}
       <button onClick={() => setMenuOpen(v => !v)} className="pill-btn" title="Tools">
         <FiPlus />
       </button>
-
-      {menuOpen && (
-  <>
-    {/* click-anywhere-to-close backdrop */}
-    <div
-      onClick={() => setMenuOpen(false)}
-      style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
-    />
-
-    {/* tools popover */}
-    <div
-      style={{
-        position: "fixed",
-        right: 8,     // px from right edge
-        top: 56,      // just below header
-        zIndex: 1000,
-      }}
-    >
-      <ToolsMenu
-        onSendImageFile={(f) => sendImageForAnalysis(f)}
-        onSendAnyFile={(f) => sendAnyFile(f)}
-        onToggleAgent={() => setAgentOn(v => !v)}
-        agentOn={agentOn}
-        onDeepResearch={runDeepResearch}
-        onSetPersona={(p) => setPersona(p)}
-        onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
-        webSearchOn={webSearchOn}
-        onToggleWebSearch={() => setWebSearchOn(v => !v)}
-        onClearAll={clearAll}
-        onNewChat={newChat}
-      />
     </div>
-  </>
-)}
+  </div>
+
+  {/* Tools popover (fixed so it never renders off-screen) */}
+  {menuOpen && (
+    <>
+      {/* click-anywhere backdrop */}
+      <div
+        onClick={() => setMenuOpen(false)}
+        style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
+      />
+      {/* popover panel */}
+      <div
+        style={{ position: "fixed", right: 8, top: 56, zIndex: 1000 }}
+        onMouseLeave={() => setMenuOpen(false)}
+      >
+        <ToolsMenu
+          onSendImageFile={(f) => sendImageForAnalysis(f)}
+          onSendAnyFile={(f) => sendAnyFile(f)}
+          onToggleAgent={() => setAgentOn(v => !v)}
+          agentOn={agentOn}
+          onDeepResearch={runDeepResearch}
+          onSetPersona={(p) => setPersona(p)}
+          onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
+          webSearchOn={webSearchOn}
+          onToggleWebSearch={() => setWebSearchOn(v => !v)}
+          onClearAll={clearAll}
+          onNewChat={newChat}
+        />
+      </div>
+    </>
+  )}
 </header>
 
       {/* Chat area */}
