@@ -1,17 +1,17 @@
 /* =========================================================
-   Droxion — AIChat.css
-   For: src/AIChat.jsx (no JSX changes)
-   Rules requested:
-     1) Bottom: only type bar + send button
-     2) Top: single “+” menu button (everything else hidden)
-     3) Prompt chips: one line, side-scroll
-     4) No camera button at bottom
+   Droxion — AIChat.css (organized)
+   Implements your 5 requests:
+   1) Bottom: only type bar + send button (hide camera)
+   2) Top: single “+” menu button; no “Image” pill on top
+   3) Chips in one row with sideways scroll
+   4) Steps list cleaned (via JSX) + tidy spacing here
+   5) Links row only for explicit google:/search: prompts
    ========================================================= */
 
-/* ========== 1) THEME TOKENS =================================== */
+/* ========== 1) THEME & TOKENS ================================== */
 :root{
-  --bg:#0b0b0c;            /* page */
-  --bg-2:#111214;          /* panels/cards */
+  --bg:#0b0b0c;
+  --bg-2:#111214;
   --panel:rgba(18,19,22,.86);
   --glass:rgba(255,255,255,.06);
   --glass-2:rgba(255,255,255,.04);
@@ -20,10 +20,10 @@
   --text:#fff;
   --text-dim:#c7cbd3;
   --text-muted:#8e93a0;
-  --accent:#fff;           /* white-only accents */
+  --accent:#fff;
   --shadow:0 12px 34px rgba(0,0,0,.35);
   --r-lg:16px; --r-md:12px; --r-sm:8px;
-  --kb:0px; /* set by visualViewport */
+  --kb:0px;
 }
 :root[data-theme="light"]{
   --bg:#f7f8fb; --bg-2:#fff; --panel:rgba(255,255,255,.86);
@@ -33,7 +33,7 @@
   --accent:#000; --shadow:0 10px 28px rgba(0,0,0,.12);
 }
 
-/* ========== 2) GLOBAL BASE ==================================== */
+/* ========== 2) GLOBAL ========================================== */
 *{box-sizing:border-box}
 html,body,#root{height:100%}
 body{
@@ -42,15 +42,13 @@ body{
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
   -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
 }
-html,body{overscroll-behavior-y:none}
 a{color:var(--text); text-decoration:none}
 a:hover{opacity:.92}
-
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
 ::-webkit-scrollbar-track{background:transparent}
 
-/* ========== 3) SURFACES & BUTTONS ============================= */
+/* ========== 3) SURFACES & BUTTONS ============================== */
 .glass{
   background:linear-gradient(180deg,var(--glass),transparent 120%),var(--bg-2);
   border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow);
@@ -59,7 +57,6 @@ a:hover{opacity:.92}
   background:linear-gradient(180deg,var(--glass-2),transparent 120%),var(--bg-2);
   border:1px solid var(--border-soft); border-radius:var(--r-lg);
 }
-
 .pill-btn{
   appearance:none; background:transparent; color:var(--text);
   border:1px solid var(--border); border-radius:999px;
@@ -69,14 +66,13 @@ a:hover{opacity:.92}
 .pill-btn:hover{background:var(--glass)}
 .pill-btn:active{transform:scale(.985)}
 .pill-btn svg{width:18px;height:18px;color:var(--text)}
-
 .action-btn{
   border:1px solid var(--border); background:var(--glass-2); color:var(--text);
   border-radius:999px; padding:8px 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;
 }
 .action-btn:hover{background:var(--glass)}
 
-/* ========== 4) HEADER ========================================= */
+/* ========== 4) HEADER ========================================== */
 header{
   position:sticky; top:0; z-index:40;
   backdrop-filter:blur(10px); background:var(--panel);
@@ -84,136 +80,101 @@ header{
 }
 .brand{font-weight:800;letter-spacing:.2px}
 
-/* Rule #2: clean header — keep only last pill (More), make it a plus */
+/* Keep header ultra clean:
+   - Hide all pills except the LAST one (More).
+   - Convert that last pill into a PLUS.
+   - Force-hide the "Image" pill if present, so no duplicate plus. */
 header .pill-btn{display:none !important;}
-header .pill-btn:last-of-type{display:inline-flex !important;}
-header .pill-btn:last-of-type{width:36px;height:36px;padding:0;justify-content:center;border-radius:999px}
+header label.pill-btn{display:none !important;} /* hide header image pill explicitly */
+header .pill-btn:last-of-type{display:inline-flex !important;width:36px;height:36px;padding:0;justify-content:center;border-radius:999px}
 header .pill-btn:last-of-type svg{display:none !important;}
 header .pill-btn:last-of-type::before{content:"+";font-size:22px;line-height:1;color:var(--text);}
 
-/* ========== 5) CHAT AREA ====================================== */
-.chat-scroll{
-  height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;
-  scroll-behavior:smooth; scroll-padding-bottom:calc(140px + var(--kb));
+/* Tools dropdown */
+.menu-panel{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:8px; width:280px; box-shadow:var(--shadow);
 }
+.menu-item{
+  width:100%; display:flex; align-items:center; gap:10px;
+  border:1px solid var(--border-soft); background:var(--glass-2);
+  border-radius:10px; padding:10px; margin-bottom:8px; font-size:14px;
+}
+.menu-item.active{background:rgba(255,255,255,.10)}
+.menu-item .icon{width:18px;height:18px}
+.menu-sep{border:none;border-top:1px solid var(--border);margin:4px 0 8px}
+
+/* ========== 5) CHAT ============================================ */
+.chat-scroll{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;scroll-padding-bottom:calc(140px + var(--kb))}
 .msg{padding:16px;border-radius:var(--r-lg)}
 .small-label{font-size:12px;color:var(--text-muted)}
-
-/* copy button inside code blocks */
-.code-copy-btn{
-  position:absolute; top:8px; right:8px; font-size:12px;
-  background:var(--bg-2); color:var(--text);
-  border:1px solid var(--border); border-radius:8px; padding:6px 8px; cursor:pointer;
-}
+.code-copy-btn{position:absolute;top:8px;right:8px;font-size:12px;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 8px;cursor:pointer}
 .code-copy-btn:hover{background:var(--glass)}
-
-/* organized answer */
 .org-title{font-size:18px;font-weight:800;margin:0 0 8px}
 .org-section{margin-top:12px}
 .org-sub{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
 .org-list,.org-steps{margin:0;padding-left:18px}
 .org-steps li{margin-bottom:4px}
-
-/* mini-bars */
 .bars{display:grid;gap:8px}
 .bar-row{display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center}
 .bar-label{font-size:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar-track{height:8px;background:var(--glass-2);border:1px solid var(--border-soft);border-radius:999px;overflow:hidden}
 .bar-fill{height:100%;background:var(--accent)}
-
-/* markdown */
 .answer.expanded{line-height:1.6}
 .answer.expanded h1,.answer.expanded h2,.answer.expanded h3{margin:14px 0 6px}
 .answer.expanded p{margin:8px 0}
-.answer.expanded blockquote{
-  margin:8px 0;padding:8px 12px;border-left:3px solid var(--border);
-  background:var(--glass-2);border-radius:6px;
-}
-.answer.expanded pre{
-  background:#0c0d10;color:#e8e8ea;padding:14px;border-radius:10px;overflow:auto;border:1px solid var(--border);
-}
+.answer.expanded blockquote{margin:8px 0;padding:8px 12px;border-left:3px solid var(--border);background:var(--glass-2);border-radius:6px}
+.answer.expanded pre{background:#0c0d10;color:#e8e8ea;padding:14px;border-radius:10px;overflow:auto;border:1px solid var(--border)}
 :root[data-theme="light"] .answer.expanded pre{background:#f2f3f6;color:#141519}
-.answer.expanded code:not(pre code){
-  background:var(--glass-2);padding:2px 6px;border:1px solid var(--border);border-radius:6px;
-}
-
-/* media / previews */
+.answer.expanded code:not(pre code){background:var(--glass-2);padding:2px 6px;border:1px solid var(--border);border-radius:6px}
 .embed-responsive{position:relative;width:100%}
 .embed-16by9{padding-top:56.25%}
 .embed-responsive iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.favicon-only{
-  display:inline-flex;align-items:center;gap:10px;min-height:44px;
-  background:var(--glass-2);border:1px solid var(--border-soft);border-radius:10px;padding:8px 10px;
-}
+.favicon-only{display:inline-flex;align-items:center;gap:10px;min-height:44px;background:var(--glass-2);border:1px solid var(--border-soft);border-radius:10px;padding:8px 10px}
 .src-title{font-size:13px;font-weight:700;color:var(--text)}
 .src-sub{font-size:11px;color:var(--text-muted)}
 .sources-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-
-/* typing preview panel */
-.fixed-panel{
-  position:fixed;left:0;right:0;bottom:calc(74px + var(--kb));z-index:45;padding-bottom:8px;
-}
+.fixed-panel{position:fixed;left:0;right:0;bottom:calc(74px + var(--kb));z-index:45;padding-bottom:8px}
 .fixed-panel .panel{background:var(--panel);border:1px solid var(--border)}
-.dim-while-typing{opacity:.98}
-
-/* skeletons */
-.skel{
-  background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));
-  background-size:300% 100%;
-  animation:skel 1.2s ease-in-out infinite;border-radius:12px;
-}
+.skel{background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));background-size:300% 100%;animation:skel 1.2s ease-in-out infinite;border-radius:12px}
 @keyframes skel{0%{background-position:0 0}100%{background-position:-200% 0}}
 
-/* ========== 6) COMPOSER ======================================= */
-.fixed-bottom{
-  position:sticky;bottom:0;left:0;right:0;z-index:50;
-  backdrop-filter:blur(10px); background:rgba(0,0,0,.80);
-  border-top:1px solid var(--border);
-  padding-bottom:max(env(safe-area-inset-bottom),12px);
-}
-textarea{font-size:16px;color:var(--text)} /* prevent iOS zoom */
+/* ========== 6) COMPOSER ======================================== */
+.fixed-bottom{position:sticky;bottom:0;left:0;right:0;z-index:50;backdrop-filter:blur(10px);background:rgba(0,0,0,.80);border-top:1px solid var(--border);padding-bottom:max(env(safe-area-inset-bottom),12px)}
+textarea{font-size:16px;color:var(--text)} /* avoid iOS zoom */
 
-/* ========== 7) YOUR LAYOUT RULES (OVERRIDES) =================== */
-/* (1) Bottom: only type bar + send button (hide camera pill) */
+/* ========== 7) YOUR LAYOUT RULES ================================ */
+/* (1) bottom: only type bar + send (hide camera pill) */
 .fixed-bottom .pill-btn{display:none !important;}
-
-/* (3) Prompt chips: single line, sideways scroll */
-.fixed-bottom .flex.gap-2.flex-wrap.mt-2{
-  flex-wrap:nowrap !important; overflow-x:auto !important;
-  -webkit-overflow-scrolling:touch; scrollbar-width:none;
-}
+/* (2) top already handled: only "+" and no header Image pill */
+/* (3) chips on one line with sideways scroll */
+.fixed-bottom .flex.gap-2.flex-wrap.mt-2{flex-wrap:nowrap !important;overflow-x:auto !important;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .fixed-bottom .flex.gap-2.flex-wrap.mt-2::-webkit-scrollbar{display:none}
-.fixed-bottom .flex.gap-2.flex-wrap.mt-2 > button{
-  flex:0 0 auto; white-space:nowrap;
-}
-
-/* (4) Keep chat shadows crisp */
+.fixed-bottom .flex.gap-2.flex-wrap.mt-2 > button{flex:0 0 auto;white-space:nowrap}
+/* (4) keep chat card shadow crisp */
 .msg.glass,.msg.glass-2{box-shadow:var(--shadow)}
 
-/* ========== 8) WEATHER CARD =================================== */
+/* ========== 8) WEATHER CARD ==================================== */
 .weather-card .wstat{background:var(--glass-2);border:1px solid var(--border-soft);border-radius:10px;padding:8px}
 .weather-card .wlabel{font-size:11px;color:var(--text-muted)}
 .weather-card .wval{font-size:13px;font-weight:600}
 .w-hscroll{-webkit-overflow-scrolling:touch}
 .w-hour{border:1px solid var(--border-soft);background:var(--glass-2)}
 
-/* ========== 9) UTILITIES USED BY JSX ========================== */
+/* ========== 9) UTILITIES (for JSX classes) ===================== */
 .hidden{display:none !important}
 .rounded-xl{border-radius:var(--r-lg)} .rounded-lg{border-radius:var(--r-md)} .rounded-md{border-radius:var(--r-sm)}
 .p-2{padding:8px} .p-3{padding:12px} .p-4{padding:16px}
-.px-1{padding-left:4px;padding-right:4px} .px-2{padding-left:8px;padding-right:8px}
-.px-3{padding-left:12px;padding-right:12px}
+.px-1{padding-left:4px;padding-right:4px} .px-2{padding-left:8px;padding-right:8px} .px-3{padding-left:12px;padding-right:12px}
 .py-1{padding-top:4px;padding-bottom:4px} .py-2{padding-top:8px;padding-bottom:8px}
 .pt-3{padding-top:12px} .pb-32{padding-bottom:8rem}
 .mt-1{margin-top:4px} .mt-2{margin-top:8px} .mt-3{margin-top:12px}
 .mb-1{margin-bottom:4px} .mb-2{margin-bottom:8px} .mb-3{margin-bottom:12px}
 .mx-auto{margin-left:auto;margin-right:auto}
-
 .w-full{width:100%} .w-24{width:6rem} .w-40{width:10rem}
 .h-3{height:.75rem} .h-4{height:1rem} .h-10{height:40px} .h-12{height:48px}
-.shrink-0{flex-shrink:0} .min-w-\[86px\]{min-width:86px}
-.max-w-4xl{max-width:64rem} .max-h-\[280px\]{max-height:280px}
-
+.shrink-0{flex-shrink:0} .min-w-$begin:math:display$86px$end:math:display${min-width:86px}
+.max-w-4xl{max-width:64rem} .max-h-$begin:math:display$280px$end:math:display${max-height:280px}
 .flex{display:flex} .grid{display:grid} .block{display:block}
 .flex-wrap{flex-wrap:wrap} .items-center{align-items:center}
 .justify-between{justify-content:space-between}
@@ -231,16 +192,14 @@ textarea{font-size:16px;color:var(--text)} /* prevent iOS zoom */
 .underline{text-decoration:underline}
 .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.aspect-\[16\/9\]{aspect-ratio:16/9}
+.aspect-$begin:math:display$16\\/9$end:math:display${aspect-ratio:16/9}
 .transition{transition:all .15s ease}
 .hover\:bg-gray-200:hover{background:#e5e7eb}
-.active\:scale-\[0\.99\]:active{transform:scale(0.99)}
+.active\:scale-$begin:math:display$0\\.99$end:math:display$:active{transform:scale(0.99)}
 .overflow-hidden{overflow:hidden}
-
-/* images with "glass" class */
 img.glass{background:var(--glass-2);border:1px solid var(--border-soft);border-radius:var(--r-md)}
 
-/* ========== 10) RESPONSIVE ==================================== */
+/* ========== 10) RESPONSIVE ===================================== */
 @media (max-width:640px){
   .sources-grid{grid-template-columns:1fr}
   .bar-row{grid-template-columns:1fr;gap:6px}
