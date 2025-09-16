@@ -1026,40 +1026,58 @@ const sendImageForAnalysis = async (file) => {
       )}
 
       {/* Composer — clean (no image button in middle) */}
-      <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
-        <div className="max-w-4xl mx-auto px-3 pt-2">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e)=>setInput(e.target.value)}
-                onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSend(); }}}
-                onFocus={()=>setFocused(true)}
-                onBlur={()=>setTimeout(()=>setFocused(false),150)}
-                rows={1}
-                inputMode="text"
-                placeholder=""
-                className="w-full bg-transparent outline-none resize-none leading-[1.6]"
-                style={{ height:44, maxHeight:44, overflowY:"auto" }}
-                aria-label="Type your message"
-              />
-            </div>
-            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
-              <FiArrowRight />
-            </button>
-          </div>
-
-          <div className="flex gap-2 flex-wrap mt-2">
-            {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
-              <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
+<div
+  className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
+  style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+>
+  <div className="max-w-4xl mx-auto px-3 pt-2">
+    <div className="flex items-center gap-2">
+      <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          rows={1}
+          inputMode="text"
+          placeholder=""
+          className="w-full bg-transparent outline-none resize-none leading-[1.6]"
+          style={{ height: 44, maxHeight: 44, overflowY: "auto" }}
+          aria-label="Type your message"
+        />
       </div>
-      );
-    }
-    
+      <button
+        onClick={() => handleSend(input)}
+        className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
+        title="Send"
+      >
+        <FiArrowRight />
+      </button>
+    </div>
+
+    <div className="flex gap-2 flex-wrap mt-2">
+      {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
+        <button
+          key={s}
+          onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)}
+          className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  </div>
+</div>
+
+</div> {/* end wrapper .flex flex-col min-h-[100svh] */}
+);
+}
+
 export default AIChat;
