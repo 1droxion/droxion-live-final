@@ -16,7 +16,7 @@
     "react-markdown": "^9.0.1",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.0",
-    "rehype-sanitize": "^6.0.0"  // ✅ added so Vercel won't fail
+    "rehype-sanitize": "^6.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
