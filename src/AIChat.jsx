@@ -596,11 +596,10 @@ function AIChat() {
     );
   };
 
-  const MediaBlock = ({ cards = [] }) => {
-    if (!cards.length) return null;
-    const mediaCards = cards.filter(c =>
-      ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || "")
-    );
+  const mediaCards = cards.filter(c =>
+  ["youtube","image","gallery","images-grid","images","weather"].includes(c.type) ||
+  isYouTube(c.url || "")
+);
     if (!mediaCards.length) return null;
 
     return (
