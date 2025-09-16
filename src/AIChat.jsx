@@ -31,9 +31,26 @@ const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.s
 
 const firstImageUrl = (c = {}) => {
   if (!c) return null;
+
+  // common single fields
+  const single =
+    c.image_url || c.image || c.preview || c.thumbnail || c.thumb || c.thumb_url || c.ogImage;
+  if (single) return single;
+
+  // direct image in `url` (png/jpg/webp/gif/svg/bmp)
+  if (c.url && /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(c.url)) return c.url;
+
+  // image objects in arrays
   const arr = Array.isArray(c.images) ? c.images : [];
-  const arrFirst = arr.length ? (typeof arr[0]==="string" ? arr[0] : (arr[0]?.url || arr[0]?.thumbnail || arr[0]?.thumb)) : null;
-  return c.image_url || c.image || c.thumbnail || c.thumb || c.thumb_url || c.preview || c.ogImage || arrFirst || null;
+  for (const it of arr) {
+    if (typeof it === "string") return it;
+    if (it?.url) return it.url;
+    if (it?.src) return it.src;
+    if (it?.thumbnail) return it.thumbnail;
+    if (it?.thumb) return it.thumb;
+  }
+
+  return null;
 };
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
@@ -100,34 +117,61 @@ function WeatherCard({ card }) {
         </div>
       </div>
       {(T || FEELS || RH || WIND || RAIN) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
-          {T     && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
-          {FEELS && <div className="wstat"><div className="wlabel">Feels like</div><div className="wval">{FEELS}</div></div>}
-          {RH    && <div className="wstat"><div className="wlabel">Humidity</div><div className="wval">{RH}</div></div>}
-          {WIND  && <div className="wstat"><div className="wlabel">Wind</div><div className="wval">{WIND}</div></div>}
-          {RAIN  && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
-        </div>
-      )}
-      {hrs.length>0 && (
-        <div className="mt-3">
-          <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
-          <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
-            {hrs.map((h,i)=>(
-              <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
-                <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
-                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                <div className="text-sm font-semibold">{(()=>{
-                  const c=h.c, f=h.f;
-                  if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-                  if(typeof c==="number") return `${Math.round(c)}°C`;
-                  if(typeof f==="number") return `${Math.round(f)}°F`;
-                  return "-";
-                })()}</div>
-              </div>
-            ))}
+        return (
+  <div className="grid grid-cols-1 gap-8 mt-3">
+    {mediaCards.map((card, i) => {
+      // NEW: render a single image card
+      if (card.type === "image") {
+        const u = firstImageUrl(card) || card.url || card.src;
+        return u ? <SmartImage key={i} url={u} title={card.title || "image"} /> : null;
+      }
+
+      if (card.type === "images-grid" && Array.isArray(card.images)) {
+        const items = card.images.slice(0, 12);
+        return (
+          <div key={i} className="grid grid-cols-2 gap-2">
+            {items.map((it, j) => {
+              const u = typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb || "");
+              return u ? <SmartImage key={j} url={u} title={it.title || "image"} /> : null;
+            })}
           </div>
-        </div>
-      )}
+        );
+      }
+
+      if (card.type === "weather") return <WeatherCard key={i} card={card} />;
+
+      if (card.type === "gallery" && Array.isArray(card.images)) {
+        const urls = card.images
+          .map(it => typeof it === "string" ? it : (it.url || it.src || it.thumbnail || it.thumb))
+          .filter(Boolean)
+          .slice(0, 10);
+        if (!urls.length) return null;
+        return (
+          <div key={i} className="grid grid-cols-2 gap-2">
+            {urls.map((u, j) => <SmartImage key={j} url={u} title="image" />)}
+          </div>
+        );
+      }
+
+      if (card.type === "youtube" || isYouTube(card.url || "")) {
+        const id = getYouTubeId(card.url || "");
+        if (!id) return null;
+        return (
+          <div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+            <iframe
+              src={`https://www.youtube.com/embed/${id}`}
+              title={card.title || "YouTube"}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        );
+      }
+
+      return null;
+    })}
+  </div>
+);
       {days.length>0 && (
         <div className="mt-3">
           <div className="text-[11px] text-gray-400 mb-1">Next days</div>
