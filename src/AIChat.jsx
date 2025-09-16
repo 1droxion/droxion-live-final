@@ -15,17 +15,73 @@ import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-/* ---------------- helpers ---------------- */
-const normHost = (u = "") => { try { return new URL(u).hostname.toLowerCase().replace(/^www\./,"").replace(/^m\./,""); } catch { return ""; } };
+/* ---------------------- helpers ---------------------- */
+const normHost = (u = "") => {
+  try {
+    const url = new URL(u);
+    // blob: and data: have no hostname — normalize to ""
+    if (url.protocol === "blob:" || url.protocol === "data:") return "";
+    return url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+  } catch {
+    return "";
+  }
+};
 const host = (u) => normHost(u);
-const BAD_HOSTS = ["example.com","example.org"];
-const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
-const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
+const isBlobUrl = (u = "") => {
+  try { return new URL(u).protocol === "blob:" || new URL(u).protocol === "data:"; } catch { return false; }
+};
+
+const BAD_HOSTS = ["example.com", "example.org"];
+const isFilteredSource = (u = "") => {
+  const h = host(u);
+  return !h || BAD_HOSTS.some((b) => h === b || h.endsWith("." + b));
+};
+
+// try a few common fields + arrays
+const firstImageUrl = (c = {}) => {
+  if (!c) return null;
+  const direct =
+    c.image_url ||
+    c.image ||
+    c.thumbnail ||
+    c.thumb ||
+    c.thumb_url ||
+    c.preview ||
+    (Array.isArray(c.images) && c.images.length ? (typeof c.images[0] === "string" ? c.images[0] : c.images[0]?.url || c.images[0]?.thumbnail || c.images[0]?.thumb) : null) ||
+    c.ogImage ||
+    null;
+  return direct || null;
+};
+
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
-const toProxy = (u) => `${IMAGE_PROXY}${encodeURIComponent(u)}`;
-const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
-const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
-const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
+const toProxy = (u = "") => {
+  // never proxy local blob/data images; also skip if not http(s)
+  if (!u || isBlobUrl(u)) return u;
+  if (!/^https?:/i.test(u)) return u;
+  return `${IMAGE_PROXY}${encodeURIComponent(u)}`;
+};
+
+const unsplash = (q) =>
+  q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null;
+
+const faviconFor = (u = "") => {
+  const h = host(u);
+  return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null;
+};
+
+const timeAgo = (d) => {
+  if (!d) return "";
+  const t = typeof d === "string" ? new Date(d).getTime() : +d;
+  if (!t || Number.isNaN(t)) return "";
+  const s = Math.floor((Date.now() - t) / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const dd = Math.floor(h / 24);
+  return `${dd}d ago`;
+};
 
 /* -------- intent detection -------- */
 const isGreeting   = (s="") => /^(hi|hello|hey|yo|sup|hola|namaste)[!\.\s]*$/i.test(s.trim());
