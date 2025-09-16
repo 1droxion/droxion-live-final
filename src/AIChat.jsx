@@ -140,10 +140,14 @@ const stripBranding = (md="", userPrompt="") => {
 };
 
 /* ---------------- Tools Menu (inside + only) ---------------- */
+/* ---------------------- Tools Menu ---------------------- */
 function ToolsMenu({
-  onSendImageFile, onSendAnyFile,
+  onSendImageFile,
+  onSendAnyFile,
   onToggleAgent, agentOn,
-  onDeepResearch, onSetPersona, onCreateImage,
+  onDeepResearch,
+  onSetPersona,
+  onCreateImage,
   webSearchOn, onToggleWebSearch
 }) {
   const camRef = useRef(null);
