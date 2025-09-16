@@ -172,7 +172,7 @@ const normalizeWeatherCard = (raw) => {
 
 /* ---------------------- storage & image fetch ---------------------- */
 const STORAGE_KEY = "droxion.chat.v1";
-const MEM_KEY = "droxion.mem.v
+const MEM_KEY = "droxion.mem.v1";
 const loadMem = () => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; } };
 const saveMem = (arr) => { try { localStorage.setItem(MEM_KEY, JSON.stringify(arr.slice(-100))); } catch {} };
 
@@ -186,6 +186,19 @@ const ensureImagesFor = async (query) => {
     if (imgs.length) return [{ type: "gallery", images: imgs.slice(0,12) }];
   } catch {}
   return [];
+};
+
+/* ---------------------- minor text cleaners ---------------------- */
+const isOwnershipQuestion = (s="") =>
+  /\b(who\s+(made|built|created)|who\s+owns?|owner|creator|made\s+you|own\s+you)\b/i.test(s || "");
+
+const stripBranding = (md="", userPrompt="") => {
+  if (isOwnershipQuestion(userPrompt)) return md;
+  return md.replace(/\n?\s*—\s*Powered by Droxion\s*/gi, "");
+};
+
+const cleanChipLabel = (txt="") => {
+  return (txt || "").replace(/^(google:|search:)\s*/i,"").trim();
 };
 
 /* ---------------------- Tools Menu ---------------------- */
@@ -279,7 +292,7 @@ function WeatherCard({ card }) {
   const RH = (typeof card.humidity === "number") ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip != null && card.precip !== "") ? `${card.precip}${typeof card.precip === "number" ? " mm" : ""}` : "";
 
-  const pick = (obj, keys, d = null) => {
+  const pick2 = (obj, keys, d = null) => { // local pick to avoid shadowing import
     for (const k of keys) if (obj && obj[k] != null && obj[k] !== "") return obj[k];
     return d;
   };
@@ -297,21 +310,21 @@ function WeatherCard({ card }) {
   };
 
   const hrs = (card.hourly || []).slice(0, 8).map(h => ({
-    t: pick(h, ["time","ts","timestamp","date"]),
-    icon: pick(h, ["icon","icon_url","image"]),
-    c: pick(h, ["temp_c","tempC","temperature_c","temperatureC","temp"]),
-    f: pick(h, ["temp_f","tempF","temperature_f","temperatureF"]),
-    text: pick(h, ["text","condition","desc"])
+    t: pick2(h, ["time","ts","timestamp","date"]),
+    icon: pick2(h, ["icon","icon_url","image"]),
+    c: pick2(h, ["temp_c","tempC","temperature_c","temperatureC","temp"]),
+    f: pick2(h, ["temp_f","tempF","temperature_f","temperatureF"]),
+    text: pick2(h, ["text","condition","desc"])
   }));
 
   const days = (card.daily || []).slice(0, 3).map(d => ({
-    day: pick(d, ["day","name","weekday","label"]),
-    icon: pick(d, ["icon","icon_url","image"]),
-    min_c: pick(d, ["min_c","minC","low_c","lowC","min"]),
-    min_f: pick(d, ["min_f","minF","low_f","lowF"]),
-    max_c: pick(d, ["max_c","maxC","high_c","highC","max"]),
-    max_f: pick(d, ["max_f","maxF","high_f","highF"]),
-    text: pick(d, ["text","condition","desc"])
+    day: pick2(d, ["day","name","weekday","label"]),
+    icon: pick2(d, ["icon","icon_url","image"]),
+    min_c: pick2(d, ["min_c","minC","low_c","lowC","min"]),
+    min_f: pick2(d, ["min_f","minF","low_f","lowF"]),
+    max_c: pick2(d, ["max_c","maxC","high_c","highC","max"]),
+    max_f: pick2(d, ["max_f","maxF","high_f","highF"]),
+    text: pick2(d, ["text","condition","desc"])
   }));
 
   return (
@@ -431,6 +444,7 @@ function WeatherCard({ card }) {
     </div>
   );
 }
+
 /* ---------------------- main component ---------------------- */
 function AIChat() {
   // chat + ui
@@ -562,14 +576,14 @@ function AIChat() {
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
 
-  const pushWithFollowups = async (md, cards, q, meta={}) => {
+  const pushWithFollowups = async (mdRaw, cards, q, meta={}) => {
+    const md = stripBranding(mdRaw || "", q || "");
     setMessages((p) => [...p, { role: "assistant", content: md, cards, meta }]);
     const followups = await fetchFollowups(q);
     setMessages((p) => {
       const last = p[p.length-1]; if (!last || last.role!=="assistant") return p;
       const copy = [...p]; copy[copy.length-1] = { ...last, followups }; return copy;
     });
-    // speak reply if enabled
     if (speakOn && md) {
       try { window.speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(md.replace(/[#*_`>]/g," ")); speechSynthesis.speak(u);} catch {}
     }
@@ -688,7 +702,7 @@ function AIChat() {
         web: webSearchOn,
         agent: agentOn
       });
-      const md = res.data?.reply || res.data?.text || "";
+      const md = stripBranding(res.data?.reply || res.data?.text || "", content);
       let cards = rankAndTrim((res.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image })), 12, true);
       const hasMedia = cards.some(c => ["images-grid","gallery","youtube","weather"].includes(c.type) || isYouTube(c.url || ""));
       if (!hasMedia && (wantsImages(content) || isSearchy(content))) cards = cards.concat(await ensureImagesFor(content));
@@ -728,7 +742,8 @@ function AIChat() {
     const fav = faviconFor(card.url);
     return (
       <a href={card.url} target="_blank" rel="noreferrer" className="favicon-only">
-        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />}
+        {fav && <img src={fav} alt="" width={16} height={16} style={{ borderRadius: 4 }} />
+        }
         <div className="min-w-0">
           <div className="src-title truncate">{card.title || displaySource(card)}</div>
           <div className="src-sub truncate">{displaySource(card)}</div>
@@ -784,7 +799,8 @@ function AIChat() {
     );
   };
 
-  const buildLinkSets = (cards = [], searchy = false) => {
+  const buildLinkSets = (cards = [], explicit = false) => {
+    if (!explicit) return { quickActions: [], grid: [] };
     const links = (cards || []).filter(c =>
       ["web","link","wiki","news","stock","crypto","images"].includes(c.type) &&
       c.url && !isFilteredSource(c.url)
@@ -792,17 +808,13 @@ function AIChat() {
     const sorted = dedupeCards(links).sort((a,b) => scoreCard(b) - scoreCard(a));
     const byHost = {};
     for (const c of sorted) { const h = host(c.url); if (!byHost[h]) byHost[h] = c; }
-    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com"];
-    if (searchy) pref.push("google.com","wikipedia.org","youtube.com","youtu.be");
+    const pref = ["forbes.com","bloomberg.com","reuters.com","cnbc.com","finance.yahoo.com","coinmarketcap.com","coingecko.com","google.com","wikipedia.org","youtube.com","youtu.be"];
     const quickActions = [];
     for (const ph of pref) {
       const k = Object.keys(byHost).find(h => h===ph || h.endsWith("."+ph));
       if (k) quickActions.push(byHost[k]);
     }
-    const grid = Object.values(byHost)
-      .filter(c => !/^(google\.com|wikipedia\.org)$/.test(host(c.url)) || searchy)
-      .sort((a,b)=> scoreCard(b)-scoreCard(a))
-      .slice(0,6);
+    const grid = Object.values(byHost).sort((a,b)=> scoreCard(b)-scoreCard(a)).slice(0,6);
     return { quickActions, grid };
   };
 
@@ -822,9 +834,16 @@ function AIChat() {
   };
   const extractSteps = (md="") => {
     const blocks = md.split("\n");
-    const numbered = blocks.filter(l => /^\d+\.\s+/.test(l)).slice(0,12).map(l => l.replace(/^\d+\.\s+/,""));
+    // Prefer numbered steps; fallback to bullets; trim **bold** wrappers
+    const numbered = blocks
+      .filter(l => /^\d+\.\s+/.test(l))
+      .map(l => l.replace(/^\d+\.\s+/,"").replace(/^\*\*(.+?)\*\*$/,"$1"))
+      .slice(0,12);
     if (numbered.length) return numbered;
-    const dots = blocks.filter(l => /^[-*•]\s+/.test(l)).slice(0,8).map(l => l.replace(/^[-*•]\s+/, ""));
+    const dots = blocks
+      .filter(l => /^[-*•]\s+/.test(l))
+      .map(l => l.replace(/^[-*•]\s+/,"").replace(/^\*\*(.+?)\*\*$/,"$1"))
+      .slice(0,8);
     return dots;
   };
   const parsePairs = (md="") => {
@@ -941,40 +960,42 @@ function AIChat() {
       await pushWithFollowups("Deep research failed.", [], q, { suppressSources: true });
     }
   };
-/* ---------------------- Speech to text (browser) ---------------------- */
-const startMic = async () => {
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Rec) {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      alert(
-        "Mic captured, but this browser lacks SpeechRecognition.\nUse HTTPS (or localhost) and/or wire your backend STT."
-      );
-    } catch {
-      await pushWithFollowups(
-        "Microphone access denied.\n\nHow to fix:\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) iPhone: Settings → Safari → Microphone → Allow.",
-        [],
-        "mic denied",
-        { suppressSources: true }
-      );
+
+  /* ---------------------- Speech to text (browser) ---------------------- */
+  const startMic = async () => {
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Rec) {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        alert(
+          "Mic captured, but this browser lacks SpeechRecognition.\nUse HTTPS (or localhost) and/or wire your backend STT."
+        );
+      } catch {
+        await pushWithFollowups(
+          "Microphone access denied.\n\nHow to fix:\n1) Use HTTPS (or localhost).\n2) Allow mic in the address bar.\n3) iPhone: Settings → Safari → Microphone → Allow.",
+          [],
+          "mic denied",
+          { suppressSources: true }
+        );
+      }
+      return;
     }
-    return;
-  }
-  try {
-    const rec = new Rec();
-    rec.lang = "en-US";
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e) => {
-      const t = e.results?.[0]?.[0]?.transcript || "";
-      if (t) handleSend(t);
-    };
-    rec.onerror = () => { alert("Mic error. Please try again."); };
-    rec.start();
-  } catch {
-    alert("Mic access denied. Please enable microphone permissions.");
-  }
-};
+    try {
+      const rec = new Rec();
+      rec.lang = "en-US";
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = (e) => {
+        const t = e.results?.[0]?.[0]?.transcript || "";
+        if (t) handleSend(t);
+      };
+      rec.onerror = () => { alert("Mic error. Please try again."); };
+      rec.start();
+    } catch {
+      alert("Mic access denied. Please enable microphone permissions.");
+    }
+  };
+
   /* ---------------------- render ---------------------- */
   const [expandedIdx, setExpandedIdx] = useState(null);
 
@@ -986,6 +1007,7 @@ const startMic = async () => {
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
           <div className="ml-auto flex items-center gap-2">
+            {/* keep pills for state, but CSS will hide all except the last (More as "+") */}
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
               {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
             </button>
@@ -1001,6 +1023,8 @@ const startMic = async () => {
             <button onClick={startMic} className="pill-btn" title="Speak your message">
               <FiMic /><span style={{marginLeft:6}}>Mic</span>
             </button>
+
+            {/* this "Image" pill is kept for code parity but CSS hides it in header */}
             <label className="pill-btn cursor-pointer" title="Upload image to analyze" style={{display:"inline-flex",alignItems:"center"}}>
               <FiImage /><span style={{marginLeft:6}}>Image</span>
               <input type="file" accept="image/*" hidden ref={fileRef}
@@ -1040,19 +1064,22 @@ const startMic = async () => {
               const mediaCards = cards.filter(c => ["youtube","image","gallery","images-grid","weather"].includes(c.type) || isYouTube(c.url || ""));
 
               const userPrompt = messages[i-1]?.role === "user" ? (messages[i-1]?.content || "") : msg.content || "";
-              const showSearchy = isSearchy(userPrompt);
+
+              // Show sources ONLY when the prompt explicitly starts with google: or search:
+              const explicitSearch = /^(google:|search:)/i.test((userPrompt || "").trim());
               const isRealtimeCard = (cards||[]).some(c => ["news","crypto","weather","time","wiki","images"].includes(c.type));
 
               const hasPreviewable = (cards||[]).some(c => firstImageUrl(c) || (c.url && !isFilteredSource(c.url)));
               const shouldShowSources =
                 (!isUser) &&
-                (showSearchy || isRealtimeCard) &&
-                hasPreviewable &&
+                webSearchOn &&
+                explicitSearch &&
+                (isRealtimeCard || hasPreviewable) &&
                 !(msg.meta && msg.meta.suppressSources);
 
               const linkSets = buildLinkSets(cards, shouldShowSources);
 
-              const qp = encodeURIComponent(userPrompt || "");
+              const qp = encodeURIComponent(cleanChipLabel(userPrompt || ""));
               const googleUrl = `https://www.google.com/search?q=${qp}`;
               const newsUrl = `https://www.google.com/search?q=${qp ? qp + "+latest+news" : "latest+news"}`;
 
@@ -1074,9 +1101,9 @@ const startMic = async () => {
                   {!isUser && shouldShowSources && (
                     <>
                       <div className="actions-row">
-                        <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn">google: {userPrompt || "search"}</a>
-                        <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn">search: {userPrompt ? `${userPrompt} latest news` : "latest news"}</a>
-                        {linkSets.quickActions.slice(0,2).map((c,idx)=>(
+                        <a href={googleUrl} target="_blank" rel="noreferrer" className="action-btn">google: {cleanChipLabel(userPrompt) || "search"}</a>
+                        <a href={newsUrl} target="_blank" rel="noreferrer" className="action-btn">search: {(cleanChipLabel(userPrompt) ? `${cleanChipLabel(userPrompt)} latest news` : "latest news")}</a>
+                        {linkSets.quickActions.slice(0,1).map((c,idx)=>(
                           <a key={`qa-${idx}`} href={c.url} target="_blank" rel="noreferrer" className="action-btn">
                             {displaySource(c).replace(/^m\./,"")}
                           </a>
@@ -1212,9 +1239,12 @@ const startMic = async () => {
                 aria-label="Type your message"
               />
             </div>
+
+            {/* hidden by CSS to keep layout simple */}
             <button onClick={()=>fileRef.current?.click()} className="pill-btn" title="Analyze an image">
               <FiCamera />
             </button>
+
             <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
               <FiArrowRight />
             </button>
