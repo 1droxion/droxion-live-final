@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages)
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FIXED
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -38,6 +38,29 @@ const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
 const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
+
+/* small youtube helpers */
+const isYouTube = (raw="") => {
+  try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
+};
+const youTubeIdFromUrl = (raw="") => {
+  try {
+    const u = new URL(raw);
+    const h = u.hostname.replace(/^www\./, "");
+    if (h.includes("youtube.com")) {
+      const v = u.searchParams.get("v");
+      if (v) return v;
+      const p = u.pathname.split("/").filter(Boolean);
+      if (p[0] === "shorts" || p[0] === "embed") return p[1];
+    }
+    if (h.includes("youtu.be")) {
+      const p = u.pathname.split("/").filter(Boolean);
+      if (p[0]) return p[0];
+    }
+  } catch {}
+  const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+};
 
 /* ---------------------- quick intent ---------------------- */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
@@ -162,29 +185,35 @@ function ToolsMenu({
   webSearchOn, onToggleWebSearch,
   onClearAll,
   onNewChat,
+  onClose
 }) {
   const camRef = useRef(null);
   const photosRef = useRef(null);
   const filesRef = useRef(null);
 
-  const pickCamera = () => camRef.current?.click();
-  const pickPhotos = () => photosRef.current?.click();
-  const pickFiles  = () => filesRef.current?.click();
+  const wrap = (fn) => () => { try { fn?.(); } finally { onClose?.(); } };
+
+  const pickCamera = wrap(() => camRef.current?.click());
+  const pickPhotos = wrap(() => photosRef.current?.click());
+  const pickFiles  = wrap(() => filesRef.current?.click());
 
   const handleCamFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "camera" });
     e.target.value = "";
+    onClose?.();
   };
   const handlePhotoFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "photos" });
     e.target.value = "";
+    onClose?.();
   };
   const handleAnyFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendAnyFile?.(f);
     e.target.value = "";
+    onClose?.();
   };
 
   return (
@@ -200,16 +229,16 @@ function ToolsMenu({
 
       <hr className="menu-sep" />
 
-      <button className={`menu-item ${agentOn ? "active":""}`} onClick={onToggleAgent}><FiCpu className="icon" /><span>Agent mode {agentOn?"On":"Off"}</span></button>
-      <button className="menu-item" onClick={onDeepResearch}><FiSearch className="icon" /><span>Deep research</span></button>
-      <button className="menu-item" onClick={() => onSetPersona?.("teacher")}><FiBook className="icon" /><span>Study &amp; learn</span></button>
-      <button className="menu-item" onClick={onCreateImage}><FiAperture className="icon" /><span>Create image</span></button>
-      <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={onToggleWebSearch}><FiGlobe className="icon" /><span>Web search {webSearchOn?"On":"Off"}</span></button>
+      <button className={`menu-item ${agentOn ? "active":""}`} onClick={wrap(onToggleAgent)}><FiCpu className="icon" /><span>Agent mode {agentOn?"On":"Off"}</span></button>
+      <button className="menu-item" onClick={wrap(onDeepResearch)}><FiSearch className="icon" /><span>Deep research</span></button>
+      <button className="menu-item" onClick={wrap(() => onSetPersona?.("teacher"))}><FiBook className="icon" /><span>Study &amp; learn</span></button>
+      <button className="menu-item" onClick={wrap(onCreateImage)}><FiAperture className="icon" /><span>Create image</span></button>
+      <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={wrap(onToggleWebSearch)}><FiGlobe className="icon" /><span>Web search {webSearchOn?"On":"Off"}</span></button>
 
       <hr className="menu-sep" />
 
-      <button className="menu-item" onClick={onNewChat}><FiPlus className="icon" /><span>New chat</span></button>
-      <button className="menu-item danger" onClick={onClearAll}><span>Clear chat + memory</span></button>
+      <button className="menu-item" onClick={wrap(onNewChat)}><FiPlus className="icon" /><span>New chat</span></button>
+      <button className="menu-item danger" onClick={wrap(onClearAll)}><span>Clear chat + memory</span></button>
     </div>
   );
 }
@@ -345,94 +374,93 @@ function AIChat() {
 
   /* ---------------------- send handlers — NO TRIMMING of cards ---------------------- */
   const handleSend = async (text = input) => {
-  const content = (text || "").trim(); if (!content) return;
-  setMessages((p) => [...p, { role: "user", content }]);
-  setInput(""); setTextSug([]);
+    const content = (text || "").trim(); if (!content) return;
+    setMessages((p) => [...p, { role: "user", content }]);
+    setInput(""); setTextSug([]);
 
-  try {
-    const lower = content.toLowerCase();
+    try {
+      const lower = content.toLowerCase();
 
-    /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
-    if (wantsImages(content)) {
-      // Try backend first (intent: images). If it gives us cards, use them.
-      let cards = [];
-      try {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
-        cards = (r.data?.cards || []).filter(Boolean);
-      } catch {}
+      /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
+      if (wantsImages(content)) {
+        // Try backend first (intent: images). If it gives us cards, use them.
+        let cards = [];
+        try {
+          const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
+          cards = (r.data?.cards || []).filter(Boolean);
+        } catch {}
 
-      // If backend didn’t return any image cards, fall back to Unsplash sources.
-      const hasImages =
-        cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
+        // If backend didn’t return any image cards, fall back to Unsplash sources.
+        const hasImages =
+          cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
 
-      if (!hasImages) {
-        const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
-        const urls = Array.from({ length: 10 }).map((_, i) =>
-          `https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`
-        );
-        cards = [{ type: "images-grid", images: urls }];
+        if (!hasImages) {
+          const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
+          const urls = Array.from({ length: 10 }).map((_, i) =>
+            `https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`
+          );
+          cards = [{ type: "images-grid", images: urls }];
+        }
+
+        const md = `Here are some images. Tap any card to open.`;
+        await pushWithFollowups(md, cards, content, { suppressSources: true });
+        return;
+      }
+      /* 🔥 end images branch */
+
+      // ---- existing special cases (keep yours) ----
+      if (lower.startsWith("google:")) {
+        const q = content.replace(/^google:\s*/i, "");
+        const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
+        await pushWithFollowups(md, cards, content);
+        return;
       }
 
-      const md = `Here are some images. Tap any card to open.`;
-      await pushWithFollowups(md, cards, content, { suppressSources: true });
-      return;
-    }
-    /* 🔥 end images branch */
+      if (lower.startsWith("search:")) {
+        const q = content.replace(/^search:\s*/i, "");
+        const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
+        const cards = (r.data?.results || []).filter(Boolean).map(it => ({
+          type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet
+        }));
+        await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
+        return;
+      }
 
-    // ---- existing special cases (keep yours) ----
-    if (lower.startsWith("google:")) {
-      const q = content.replace(/^google:\s*/i, "");
-      const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
+      if (wantsNews(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
+        return;
+      }
+
+      if (wantsWeather(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
+        return;
+      }
+
+      if (wantsCrypto(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
+        return;
+      }
+
+      // ---- default chat ----
+      const res = await axios.post(`${API_BASE}/chat`, {
+        prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
+      });
+      const md = res.data?.reply || res.data?.text || "";
+      const cards = (res.data?.cards || []).filter(Boolean);
       await pushWithFollowups(md, cards, content);
-      return;
+    } catch {
+      await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
-
-    if (lower.startsWith("search:")) {
-      const q = content.replace(/^search:\s*/i, "");
-      const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
-      const cards = (r.data?.results || []).filter(Boolean).map(it => ({
-        type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet
-      }));
-      await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
-      return;
-    }
-
-    if (wantsNews(content)) {
-      const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
-      return;
-    }
-
-    if (wantsWeather(content)) {
-      const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
-      return;
-    }
-
-    if (wantsCrypto(content)) {
-      const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
-      return;
-    }
-
-    // ---- default chat ----
-    const res = await axios.post(`${API_BASE}/chat`, {
-      prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
-    });
-    const md = res.data?.reply || res.data?.text || "";
-    const cards = (res.data?.cards || []).filter(Boolean);
-    await pushWithFollowups(md, cards, content);
-  } catch {
-    await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
-  }
-};
-
-  /* ---------------------- Image uploader (instant preview + robust) ---------------------- */
+  };
+    /* ---------------------- Image uploader (Analyzing… temp -> update in place) ---------------------- */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -442,18 +470,30 @@ function AIChat() {
 
     // local preview (never dropped)
     let localUrl = "";
+    let tempIndex = -1;
     try {
       localUrl = URL.createObjectURL(file);
-      setMessages((p) => [
-        ...p,
-        {
+      // Insert a TEMP assistant message we will UPDATE later (not add a new one)
+      setMessages((p) => {
+        const next = [...p, {
           role: "assistant",
           content: "Analyzing your image…",
           cards: [{ type: "gallery", images: [localUrl] }],
-          meta: { suppressSources: true, localPreview: true }
-        }
-      ]);
+          meta: { suppressSources: true, localPreview: true, temp: true }
+        }];
+        tempIndex = next.length - 1;
+        return next;
+      });
     } catch {}
+
+    const updateTemp = (fn) => {
+      setMessages((p) => {
+        if (tempIndex < 0 || tempIndex >= p.length) return p;
+        const copy = [...p];
+        copy[tempIndex] = fn(copy[tempIndex]) || copy[tempIndex];
+        return copy;
+      });
+    };
 
     try {
       const form = new FormData();
@@ -473,15 +513,11 @@ function AIChat() {
       );
       const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
 
-      await pushWithFollowups(md, finalCards, input || "image analysis");
+      // UPDATE the temp message instead of pushing a new one
+      updateTemp((old) => ({ ...old, content: md, cards: finalCards, meta: { ...old.meta, temp: false } }));
       setInput("");
     } catch {
-      await pushWithFollowups(
-        "Image analysis failed. Please try again.",
-        localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
-        "vision failed",
-        { suppressSources: true }
-      );
+      updateTemp((old) => ({ ...old, content: "Image analysis failed. Please try again." }));
     } finally {
       if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
     }
@@ -553,120 +589,101 @@ function AIChat() {
   };
 
   /* ---------------------- Media block (images, youtube, weather) ---------------------- */
-function MediaBlock({ cards = [] }) {
-  if (!cards || cards.length === 0) return null;
+  function MediaBlock({ cards = [] }) {
+    if (!cards || cards.length === 0) return null;
 
-  const getYouTubeId = (raw = "") => {
-    try {
-      const u = new URL(raw);
-      const h = u.hostname.replace(/^www\./, "");
-      if (h.includes("youtube.com")) {
-        const v = u.searchParams.get("v");
-        if (v) return v;
-        const p = u.pathname.split("/").filter(Boolean);
-        if (p[0] === "shorts" || p[0] === "embed") return p[1];
-      }
-      if (h.includes("youtu.be")) {
-        const p = u.pathname.split("/").filter(Boolean);
-        if (p[0]) return p[0];
-      }
-    } catch {}
-    const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
-    return m ? m[1] : null;
-  };
+    return (
+      <div className="grid grid-cols-1 gap-8 mt-3">
+        {cards.map((card, i) => {
+          // Images grid (array of urls or {url})
+          if (card?.type === "images-grid" && Array.isArray(card.images)) {
+            const items = card.images.slice(0, 12);
+            return (
+              <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
+                {items.map((it, j) => {
+                  const u = typeof it === "string" ? it : (it?.url || "");
+                  if (!u) return null;
+                  return (
+                    <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
+                      <img
+                        src={u}
+                        alt=""
+                        className="w-full rounded-lg glass"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    </a>
+                  );
+                })}
+              </div>
+            );
+          }
 
-  return (
-    <div className="grid grid-cols-1 gap-8 mt-3">
-      {cards.map((card, i) => {
-        // Images grid (array of urls or {url})
-        if (card?.type === "images-grid" && Array.isArray(card.images)) {
-          const items = card.images.slice(0, 12);
-          return (
-            <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
-              {items.map((it, j) => {
-                const u = typeof it === "string" ? it : (it?.url || "");
-                if (!u) return null;
-                return (
-                  <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
-                    <img
-                      src={u}
-                      alt=""
-                      className="w-full rounded-lg glass"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                    />
-                  </a>
-                );
-              })}
-            </div>
-          );
-        }
+          // Gallery (same idea)
+          if (card?.type === "gallery" && Array.isArray(card.images)) {
+            const urls = card.images
+              .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
+              .filter(Boolean)
+              .slice(0, 12);
+            return (
+              <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
+                {urls.map((u, j) => (
+                  <img
+                    key={`gal-${i}-${j}`}
+                    src={u}
+                    alt=""
+                    className="w-full rounded-lg glass"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
+                ))}
+              </div>
+            );
+          }
 
-        // Gallery (same idea)
-        if (card?.type === "gallery" && Array.isArray(card.images)) {
-          const urls = card.images
-            .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
-            .filter(Boolean)
-            .slice(0, 12);
-          return (
-            <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
-              {urls.map((u, j) => (
-                <img
-                  key={`gal-${i}-${j}`}
-                  src={u}
-                  alt=""
-                  className="w-full rounded-lg glass"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                />
-              ))}
-            </div>
-          );
-        }
-
-        // Single image card (backend might return {type:"image", url})
-        if (card?.type === "image" && card.url) {
-          return (
-            <img
-              key={`image-${i}`}
-              src={card.url}
-              alt=""
-              className="w-full rounded-lg glass"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          );
-        }
-
-        // Weather (pass through to your WeatherCard if present)
-        if (card?.type === "weather") {
-          return <WeatherCard key={`wx-${i}`} card={card} />;
-        }
-
-        // YouTube
-        if (card?.type === "youtube" || (card?.url && /youtu\.?be/.test(card.url))) {
-          const id = getYouTubeId(card.url || "");
-          if (!id) return null;
-          return (
-            <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${id}`}
-                title={card.title || "YouTube"}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
+          // Single image card (backend might return {type:"image", url})
+          if (card?.type === "image" && card.url) {
+            return (
+              <img
+                key={`image-${i}`}
+                src={card.url}
+                alt=""
+                className="w-full rounded-lg glass"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
               />
-            </div>
-          );
-        }
+            );
+          }
 
-        return null;
-      })}
-    </div>
-  );
-}
+          // Weather (pass through to your WeatherCard if present)
+          if (card?.type === "weather") {
+            return <WeatherCard key={`wx-${i}`} card={card} />;
+          }
+
+          // YouTube
+          if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
+            const id = youTubeIdFromUrl(card.url || "");
+            if (!id) return null;
+            return (
+              <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${id}`}
+                  title={card.title || "YouTube"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            );
+          }
+
+          return null;
+        })}
+      </div>
+    );
+  }
 
   /* ---------------------- + menu helpers ---------------------- */
   const clearAll = () => {
@@ -707,17 +724,24 @@ function MediaBlock({ cards = [] }) {
       {menuOpen && (
         <>
           <div onClick={()=>setMenuOpen(false)} style={{ position:"fixed", inset:0, zIndex:999, background:"transparent" }} />
-          <div style={{ position:"fixed", right:8, top:56, zIndex:1000 }} onMouseLeave={()=>setMenuOpen(false)}>
+          <div style={{ position:"fixed", right:8, top:56, zIndex:1000 }}>
             <ToolsMenu
               onSendImageFile={(f)=>sendImageForAnalysis(f)}
               onSendAnyFile={(f)=>{/* optional */}}
-              onToggleAgent={()=>setAgentOn(v=>!v)} agentOn={agentOn}
-              onDeepResearch={()=>{ const q=(input||"").trim(); if(!q) return; axios.post(`${API_BASE}/deepsearch`,{q,agent:agentOn}).then(r=>pushWithFollowups(r.data?.answer||`Deep research on **${q}**`, r.data?.cards||[], q)).catch(()=>pushWithFollowups("Deep research failed.", [], q, {suppressSources:true})); }}
-              onSetPersona={(p)=>setPersona(p)}
+              onToggleAgent={()=>setAgentOn(v=>{
+                const nv=!v;
+                setMessages(p=>[...p,{role:"assistant",content:`Agent mode ${nv?"enabled":"disabled"}.`,meta:{suppressSources:true}}]);
+                return nv;
+              })}
+              agentOn={agentOn}
+              onDeepResearch={()=>{ const q=(input||"").trim(); if(!q) return; setMessages(p=>[...p,{role:"assistant",content:"Researching…",meta:{suppressSources:true}}]); axios.post(`${API_BASE}/deepsearch`,{q,agent:agentOn}).then(r=>setMessages(p=>{const copy=[...p]; copy[copy.length-1]={role:"assistant",content:r.data?.answer||`Deep research on **${q}**`,cards:(r.data?.cards||[])}; return copy;})).catch(()=>setMessages(p=>{const copy=[...p]; copy[copy.length-1]={role:"assistant",content:"Deep research failed.",meta:{suppressSources:true}}; return copy;}));}}
+              onSetPersona={(p)=>{ setPersona(p); setMessages(m=>[...m,{role:"assistant",content:`Persona set to **${p}**.`,meta:{suppressSources:true}}]); }}
               onCreateImage={()=>handleSend(`create image: ${input||"cinematic portrait"}`)}
-              webSearchOn={webSearchOn} onToggleWebSearch={()=>setWebSearchOn(v=>!v)}
+              webSearchOn={webSearchOn}
+              onToggleWebSearch={()=>{ setWebSearchOn(v=>{ const nv=!v; setMessages(m=>[...m,{role:"assistant",content:`Web search ${nv?"enabled":"disabled"}.`,meta:{suppressSources:true}}]); return nv; }); }}
               onClearAll={clearAll}
               onNewChat={newChat}
+              onClose={()=>setMenuOpen(false)}
             />
           </div>
         </>
@@ -728,49 +752,48 @@ function MediaBlock({ cards = [] }) {
         <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
           <div className="space-y-4">
             {messages.map((msg, i) => {
-  const isUser = msg.role === "user";
+              const isUser = msg.role === "user";
 
-  // ✅ include "images" type in filter
-  const mediaCards = (msg.cards || []).filter(c =>
-    ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
-    (c.url && isYouTube(c.url))
-  );
+              const mediaCards = (msg.cards || []).filter(c =>
+                ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
+                (c.url && isYouTube(c.url))
+              );
 
-  return (
-    <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
-      <div className="flex items-center justify-between mb-1">
-        <div className="small-label">{isUser ? "You" : "Droxion"}</div>
-        {!isUser && msg.content && (
-          <button
-            onClick={() => copyMessage(i)}
-            className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-            title="Copy"
-          >
-            <FaRegCopy /> Copy
-          </button>
-        )}
-      </div>
+              return (
+                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
+                    {!isUser && msg.content && (
+                      <button
+                        onClick={() => copyMessage(i)}
+                        className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+                        title="Copy"
+                      >
+                        <FaRegCopy /> Copy
+                      </button>
+                    )}
+                  </div>
 
-      {/* User vs Assistant message text */}
-      {isUser && <div className="answer expanded">{msg.content}</div>}
-      {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
+                  {/* User vs Assistant message text */}
+                  {isUser && <div className="answer expanded">{msg.content}</div>}
+                  {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
 
-      {/* ✅ Render images, galleries, youtube, weather */}
-      {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
+                  {/* ✅ Render images, galleries, youtube, weather */}
+                  {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
 
-      {/* Follow-up suggestions */}
-      {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-8">
-          {msg.followups.slice(0, 3).map((s, idx) => (
-            <button key={idx} onClick={() => handleSend(s)} className="action-btn">
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-})}
+                  {/* Follow-up suggestions */}
+                  {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-8">
+                      {msg.followups.slice(0, 3).map((s, idx) => (
+                        <button key={idx} onClick={() => handleSend(s)} className="action-btn">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {typing && (
               <div className="glass rounded-xl p-4">
