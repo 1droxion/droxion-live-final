@@ -191,34 +191,36 @@ function ToolsMenu({
   const photosRef = useRef(null);
   const filesRef = useRef(null);
 
-  const wrap = (fn) => () => { try { fn?.(); } finally { onClose?.(); } };
-
-  const pickCamera = wrap(() => camRef.current?.click());
-  const pickPhotos = wrap(() => photosRef.current?.click());
-  const pickFiles  = wrap(() => filesRef.current?.click());
+  // ❌ Do NOT close the menu before the picker returns (iOS)
+  const pickCamera = () => camRef.current?.click();
+  const pickPhotos = () => photosRef.current?.click();
+  const pickFiles  = () => filesRef.current?.click();
 
   const handleCamFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "camera" });
     e.target.value = "";
-    onClose?.();
+    onClose?.(); // ✅ close AFTER file is chosen
   };
   const handlePhotoFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "photos" });
     e.target.value = "";
-    onClose?.();
+    onClose?.(); // ✅ close AFTER file is chosen
   };
   const handleAnyFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendAnyFile?.(f);
     e.target.value = "";
-    onClose?.();
+    onClose?.(); // ✅ close AFTER file is chosen
   };
+
+  // safe wrapper ONLY for non-file actions
+  const wrap = (fn) => () => { try { fn?.(); } finally { onClose?.(); } };
 
   return (
     <div className="menu-panel">
-      {/* hidden inputs */}
+      {/* hidden inputs (must remain mounted while picker is open) */}
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCamFile} />
       <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
       <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
