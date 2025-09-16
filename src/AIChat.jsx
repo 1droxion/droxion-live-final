@@ -1075,7 +1075,7 @@ const sendImageForAnalysis = async (file) => {
   </div>
 </div>
 
-</div> {/* end wrapper .flex flex-col min-h-[100svh] */}
+</div>
 );
 }
 
