@@ -956,74 +956,97 @@ const sendImageForAnalysis = async (file) => {
       </div>
 
       {/* Fixed preview while typing */}
-      {focused && (
-        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
-          <div className="max-w-4xl mx-auto px-3">
-            <div className="panel glass rounded-xl p-2 suggestions-panel">
-              <div className="mb-2">
-                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
-                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-                  <div className="flex gap-2">
-                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
-                      c ? (
-                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
-                          <div className="rounded-xl overflow-hidden glass">
-                            {(() => { const pv = bestPreview(c, true); return pv
-                              ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
-                              : <div className="aspect-[16/9] skel" />; })()}
-                            <div className="p-3">
-                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
-                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
-                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
-                            </div>
-                          </div>
-                        </a>
-                      ) : (
-                        <div key={i} className="hitem pr-3">
-                          <div className="rounded-xl overflow-hidden glass">
-                            <div className="aspect-[16/9] skel" />
-                            <div className="p-3">
-                              <div className="h-3 w-24 skel rounded mb-2" />
-                              <div className="h-3 w-40 skel rounded" />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    )}
+{focused && (
+  <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
+    <div className="max-w-4xl mx-auto px-3">
+      <div className="panel glass rounded-xl p-2 suggestions-panel">
+        <div className="mb-2">
+          <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+          <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+            <div className="flex gap-2">
+              {(news.length ? news : Array.from({ length: 3 })).map((c, i) =>
+                c ? (
+                  <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                    <div className="rounded-xl overflow-hidden glass">
+                      {(() => {
+                        const pv = bestPreview(c, true);
+                        return pv ? (
+                          <img
+                            src={pv.prox}
+                            alt=""
+                            className="w-full aspect-[16/9] object-cover"
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div className="aspect-[16/9] skel" />
+                        );
+                      })()}
+                      <div className="p-3">
+                        <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                        <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                        <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                      </div>
+                    </div>
+                  </a>
+                ) : (
+                  <div key={i} className="hitem pr-3">
+                    <div className="rounded-xl overflow-hidden glass">
+                      <div className="aspect-[16/9] skel" />
+                      <div className="p-3">
+                        <div className="h-3 w-24 skel rounded mb-2" />
+                        <div className="h-3 w-40 skel rounded" />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
-                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
-                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
-                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
-                      {c.price && <div className="text-base mt-1">{c.price}</div>}
-                      {typeof c.change!=="undefined" && (
-                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
-                      )}
-                    </a>
-                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
-                </div>
-              </div>
-
-              {textSug.length>0 && (
-                <div className="mt-1">
-                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
-                  {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                )
               )}
             </div>
           </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+          <div>{weather ? <WeatherCard card={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
+          <div className="grid grid-cols-1 gap-2">
+            {(crypto.length ? crypto.slice(0, 2) : [null, null]).map((c, i) =>
+              c ? (
+                <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                  <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                  <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                  {c.price && <div className="text-base mt-1">{c.price}</div>}
+                  {typeof c.change !== "undefined" && (
+                    <div className={`text-xs mt-1 ${String(c.change).startsWith("-") ? "text-red-400" : "text-green-400"}`}>{c.change}</div>
+                  )}
+                </a>
+              ) : (
+                <div key={i} className="glass rounded-lg p-6 skel" />
+              )
+            )}
+          </div>
+        </div>
+
+        {textSug.length > 0 && (
+          <div className="mt-1">
+            <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
+            {textSug.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => handleSend(s)}
+                className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
+
 {/* Composer — clean (no image button in middle) */}
 <div
   className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
