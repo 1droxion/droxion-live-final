@@ -1060,17 +1060,6 @@ const sendImageForAnalysis = async (file) => {
         </div>
       </div>
 
-      {/* Control panel */}
-      <div className="control-panel flex flex-wrap justify-center gap-3 mt-6 mb-24">
-        <button
-          onClick={() => { setMessages([]); localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(MEM_KEY); }}
-          className="pill-btn" title="Clear chat history + memory">Clear Chat + Memory</button>
-
-        <button
-          onClick={() => { setMessages([]); localStorage.removeItem(STORAGE_KEY); setInput(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-          className="pill-btn" title="Start a fresh chat (keep memory)">New Chat</button>
-      </div>
-    </div>
   );
 }
 
