@@ -6,8 +6,7 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
 import {
-  FiMoon, FiSun,
-} from "react-icons/fi";
+  FiMoon, FiSun,} from "react-icons/fi";
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
