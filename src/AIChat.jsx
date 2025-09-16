@@ -172,7 +172,7 @@ const normalizeWeatherCard = (raw) => {
 
 /* ---------------------- storage & image fetch ---------------------- */
 const STORAGE_KEY = "droxion.chat.v1";
-const MEM_KEY = "droxion.mem.v1";
+const MEM_KEY = "droxion.mem.v
 const loadMem = () => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || "[]"); } catch { return []; } };
 const saveMem = (arr) => { try { localStorage.setItem(MEM_KEY, JSON.stringify(arr.slice(-100))); } catch {} };
 
