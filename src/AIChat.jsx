@@ -6,9 +6,7 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
 import {
-  FiMoon, FiSun, FiCode, FiStar, FiVolume2, FiVolumeX,
-  FiMic, FiCamera, FiArrowRight, FiMoreHorizontal, FiPlus,
-  FiFile, FiGlobe, FiCpu, FiBook, FiSearch, FiAperture, FiImage
+  FiMoon, FiSun,
 } from "react-icons/fi";
 import "./AIChat.css";
 
