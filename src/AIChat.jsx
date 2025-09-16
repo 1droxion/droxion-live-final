@@ -747,15 +747,6 @@ function AIChat() {
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
               {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
             </button>
-            <button onClick={()=>setCodeMode(v=>!v)} className="pill-btn" title="Code mode">
-              <FiCode /><span style={{marginLeft:6}}>Code</span>
-            </button>
-            <button onClick={()=>setProMode(v=>!v)} className="pill-btn" title="Premium">
-              <FiStar /><span style={{marginLeft:6}}>Pro {proMode?"On":"Off"}</span>
-            </button>
-            <button onClick={()=>setSpeakOn(v=>!v)} className="pill-btn" title="Speak replies">
-              {speakOn ? <FiVolume2 /> : <FiVolumeX />}<span style={{marginLeft:6}}>{speakOn?"On":"Off"}</span>
-            </button>
             <button onClick={()=>{
               const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
               if (!Rec) { alert("Mic requires SpeechRecognition or your own STT backend."); return; }
