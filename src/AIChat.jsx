@@ -747,14 +747,7 @@ function AIChat() {
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
               {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
             </button>
-            <button onClick={()=>{
-              const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-              if (!Rec) { alert("Mic requires SpeechRecognition or your own STT backend."); return; }
-              try { const rec=new Rec(); rec.lang="en-US"; rec.interimResults=false; rec.maxAlternatives=1; rec.onresult=(e)=>{ const t=e.results?.[0]?.[0]?.transcript||""; if(t) handleSend(t); }; rec.start(); } catch { alert("Mic access denied. Enable microphone in browser permissions."); }
-            }} className="pill-btn" title="Speak your message">
-              <FiMic /><span style={{marginLeft:6}}>Mic</span>
-            </button>
-
+            
             {/* SINGLE plus button — everything lives inside */}
             <button onClick={()=>setMenuOpen(v=>!v)} className="pill-btn" title="Tools">
               <FiPlus />
