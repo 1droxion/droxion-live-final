@@ -750,50 +750,84 @@ function AIChat() {
     );
   };
 
-  /* -------- Image & File endpoints -------- */
-  const sendImageForAnalysis = async (file) => {
-    try {
-      const form = new FormData();
-      form.append("image", file);
-      form.append("prompt", input || "Analyze this image and explain key details.");
-      form.append("agent", String(agentOn));
-      form.append("web", String(webSearchOn));
-      form.append("persona", persona);
-      const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type":"multipart/form-data" } });
-      const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
-      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-      await pushWithFollowups(md, cards, input || "image analysis");
-      setInput("");
-    } catch {
-      await pushWithFollowups("Image analysis failed.", [], "vision failed", { suppressSources: true });
-    }
-  };
+  /* ---------------------- Image uploader (instant preview) ---------------------- */
+const sendImageForAnalysis = async (file) => {
+  if (!file) return;
 
-  const sendAnyFile = async (file) => {
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const r = await axios.post(`${API_BASE}/file-analyze`, form);
-      const md = r.data?.title || "File uploaded.";
-      const md2 = r.data?.preview ? `\n\n${r.data.preview}` : "";
-      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-      await pushWithFollowups(`### ${md}${md2}`, cards, file.name);
-    } catch {
-      await pushWithFollowups("File analysis failed.", [], "file failed", { suppressSources: true });
-    }
-  };
+  // 1) Guard: only images
+  if (!/^image\//.test(file.type)) {
+    await pushWithFollowups(
+      "Please pick an image file (JPG/PNG/WEBP).",
+      [],
+      "not image",
+      { suppressSources: true }
+    );
+    return;
+  }
 
-  const runDeepResearch = async () => {
-    const q = (input || "").trim();
-    if (!q) return;
+  // 2) Local preview immediately (so you always see the photo)
+  let localUrl = "";
+  try {
+    localUrl = URL.createObjectURL(file);
+    setMessages((p) => [
+      ...p,
+      {
+        role: "assistant",
+        content: "Analyzing your image…",
+        cards: [{ type: "gallery", images: [localUrl] }],
+        meta: { suppressSources: true, localPreview: true }
+      }
+    ]);
+  } catch {}
+
+  // 3) Upload + analyze on backend
+  try {
+    const form = new FormData();
+    form.append("image", file);
+    form.append("prompt", input || "Analyze this image and explain key details.");
+    form.append("agent", String(agentOn));
+    form.append("web", String(webSearchOn));
+    form.append("persona", persona);
+
+    const r = await axios.post(`${API_BASE}/analyze-image`, form, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+
+    const md =
+      r.data?.ai_description ||
+      r.data?.summary ||
+      r.data?.reply ||
+      "Image analyzed.";
+    const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+
+    // 4) If backend returns no image card, keep our local preview so it shows
+    const backendHasImage =
+      cards.some(
+        (c) =>
+          c?.type === "gallery" ||
+          c?.type === "image" ||
+          Boolean(firstImageUrl(c))
+      );
+
+    const finalCards = backendHasImage
+      ? cards
+      : [{ type: "gallery", images: [localUrl] }, ...cards];
+
+    await pushWithFollowups(md, finalCards, input || "image analysis");
     setInput("");
-    try {
-      const r = await axios.post(`${API_BASE}/deepsearch`, { q, agent: agentOn });
-      await pushWithFollowups(r.data?.answer || `Deep research on **${q}**`, r.data?.cards || [], q);
-    } catch {
-      await pushWithFollowups("Deep research failed.", [], q, { suppressSources: true });
-    }
-  };
+  } catch {
+    // Still keep the preview, but show a small error line in chat
+    await pushWithFollowups(
+      "Image analysis failed. Please try again.",
+      localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
+      "vision failed",
+      { suppressSources: true }
+    );
+  } finally {
+    // free blob URL memory
+    if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
+  }
+};
 
   /* ---------------- UI ---------------- */
   return (
