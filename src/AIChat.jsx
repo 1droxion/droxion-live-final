@@ -1024,8 +1024,7 @@ const sendImageForAnalysis = async (file) => {
           </div>
         </div>
       )}
-
-      {/* Composer — clean (no image button in middle) */}
+{/* Composer — clean (no image button in middle) */}
 <div
   className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
   style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
