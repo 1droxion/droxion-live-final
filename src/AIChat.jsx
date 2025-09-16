@@ -855,24 +855,38 @@ const sendImageForAnalysis = async (file) => {
       </button>
 
       {menuOpen && (
-        <div className="absolute right-2 top-[110%]" onMouseLeave={() => setMenuOpen(false)}>
-          <ToolsMenu
-            onSendImageFile={(f) => sendImageForAnalysis(f)}
-            onSendAnyFile={(f) => sendAnyFile(f)}
-            onToggleAgent={() => setAgentOn(v => !v)}
-            agentOn={agentOn}
-            onDeepResearch={runDeepResearch}
-            onSetPersona={(p) => setPersona(p)}
-            onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
-            webSearchOn={webSearchOn}
-            onToggleWebSearch={() => setWebSearchOn(v => !v)}
-            onClearAll={clearAll}      // ✅ new
-            onNewChat={newChat}        // ✅ new
-          />
-        </div>
-      )}
+  <>
+    {/* click-anywhere-to-close backdrop */}
+    <div
+      onClick={() => setMenuOpen(false)}
+      style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
+    />
+
+    {/* tools popover */}
+    <div
+      style={{
+        position: "fixed",
+        right: 8,     // px from right edge
+        top: 56,      // just below header
+        zIndex: 1000,
+      }}
+    >
+      <ToolsMenu
+        onSendImageFile={(f) => sendImageForAnalysis(f)}
+        onSendAnyFile={(f) => sendAnyFile(f)}
+        onToggleAgent={() => setAgentOn(v => !v)}
+        agentOn={agentOn}
+        onDeepResearch={runDeepResearch}
+        onSetPersona={(p) => setPersona(p)}
+        onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
+        webSearchOn={webSearchOn}
+        onToggleWebSearch={() => setWebSearchOn(v => !v)}
+        onClearAll={clearAll}
+        onNewChat={newChat}
+      />
     </div>
-  </div>
+  </>
+)}
 </header>
 
       {/* Chat area */}
