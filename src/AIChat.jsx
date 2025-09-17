@@ -314,7 +314,7 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
-  // live preview
+    // live preview
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
   const [news, setNews] = useState([]);
@@ -322,7 +322,6 @@ function AIChat() {
   const [crypto, setCrypto] = useState([]);
   const [videos, setVideos] = useState([]); // ⬅️ YouTube strip
 
-  // ⬇️ paste this line here
   // live local weather from backend (/weather)
   const wxLive = useLiveWeather(API_BASE);
 
@@ -331,7 +330,6 @@ function AIChat() {
   const [agentOn, setAgentOn] = useState(false);
   const [webSearchOn, setWebSearchOn] = useState(true);
   const [persona, setPersona] = useState("");
-  ...
 }
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
