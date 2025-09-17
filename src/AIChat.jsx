@@ -5,19 +5,17 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { FaRegCopy } from "react-icons/fa";
+// ✅ Import FiClock here with the others at the top
 import {
   FiMoon, FiSun, FiPlus,
   FiCamera, FiImage, FiFile,
   FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
-  FiArrowRight
+  FiArrowRight, FiClock
 } from "react-icons/fi";
-import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
 // === Admin-only DAU/WAU/MAU pill ==========================
-import { FiClock } from "react-icons/fi"; // ensure FiClock is imported
-
 function MetricsAdminPill() {
   const [show, setShow] = React.useState(false); // admin-only toggle
   const [metrics, setMetrics] = React.useState({ dau: null, wau: null, mau: null });
@@ -65,8 +63,7 @@ function MetricsAdminPill() {
 
   return (
     <div
-      className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5
-                 flex items-center gap-2"
+      className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2"
     >
       <FiClock />
       <span>DAU {metrics.dau ?? "–"}</span>
@@ -78,52 +75,6 @@ function MetricsAdminPill() {
   );
 }
 // === end admin-only pill ===================================
-/* ---------------------- helpers ---------------------- */
-const normHost = (u = "") => {
-  try {
-    const url = new URL(u);
-    if (url.protocol === "blob:" || url.protocol === "data:") return "";
-    return url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
-  } catch { return ""; }
-};
-const host = (u) => normHost(u);
-const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p === "blob:" || p === "data:"; } catch { return false; } };
-
-const BAD_HOSTS = ["example.com","example.org"];
-const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
-
-// ⬇️ Keep your original working selector
-const firstImageUrl = (c) =>
-  c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
-
-const IMAGE_PROXY = `${API_BASE}/img?url=`;
-const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
-const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
-const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
-const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
-
-/* small youtube helpers */
-const isYouTube = (raw="") => {
-  try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
-};
-const youTubeIdFromUrl = (raw="") => {
-  try {
-    const u = new URL(raw);
-    const h = u.hostname.replace(/^www\./, "");
-    if (h.includes("youtube.com")) {
-      const v = u.searchParams.get("v");
-      if (v) return v;
-      const p = u.pathname.split("/").filter(Boolean);
-      if (p[0] === "shorts" || p[0] === "embed") return p[1];
-    }
-    if (h.includes("youtu.be")) {
-      const p = u.pathname.split("/").filter(Boolean);
-      if (p[0]) return p[0];
-    }
-  } catch {}
-  const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
-  return m ? m[1] : null;
-};
 
 /* ---------------------- quick intent ---------------------- */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
