@@ -108,7 +108,7 @@ img{ max-width:100%; height:auto; display:block; }
 .fixed-panel{
   position:fixed; left:0; right:0; bottom:74px; z-index:30;
 }
-.fixed-preview .panel{ max-width:100%; }
+.fixed-preview .panel{ max-width:100%; transition:opacity .18s ease; }
 .dim-while-typing .panel{ opacity:.98; }
 .hscroll{ overflow-x:auto; }
 .hitem{ width:280px; flex:0 0 auto; }
@@ -131,13 +131,19 @@ img{ max-width:100%; height:auto; display:block; }
 }
 [data-theme="light"] .action-btn:hover{ background:rgba(0,0,0,.08); }
 
+/* ---------- suggestions ---------- */
+.suggestion-btn{
+  background:transparent; color:inherit; cursor:pointer;
+  transition:background .15s ease,border-color .15s ease;
+}
+.suggestion-btn:hover{ background:rgba(255,255,255,.10); }
+[data-theme="light"] .suggestion-btn:hover{ background:rgba(0,0,0,.08); }
+
 /* ---------- bottom composer ---------- */
 .fixed-bottom{ position:sticky; bottom:0; }
 
 /* prevent iOS zoom on focus */
-textarea{
-  font-size:16px; /* >=16px stops iOS auto-zoom */
-}
+textarea{ font-size:16px; }
 
 /* ---------- + tools menu ---------- */
 .menu-panel{
