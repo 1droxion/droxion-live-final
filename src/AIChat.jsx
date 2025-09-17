@@ -978,7 +978,13 @@ function AIChat() {
             <div className="flex gap-2">
               {(news.length ? news : Array.from({ length: 3 })).map((c, i) =>
                 c ? (
-                  <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                  <a
+                    key={i}
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hitem pr-3"
+                  >
                     <div className="rounded-xl overflow-hidden glass">
                       {(() => {
                         const pv = bestPreview(c, true);
@@ -997,8 +1003,12 @@ function AIChat() {
                       })()}
                       <div className="p-3">
                         <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
-                        <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
-                        <div className="text-[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                        <div className="text-sm font-semibold line-clamp-2 leading-tight">
+                          {c.title}
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          {timeAgo(c.publishedAt || c.time)}
+                        </div>
                       </div>
                     </div>
                   </a>
@@ -1017,6 +1027,10 @@ function AIChat() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+)}
 
         {/* YouTube strip */}
         {videos.length > 0 && (
