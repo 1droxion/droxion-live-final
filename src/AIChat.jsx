@@ -765,25 +765,33 @@ const sendImageForAnalysis = async (file) => {
   /* ---------------------- render ---------------------- */
   return (
     <div className="flex flex-col min-h-[100svh]">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
-        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
-          <div className="brand text-lg font-bold">Droxion</div>
-          <div className="text-xs text-gray-400">• Lite</div>
-          <div className="brand text-lg font-bold">Droxion</div>
-          <div className="text-xs text-gray-400">• Lite</div>
+  {/* Header */}
+  <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
+    <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
+      <div className="brand text-lg font-bold">Droxion</div>
+      <div className="text-xs text-gray-400">• Lite</div>
 
-          <MetricsAdminPill />   {/* <-- add this line */}
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
-              {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
-            </button>
-            <button onClick={()=>setMenuOpen(v=>!v)} className="pill-btn" title="Tools">
-              <FiPlus />
-            </button>
-          </div>
-        </div>
-      </header>
+      <MetricsAdminPill />   {/* ✅ admin-only DAU/WAU/MAU pill */}
+
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+          className="pill-btn"
+          title="Toggle theme"
+        >
+          {theme === "dark" ? <FiMoon /> : <FiSun />}
+          <span style={{ marginLeft: 6 }}>{theme === "dark" ? "Dark" : "Light"}</span>
+        </button>
+        <button
+          onClick={() => setMenuOpen(v => !v)}
+          className="pill-btn"
+          title="Tools"
+        >
+          <FiPlus />
+        </button>
+      </div>
+    </div>
+  </header>
 
       {/* Tools menu outside header to avoid tag mismatch */}
       {menuOpen && (
