@@ -81,7 +81,7 @@ img{ max-width:100%; height:auto; display:block; }
 /* ---------- weather ---------- */
 .weather-card .wstat .wlabel{ color:#9aa0a6; font-size:11px; }
 .weather-card .wstat .wval{ font-weight:600; font-size:13px; }
-.w-hscroll{ scrollbar-width:thin; }
+.w-hscroll{ scrollbar-width:thin; -webkit-overflow-scrolling: touch; }
 .w-hour{ background:rgba(255,255,255,.04); }
 [data-theme="light"] .w-hour{ background:rgba(0,0,0,.03); }
 
@@ -101,16 +101,17 @@ img{ max-width:100%; height:auto; display:block; }
 }
 
 /* ---------- chat area ---------- */
-.chat-scroll{ padding-bottom:calc(var(--kb) + 110px); }
+.chat-scroll{ padding-bottom:calc(var(--kb) + 110px); will-change: transform; contain: paint; -webkit-overflow-scrolling: touch; }
 .msg{ border-radius:12px; }
 
 /* ---------- typing preview rail ---------- */
 .fixed-panel{
   position:fixed; left:0; right:0; bottom:74px; z-index:30;
+  transform: translateZ(0); backface-visibility: hidden;
 }
 .fixed-preview .panel{ max-width:100%; }
 .dim-while-typing .panel{ opacity:.98; }
-.hscroll{ overflow-x:auto; }
+.hscroll{ overflow-x:auto; -webkit-overflow-scrolling: touch; }
 .hitem{ width:280px; flex:0 0 auto; }
 .skel{ background:rgba(255,255,255,.08); border-radius:10px; }
 
@@ -132,7 +133,10 @@ img{ max-width:100%; height:auto; display:block; }
 [data-theme="light"] .action-btn:hover{ background:rgba(0,0,0,.08); }
 
 /* ---------- bottom composer ---------- */
-.fixed-bottom{ position:sticky; bottom:0; }
+.fixed-bottom{
+  position:sticky; bottom:0;
+  transform: translateZ(0); backface-visibility: hidden;
+}
 
 /* prevent iOS zoom on focus */
 textarea{
@@ -201,3 +205,7 @@ textarea{
 .fixed-preview .panel,
 .fixed-preview a,
 .fixed-preview button { pointer-events:auto; }
+
+/* --- extra iOS/Safari stability --- */
+header{ transform: translateZ(0); backface-visibility: hidden; }
+* { -webkit-tap-highlight-color: transparent; }
