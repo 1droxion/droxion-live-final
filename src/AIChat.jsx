@@ -15,6 +15,69 @@ import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
+// === Admin-only DAU/WAU/MAU pill ==========================
+import { FiClock } from "react-icons/fi"; // ensure FiClock is imported
+
+function MetricsAdminPill() {
+  const [show, setShow] = React.useState(false); // admin-only toggle
+  const [metrics, setMetrics] = React.useState({ dau: null, wau: null, mau: null });
+
+  // Enable once via ?admin=1 or by setting localStorage
+  React.useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("admin") === "1") {
+        localStorage.setItem("drox.admin", "1");
+        url.searchParams.delete("admin");
+        window.history.replaceState({}, "", url.toString());
+      }
+    } catch {}
+    setShow(localStorage.getItem("drox.admin") === "1");
+  }, []);
+
+  // Record ping + fetch metrics only for admin
+  React.useEffect(() => {
+    if (!show) return;
+
+    // daily deduped ping (for DAU/WAU/MAU calc server-side)
+    const KEY = "droxion.track.last";
+    const today = new Date().toISOString().slice(0, 10);
+    const last = localStorage.getItem(KEY);
+    if (last !== today) {
+      localStorage.setItem(KEY, today);
+      axios.post(`${API_BASE}/track`, { type: "ping", date: today }).catch(() => {});
+    }
+
+    // fetch counts
+    axios
+      .get(`${API_BASE}/metrics`)
+      .then(({ data }) =>
+        setMetrics({
+          dau: data?.dau ?? null,
+          wau: data?.wau ?? null,
+          mau: data?.mau ?? null,
+        })
+      )
+      .catch(() => {});
+  }, [show]);
+
+  if (!show) return null;
+
+  return (
+    <div
+      className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5
+                 flex items-center gap-2"
+    >
+      <FiClock />
+      <span>DAU {metrics.dau ?? "–"}</span>
+      <span>•</span>
+      <span>WAU {metrics.wau ?? "–"}</span>
+      <span>•</span>
+      <span>MAU {metrics.mau ?? "–"}</span>
+    </div>
+  );
+}
+// === end admin-only pill ===================================
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
