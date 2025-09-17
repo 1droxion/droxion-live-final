@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FIXED
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FULL FIXED
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -61,6 +61,7 @@ const youTubeIdFromUrl = (raw="") => {
   const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 };
+const wantsYouTube = (s="") => /\b(youtube|yt|video|shorts)\b/i.test(s);
 
 /* ---------------------- quick intent ---------------------- */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
@@ -164,7 +165,7 @@ function WeatherCard({ card }) {
                     return `${hi} / ${lo}`;
                   })()}
                 </div>
-                {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
+                {d.text && <div className="text:[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
               </div>
             ))}
           </div>
@@ -258,6 +259,7 @@ function AIChat() {
   const [news, setNews] = useState([]);
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
+  const [videos, setVideos] = useState([]); // ⬅️ YouTube strip
 
   // toggles
   const [theme, setTheme] = useState(() => localStorage.getItem("drox.theme") || "dark");
@@ -286,22 +288,30 @@ function AIChat() {
   }, [messages]);
   useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
 
-  // keyboard-safe viewport
+  // keyboard-safe viewport (throttled — prevents page blink)
   useEffect(() => {
     const vv = window.visualViewport;
-    const handleVV = () => {
+    let raf = 0;
+    let lastKb = -1;
+    const handle = () => {
       if (!vv) return;
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty("--kb", kb + "px");
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop) | 0;
+      if (kb !== lastKb) {
+        lastKb = kb;
+        document.documentElement.style.setProperty("--kb", kb + "px");
+      }
+      raf = 0;
     };
-    handleVV();
-    vv?.addEventListener("resize", handleVV);
-    vv?.addEventListener("scroll", handleVV);
-    window.addEventListener("orientationchange", handleVV);
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(handle); };
+    handle();
+    vv?.addEventListener("resize", schedule);
+    vv?.addEventListener("scroll", schedule);
+    window.addEventListener("orientationchange", schedule);
     return () => {
-      vv?.removeEventListener("resize", handleVV);
-      vv?.removeEventListener("scroll", handleVV);
-      window.removeEventListener("orientationchange", handleVV);
+      vv?.removeEventListener("resize", schedule);
+      vv?.removeEventListener("scroll", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      if (raf) cancelAnimationFrame(raf);
     };
   }, []);
 
@@ -333,7 +343,11 @@ function AIChat() {
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
         ];
-        const [rn, rw, rc] = await Promise.all(reqs);
+        const ytReq = wantsYouTube(q)
+          ? axios.get(`${API_BASE}/search-youtube`, { params: { q }, cancelToken: src.token }).catch(()=>null)
+          : Promise.resolve(null);
+
+        const [rn, rw, rc, ry] = await Promise.all([...reqs, ytReq]);
 
         const newsRanked = rankAndTrim(
           (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 10
@@ -345,6 +359,26 @@ function AIChat() {
         setWeather(w || null);
 
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
+
+        // YouTube: map API to lightweight cards
+        if (ry && ry.data) {
+          const items = (ry.data.items || ry.data.results || []).slice(0, 10).map(v => {
+            const id = v.id?.videoId || v.videoId || v.id;
+            const url = id ? `https://www.youtube.com/watch?v=${id}` : (v.url || "");
+            return {
+              type: "youtube",
+              title: v.title || v.snippet?.title || "YouTube",
+              url,
+              videoId: id || youTubeIdFromUrl(url),
+              thumbnail: v.thumbnail || v.snippet?.thumbnails?.medium?.url || v.image || null,
+              channel: v.channelTitle || v.snippet?.channelTitle || "",
+              publishedAt: v.publishedAt || v.snippet?.publishedAt
+            };
+          });
+          setVideos(items.filter(x => x.videoId));
+        } else {
+          setVideos([]);
+        }
       } catch {}
     }, 350);
     return () => clearTimeout(previewTimer.current);
@@ -410,7 +444,7 @@ function AIChat() {
       }
       /* 🔥 end images branch */
 
-      // ---- existing special cases (keep yours) ----
+      // ---- existing special cases ----
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
@@ -462,65 +496,66 @@ function AIChat() {
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
-    /* ---------------------- Image uploader (single temp message + update) ---------------------- */
-const sendImageForAnalysis = async (file) => {
-  if (!file) return;
-  if (!/^image\//.test(file.type)) {
-    await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
-    return;
-  }
 
-  // Generate local preview URL
-  let localUrl = "";
-  try { localUrl = URL.createObjectURL(file); } catch {}
+  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+  const sendImageForAnalysis = async (file) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
+      return;
+    }
 
-  // Insert placeholder message and keep index for later replacement
-  const tempMsg = {
-    role: "assistant",
-    content: "Analyzing your image...",
-    cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
-    meta: { suppressSources: true, localPreview: true }
+    // Generate local preview URL
+    let localUrl = "";
+    try { localUrl = URL.createObjectURL(file); } catch {}
+
+    // Insert placeholder message and keep index for later replacement
+    const tempMsg = {
+      role: "assistant",
+      content: "Analyzing your image...",
+      cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
+      meta: { suppressSources: true, localPreview: true }
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+    const index = messages.length + 1; // predicted index after set
+
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      form.append("prompt", input || "Analyze this image and explain key details.");
+      form.append("agent", String(agentOn));
+      form.append("web", String(webSearchOn));
+      form.append("persona", persona);
+
+      const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
+
+      const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
+      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+      const backendHasImage = cards.some((c) =>
+        c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
+      );
+      const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
+
+      // ✅ Replace temp message instead of pushing a new one
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
+        return copy;
+      });
+      setInput("");
+    } catch {
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[index] = {
+          ...copy[index],
+          content: "Image analysis failed. Please try again."
+        };
+        return copy;
+      });
+    } finally {
+      if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
+    }
   };
-  setMessages((prev) => [...prev, tempMsg]);
-  const index = messages.length + 1; // predicted index after set
-
-  try {
-    const form = new FormData();
-    form.append("image", file);
-    form.append("prompt", input || "Analyze this image and explain key details.");
-    form.append("agent", String(agentOn));
-    form.append("web", String(webSearchOn));
-    form.append("persona", persona);
-
-    const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
-
-    const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
-    const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-    const backendHasImage = cards.some((c) =>
-      c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
-    );
-    const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
-
-    // ✅ Replace temp message instead of pushing a new one
-    setMessages((prev) => {
-      const copy = [...prev];
-      copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
-      return copy;
-    });
-    setInput("");
-  } catch {
-    setMessages((prev) => {
-      const copy = [...prev];
-      copy[index] = {
-        ...copy[index],
-        content: "Image analysis failed. Please try again."
-      };
-      return copy;
-    });
-  } finally {
-    if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
-  }
-};
 
   /* ---------------------- organized render helpers ---------------------- */
   const extractTitle = (md="") => {
@@ -662,9 +697,9 @@ const sendImageForAnalysis = async (file) => {
             return <WeatherCard key={`wx-${i}`} card={card} />;
           }
 
-          // YouTube
-          if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
-            const id = youTubeIdFromUrl(card.url || "");
+          // YouTube (supports {videoId} or {url})
+          if (card?.type === "youtube" || (card?.url && isYouTube(card.url)) || card?.videoId) {
+            const id = card.videoId || youTubeIdFromUrl(card.url || "");
             if (!id) return null;
             return (
               <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
@@ -684,7 +719,7 @@ const sendImageForAnalysis = async (file) => {
     );
   }
 
-  /* ---------------------- + menu helpers ---------------------- */
+  /* + menu helpers */
   const clearAll = () => {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
@@ -755,7 +790,7 @@ const sendImageForAnalysis = async (file) => {
 
               const mediaCards = (msg.cards || []).filter(c =>
                 ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
-                (c.url && isYouTube(c.url))
+                (c.url && isYouTube(c.url)) || c.videoId
               );
 
               return (
@@ -847,6 +882,35 @@ const sendImageForAnalysis = async (file) => {
                   </div>
                 </div>
               </div>
+
+              {/* YouTube strip */}
+              {videos.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-1 text-xs text-gray-400 mb-1">YouTube</div>
+                  <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                    <div className="flex gap-2">
+                      {videos.map((v,i)=>(
+                        <button
+                          key={i}
+                          className="hitem pr-3 text-left"
+                          onClick={()=>handleSend(v.title + " youtube")}
+                          title={v.title}
+                        >
+                          <div className="rounded-xl overflow-hidden glass w-[220px]">
+                            {v.thumbnail
+                              ? <img src={v.thumbnail} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                              : <div className="aspect-[16/9] skel" />}
+                            <div className="p-3">
+                              <div className="text-[11px] text-gray-400 mb-1 line-clamp-1">{v.channel || "YouTube"}</div>
+                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{v.title}</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2 px-1 mb-2">
                 <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
