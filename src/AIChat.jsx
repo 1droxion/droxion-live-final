@@ -14,7 +14,6 @@ import {
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
-
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
@@ -76,9 +75,9 @@ const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidi
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 const isSearchy = (s="") => {
   const q = s.toLowerCase();
-  return q.startsWith("google:") || q.startsWith("search:")
-    || /\b(now|today|latest|breaking|live|update|news|price|stock|chart|weather|forecast|crypto|btc|eth)\b/.test(q)
-    || wantsNews(q) || wantsWeather(q) || wantsCrypto(q) || wantsYouTube(q);
+  return q.startsWith("google:") || q.startsWith("search:") ||
+    /\b(now|today|latest|breaking|live|update|news|price|stock|chart|weather|forecast|crypto|btc|eth)\b/.test(q) ||
+    wantsNews(q) || wantsWeather(q) || wantsCrypto(q);
 };
 
 /* ---------------------- ranking for PREVIEW only ---------------------- */
@@ -118,7 +117,7 @@ function WeatherCard({ card }) {
     try {
       let d;
       if (typeof ts === "number") {
-        d = new Date(ts < 2e12 ? ts * 1000 : ts);
+        d = new Date(ts < 2e12 ? ts * 1000 : ts); // normalize seconds vs ms
       } else {
         d = new Date(ts);
       }
@@ -340,7 +339,7 @@ function AIChat() {
     };
   }, []);
 
-  /* ---------------------- suggestions + live previews (NO BLINKS, ONLY WHEN SEARCHY) ---------------------- */
+  /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -357,11 +356,7 @@ function AIChat() {
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(previewTimer.current);
-    // Only show live previews when the query is "searchy" to avoid link spam
-    if (!focused || q.length < 1 || !isSearchy(q)) {
-      setNews([]); setWeather(null); setCrypto([]); setVideos([]);
-      return;
-    }
+    if (!focused || q.length < 1) return;
     cancelPrev.current.cancel?.();
     const src = axios.CancelToken.source();
     cancelPrev.current = { cancel: () => src.cancel("new query") };
@@ -391,10 +386,8 @@ function AIChat() {
 
         // YouTube: map API to lightweight cards
         if (ry && ry.data) {
-          const base = ry.data.items || ry.data.results || ry.data || [];
-          const list = Array.isArray(base) ? base : (base.items || base.results || []);
-          const items = (list || []).slice(0, 10).map(v => {
-            const id = v.id?.videoId || v.videoId || v.id || youTubeIdFromUrl(v.url || "");
+          const items = (ry.data.items || ry.data.results || []).slice(0, 10).map(v => {
+            const id = v.id?.videoId || v.videoId || v.id;
             const url = id ? `https://www.youtube.com/watch?v=${id}` : (v.url || "");
             return {
               type: "youtube",
@@ -402,7 +395,7 @@ function AIChat() {
               url,
               videoId: id || youTubeIdFromUrl(url),
               thumbnail: v.thumbnail || v.snippet?.thumbnails?.medium?.url || v.image || null,
-              channel: v.channel || v.channelTitle || v.snippet?.channelTitle || "",
+              channel: v.channelTitle || v.snippet?.channelTitle || "",
               publishedAt: v.publishedAt || v.snippet?.publishedAt
             };
           });
@@ -450,13 +443,17 @@ function AIChat() {
 
       /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
       if (wantsImages(content)) {
+        // Try backend first (intent: images). If it gives us cards, use them.
         let cards = [];
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
           cards = (r.data?.cards || []).filter(Boolean);
         } catch {}
+
+        // If backend didn’t return any image cards, fall back to Unsplash sources.
         const hasImages =
           cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
+
         if (!hasImages) {
           const q = content.replace(/^images?\s*:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
@@ -464,38 +461,12 @@ function AIChat() {
           );
           cards = [{ type: "images-grid", images: urls }];
         }
+
         const md = `Here are some images. Tap any card to open.`;
         await pushWithFollowups(md, cards, content, { suppressSources: true });
         return;
       }
       /* 🔥 end images branch */
-
-      // ---- YouTube branch (ensures playable embeds inside chat) ----
-      if (wantsYouTube(content) || youTubeIdFromUrl(content)) {
-        const q = content.replace(/\byoutube\b|\byt\b/ig, "").trim() || content;
-        let items = [];
-        try {
-          const ry = await axios.get(`${API_BASE}/search-youtube`, { params: { q } });
-          const base = ry.data?.items || ry.data?.results || ry.data || [];
-          const list = Array.isArray(base) ? base : (base.items || base.results || []);
-          items = (list || []).slice(0, 6).map(v => {
-            const id = v.id?.videoId || v.videoId || v.id || youTubeIdFromUrl(v.url || "");
-            const url = id ? `https://www.youtube.com/watch?v=${id}` : (v.url || "");
-            return {
-              type: "youtube",
-              title: v.title || v.snippet?.title || "YouTube",
-              url,
-              videoId: id || youTubeIdFromUrl(url),
-              thumbnail: v.thumbnail || v.snippet?.thumbnails?.medium?.url || v.image || null,
-              channel: v.channel || v.channelTitle || v.snippet?.channelTitle || "",
-              publishedAt: v.publishedAt || v.snippet?.publishedAt
-            };
-          }).filter(x => x.videoId);
-        } catch {}
-        const md = items.length ? `Top YouTube results:` : `Couldn't find videos. Try a different query.`;
-        await pushWithFollowups(md, items, content);
-        return;
-      }
 
       // ---- existing special cases ----
       if (lower.startsWith("google:")) {
@@ -691,7 +662,7 @@ function AIChat() {
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
-          // Images grid
+          // Images grid (array of urls or {url})
           if (card?.type === "images-grid" && Array.isArray(card.images)) {
             const items = card.images.slice(0, 12);
             return (
@@ -722,7 +693,7 @@ function AIChat() {
             );
           }
 
-          // Gallery
+          // Gallery (same idea)
           if (card?.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images
               .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -751,7 +722,7 @@ function AIChat() {
             );
           }
 
-          // Single image
+          // Single image card (backend might return {type:"image", url})
           if (card?.type === "image" && card.url) {
             return (
               <img
@@ -766,12 +737,12 @@ function AIChat() {
             );
           }
 
-          // Weather
+          // Weather (pass through to your WeatherCard if present)
           if (card?.type === "weather") {
             return <WeatherCard key={`wx-${i}`} card={card} />;
           }
 
-          // YouTube embed
+          // YouTube (supports {videoId} or {url})
           if (card?.type === "youtube" || (card?.url && isYouTube(card.url)) || card?.videoId) {
             const id = card.videoId || youTubeIdFromUrl(card.url || "");
             if (!id) return <React.Fragment key={`skip-${i}`} />;
@@ -781,13 +752,13 @@ function AIChat() {
                   src={`https://www.youtube.com/embed/${id}`}
                   title={card.title || "YouTube"}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="no-referrer"
                   allowFullScreen
                 />
               </div>
             );
           }
 
+          // Unknown card type — safe no-op to avoid key warnings
           return <React.Fragment key={`skip-${i}`} />;
         })}
       </div>
@@ -916,8 +887,8 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Fixed preview while typing (only when searchy) */}
-      {focused && isSearchy(input || "") && (
+      {/* Fixed preview while typing */}
+      {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
