@@ -190,7 +190,7 @@ function WeatherCard({ card }) {
       )}
     </div>
   );
-}
+  }
 
 /* Live local weather (GPS first, fallback to IP via your new /weather route) */
 function useLiveWeather(API_BASE){
