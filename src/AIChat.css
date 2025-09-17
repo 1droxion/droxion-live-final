@@ -1,3 +1,5 @@
+Here’s your full src/AIChat.css with the WeatherCard styles cleanly appended at the end (no other changes made):
+
 /* src/AIChat.css — clean, GPT-style chat; keyboard-safe; b/w icons only */
 
 /* ---------- base / theme ---------- */
@@ -297,4 +299,74 @@ a:hover { opacity: .85; }
   .input { padding: 8px 10px; }
   .send-btn { height: 38px; min-width: 38px; border-radius: 10px; }
   .menu { right: 8px; bottom: 52px; }
+}
+
+/* === WeatherCard bits === */
+.weather-card {}
+
+/* small stat grid (temp / feels / wind / etc.) */
+.weather-card .wstat {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.weather-card .wlabel {
+  font-size: 11px;
+  line-height: 1.1;
+  color: rgba(200,200,200,0.7);
+}
+.weather-card .wval {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+/* hour scroller */
+.w-hscroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+.w-hscroll::-webkit-scrollbar { height: 8px; }
+.w-hscroll::-webkit-scrollbar-track { background: transparent; }
+.w-hscroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 8px;
+}
+
+/* single hour item */
+.w-hour {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+}
+
+/* optional: generic 16:9 embed helper if missing */
+.embed-responsive.embed-16by9 {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+}
+.embed-responsive.embed-16by9 > iframe,
+.embed-responsive.embed-16by9 > video,
+.embed-responsive.embed-16by9 > .embed {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0;
+}
+
+/* skeleton placeholder (if you don’t already have it) */
+.skel {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.06) 25%,
+    rgba(255,255,255,0.10) 37%,
+    rgba(255,255,255,0.06) 63%);
+  background-size: 400% 100%;
+  animation: skel 1.4s ease infinite;
+  border-radius: 10px;
+}
+@keyframes skel {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
 }
