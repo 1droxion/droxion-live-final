@@ -14,7 +14,6 @@ import {
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
-
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
