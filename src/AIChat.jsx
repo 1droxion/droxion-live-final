@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FULL FIXED
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FIXED + METRICS + HISTORY
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -8,12 +8,12 @@ import { FaRegCopy } from "react-icons/fa";
 import {
   FiMoon, FiSun, FiPlus,
   FiCamera, FiImage, FiFile,
-  FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
-  FiArrowRight
+  FiAperture, FiArrowRight, FiClock
 } from "react-icons/fi";
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
+
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
@@ -28,17 +28,16 @@ const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p ==
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
 
-// ⬇️ Keep your original working selector
+// original working selector
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
-const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
 const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
 
-/* small youtube helpers */
+/* youtube helpers */
 const isYouTube = (raw="") => {
   try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
 };
@@ -50,60 +49,34 @@ const youTubeIdFromUrl = (raw="") => {
       const v = u.searchParams.get("v");
       if (v) return v;
       const p = u.pathname.split("/").filter(Boolean);
-      const cand = p[0] === "shorts" || p[0] === "embed" ? p[1] : p[0] === "watch" ? null : p[p.length-1];
-      if (cand && /^[A-Za-z0-9_-]{11}$/.test(cand)) return cand;
+      if (p[0] === "shorts" || p[0] === "embed") return p[1];
     }
     if (h.includes("youtu.be")) {
-      const id = u.pathname.split("/").filter(Boolean)[0];
-      if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) return id;
+      const p = u.pathname.split("/").filter(Boolean);
+      if (p[0]) return p[0];
     }
   } catch {}
-  const m = raw.match(/(?:v=|\/|^)([A-Za-z0-9_-]{11})(?:[?&#]|$)/);
+  const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 };
-const wantsYouTube = (s="") => /\b(youtube|yt|video|shorts)\b/i.test(s);
 
-/* ---------------------- quick intent ---------------------- */
-const wantsImages  = (s="") => {
-  const q = s.trim().toLowerCase();
-  return /^images?\s*:\s*/.test(q)
-    || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q)
-    || /\bwallpapers?\b/.test(q);
-};
+/* quick intent */
+const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-const isSearchy = (s="") => {
-  const q = s.toLowerCase();
-  return q.startsWith("google:") || q.startsWith("search:") ||
-    /\b(now|today|latest|breaking|live|update|news|price|stock|chart|weather|forecast|crypto|btc|eth)\b/.test(q) ||
-    wantsNews(q) || wantsWeather(q) || wantsCrypto(q);
-};
 
-/* ---------------------- ranking for PREVIEW only ---------------------- */
+/* ranking for preview */
 const HQ = [
   "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
   "theguardian.com","bbc.com","npr.org","coindesk.com","cointelegraph.com",
-  "finance.yahoo.com","google.com","marketwatch.com","nasdaq.com","sec.gov","wikipedia.org"
 ];
 const rankHost = (h) => !h ? -50 : BAD_HOSTS.some(b => h===b || h.endsWith("."+b)) ? -200 : (HQ.some(g => h===g || h.endsWith("."+g)) ? 100 : 10);
 const dedupeCards = (arr=[]) => { const seen=new Set(); return arr.filter(c=>{ const key=(host(c.url||"")||"")+ "::" + (c.title||"").toLowerCase().slice(0,80); if(seen.has(key)) return false; seen.add(key); return true; }); };
 const rankAndTrim = (cards=[], limit=12) => dedupeCards(cards.filter(c => !!c && !!c.url && !isFilteredSource(c.url))).sort((a,b)=> (rankHost(host(b.url||"")) - rankHost(host(a.url||"")))).slice(0, limit);
 const displaySource = (c) => host(c?.url || "") || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
 
-const bestPreview = (card, allowFallback=false) => {
-  const direct = firstImageUrl(card);
-  if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" };
-  if (!allowFallback) return null;
-  if (card.url && !isFilteredSource(card.url)) {
-    const shot = `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`;
-    return { prox: shot, orig: card.url, title: card.title || "preview" };
-  }
-  const ph = unsplash(card.title || card.source || "news");
-  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
-};
-
-/* ---------------------- Weather (card + live fetch via /weather) ---------------------- */
+/* ---------------------- Weather card ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
   const pick = (o,ks,d=null)=>{ for(const k of ks) if(o && o[k]!=null && o[k] !== "") return o[k]; return d; };
@@ -112,19 +85,7 @@ function WeatherCard({ card }) {
   const WIND = (()=>{ const k=card.wind_kph, m=card.wind_mph; if(typeof k==="number"&&typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`; if(typeof k==="number") return `${Math.round(k)} km/h`; if(typeof m==="number") return `${Math.round(m)} mph`; return "";})();
   const RH = (typeof card.humidity === "number") ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip != null && card.precip !== "") ? `${card.precip}${typeof card.precip === "number" ? " mm" : ""}` : "";
-
-  const hourLabel = (ts) => {
-    try {
-      let d;
-      if (typeof ts === "number") d = new Date(ts < 2e12 ? ts * 1000 : ts);
-      else d = new Date(ts);
-      if (isNaN(d.getTime())) return "";
-      let h = d.getHours();
-      const am = h < 12; h = h % 12 || 12;
-      return `${h}${am ? "am" : "pm"}`;
-    } catch { return ""; }
-  };
-
+  const hourLabel = (ts)=>{ try{ const d=new Date(ts); let h=d.getHours(); const am=h<12; h=h%12||12; return `${h}${am?"am":"pm"}`;}catch{return"";} };
   const hrs=(card.hourly||[]).slice(0,8).map(h=>({ t:pick(h,["time","ts","timestamp","date"]), icon:pick(h,["icon","icon_url","image"]), c:pick(h,["temp_c","tempC","temperature_c","temperatureC","temp"]), f:pick(h,["temp_f","tempF","temperature_f","temperatureF"]), text:pick(h,["text","condition","desc"]) }));
   const days=(card.daily||[]).slice(0,3).map(d=>({ day:pick(d,["day","name","weekday","label"]), icon:pick(d,["icon","icon_url","image"]), min_c:pick(d,["min_c","minC","low_c","lowC","min"]), min_f:pick(d,["min_f","minF","low_f","lowF"]), max_c:pick(d,["max_c","maxC","high_c","highC","max"]), max_f:pick(d,["max_f","maxF","high_f","highF"]), text:pick(d,["text","condition","desc"]) }));
 
@@ -154,14 +115,13 @@ function WeatherCard({ card }) {
               <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
                 <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
                 {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                <div className="text-sm font-semibold">
-                  {(()=>{ const c=h.c, f=h.f;
-                    if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-                    if(typeof c==="number") return `${Math.round(c)}°C`;
-                    if(typeof f==="number") return `${Math.round(f)}°F`;
-                    return "-";
-                  })()}
-                </div>
+                <div className="text-sm font-semibold">{(()=>{
+                  const c=h.c, f=h.f;
+                  if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+                  if(typeof c==="number") return `${Math.round(c)}°C`;
+                  if(typeof f==="number") return `${Math.round(f)}°F`;
+                  return "-";
+                })()}</div>
               </div>
             ))}
           </div>
@@ -176,9 +136,10 @@ function WeatherCard({ card }) {
                 <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
                 {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-xs font-semibold">
-                  {(()=>{ const c=d.max_c, f=d.max_f, lc=d.min_c, lf=d.min_f;
-                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number")?`${Math.round(c)}°C`:(typeof f==="number")?`${Math.round(f)}°F`:"";
-                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number")?`${Math.round(lc)}°C`:(typeof lf==="number")?`${Math.round(lf)}°F`:"";
+                  {(()=>{
+                    const c=d.max_c, f=d.max_f, lc=d.min_c, lf=d.min_f;
+                    const hi = (typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`: (typeof c==="number")?`${Math.round(c)}°C`:(typeof f==="number")?`${Math.round(f)}°F`:"";
+                    const lo = (typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`: (typeof lc==="number")?`${Math.round(lc)}°C`:(typeof lf==="number")?`${Math.round(lf)}°F`:"";
                     return `${hi} / ${lo}`;
                   })()}
                 </div>
@@ -191,59 +152,12 @@ function WeatherCard({ card }) {
     </div>
   );
 }
-/* Live local weather (GPS first, fallback to IP via your new /weather route) */
-function useLiveWeather(API_BASE){
-  const [wx,setWx]=React.useState(null);
-  const timer=React.useRef(null);
 
-  const fetchWx = async (coords) => {
-    try{
-      const qs = coords ? `?lat=${coords.latitude}&lon=${coords.longitude}` : "";
-      const {data} = await axios.get(`${API_BASE}/weather${qs}`);
-      const cur = data.current || {};
-      const hourly = Array.isArray(data.hourly) ? data.hourly : [];
-      setWx({
-        type:"weather",
-        title:`Weather — ${(data.place?.city || "").trim()}`.replace(/[\s-]+$/,"") || "Weather",
-        subtitle:[data.place?.region, data.place?.country].filter(Boolean).join(", ") || data.timezone || "",
-        icon:null,
-        temp_c: typeof cur.tempC==="number" ? cur.tempC : null,
-        feels_c: typeof cur.feelsLikeC==="number" ? cur.feelsLikeC : null,
-        humidity: cur.humidity,
-        wind_kph: cur.windKph,
-        precip: cur.precip,
-        hourly: hourly.slice(0,12).map(h=>({ time:h.time, temp_c: h.tempC }))
-      });
-    }catch(_e){ /* silent */ }
-  };
-
-  React.useEffect(()=>{
-    let done=false;
-    if("geolocation" in navigator){
-      const to=setTimeout(()=>{ if(!done) fetchWx(); }, 10000);
-      navigator.geolocation.getCurrentPosition(
-        (pos)=>{done=true; clearTimeout(to); fetchWx(pos.coords);},
-        ()=>{done=true; clearTimeout(to); fetchWx();},
-        {enableHighAccuracy:true, timeout:9000, maximumAge:120000}
-      );
-    } else {
-      fetchWx();
-    }
-    timer.current=setInterval(()=>fetchWx(), 10*60*1000);
-    return ()=>clearInterval(timer.current);
-  },[]);
-
-  return wx;
-}
-/* ---------------------- Tools Menu (single + menu) ---------------------- */
+/* ---------------------- Tools Menu (only the 6 you requested) ---------------------- */
 function ToolsMenu({
   onSendImageFile,
   onSendAnyFile,
-  onToggleAgent, agentOn,
-  onDeepResearch,
-  onSetPersona,
   onCreateImage,
-  webSearchOn, onToggleWebSearch,
   onClearAll,
   onNewChat,
   onClose
@@ -252,7 +166,6 @@ function ToolsMenu({
   const photosRef = useRef(null);
   const filesRef = useRef(null);
 
-  // ❌ Do NOT close the menu before the picker returns (iOS)
   const pickCamera = () => camRef.current?.click();
   const pickPhotos = () => photosRef.current?.click();
   const pickFiles  = () => filesRef.current?.click();
@@ -261,27 +174,26 @@ function ToolsMenu({
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "camera" });
     e.target.value = "";
-    onClose?.(); // ✅ close AFTER file is chosen
+    onClose?.();
   };
   const handlePhotoFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "photos" });
     e.target.value = "";
-    onClose?.(); // ✅ close AFTER file is chosen
+    onClose?.();
   };
   const handleAnyFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendAnyFile?.(f);
     e.target.value = "";
-    onClose?.(); // ✅ close AFTER file is chosen
+    onClose?.();
   };
 
-  // safe wrapper ONLY for non-file actions
   const wrap = (fn) => () => { try { fn?.(); } finally { onClose?.(); } };
 
   return (
     <div className="menu-panel">
-      {/* hidden inputs (must remain mounted while picker is open) */}
+      {/* hidden inputs */}
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCamFile} />
       <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
       <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
@@ -292,11 +204,7 @@ function ToolsMenu({
 
       <hr className="menu-sep" />
 
-      <button className={`menu-item ${agentOn ? "active":""}`} onClick={wrap(onToggleAgent)}><FiCpu className="icon" /><span>Agent mode {agentOn?"On":"Off"}</span></button>
-      <button className="menu-item" onClick={wrap(onDeepResearch)}><FiSearch className="icon" /><span>Deep research</span></button>
-      <button className="menu-item" onClick={wrap(() => onSetPersona?.("teacher"))}><FiBook className="icon" /><span>Study &amp; learn</span></button>
       <button className="menu-item" onClick={wrap(onCreateImage)}><FiAperture className="icon" /><span>Create image</span></button>
-      <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={wrap(onToggleWebSearch)}><FiGlobe className="icon" /><span>Web search {webSearchOn?"On":"Off"}</span></button>
 
       <hr className="menu-sep" />
 
@@ -313,31 +221,29 @@ function AIChat() {
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
-    // live preview
+  // live preview
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
   const [news, setNews] = useState([]);
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
-  const [videos, setVideos] = useState([]); // ⬅️ YouTube strip
-
-  // live local weather from backend (/weather)
-  const wxLive = useLiveWeather(API_BASE);
 
   // toggles
   const [theme, setTheme] = useState(() => localStorage.getItem("drox.theme") || "dark");
-  const [agentOn, setAgentOn] = useState(false);
-  const [webSearchOn, setWebSearchOn] = useState(true);
-  const [persona, setPersona] = useState("");
-}
+
+  // metrics
+  const [metrics, setMetrics] = useState({ dau: null, wau: null, mau: null, local: 0 });
+
+  // search history
+  const SEARCH_HISTORY_KEY = "droxion.searches.v1";
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
-
-  // ✅ exact slot of last inserted temp message (image analysis)
-  const lastInsertIndexRef = useRef(-1);
 
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
@@ -354,34 +260,62 @@ function AIChat() {
   }, [messages]);
   useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
 
-  // keyboard-safe viewport (throttled — prevents page blink)
+  // load search history
+  useEffect(() => {
+    try {
+      const h = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || "[]");
+      if (Array.isArray(h)) setHistory(h);
+    } catch {}
+  }, []);
+
+  // keyboard-safe viewport
   useEffect(() => {
     const vv = window.visualViewport;
-    let raf = 0;
-    let lastKb = -1;
-    const handle = () => {
+    const handleVV = () => {
       if (!vv) return;
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop) | 0;
-      if (kb !== lastKb) {
-        lastKb = kb;
-        document.documentElement.style.setProperty("--kb", kb + "px");
-      }
-      raf = 0;
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--kb", kb + "px");
     };
-    const schedule = () => { if (!raf) raf = requestAnimationFrame(handle); };
-    handle();
-    vv?.addEventListener("resize", schedule);
-    vv?.addEventListener("scroll", schedule);
-    window.addEventListener("orientationchange", schedule);
+    handleVV();
+    vv?.addEventListener("resize", handleVV);
+    vv?.addEventListener("scroll", handleVV);
+    window.addEventListener("orientationchange", handleVV);
     return () => {
-      vv?.removeEventListener("resize", schedule);
-      vv?.removeEventListener("scroll", schedule);
-      window.removeEventListener("orientationchange", schedule);
-      if (raf) cancelAnimationFrame(raf);
+      vv?.removeEventListener("resize", handleVV);
+      vv?.removeEventListener("scroll", handleVV);
+      window.removeEventListener("orientationchange", handleVV);
     };
   }, []);
 
-  /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
+  /* ---------------------- metrics: daily /track + /metrics pill ---------------------- */
+  useEffect(() => {
+    // dedupe once/day per device
+    const KEY = "droxion.track.last";
+    const today = new Date().toISOString().slice(0,10);
+    const last = localStorage.getItem(KEY);
+    if (last !== today) {
+      localStorage.setItem(KEY, today);
+      axios.post(`${API_BASE}/track`, { type: "ping", date: today }).catch(()=>{});
+    }
+    // fetch backend DAU/WAU/MAU
+    const loadMetrics = async () => {
+      try {
+        const { data } = await axios.get(`${API_BASE}/metrics`);
+        const { dau, wau, mau } = data || {};
+        setMetrics(m => ({ ...m, dau: dau ?? null, wau: wau ?? null, mau: mau ?? null }));
+      } catch {
+        // fallback: local estimate = number of active days in chat history
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+          const days = new Set(saved.map(m => new Date(m.ts || Date.now()).toISOString().slice(0,10)));
+          setMetrics(m => ({ ...m, local: days.size }));
+        } catch {}
+      }
+    };
+    loadMetrics();
+  }, []);
+
+  /* ---------------------- suggestions + live previews ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -409,15 +343,11 @@ function AIChat() {
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
         ];
-        const ytReq = wantsYouTube(q)
-          ? axios.get(`${API_BASE}/search-youtube`, { params: { q }, cancelToken: src.token }).catch(()=>null)
-          : Promise.resolve(null);
-
-        const [rn, rw, rc, ry] = await Promise.all([...reqs, ytReq]);
+        const [rn, rw, rc] = await Promise.all(reqs);
 
         const newsRanked = rankAndTrim(
           (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 10
-        ).filter(c => !!bestPreview(c, true));
+        ).filter(c => !!(firstImageUrl(c) || c.image || c.thumbnail));
         setNews(newsRanked);
 
         const wcards = (rw?.data?.cards || []).filter(Boolean);
@@ -425,26 +355,6 @@ function AIChat() {
         setWeather(w || null);
 
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
-
-        // YouTube: map API to lightweight cards
-        if (ry && ry.data) {
-          const items = (ry.data.items || ry.data.results || []).slice(0, 10).map(v => {
-            const id = v.id?.videoId || v.videoId || v.id;
-            const url = id ? `https://www.youtube.com/watch?v=${id}` : (v.url || "");
-            return {
-              type: "youtube",
-              title: v.title || v.snippet?.title || "YouTube",
-              url,
-              videoId: id || youTubeIdFromUrl(url),
-              thumbnail: v.thumbnail || v.snippet?.thumbnails?.medium?.url || v.image || null,
-              channel: v.channelTitle || v.snippet?.channelTitle || "",
-              publishedAt: v.publishedAt || v.snippet?.publishedAt
-            };
-          });
-          setVideos(items.filter(x => x.videoId));
-        } else {
-          setVideos([]);
-        }
       } catch {}
     }, 350);
     return () => clearTimeout(previewTimer.current);
@@ -474,46 +384,53 @@ function AIChat() {
     });
   };
 
-  /* ---------------------- send handlers — NO TRIMMING of cards ---------------------- */
+  // save query to history (last 50 unique, newest first) + backend track
+  const logSearch = (q) => {
+    const t = (q || "").trim();
+    if (!t) return;
+    setHistory(prev => {
+      const list = [t, ...prev.filter(x => x !== t)].slice(0,50);
+      try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(list)); } catch {}
+      return list;
+    });
+    axios.post(`${API_BASE}/track`, { type: "search", q: t }).catch(()=>{});
+  };
+
+  /* ---------------------- send handlers ---------------------- */
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
-    setMessages((p) => [...p, { role: "user", content }]);
-    setInput(""); setTextSug([]);
+    setMessages((p) => [...p, { role: "user", content, ts: Date.now() }]);
+    setInput(""); setTextSug([]); setShowHistory(false);
+    logSearch(content);
 
     try {
       const lower = content.toLowerCase();
 
-      /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
+      // IMAGES INTENT
       if (wantsImages(content)) {
-        // Try backend first (intent: images). If it gives us cards, use them.
         let cards = [];
         try {
-          const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
+          const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: true });
           cards = (r.data?.cards || []).filter(Boolean);
         } catch {}
-
-        // If backend didn’t return any image cards, fall back to Unsplash sources.
         const hasImages =
           cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
 
         if (!hasImages) {
-          const q = content.replace(/^images?\s*:\s*/i, "").trim() || "wallpaper";
+          const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
             `https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`
           );
           cards = [{ type: "images-grid", images: urls }];
         }
-
         const md = `Here are some images. Tap any card to open.`;
         await pushWithFollowups(md, cards, content, { suppressSources: true });
         return;
       }
-      /* 🔥 end images branch */
 
-      // ---- existing special cases ----
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
-        const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: true });
         const cards = (r.data?.cards || []).filter(Boolean);
         const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
         await pushWithFollowups(md, cards, content);
@@ -522,7 +439,7 @@ function AIChat() {
 
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
-        const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
+        const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: true });
         const cards = (r.data?.results || []).filter(Boolean).map(it => ({
           type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet
         }));
@@ -531,7 +448,7 @@ function AIChat() {
       }
 
       if (wantsNews(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: true });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         return;
@@ -545,15 +462,15 @@ function AIChat() {
       }
 
       if (wantsCrypto(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: true });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
         return;
       }
 
-      // ---- default chat ----
+      // default chat
       const res = await axios.post(`${API_BASE}/chat`, {
-        prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
+        prompt: content, memory: [], persona: "", web: true, agent: false
       });
       const md = res.data?.reply || res.data?.text || "";
       const cards = (res.data?.cards || []).filter(Boolean);
@@ -563,7 +480,7 @@ function AIChat() {
     }
   };
 
-  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+  /* ---------------------- Image uploader (placeholder → replace) ---------------------- */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -571,29 +488,25 @@ function AIChat() {
       return;
     }
 
-    // Generate local preview URL
     let localUrl = "";
     try { localUrl = URL.createObjectURL(file); } catch {}
 
-    // Insert placeholder message and remember the exact slot
     const tempMsg = {
       role: "assistant",
       content: "Analyzing your image...",
       cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
       meta: { suppressSources: true, localPreview: true }
     };
-    setMessages((prev) => {
-      lastInsertIndexRef.current = prev.length; // exact slot
-      return [...prev, tempMsg];
-    });
+    setMessages((prev) => [...prev, tempMsg]);
+    const index = messages.length + 1;
 
     try {
       const form = new FormData();
       form.append("image", file);
       form.append("prompt", input || "Analyze this image and explain key details.");
-      form.append("agent", String(agentOn));
-      form.append("web", String(webSearchOn));
-      form.append("persona", persona);
+      form.append("agent", "false");
+      form.append("web", "true");
+      form.append("persona", "");
 
       const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
 
@@ -604,27 +517,19 @@ function AIChat() {
       );
       const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
 
-      // ✅ Replace temp message instead of pushing a new one
       setMessages((prev) => {
         const copy = [...prev];
-        const idx = lastInsertIndexRef.current;
-        if (idx >= 0 && idx < copy.length) {
-          copy[idx] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
-        } else {
-          copy.push({ role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } });
-        }
+        copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
         return copy;
       });
       setInput("");
     } catch {
       setMessages((prev) => {
         const copy = [...prev];
-        const idx = lastInsertIndexRef.current;
-        if (idx >= 0 && idx < copy.length) {
-          copy[idx] = { ...copy[idx], content: "Image analysis failed. Please try again." };
-        } else {
-          copy.push({ role: "assistant", content: "Image analysis failed. Please try again.", meta:{suppressSources:true} });
-        }
+        copy[index] = {
+          ...copy[index],
+          content: "Image analysis failed. Please try again."
+        };
         return copy;
       });
     } finally {
@@ -697,14 +602,13 @@ function AIChat() {
     );
   };
 
-  /* ---------------------- Media block (images, youtube, weather) ---------------------- */
+  /* ---------------------- Media block ---------------------- */
   function MediaBlock({ cards = [] }) {
     if (!cards || cards.length === 0) return null;
 
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
-          // Images grid (array of urls or {url})
           if (card?.type === "images-grid" && Array.isArray(card.images)) {
             const items = card.images.slice(0, 12);
             return (
@@ -720,13 +624,7 @@ function AIChat() {
                         className="w-full rounded-lg glass"
                         loading="lazy"
                         referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          const el = e.currentTarget;
-                          const step = el.dataset.step || "orig";
-                          if (step === "orig") { el.dataset.step = "proxy"; el.src = toProxy(el.src); return; }
-                          if (step === "proxy") { el.dataset.step = "fallback"; el.src = unsplash("image"); return; }
-                          el.style.display = "none";
-                        }}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
                       />
                     </a>
                   );
@@ -735,7 +633,6 @@ function AIChat() {
             );
           }
 
-          // Gallery (same idea)
           if (card?.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images
               .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -751,20 +648,13 @@ function AIChat() {
                     className="w-full rounded-lg glass"
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      const el = e.currentTarget;
-                      const step = el.dataset.step || "orig";
-                      if (step === "orig") { el.dataset.step = "proxy"; el.src = toProxy(el.src); return; }
-                      if (step === "proxy") { el.dataset.step = "fallback"; el.src = unsplash("image"); return; }
-                      el.style.display = "none";
-                    }}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
                   />
                 ))}
               </div>
             );
           }
 
-          // Single image card (backend might return {type:"image", url})
           if (card?.type === "image" && card.url) {
             return (
               <img
@@ -779,15 +669,13 @@ function AIChat() {
             );
           }
 
-          // Weather (pass through to your WeatherCard if present)
           if (card?.type === "weather") {
             return <WeatherCard key={`wx-${i}`} card={card} />;
           }
 
-          // YouTube (supports {videoId} or {url})
-          if (card?.type === "youtube" || (card?.url && isYouTube(card.url)) || card?.videoId) {
-            const id = card.videoId || youTubeIdFromUrl(card.url || "");
-            if (!id) return <React.Fragment key={`skip-${i}`} />;
+          if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
+            const id = youTubeIdFromUrl(card.url || "");
+            if (!id) return null;
             return (
               <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
                 <iframe
@@ -800,18 +688,19 @@ function AIChat() {
             );
           }
 
-          // Unknown card type — safe no-op to avoid key warnings
-          return <React.Fragment key={`skip-${i}`} />;
+          return null;
         })}
       </div>
     );
   }
 
-  /* + menu helpers */
+  /* ---------------------- menu, clear/new ---------------------- */
   const clearAll = () => {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(MEM_KEY);
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+    setHistory([]);
   };
   const newChat = () => {
     setMessages([]);
@@ -831,6 +720,16 @@ function AIChat() {
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
 
+          {/* Metrics pill */}
+          <div className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2">
+            <FiClock />
+            <span>DAU {metrics.dau ?? "–"}</span>
+            <span>•</span>
+            <span>WAU {metrics.wau ?? "–"}</span>
+            <span>•</span>
+            <span>MAU {metrics.mau ?? "–"}</span>
+          </div>
+
           <div className="ml-auto flex items-center gap-2">
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
               {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
@@ -842,297 +741,187 @@ function AIChat() {
         </div>
       </header>
 
-      Here’s a clean, drop-in replacement for that whole section. Paste it exactly over your current block.
-
-{/* Tools menu outside header to avoid tag mismatch */}
-{menuOpen && (
-  <>
-    <div
-      onClick={() => setMenuOpen(false)}
-      style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
-    />
-    <div style={{ position: "fixed", right: 8, top: 56, zIndex: 1000 }}>
-      <ToolsMenu
-        onSendImageFile={(f) => sendImageForAnalysis(f)}
-        onSendAnyFile={(f) => { /* optional */ }}
-        onToggleAgent={() => setAgentOn((v) => {
-          const nv = !v;
-          setMessages((p) => [...p, { role: "assistant", content: `Agent mode ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }]);
-          return nv;
-        })}
-        agentOn={agentOn}
-        onDeepResearch={() => {
-          const q = (input || "").trim();
-          if (!q) return;
-          setMessages((p) => [...p, { role: "assistant", content: "Researching…", meta: { suppressSources: true } }]);
-          axios.post(`${API_BASE}/deepsearch`, { q, agent: agentOn })
-            .then((r) => setMessages((p) => {
-              const copy = [...p];
-              copy[copy.length - 1] = {
-                role: "assistant",
-                content: r.data?.answer || `Deep research on **${q}**`,
-                cards: (r.data?.cards || [])
-              };
-              return copy;
-            }))
-            .catch(() => setMessages((p) => {
-              const copy = [...p];
-              copy[copy.length - 1] = { role: "assistant", content: "Deep research failed.", meta: { suppressSources: true } };
-              return copy;
-            }));
-        }}
-        onSetPersona={(p) => {
-          setPersona(p);
-          setMessages((m) => [...m, { role: "assistant", content: `Persona set to **${p}**.`, meta: { suppressSources: true } }]);
-        }}
-        onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
-        webSearchOn={webSearchOn}
-        onToggleWebSearch={() => {
-          setWebSearchOn((v) => {
-            const nv = !v;
-            setMessages((m) => [...m, { role: "assistant", content: `Web search ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }]);
-            return nv;
-          });
-        }}
-        onClearAll={clearAll}
-        onNewChat={newChat}
-        onClose={() => setMenuOpen(false)}
-      />
-    </div>
-  </>
-)}
-
-{/* chat scroll area */}
-<div
-  ref={scrollRef}
-  className="chat-scroll flex-1 overflow-y-auto"
-  style={{ WebkitOverflowScrolling: "touch" }}
->
-  <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
-    <div className="space-y-4">
-      {messages.map((msg, i) => {
-        const isUser = msg.role === "user";
-
-        const mediaCards = (msg.cards || []).filter((c) =>
-          ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
-          (c.url && isYouTube(c.url)) ||
-          c.videoId
-        );
-
-        return (
-          <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
-            <div className="flex items-center justify-between mb-1">
-              <div className="small-label">{isUser ? "You" : "Droxion"}</div>
-              {!isUser && msg.content && (
-                <button
-                  onClick={() => copyMessage(i)}
-                  className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-                  title="Copy"
-                >
-                  <FaRegCopy /> Copy
-                </button>
-              )}
-            </div>
-
-            {/* User vs Assistant message text */}
-            {isUser && <div className="answer expanded">{msg.content}</div>}
-            {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
-
-            {/* ✅ Render images, galleries, youtube, weather */}
-            {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
-
-            {/* Follow-up suggestions */}
-            {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-8">
-                {msg.followups.slice(0, 3).map((s, idx) => (
-                  <button key={idx} onClick={() => handleSend(s)} className="action-btn">
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
+      {/* Tools menu */}
+      {menuOpen && (
+        <>
+          <div onClick={()=>setMenuOpen(false)} style={{ position:"fixed", inset:0, zIndex:999, background:"transparent" }} />
+          <div style={{ position:"fixed", right:8, top:56, zIndex:1000 }}>
+            <ToolsMenu
+              onSendImageFile={(f)=>sendImageForAnalysis(f)}
+              onSendAnyFile={(/*f*/)=>{}}
+              onCreateImage={()=>handleSend(`create image: ${input||"cinematic portrait"}`)}
+              onClearAll={clearAll}
+              onNewChat={newChat}
+              onClose={()=>setMenuOpen(false)}
+            />
           </div>
-        );
-      })}
-
-      {typing && (
-        <div className="glass rounded-xl p-4">
-          <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
-          <div className="h-3 w-full bg-white/10 mb-1 rounded" />
-          <div className="h-3 w-4/5 bg-white/10 mb-1 rounded" />
-          <div className="h-3 w-3/5 bg-white/10 rounded" />
-        </div>
+        </>
       )}
-    </div>
-  </div>
-</div>
 
-{/* Fixed preview while typing */}
-{focused && (
-  <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
-    <div className="max-w-4xl mx-auto px-3">
-      <div className="panel glass rounded-xl p-2 suggestions-panel">
-        <div className="mb-2">
-          <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
-          <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-            <div className="flex gap-2">
-              {(news.length ? news : Array.from({ length: 3 })).map((c, i) =>
-                c ? (
-                  <a
-                    key={i}
-                    href={c.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hitem pr-3"
-                  >
-                    <div className="rounded-xl overflow-hidden glass">
-                      {(() => {
-                        const pv = bestPreview(c, true);
-                        return pv ? (
-                          <img
-                            src={pv.prox}
-                            alt=""
-                            className="w-full aspect-[16/9] object-cover"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { e.currentTarget.style.display = "none"; }}
-                          />
-                        ) : (
-                          <div className="aspect-[16/9] skel" />
-                        );
-                      })()}
-                      <div className="p-3">
-                        <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
-                        <div className="text-sm font-semibold line-clamp-2 leading-tight">
-                          {c.title}
-                        </div>
-                        <div className="text-[11px] text-gray-500 mt-1">
-                          {timeAgo(c.publishedAt || c.time)}
-                        </div>
-                      </div>
-                    </div>
-                  </a>
-                ) : (
-                  <div key={i} className="hitem pr-3">
-                    <div className="rounded-xl overflow-hidden glass">
-                      <div className="aspect-[16/9] skel" />
-                      <div className="p-3">
-                        <div className="h-3 w-24 skel rounded mb-2" />
-                        <div className="h-3 w-40 skel rounded" />
-                      </div>
-                    </div>
+      {/* chat scroll area */}
+      <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch" }}>
+        <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
+          <div className="space-y-4">
+            {messages.map((msg, i) => {
+              const isUser = msg.role === "user";
+              const mediaCards = (msg.cards || []).filter(c =>
+                ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
+                (c.url && isYouTube(c.url))
+              );
+
+              return (
+                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
+                    {!isUser && msg.content && (
+                      <button
+                        onClick={() => copyMessage(i)}
+                        className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+                        title="Copy"
+                      >
+                        <FaRegCopy /> Copy
+                      </button>
+                    )}
                   </div>
-                )
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
 
-        {/* YouTube strip */}
-        {videos.length > 0 && (
-          <div className="mb-2">
-            <div className="px-1 text-xs text-gray-400 mb-1">YouTube</div>
-            <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-              <div className="flex gap-2">
-                {videos.map((v, i) => (
-                  <button
-                    key={i}
-                    className="hitem pr-3 text-left"
-                    onClick={() => handleSend(v.title + " youtube")}
-                    title={v.title}
-                  >
-                    <div className="rounded-xl overflow-hidden glass w-[220px]">
-                      {v.thumbnail ? (
-                        <img
-                          src={v.thumbnail}
-                          alt=""
-                          className="w-full aspect-[16/9] object-cover"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="aspect-[16/9] skel" />
-                      )}
-                      <div className="p-3">
-                        <div className="text-[11px] text-gray-400 mb-1 line-clamp-1">{v.channel || "YouTube"}</div>
-                        <div className="text-sm font-semibold line-clamp-2 leading-tight">{v.title}</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+                  {isUser && <div className="answer expanded">{msg.content}</div>}
+                  {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
 
-        <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-          <div>
-            {(wxLive || weather)
-              ? (<WeatherCard card={wxLive || weather} />)
-              : (<div className="glass rounded-lg p-6 skel" />)}
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            {(crypto.length ? crypto.slice(0, 2) : [null, null]).map((c, i) =>
-              c ? (
-                <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
-                  <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
-                  <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
-                  {c.price && <div className="text-base mt-1">{c.price}</div>}
-                  {typeof c.change !== "undefined" && (
-                    <div className={`text-xs mt-1 ${String(c.change).startsWith("-") ? "text-red-400" : "text-green-400"}`}>
-                      {c.change}
+                  {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
+
+                  {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-8">
+                      {msg.followups.slice(0, 3).map((s, idx) => (
+                        <button key={idx} onClick={() => handleSend(s)} className="action-btn">
+                          {s}
+                        </button>
+                      ))}
                     </div>
                   )}
-                </a>
-              ) : (
-                <div key={i} className="glass rounded-lg p-6 skel" />
-              )
+                </div>
+              );
+            })}
+
+            {typing && (
+              <div className="glass rounded-xl p-4">
+                <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
+                <div className="h-3 w-full bg-white/10 mb-1 rounded" />
+                <div className="h-3 w-4/5 bg-white/10 mb-1 rounded" />
+                <div className="h-3 w-3/5 bg-white/10 rounded" />
+              </div>
             )}
           </div>
         </div>
-
-        {textSug.length > 0 && (
-          <div className="mt-1">
-            <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
-            {textSug.map((s, i) => (
-              <button
-                key={i}
-                onClick={() => handleSend(s)}
-                className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
-    </div>
-  </div>
-)}
 
-      {/* Composer — clean (no image button in middle) */}
+      {/* Fixed preview while typing */}
+      {focused && (
+        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
+          <div className="max-w-4xl mx-auto px-3">
+            <div className="panel glass rounded-xl p-2 suggestions-panel">
+              <div className="mb-2">
+                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                  <div className="flex gap-2">
+                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
+                      c ? (
+                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            {(() => {
+                              const pvImg = firstImageUrl(c) || c.image || c.thumbnail || null;
+                              return pvImg
+                                ? <img src={pvImg} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
+                                : <div className="aspect-[16/9] skel" />;
+                            })()}
+                            <div className="p-3">
+                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                            </div>
+                          </div>
+                        </a>
+                      ) : (
+                        <div key={i} className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            <div className="aspect-[16/9] skel" />
+                            <div className="p-3">
+                              <div className="h-3 w-24 skel rounded mb-2" />
+                              <div className="h-3 w-40 skel rounded" />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
+                <div className="grid grid-cols-1 gap-2">
+                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
+                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                      {c.price && <div className="text-base mt-1">{c.price}</div>}
+                      {typeof c.change!=="undefined" && (
+                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
+                      )}
+                    </a>
+                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
+                </div>
+              </div>
+
+              {textSug.length>0 && (
+                <div className="mt-1">
+                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
+                  {textSug.map((s,i)=>(
+                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Composer */}
       <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
-            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
+            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition relative">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e)=>setInput(e.target.value)}
                 onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSend(); }}}
-                onFocus={()=>setFocused(true)}
-                onBlur={()=>setTimeout(()=>setFocused(false),150)}
+                onFocus={()=>{ setFocused(true); setShowHistory(true); }}
+                onBlur={()=>setTimeout(()=>{ setFocused(false); setShowHistory(false); },150)}
                 rows={1}
                 inputMode="text"
-                placeholder="Type your message"
+                placeholder=""
                 className="w-full bg-transparent outline-none resize-none leading-[1.6]"
                 style={{ height:44, maxHeight:44, overflowY:"auto" }}
                 aria-label="Type your message"
               />
+              {/* Search history dropdown */}
+              {showHistory && !input && history.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-2 glass rounded-xl p-2 border border-white/10 max-h-60 overflow-y-auto">
+                  <div className="px-2 py-1 text-[11px] text-gray-400">Recent searches</div>
+                  {history.slice(0,12).map((h,i)=>(
+                    <button
+                      key={i}
+                      className="w-full text-left text-sm px-3 py-2 rounded-md hover:bg-white/10"
+                      onMouseDown={(e)=>e.preventDefault()}
+                      onClick={()=>{ setInput(h); setShowHistory(false); setTimeout(()=>inputRef.current?.focus(), 0); }}
+                    >
+                      {h}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
               <FiArrowRight />
