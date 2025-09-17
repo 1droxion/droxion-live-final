@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (FULL FEATURED + FIXES + CLEAN MENU)
+// src/AIChat.jsx — Droxion (FULL FILE + FIXES YOU ASKED)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -14,31 +14,27 @@ import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-/* ---------- helpers ---------- */
-const normHost = (u="") => { try { return new URL(u).hostname.replace(/^www\./,""); } catch{return"";} };
-const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || null;
-const toProxy = (u="") => (!u||!/^https?:/i.test(u))?u:`${API_BASE}/img?url=${encodeURIComponent(u)}`;
-const unsplash = (q) => q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null;
+/* ---------------------- helpers ---------------------- */
+const normHost = (u="") => { try { return new URL(u).hostname.replace(/^www\./,""); } catch{return "";} };
 const isYouTube = (raw="") => /youtu\.?be|youtube\.com/.test(raw);
 const youTubeIdFromUrl = (raw="") => {
   try {
     const u = new URL(raw);
-    if(u.hostname.includes("youtu.be")) return u.pathname.split("/")[1];
-    if(u.searchParams.get("v")) return u.searchParams.get("v");
-    if(u.pathname.includes("shorts")) return u.pathname.split("/").pop();
+    if (u.hostname.includes("youtu.be")) return u.pathname.split("/")[1];
+    if (u.searchParams.get("v")) return u.searchParams.get("v");
+    if (u.pathname.includes("shorts")) return u.pathname.split("/").pop();
   } catch {}
   const m = raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 };
 
-/* ---------- intent detection ---------- */
 const wantsNews = (s="") => /\b(news|headline|latest|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|forecast|humidity|wind)\b/i.test(s);
 const wantsCrypto = (s="") => /\b(crypto|btc|eth|price|stock|chart|coin)\b/i.test(s);
 const wantsYouTube = (s="") => /\b(youtube|yt|video|shorts)\b/i.test(s);
-const trivialInput = (s="") => /^(hi|hello|hey|ok|\?|yo|sup)$/i.test(s.trim());
+const isTrivial = (s="") => /^(hi|hello|hey|ok|\?|yo|sup)$/i.test(s.trim());
 
-/* ---------- Weather Card ---------- */
+/* ---------------------- Weather Card ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
   return (
@@ -56,7 +52,7 @@ function WeatherCard({ card }) {
   );
 }
 
-/* ---------- Tools Menu ---------- */
+/* ---------------------- Tools Menu (CLEAN) ---------------------- */
 function ToolsMenu({ onSendImageFile, onSendAnyFile, onCreateImage, onClearAll, onNewChat, onClose }) {
   const camRef=useRef(null), photosRef=useRef(null), filesRef=useRef(null);
   const pick = (r)=>r.current?.click();
@@ -78,7 +74,7 @@ function ToolsMenu({ onSendImageFile, onSendAnyFile, onCreateImage, onClearAll, 
   );
 }
 
-/* ---------- Main Chat ---------- */
+/* ---------------------- Main Component ---------------------- */
 function AIChat() {
   const [messages,setMessages]=useState([]), [input,setInput]=useState(""), [focused,setFocused]=useState(false);
   const [theme,setTheme]=useState(()=>localStorage.getItem("drox.theme")||"dark");
