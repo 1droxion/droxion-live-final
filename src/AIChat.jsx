@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion FINAL (clean + smart triggers + structured replies)
+// src/AIChat.jsx — Droxion (FULL FEATURED + FIXES + CLEAN MENU)
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -15,19 +15,19 @@ import "./AIChat.css";
 const API_BASE = "https://droxion-backend.onrender.com";
 
 /* ---------- helpers ---------- */
-const normHost = (u="") => { try { const url=new URL(u); return url.hostname.toLowerCase().replace(/^www\./,"").replace(/^m\./,""); } catch{return "";} };
-const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
-const toProxy = (u="") => (!u || !/^https?:/i.test(u)) ? u : `${API_BASE}/img?url=${encodeURIComponent(u)}`;
+const normHost = (u="") => { try { return new URL(u).hostname.replace(/^www\./,""); } catch{return"";} };
+const firstImageUrl = (c) => c?.image_url || c?.image || c?.thumbnail || c?.thumb || null;
+const toProxy = (u="") => (!u||!/^https?:/i.test(u))?u:`${API_BASE}/img?url=${encodeURIComponent(u)}`;
 const unsplash = (q) => q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null;
 const isYouTube = (raw="") => /youtu\.?be|youtube\.com/.test(raw);
 const youTubeIdFromUrl = (raw="") => {
   try {
-    const u=new URL(raw);
+    const u = new URL(raw);
     if(u.hostname.includes("youtu.be")) return u.pathname.split("/")[1];
     if(u.searchParams.get("v")) return u.searchParams.get("v");
     if(u.pathname.includes("shorts")) return u.pathname.split("/").pop();
-  } catch{}
-  const m=raw.match(/([A-Za-z0-9_-]{11})/);
+  } catch {}
+  const m = raw.match(/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 };
 
@@ -36,9 +36,9 @@ const wantsNews = (s="") => /\b(news|headline|latest|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|forecast|humidity|wind)\b/i.test(s);
 const wantsCrypto = (s="") => /\b(crypto|btc|eth|price|stock|chart|coin)\b/i.test(s);
 const wantsYouTube = (s="") => /\b(youtube|yt|video|shorts)\b/i.test(s);
-const wantsImages = (s="") => /\b(images?|photos?|wallpaper|picture)\b/i.test(s);
+const trivialInput = (s="") => /^(hi|hello|hey|ok|\?|yo|sup)$/i.test(s.trim());
 
-/* ---------- WeatherCard component ---------- */
+/* ---------- Weather Card ---------- */
 function WeatherCard({ card }) {
   if (!card) return null;
   return (
@@ -58,9 +58,9 @@ function WeatherCard({ card }) {
 
 /* ---------- Tools Menu ---------- */
 function ToolsMenu({ onSendImageFile, onSendAnyFile, onCreateImage, onClearAll, onNewChat, onClose }) {
-  const camRef=useRef(null); const photosRef=useRef(null); const filesRef=useRef(null);
-  const pick=(ref)=>ref.current?.click();
-  const handle=(e,fn)=>{const f=e.target.files?.[0]; if(f) fn(f); e.target.value=""; onClose?.();};
+  const camRef=useRef(null), photosRef=useRef(null), filesRef=useRef(null);
+  const pick = (r)=>r.current?.click();
+  const handle = (e,fn)=>{const f=e.target.files?.[0]; if(f) fn(f); e.target.value=""; onClose?.();};
   return (
     <div className="menu-panel">
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e)=>handle(e,(f)=>onSendImageFile(f,{source:"camera"}))}/>
@@ -109,7 +109,12 @@ function AIChat() {
 
   const OrganizedAnswer=({md})=>{
     const title=(md.match(/^#\s+(.+)/m)?.[1])||md.split("\n")[0];
-    return(<div><div className="org-title">{title}</div><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{md}</ReactMarkdown></div>);
+    return(
+      <>
+        <div className="org-title">{title}</div>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{md}</ReactMarkdown>
+      </>
+    );
   };
 
   const MediaBlock=({cards=[]})=>{
@@ -117,14 +122,16 @@ function AIChat() {
       <div className="grid gap-4 mt-3">
         {cards.map((c,i)=>{
           if(c.type==="weather") return <WeatherCard key={i} card={c}/>;
-          if(c.type==="youtube" && c.videoId) return(
-            <div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass">
+          if(c.type==="youtube" && c.videoId)
+            return(<div key={i} className="embed-responsive embed-16by9 rounded overflow-hidden glass">
               <iframe src={`https://www.youtube.com/embed/${c.videoId}`} title={c.title} allowFullScreen/>
             </div>);
-          if(c.type==="image"||c.type==="gallery") return <img key={i} src={c.url||c.images?.[0]} className="rounded-lg w-full"/>;
+          if(c.type==="gallery"||c.type==="image")
+            return <img key={i} src={c.url||c.images?.[0]} className="rounded-lg w-full" alt=""/>;
           return null;
         })}
-      </div>);
+      </div>
+    );
   };
 
   return (
@@ -133,13 +140,17 @@ function AIChat() {
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2">
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="ml-auto flex gap-2">
-            <button onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} className="pill-btn">{theme==="dark"?<FiMoon/>:<FiSun/>} {theme==="dark"?"Dark":"Light"}</button>
+            <button onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} className="pill-btn">
+              {theme==="dark"?<FiMoon/>:<FiSun/>} {theme==="dark"?"Dark":"Light"}
+            </button>
             <button onClick={()=>setMenuOpen(v=>!v)} className="pill-btn"><FiPlus/></button>
           </div>
         </div>
       </header>
 
-      {menuOpen && <div className="menu-wrapper"><ToolsMenu onSendImageFile={()=>{}} onSendAnyFile={()=>{}} onCreateImage={()=>handleSend("create image")} onClearAll={clearAll} onNewChat={newChat} onClose={()=>setMenuOpen(false)}/></div>}
+      {menuOpen && <div className="menu-wrapper">
+        <ToolsMenu onSendImageFile={()=>{}} onSendAnyFile={()=>{}} onCreateImage={()=>handleSend("create image")} onClearAll={clearAll} onNewChat={newChat} onClose={()=>setMenuOpen(false)}/>
+      </div>}
 
       <div className="chat-scroll flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-3 pb-28 pt-3 space-y-4">
