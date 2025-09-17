@@ -103,7 +103,7 @@ const bestPreview = (card, allowFallback=false) => {
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
 };
 
-/* ---------------------- Weather card ---------------------- */
+/* ---------------------- Weather (card + live fetch via /weather) ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
   const pick = (o,ks,d=null)=>{ for(const k of ks) if(o && o[k]!=null && o[k] !== "") return o[k]; return d; };
@@ -116,15 +116,11 @@ function WeatherCard({ card }) {
   const hourLabel = (ts) => {
     try {
       let d;
-      if (typeof ts === "number") {
-        d = new Date(ts < 2e12 ? ts * 1000 : ts); // normalize seconds vs ms
-      } else {
-        d = new Date(ts);
-      }
+      if (typeof ts === "number") d = new Date(ts < 2e12 ? ts * 1000 : ts);
+      else d = new Date(ts);
       if (isNaN(d.getTime())) return "";
       let h = d.getHours();
-      const am = h < 12;
-      h = h % 12 || 12;
+      const am = h < 12; h = h % 12 || 12;
       return `${h}${am ? "am" : "pm"}`;
     } catch { return ""; }
   };
@@ -158,13 +154,14 @@ function WeatherCard({ card }) {
               <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
                 <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
                 {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
-                <div className="text-sm font-semibold">{(()=>{
-                  const c=h.c, f=h.f;
-                  if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-                  if(typeof c==="number") return `${Math.round(c)}°C`;
-                  if(typeof f==="number") return `${Math.round(f)}°F`;
-                  return "-";
-                })()}</div>
+                <div className="text-sm font-semibold">
+                  {(()=>{ const c=h.c, f=h.f;
+                    if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+                    if(typeof c==="number") return `${Math.round(c)}°C`;
+                    if(typeof f==="number") return `${Math.round(f)}°F`;
+                    return "-";
+                  })()}
+                </div>
               </div>
             ))}
           </div>
@@ -179,10 +176,9 @@ function WeatherCard({ card }) {
                 <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
                 {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-xs font-semibold">
-                  {(()=>{
-                    const c=d.max_c, f=d.max_f, lc=d.min_c, lf=d.min_f;
-                    const hi = (typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`: (typeof c==="number")?`${Math.round(c)}°C`:(typeof f==="number")?`${Math.round(f)}°F`:"";
-                    const lo = (typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`: (typeof lc==="number")?`${Math.round(lc)}°C`:(typeof lf==="number")?`${Math.round(lf)}°F`:"";
+                  {(()=>{ const c=d.max_c, f=d.max_f, lc=d.min_c, lf=d.min_f;
+                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number")?`${Math.round(c)}°C`:(typeof f==="number")?`${Math.round(f)}°F`:"";
+                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number")?`${Math.round(lc)}°C`:(typeof lf==="number")?`${Math.round(lf)}°F`:"";
                     return `${hi} / ${lo}`;
                   })()}
                 </div>
@@ -196,6 +192,50 @@ function WeatherCard({ card }) {
   );
 }
 
+/* Live local weather (GPS first, fallback to IP via your new /weather route) */
+function useLiveWeather(API_BASE){
+  const [wx,setWx]=React.useState(null);
+  const timer=React.useRef(null);
+
+  const fetchWx = async (coords) => {
+    try{
+      const qs = coords ? `?lat=${coords.latitude}&lon=${coords.longitude}` : "";
+      const {data} = await axios.get(`${API_BASE}/weather${qs}`);
+      const cur = data.current || {};
+      const hourly = Array.isArray(data.hourly) ? data.hourly : [];
+      setWx({
+        type:"weather",
+        title:`Weather — ${(data.place?.city || "").trim()}`.replace(/[\s-]+$/,"") || "Weather",
+        subtitle:[data.place?.region, data.place?.country].filter(Boolean).join(", ") || data.timezone || "",
+        icon:null,
+        temp_c: typeof cur.tempC==="number" ? cur.tempC : null,
+        feels_c: typeof cur.feelsLikeC==="number" ? cur.feelsLikeC : null,
+        humidity: cur.humidity,
+        wind_kph: cur.windKph,
+        precip: cur.precip,
+        hourly: hourly.slice(0,12).map(h=>({ time:h.time, temp_c: h.tempC }))
+      });
+    }catch(_e){ /* silent */ }
+  };
+
+  React.useEffect(()=>{
+    let done=false;
+    if("geolocation" in navigator){
+      const to=setTimeout(()=>{ if(!done) fetchWx(); }, 10000);
+      navigator.geolocation.getCurrentPosition(
+        (pos)=>{done=true; clearTimeout(to); fetchWx(pos.coords);},
+        ()=>{done=true; clearTimeout(to); fetchWx();},
+        {enableHighAccuracy:true, timeout:9000, maximumAge:120000}
+      );
+    } else {
+      fetchWx();
+    }
+    timer.current=setInterval(()=>fetchWx(), 10*60*1000);
+    return ()=>clearInterval(timer.current);
+  },[]);
+
+  return wx;
+}
 /* ---------------------- Tools Menu (single + menu) ---------------------- */
 function ToolsMenu({
   onSendImageFile,
@@ -282,12 +322,17 @@ function AIChat() {
   const [crypto, setCrypto] = useState([]);
   const [videos, setVideos] = useState([]); // ⬅️ YouTube strip
 
+  // ⬇️ paste this line here
+  // live local weather from backend (/weather)
+  const wxLive = useLiveWeather(API_BASE);
+
   // toggles
   const [theme, setTheme] = useState(() => localStorage.getItem("drox.theme") || "dark");
   const [agentOn, setAgentOn] = useState(false);
   const [webSearchOn, setWebSearchOn] = useState(true);
   const [persona, setPersona] = useState("");
-
+  ...
+}
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
   const suggestTimer = useRef(null);
@@ -959,7 +1004,7 @@ function AIChat() {
               )}
 
               <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
+                <div>{(wxLive || weather) ? (<WeatherCard card={wxLive || weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
                 <div className="grid grid-cols-1 gap-2">
                   {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
                     <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
