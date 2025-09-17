@@ -1,5 +1,3 @@
-Here’s a clean, fully fixed src/AIChat.jsx you can paste in whole. I kept your structure/logic the same, just corrected syntax, moved stray prose out of JSX, and properly scoped the preview panel + weather hook usage.
-
 // src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FULL FIXED
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
