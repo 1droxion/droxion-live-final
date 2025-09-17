@@ -51,20 +51,26 @@ const youTubeIdFromUrl = (raw="") => {
       const v = u.searchParams.get("v");
       if (v) return v;
       const p = u.pathname.split("/").filter(Boolean);
-      if (p[0] === "shorts" || p[0] === "embed") return p[1];
+      const cand = p[0] === "shorts" || p[0] === "embed" ? p[1] : p[0] === "watch" ? null : p[p.length-1];
+      if (cand && /^[A-Za-z0-9_-]{11}$/.test(cand)) return cand;
     }
     if (h.includes("youtu.be")) {
-      const p = u.pathname.split("/").filter(Boolean);
-      if (p[0]) return p[0];
+      const id = u.pathname.split("/").filter(Boolean)[0];
+      if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) return id;
     }
   } catch {}
-  const m = raw && raw.match(/([A-Za-z0-9_-]{11})/);
+  const m = raw.match(/(?:v=|\/|^)([A-Za-z0-9_-]{11})(?:[?&#]|$)/);
   return m ? m[1] : null;
 };
 const wantsYouTube = (s="") => /\b(youtube|yt|video|shorts)\b/i.test(s);
 
 /* ---------------------- quick intent ---------------------- */
-const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
+const wantsImages  = (s="") => {
+  const q = s.trim().toLowerCase();
+  return /^images?\s*:\s*/.test(q)
+    || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q)
+    || /\bwallpapers?\b/.test(q);
+};
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
@@ -107,7 +113,23 @@ function WeatherCard({ card }) {
   const WIND = (()=>{ const k=card.wind_kph, m=card.wind_mph; if(typeof k==="number"&&typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`; if(typeof k==="number") return `${Math.round(k)} km/h`; if(typeof m==="number") return `${Math.round(m)} mph`; return "";})();
   const RH = (typeof card.humidity === "number") ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip != null && card.precip !== "") ? `${card.precip}${typeof card.precip === "number" ? " mm" : ""}` : "";
-  const hourLabel = (ts)=>{ try{ const d=new Date(ts); let h=d.getHours(); const am=h<12; h=h%12||12; return `${h}${am?"am":"pm"}`;}catch{return"";} };
+
+  const hourLabel = (ts) => {
+    try {
+      let d;
+      if (typeof ts === "number") {
+        d = new Date(ts < 2e12 ? ts * 1000 : ts); // normalize seconds vs ms
+      } else {
+        d = new Date(ts);
+      }
+      if (isNaN(d.getTime())) return "";
+      let h = d.getHours();
+      const am = h < 12;
+      h = h % 12 || 12;
+      return `${h}${am ? "am" : "pm"}`;
+    } catch { return ""; }
+  };
+
   const hrs=(card.hourly||[]).slice(0,8).map(h=>({ t:pick(h,["time","ts","timestamp","date"]), icon:pick(h,["icon","icon_url","image"]), c:pick(h,["temp_c","tempC","temperature_c","temperatureC","temp"]), f:pick(h,["temp_f","tempF","temperature_f","temperatureF"]), text:pick(h,["text","condition","desc"]) }));
   const days=(card.daily||[]).slice(0,3).map(d=>({ day:pick(d,["day","name","weekday","label"]), icon:pick(d,["icon","icon_url","image"]), min_c:pick(d,["min_c","minC","low_c","lowC","min"]), min_f:pick(d,["min_f","minF","low_f","lowF"]), max_c:pick(d,["max_c","maxC","high_c","highC","max"]), max_f:pick(d,["max_f","maxF","high_f","highF"]), text:pick(d,["text","condition","desc"]) }));
 
@@ -165,7 +187,7 @@ function WeatherCard({ card }) {
                     return `${hi} / ${lo}`;
                   })()}
                 </div>
-                {d.text && <div className="text:[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
+                {d.text && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{d.text}</div>}
               </div>
             ))}
           </div>
@@ -272,6 +294,9 @@ function AIChat() {
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
+
+  // ✅ exact slot of last inserted temp message (image analysis)
+  const lastInsertIndexRef = useRef(-1);
 
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
@@ -431,7 +456,7 @@ function AIChat() {
           cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
 
         if (!hasImages) {
-          const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
+          const q = content.replace(/^images?\s*:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
             `https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`
           );
@@ -509,15 +534,17 @@ function AIChat() {
     let localUrl = "";
     try { localUrl = URL.createObjectURL(file); } catch {}
 
-    // Insert placeholder message and keep index for later replacement
+    // Insert placeholder message and remember the exact slot
     const tempMsg = {
       role: "assistant",
       content: "Analyzing your image...",
       cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
       meta: { suppressSources: true, localPreview: true }
     };
-    setMessages((prev) => [...prev, tempMsg]);
-    const index = messages.length + 1; // predicted index after set
+    setMessages((prev) => {
+      lastInsertIndexRef.current = prev.length; // exact slot
+      return [...prev, tempMsg];
+    });
 
     try {
       const form = new FormData();
@@ -539,17 +566,24 @@ function AIChat() {
       // ✅ Replace temp message instead of pushing a new one
       setMessages((prev) => {
         const copy = [...prev];
-        copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
+        const idx = lastInsertIndexRef.current;
+        if (idx >= 0 && idx < copy.length) {
+          copy[idx] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
+        } else {
+          copy.push({ role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } });
+        }
         return copy;
       });
       setInput("");
     } catch {
       setMessages((prev) => {
         const copy = [...prev];
-        copy[index] = {
-          ...copy[index],
-          content: "Image analysis failed. Please try again."
-        };
+        const idx = lastInsertIndexRef.current;
+        if (idx >= 0 && idx < copy.length) {
+          copy[idx] = { ...copy[idx], content: "Image analysis failed. Please try again." };
+        } else {
+          copy.push({ role: "assistant", content: "Image analysis failed. Please try again.", meta:{suppressSources:true} });
+        }
         return copy;
       });
     } finally {
@@ -645,7 +679,13 @@ function AIChat() {
                         className="w-full rounded-lg glass"
                         loading="lazy"
                         referrerPolicy="no-referrer"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        onError={(e) => {
+                          const el = e.currentTarget;
+                          const step = el.dataset.step || "orig";
+                          if (step === "orig") { el.dataset.step = "proxy"; el.src = toProxy(el.src); return; }
+                          if (step === "proxy") { el.dataset.step = "fallback"; el.src = unsplash("image"); return; }
+                          el.style.display = "none";
+                        }}
                       />
                     </a>
                   );
@@ -670,7 +710,13 @@ function AIChat() {
                     className="w-full rounded-lg glass"
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    onError={(e) => {
+                      const el = e.currentTarget;
+                      const step = el.dataset.step || "orig";
+                      if (step === "orig") { el.dataset.step = "proxy"; el.src = toProxy(el.src); return; }
+                      if (step === "proxy") { el.dataset.step = "fallback"; el.src = unsplash("image"); return; }
+                      el.style.display = "none";
+                    }}
                   />
                 ))}
               </div>
@@ -700,7 +746,7 @@ function AIChat() {
           // YouTube (supports {videoId} or {url})
           if (card?.type === "youtube" || (card?.url && isYouTube(card.url)) || card?.videoId) {
             const id = card.videoId || youTubeIdFromUrl(card.url || "");
-            if (!id) return null;
+            if (!id) return <React.Fragment key={`skip-${i}`} />;
             return (
               <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
                 <iframe
@@ -713,7 +759,8 @@ function AIChat() {
             );
           }
 
-          return null;
+          // Unknown card type — safe no-op to avoid key warnings
+          return <React.Fragment key={`skip-${i}`} />;
         })}
       </div>
     );
@@ -863,7 +910,7 @@ function AIChat() {
                             <div className="p-3">
                               <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
                               <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
-                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                              <div className="text-[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
                             </div>
                           </div>
                         </a>
@@ -957,7 +1004,7 @@ function AIChat() {
                 onBlur={()=>setTimeout(()=>setFocused(false),150)}
                 rows={1}
                 inputMode="text"
-                placeholder=""
+                placeholder="Type your message"
                 className="w-full bg-transparent outline-none resize-none leading-[1.6]"
                 style={{ height:44, maxHeight:44, overflowY:"auto" }}
                 aria-label="Type your message"
