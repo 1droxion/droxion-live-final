@@ -106,28 +106,10 @@ const bestPreview = (card, allowFallback=false) => {
 /* ---------------------- Weather (card + live fetch via /weather) ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
-  const pick = (o, ks, d = null) => { for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k]; return d; };
-  const T = (() => {
-    const c = card.temp_c, f = card.temp_f;
-    if (typeof c === "number" && typeof f === "number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-    if (typeof c === "number") return `${Math.round(c)}°C`;
-    if (typeof f === "number") return `${Math.round(f)}°F`;
-    return "";
-  })();
-  const FEELS = (() => {
-    const c = card.feels_c, f = card.feels_f;
-    if (typeof c === "number" && typeof f === "number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-    if (typeof c === "number") return `${Math.round(c)}°C`;
-    if (typeof f === "number") return `${Math.round(f)}°F`;
-    return "";
-  })();
-  const WIND = (() => {
-    const k = card.wind_kph, m = card.wind_mph;
-    if (typeof k === "number" && typeof m === "number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`;
-    if (typeof k === "number") return `${Math.round(k)} km/h`;
-    if (typeof m === "number") return `${Math.round(m)} mph`;
-    return "";
-  })();
+  const pick = (o,ks,d=null)=>{ for(const k of ks) if(o && o[k]!=null && o[k] !== "") return o[k]; return d; };
+  const T = (()=>{ const c=card.temp_c, f=card.temp_f; if(typeof c==="number"&&typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`; if(typeof c==="number") return `${Math.round(c)}°C`; if(typeof f==="number") return `${Math.round(f)}°F`; return ""; })();
+  const FEELS = (()=>{ const c=card.feels_c, f=card.feels_f; if(typeof c==="number"&&typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`; if(typeof c==="number") return `${Math.round(c)}°C`; if(typeof f==="number") return `${Math.round(f)}°F`; return ""; })();
+  const WIND = (()=>{ const k=card.wind_kph, m=card.wind_mph; if(typeof k==="number"&&typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`; if(typeof k==="number") return `${Math.round(k)} km/h`; if(typeof m==="number") return `${Math.round(m)} mph`; return "";})();
   const RH = (typeof card.humidity === "number") ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip != null && card.precip !== "") ? `${card.precip}${typeof card.precip === "number" ? " mm" : ""}` : "";
 
@@ -143,41 +125,18 @@ function WeatherCard({ card }) {
     } catch { return ""; }
   };
 
-  const hrs = (card.hourly || []).slice(0, 8).map(h => ({
-    t: pick(h, ["time", "ts", "timestamp", "date"]),
-    icon: pick(h, ["icon", "icon_url", "image"]),
-    c: pick(h, ["temp_c", "tempC", "temperature_c", "temperatureC", "temp"]),
-    f: pick(h, ["temp_f", "tempF", "temperature_f", "temperatureF"]),
-    text: pick(h, ["text", "condition", "desc"])
-  }));
-  const days = (card.daily || []).slice(0, 3).map(d => ({
-    day: pick(d, ["day", "name", "weekday", "label"]),
-    icon: pick(d, ["icon", "icon_url", "image"]),
-    min_c: pick(d, ["min_c", "minC", "low_c", "lowC", "min"]),
-    min_f: pick(d, ["min_f", "minF", "low_f", "lowF"]),
-    max_c: pick(d, ["max_c", "maxC", "high_c", "highC", "max"]),
-    max_f: pick(d, ["max_f", "maxF", "high_f", "highF"]),
-    text: pick(d, ["text", "condition", "desc"])
-  }));
+  const hrs=(card.hourly||[]).slice(0,8).map(h=>({ t:pick(h,["time","ts","timestamp","date"]), icon:pick(h,["icon","icon_url","image"]), c:pick(h,["temp_c","tempC","temperature_c","temperatureC","temp"]), f:pick(h,["temp_f","tempF","temperature_f","temperatureF"]), text:pick(h,["text","condition","desc"]) }));
+  const days=(card.daily||[]).slice(0,3).map(d=>({ day:pick(d,["day","name","weekday","label"]), icon:pick(d,["icon","icon_url","image"]), min_c:pick(d,["min_c","minC","low_c","lowC","min"]), min_f:pick(d,["min_f","minF","low_f","lowF"]), max_c:pick(d,["max_c","maxC","high_c","highC","max"]), max_f:pick(d,["max_f","maxF","high_f","highF"]), text:pick(d,["text","condition","desc"]) }));
 
   return (
     <div className="weather-card glass rounded-xl p-3">
       <div className="flex items-center gap-3">
-        {card.icon && (
-          <img
-            src={card.icon}
-            alt=""
-            className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-        )}
+        {card.icon && <img src={card.icon} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
         <div className="min-w-0">
           <div className="text-sm font-semibold truncate">{card.title || "Weather"}</div>
           <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
         </div>
       </div>
-
       {(T || FEELS || RH || WIND || RAIN) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
           {T     && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
@@ -187,31 +146,19 @@ function WeatherCard({ card }) {
           {RAIN  && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
         </div>
       )}
-
-      {hrs.length > 0 && (
+      {hrs.length>0 && (
         <div className="mt-3">
           <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
           <div className="w-hscroll flex gap-8 overflow-x-auto -mx-1 px-1 pb-1">
-            {hrs.map((h, i) => (
+            {hrs.map((h,i)=>(
               <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
-                <div className="text-[11px] text-gray-400">
-                  {h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}
-                </div>
-                {h.icon && (
-                  <img
-                    src={h.icon}
-                    alt=""
-                    className="mx-auto my-1 h-8 w-8 object-contain"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                )}
+                <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
+                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-sm font-semibold">
-                  {(() => {
-                    const c = h.c, f = h.f;
-                    if (typeof c === "number" && typeof f === "number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
-                    if (typeof c === "number") return `${Math.round(c)}°C`;
-                    if (typeof f === "number") return `${Math.round(f)}°F`;
+                  {(()=>{ const c=h.c, f=h.f;
+                    if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
+                    if(typeof c==="number") return `${Math.round(c)}°C`;
+                    if(typeof f==="number") return `${Math.round(f)}°F`;
                     return "-";
                   })()}
                 </div>
@@ -220,34 +167,18 @@ function WeatherCard({ card }) {
           </div>
         </div>
       )}
-
-      {days.length > 0 && (
+      {days.length>0 && (
         <div className="mt-3">
           <div className="text-[11px] text-gray-400 mb-1">Next days</div>
           <div className="grid grid-cols-3 gap-2">
-            {days.map((d, i) => (
+            {days.map((d,i)=>(
               <div key={i} className="glass rounded-lg p-2 text-center">
-                <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i + 1}`}</div>
-                {d.icon && (
-                  <img
-                    src={d.icon}
-                    alt=""
-                    className="mx-auto my-1 h-8 w-8 object-contain"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                )}
+                <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
+                {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-xs font-semibold">
-                  {(() => {
-                    const c = d.max_c, f = d.max_f, lc = d.min_c, lf = d.min_f;
-                    const hi =
-                      (typeof c === "number" && typeof f === "number") ? `${Math.round(c)}°C / ${Math.round(f)}°F` :
-                      (typeof c === "number") ? `${Math.round(c)}°C` :
-                      (typeof f === "number") ? `${Math.round(f)}°F` : "";
-                    const lo =
-                      (typeof lc === "number" && typeof lf === "number") ? `${Math.round(lc)}°C / ${Math.round(lf)}°F` :
-                      (typeof lc === "number") ? `${Math.round(lc)}°C` :
-                      (typeof lf === "number") ? `${Math.round(lf)}°F` : "";
+                  {(()=>{ const c=d.max_c, f=d.max_f, lc=d.min_c, lf=d.min_f;
+                    const hi=(typeof c==="number"&&typeof f==="number")?`${Math.round(c)}°C / ${Math.round(f)}°F`:(typeof c==="number")?`${Math.round(c)}°C`:(typeof f==="number")?`${Math.round(f)}°F`:"";
+                    const lo=(typeof lc==="number"&&typeof lf==="number")?`${Math.round(lc)}°C / ${Math.round(lf)}°F`:(typeof lc==="number")?`${Math.round(lc)}°C`:(typeof lf==="number")?`${Math.round(lf)}°F`:"";
                     return `${hi} / ${lo}`;
                   })()}
                 </div>
