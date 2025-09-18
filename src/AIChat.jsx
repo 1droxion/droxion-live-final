@@ -17,10 +17,10 @@ const API_BASE = "https://droxion-backend.onrender.com";
 
 // === Admin-only DAU/WAU/MAU pill ==========================
 function MetricsAdminPill() {
-  const [show, setShow] = React.useState(false); // admin-only toggle
-  const [metrics, setMetrics] = React.useState({ dau: null, wau: null, mau: null });
+  const [show, setShow] = React.useState(false);
+  const [metrics, setMetrics] = React.useState({ dau: 0, wau: 0, mau: 0 });
+  const [loaded, setLoaded] = React.useState(false);
 
-  // Enable once via ?admin=1 or by setting localStorage
   React.useEffect(() => {
     try {
       const url = new URL(window.location.href);
@@ -33,11 +33,10 @@ function MetricsAdminPill() {
     setShow(localStorage.getItem("drox.admin") === "1");
   }, []);
 
-  // Record ping + fetch metrics only for admin
   React.useEffect(() => {
     if (!show) return;
 
-    // daily deduped ping (for DAU/WAU/MAU calc server-side)
+    // daily ping for DAU
     const KEY = "droxion.track.last";
     const today = new Date().toISOString().slice(0, 10);
     const last = localStorage.getItem(KEY);
@@ -46,31 +45,34 @@ function MetricsAdminPill() {
       axios.post(`${API_BASE}/track`, { type: "ping", date: today }).catch(() => {});
     }
 
-    // fetch counts
-    axios
-      .get(`${API_BASE}/metrics`)
-      .then(({ data }) =>
-        setMetrics({
-          dau: data?.dau ?? null,
-          wau: data?.wau ?? null,
-          mau: data?.mau ?? null,
-        })
-      )
-      .catch(() => {});
+    // fetch metrics
+    axios.get(`${API_BASE}/metrics`)
+      .then(({ data }) => {
+        // accept both {dau,wau,mau} or {daily,weekly,monthly}
+        const dau = data?.dau ?? data?.daily ?? 0;
+        const wau = data?.wau ?? data?.weekly ?? 0;
+        const mau = data?.mau ?? data?.monthly ?? 0;
+        setMetrics({ dau: Number(dau) || 0, wau: Number(wau) || 0, mau: Number(mau) || 0 });
+        setLoaded(true);
+      })
+      .catch((err) => {
+        console.warn("⚠️ /metrics failed:", err);
+        setLoaded(true); // still render with zeros
+      });
   }, [show]);
 
   if (!show) return null;
 
+  const val = (n) => (loaded ? n : "…"); // spinner-ish until first load
+
   return (
-    <div
-      className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2"
-    >
+    <div className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2">
       <FiClock />
-      <span>DAU {metrics.dau ?? "–"}</span>
+      <span>DAU {val(metrics.dau)}</span>
       <span>•</span>
-      <span>WAU {metrics.wau ?? "–"}</span>
+      <span>WAU {val(metrics.wau)}</span>
       <span>•</span>
-      <span>MAU {metrics.mau ?? "–"}</span>
+      <span>MAU {val(metrics.mau)}</span>
     </div>
   );
 }
