@@ -776,232 +776,323 @@ const sendImageForAnalysis = async (file) => {
   const [menuOpen, setMenuOpen] = useState(false);
 
   /* ---------------------- render ---------------------- */
-  return (
-    <div className="flex flex-col min-h-[100svh]">
-  {/* Header */}
-  <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
-    <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
-      <div className="brand text-lg font-bold">Droxion</div>
-      <div className="text-xs text-gray-400">• Lite</div>
+return (
+  <div className="flex flex-col min-h-[100svh]">
+    {/* Header */}
+    <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
+      <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
+        <div className="brand text-lg font-bold">Droxion</div>
+        <div className="text-xs text-gray-400">• Lite</div>
 
-      <MetricsAdminPill />   {/* ✅ admin-only DAU/WAU/MAU pill */}
+        {/* NO metrics pill here anymore */}
 
-      <div className="ml-auto flex items-center gap-2">
-        <button
-          onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
-          className="pill-btn"
-          title="Toggle theme"
-        >
-          {theme === "dark" ? <FiMoon /> : <FiSun />}
-          <span style={{ marginLeft: 6 }}>{theme === "dark" ? "Dark" : "Light"}</span>
-        </button>
-        <button
-          onClick={() => setMenuOpen(v => !v)}
-          className="pill-btn"
-          title="Tools"
-        >
-          <FiPlus />
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setTheme(t => (t === "dark" ? "light" : "dark"))}
+            className="pill-btn"
+            title="Toggle theme"
+          >
+            {theme === "dark" ? <FiMoon /> : <FiSun />}
+            <span style={{ marginLeft: 6 }}>{theme === "dark" ? "Dark" : "Light"}</span>
+          </button>
+          <button
+            onClick={() => setMenuOpen(v => !v)}
+            className="pill-btn"
+            title="Tools"
+          >
+            <FiPlus />
+          </button>
+        </div>
       </div>
-    </div>
-  </header>
+    </header>
 
-      {/* Tools menu outside header to avoid tag mismatch */}
-      {menuOpen && (
-        <>
-          <div onClick={()=>setMenuOpen(false)} style={{ position:"fixed", inset:0, zIndex:999, background:"transparent" }} />
-          <div style={{ position:"fixed", right:8, top:56, zIndex:1000 }}>
-            <ToolsMenu
-              onSendImageFile={(f)=>sendImageForAnalysis(f)}
-              onSendAnyFile={(f)=>{/* optional */}}
-              onToggleAgent={()=>setAgentOn(v=>{
-                const nv=!v;
-                setMessages(p=>[...p,{role:"assistant",content:`Agent mode ${nv?"enabled":"disabled"}.`,meta:{suppressSources:true}}]);
+    {/* Tools menu outside header to avoid tag mismatch */}
+    {menuOpen && (
+      <>
+        <div
+          onClick={() => setMenuOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
+        />
+        <div style={{ position: "fixed", right: 8, top: 56, zIndex: 1000 }}>
+          <ToolsMenu
+            onSendImageFile={(f) => sendImageForAnalysis(f)}
+            onSendAnyFile={(f) => {
+              /* optional */
+            }}
+            onToggleAgent={() =>
+              setAgentOn(v => {
+                const nv = !v;
+                setMessages(p => [
+                  ...p,
+                  { role: "assistant", content: `Agent mode ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }
+                ]);
                 return nv;
-              })}
-              agentOn={agentOn}
-              onDeepResearch={()=>{ const q=(input||"").trim(); if(!q) return; setMessages(p=>[...p,{role:"assistant",content:"Researching…",meta:{suppressSources:true}}]); axios.post(`${API_BASE}/deepsearch`,{q,agent:agentOn}).then(r=>setMessages(p=>{const copy=[...p]; copy[copy.length-1]={role:"assistant",content:r.data?.answer||`Deep research on **${q}**`,cards:(r.data?.cards||[])}; return copy;})).catch(()=>setMessages(p=>{const copy=[...p]; copy[copy.length-1]={role:"assistant",content:"Deep research failed.",meta:{suppressSources:true}}; return copy;}));}}
-              onSetPersona={(p)=>{ setPersona(p); setMessages(m=>[...m,{role:"assistant",content:`Persona set to **${p}**.`,meta:{suppressSources:true}}]); }}
-              onCreateImage={()=>handleSend(`create image: ${input||"cinematic portrait"}`)}
-              webSearchOn={webSearchOn}
-              onToggleWebSearch={()=>{ setWebSearchOn(v=>{ const nv=!v; setMessages(m=>[...m,{role:"assistant",content:`Web search ${nv?"enabled":"disabled"}.`,meta:{suppressSources:true}}]); return nv; }); }}
-              onClearAll={clearAll}
-              onNewChat={newChat}
-              onClose={()=>setMenuOpen(false)}
-            />
-          </div>
-        </>
-      )}
+              })
+            }
+            agentOn={agentOn}
+            onDeepResearch={() => {
+              const q = (input || "").trim();
+              if (!q) return;
+              setMessages(p => [...p, { role: "assistant", content: "Researching…", meta: { suppressSources: true } }]);
+              axios
+                .post(`${API_BASE}/deepsearch`, { q, agent: agentOn })
+                .then(r =>
+                  setMessages(p => {
+                    const copy = [...p];
+                    copy[copy.length - 1] = {
+                      role: "assistant",
+                      content: r.data?.answer || `Deep research on **${q}**`,
+                      cards: r.data?.cards || []
+                    };
+                    return copy;
+                  })
+                )
+                .catch(() =>
+                  setMessages(p => {
+                    const copy = [...p];
+                    copy[copy.length - 1] = {
+                      role: "assistant",
+                      content: "Deep research failed.",
+                      meta: { suppressSources: true }
+                    };
+                    return copy;
+                  })
+                );
+            }}
+            onSetPersona={(p) => {
+              setPersona(p);
+              setMessages(m => [...m, { role: "assistant", content: `Persona set to **${p}**.`, meta: { suppressSources: true } }]);
+            }}
+            onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
+            webSearchOn={webSearchOn}
+            onToggleWebSearch={() => {
+              setWebSearchOn(v => {
+                const nv = !v;
+                setMessages(m => [
+                  ...m,
+                  { role: "assistant", content: `Web search ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }
+                ]);
+                return nv;
+              });
+            }}
+            onClearAll={clearAll}
+            onNewChat={newChat}
+            onClose={() => setMenuOpen(false)}
+          />
+        </div>
+      </>
+    )}
 
-      {/* chat scroll area */}
-      <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch" }}>
-        <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
-          <div className="space-y-4">
-            {messages.map((msg, i) => {
-              const isUser = msg.role === "user";
+    {/* chat scroll area */}
+    <div
+      ref={scrollRef}
+      className="chat-scroll flex-1 overflow-y-auto"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
+      <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
+        <div className="space-y-4">
+          {messages.map((msg, i) => {
+            const isUser = msg.role === "user";
 
-              const mediaCards = (msg.cards || []).filter(c =>
+            const mediaCards = (msg.cards || []).filter(
+              c =>
                 ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
                 (c.url && isYouTube(c.url))
-              );
+            );
 
-              return (
-                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
-                    {!isUser && msg.content && (
-                      <button
-                        onClick={() => copyMessage(i)}
-                        className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-                        title="Copy"
-                      >
-                        <FaRegCopy /> Copy
-                      </button>
-                    )}
-                  </div>
-
-                  {/* User vs Assistant message text */}
-                  {isUser && <div className="answer expanded">{msg.content}</div>}
-                  {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
-
-                  {/* ✅ Render images, galleries, youtube, weather */}
-                  {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
-
-                  {/* Follow-up suggestions */}
-                  {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-8">
-                      {msg.followups.slice(0, 3).map((s, idx) => (
-                        <button key={idx} onClick={() => handleSend(s)} className="action-btn">
-                          {s}
-                        </button>
-                      ))}
-                    </div>
+            return (
+              <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="small-label">{isUser ? "You" : "Droxion"}</div>
+                  {!isUser && msg.content && (
+                    <button
+                      onClick={() => copyMessage(i)}
+                      className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+                      title="Copy"
+                    >
+                      <FaRegCopy /> Copy
+                    </button>
                   )}
                 </div>
-              );
-            })}
 
-            {typing && (
-              <div className="glass rounded-xl p-4">
-                <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
-                <div className="h-3 w-full bg-white/10 mb-1 rounded" />
-                <div className="h-3 w-4/5 bg-white/10 mb-1 rounded" />
-                <div className="h-3 w-3/5 bg-white/10 rounded" />
+                {/* User vs Assistant message text */}
+                {isUser && <div className="answer expanded">{msg.content}</div>}
+                {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
+
+                {/* ✅ Render images, galleries, youtube, weather */}
+                {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
+
+                {/* Follow-up suggestions */}
+                {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-8">
+                    {msg.followups.slice(0, 3).map((s, idx) => (
+                      <button key={idx} onClick={() => handleSend(s)} className="action-btn">
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {typing && (
+            <div className="glass rounded-xl p-4">
+              <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
+              <div className="h-3 w-full bg-white/10 mb-1 rounded" />
+              <div className="h-3 w-4/5 bg-white/10 mb-1 rounded" />
+              <div className="h-3 w-3/5 bg-white/10 rounded" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+
+    {/* Fixed preview while typing */}
+    {focused && (
+      <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
+        <div className="max-w-4xl mx-auto px-3">
+          <div className="panel glass rounded-xl p-2 suggestions-panel">
+            <div className="mb-2">
+              <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+              <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                <div className="flex gap-2">
+                  {(news.length ? news : Array.from({ length: 3 })).map((c, i) =>
+                    c ? (
+                      <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                        <div className="rounded-xl overflow-hidden glass">
+                          {(() => {
+                            const pv = bestPreview(c, true);
+                            return pv ? (
+                              <img
+                                src={pv.prox}
+                                alt=""
+                                className="w-full aspect-[16/9] object-cover"
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                            ) : (
+                              <div className="aspect-[16/9] skel" />
+                            );
+                          })()}
+                          <div className="p-3">
+                            <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                            <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                            <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                          </div>
+                        </div>
+                      </a>
+                    ) : (
+                      <div key={i} className="hitem pr-3">
+                        <div className="rounded-xl overflow-hidden glass">
+                          <div className="aspect-[16/9] skel" />
+                          <div className="p-3">
+                            <div className="h-3 w-24 skel rounded mb-2" />
+                            <div className="h-3 w-40 skel rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+              <div>{weather ? <WeatherCard card={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
+              <div className="grid grid-cols-1 gap-2">
+                {(crypto.length ? crypto.slice(0, 2) : [null, null]).map((c, i) =>
+                  c ? (
+                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                      {c.price && <div className="text-base mt-1">{c.price}</div>}
+                      {typeof c.change !== "undefined" && (
+                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-") ? "text-red-400" : "text-green-400"}`}>
+                          {c.change}
+                        </div>
+                      )}
+                    </a>
+                  ) : (
+                    <div key={i} className="glass rounded-lg p-6 skel" />
+                  )
+                )}
+              </div>
+            </div>
+
+            {textSug.length > 0 && (
+              <div className="mt-1">
+                <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
+                {textSug.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(s)}
+                    className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0"
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </div>
       </div>
+    )}
 
-      {/* Fixed preview while typing */}
-      {focused && (
-        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
-          <div className="max-w-4xl mx-auto px-3">
-            <div className="panel glass rounded-xl p-2 suggestions-panel">
-              <div className="mb-2">
-                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
-                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-                  <div className="flex gap-2">
-                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
-                      c ? (
-                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
-                          <div className="rounded-xl overflow-hidden glass">
-                            {(() => {
-                              const pv = bestPreview(c, true);
-                              return pv
-                                ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
-                                : <div className="aspect-[16/9] skel" />;
-                            })()}
-                            <div className="p-3">
-                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
-                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
-                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
-                            </div>
-                          </div>
-                        </a>
-                      ) : (
-                        <div key={i} className="hitem pr-3">
-                          <div className="rounded-xl overflow-hidden glass">
-                            <div className="aspect-[16/9] skel" />
-                            <div className="p-3">
-                              <div className="h-3 w-24 skel rounded mb-2" />
-                              <div className="h-3 w-40 skel rounded" />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
-                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
-                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
-                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
-                      {c.price && <div className="text-base mt-1">{c.price}</div>}
-                      {typeof c.change!=="undefined" && (
-                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
-                      )}
-                    </a>
-                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
-                </div>
-              </div>
-
-              {textSug.length>0 && (
-                <div className="mt-1">
-                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
-                  {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+    {/* Composer — clean (no image button in middle) */}
+    <div
+      className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
+      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+    >
+      <div className="max-w-4xl mx-auto px-3 pt-2">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
+              rows={1}
+              inputMode="text"
+              placeholder=""
+              className="w-full bg-transparent outline-none resize-none leading-[1.6]"
+              style={{ height: 44, maxHeight: 44, overflowY: "auto" }}
+              aria-label="Type your message"
+            />
           </div>
+          <button
+            onClick={() => handleSend(input)}
+            className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
+            title="Send"
+          >
+            <FiArrowRight />
+          </button>
         </div>
-      )}
 
-      {/* Composer — clean (no image button in middle) */}
-      <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
-        <div className="max-w-4xl mx-auto px-3 pt-2">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e)=>setInput(e.target.value)}
-                onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSend(); }}}
-                onFocus={()=>setFocused(true)}
-                onBlur={()=>setTimeout(()=>setFocused(false),150)}
-                rows={1}
-                inputMode="text"
-                placeholder=""
-                className="w-full bg-transparent outline-none resize-none leading-[1.6]"
-                style={{ height:44, maxHeight:44, overflowY:"auto" }}
-                aria-label="Type your message"
-              />
-            </div>
-            <button onClick={()=>handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
-              <FiArrowRight />
+        <div className="flex gap-2 flex-wrap mt-2">
+          {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
+            <button
+              key={s}
+              onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)}
+              className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
+            >
+              {s}
             </button>
-          </div>
-
-          <div className="flex gap-2 flex-wrap mt-2">
-            {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
-              <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
-                {s}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
     </div>
-  );
-}
+  </div>
+);
 
 export default AIChat;
