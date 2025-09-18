@@ -784,7 +784,7 @@ return (
         <div className="brand text-lg font-bold">Droxion</div>
         <div className="text-xs text-gray-400">• Lite</div>
 
-        {/* NO metrics pill here anymore */}
+        {/* NO metrics pill here */}
 
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -795,11 +795,7 @@ return (
             {theme === "dark" ? <FiMoon /> : <FiSun />}
             <span style={{ marginLeft: 6 }}>{theme === "dark" ? "Dark" : "Light"}</span>
           </button>
-          <button
-            onClick={() => setMenuOpen(v => !v)}
-            className="pill-btn"
-            title="Tools"
-          >
+          <button onClick={() => setMenuOpen(v => !v)} className="pill-btn" title="Tools">
             <FiPlus />
           </button>
         </div>
@@ -809,72 +805,40 @@ return (
     {/* Tools menu outside header to avoid tag mismatch */}
     {menuOpen && (
       <>
-        <div
-          onClick={() => setMenuOpen(false)}
-          style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
-        />
+        <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }} />
         <div style={{ position: "fixed", right: 8, top: 56, zIndex: 1000 }}>
           <ToolsMenu
             onSendImageFile={(f) => sendImageForAnalysis(f)}
-            onSendAnyFile={(f) => {
-              /* optional */
-            }}
-            onToggleAgent={() =>
-              setAgentOn(v => {
-                const nv = !v;
-                setMessages(p => [
-                  ...p,
-                  { role: "assistant", content: `Agent mode ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }
-                ]);
-                return nv;
-              })
-            }
+            onSendAnyFile={(f) => { /* optional */ }}
+            onToggleAgent={() => setAgentOn(v => {
+              const nv = !v;
+              setMessages(p => [...p, { role: "assistant", content: `Agent mode ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }]);
+              return nv;
+            })}
             agentOn={agentOn}
             onDeepResearch={() => {
-              const q = (input || "").trim();
-              if (!q) return;
+              const q = (input || "").trim(); if (!q) return;
               setMessages(p => [...p, { role: "assistant", content: "Researching…", meta: { suppressSources: true } }]);
-              axios
-                .post(`${API_BASE}/deepsearch`, { q, agent: agentOn })
-                .then(r =>
-                  setMessages(p => {
-                    const copy = [...p];
-                    copy[copy.length - 1] = {
-                      role: "assistant",
-                      content: r.data?.answer || `Deep research on **${q}**`,
-                      cards: r.data?.cards || []
-                    };
-                    return copy;
-                  })
-                )
-                .catch(() =>
-                  setMessages(p => {
-                    const copy = [...p];
-                    copy[copy.length - 1] = {
-                      role: "assistant",
-                      content: "Deep research failed.",
-                      meta: { suppressSources: true }
-                    };
-                    return copy;
-                  })
-                );
+              axios.post(`${API_BASE}/deepsearch`, { q, agent: agentOn })
+                .then(r => setMessages(p => {
+                  const copy = [...p];
+                  copy[copy.length - 1] = { role: "assistant", content: r.data?.answer || `Deep research on **${q}**`, cards: (r.data?.cards || []) };
+                  return copy;
+                }))
+                .catch(() => setMessages(p => {
+                  const copy = [...p];
+                  copy[copy.length - 1] = { role: "assistant", content: "Deep research failed.", meta: { suppressSources: true } };
+                  return copy;
+                }));
             }}
-            onSetPersona={(p) => {
-              setPersona(p);
-              setMessages(m => [...m, { role: "assistant", content: `Persona set to **${p}**.`, meta: { suppressSources: true } }]);
-            }}
+            onSetPersona={(p) => { setPersona(p); setMessages(m => [...m, { role: "assistant", content: `Persona set to **${p}**.`, meta: { suppressSources: true } }]); }}
             onCreateImage={() => handleSend(`create image: ${input || "cinematic portrait"}`)}
             webSearchOn={webSearchOn}
-            onToggleWebSearch={() => {
-              setWebSearchOn(v => {
-                const nv = !v;
-                setMessages(m => [
-                  ...m,
-                  { role: "assistant", content: `Web search ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }
-                ]);
-                return nv;
-              });
-            }}
+            onToggleWebSearch={() => { setWebSearchOn(v => {
+              const nv = !v;
+              setMessages(m => [...m, { role: "assistant", content: `Web search ${nv ? "enabled" : "disabled"}.`, meta: { suppressSources: true } }]);
+              return nv;
+            }); }}
             onClearAll={clearAll}
             onNewChat={newChat}
             onClose={() => setMenuOpen(false)}
@@ -884,58 +848,38 @@ return (
     )}
 
     {/* chat scroll area */}
-    <div
-      ref={scrollRef}
-      className="chat-scroll flex-1 overflow-y-auto"
-      style={{ WebkitOverflowScrolling: "touch" }}
-    >
+    <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
         <div className="space-y-4">
           {messages.map((msg, i) => {
             const isUser = msg.role === "user";
-
-            const mediaCards = (msg.cards || []).filter(
-              c =>
-                ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
-                (c.url && isYouTube(c.url))
+            const mediaCards = (msg.cards || []).filter(c =>
+              ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
+              (c.url && isYouTube(c.url))
             );
-
             return (
               <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="small-label">{isUser ? "You" : "Droxion"}</div>
                   {!isUser && msg.content && (
-                    <button
-                      onClick={() => copyMessage(i)}
-                      className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-                      title="Copy"
-                    >
+                    <button onClick={() => copyMessage(i)} className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1" title="Copy">
                       <FaRegCopy /> Copy
                     </button>
                   )}
                 </div>
-
-                {/* User vs Assistant message text */}
                 {isUser && <div className="answer expanded">{msg.content}</div>}
                 {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
-
-                {/* ✅ Render images, galleries, youtube, weather */}
                 {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
-
-                {/* Follow-up suggestions */}
                 {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-8">
                     {msg.followups.slice(0, 3).map((s, idx) => (
-                      <button key={idx} onClick={() => handleSend(s)} className="action-btn">
-                        {s}
-                      </button>
+                      <button key={idx} onClick={() => handleSend(s)} className="action-btn">{s}</button>
                     ))}
                   </div>
                 )}
               </div>
             );
           })}
-
           {typing && (
             <div className="glass rounded-xl p-4">
               <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
@@ -964,16 +908,7 @@ return (
                           {(() => {
                             const pv = bestPreview(c, true);
                             return pv ? (
-                              <img
-                                src={pv.prox}
-                                alt=""
-                                className="w-full aspect-[16/9] object-cover"
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                }}
-                              />
+                              <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                             ) : (
                               <div className="aspect-[16/9] skel" />
                             );
@@ -1002,7 +937,7 @@ return (
             </div>
 
             <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-              <div>{weather ? <WeatherCard card={weather} /> : <div className="glass rounded-lg p-6 skel" />}</div>
+              <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
               <div className="grid grid-cols-1 gap-2">
                 {(crypto.length ? crypto.slice(0, 2) : [null, null]).map((c, i) =>
                   c ? (
@@ -1043,10 +978,7 @@ return (
     )}
 
     {/* Composer — clean (no image button in middle) */}
-    <div
-      className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
-      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
-    >
+    <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
       <div className="max-w-4xl mx-auto px-3 pt-2">
         <div className="flex items-center gap-2">
           <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
@@ -1054,12 +986,7 @@ return (
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               onFocus={() => setFocused(true)}
               onBlur={() => setTimeout(() => setFocused(false), 150)}
               rows={1}
@@ -1070,22 +997,14 @@ return (
               aria-label="Type your message"
             />
           </div>
-          <button
-            onClick={() => handleSend(input)}
-            className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
-            title="Send"
-          >
+          <button onClick={() => handleSend(input)} className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition" title="Send">
             <FiArrowRight />
           </button>
         </div>
 
         <div className="flex gap-2 flex-wrap mt-2">
           {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
-            <button
-              key={s}
-              onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)}
-              className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
-            >
+            <button key={s} onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
               {s}
             </button>
           ))}
@@ -1094,5 +1013,7 @@ return (
     </div>
   </div>
 );
+/* END render */
+} // <-- close function AIChat
 
 export default AIChat;
