@@ -15,69 +15,6 @@ import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
-// === Admin-only DAU/WAU/MAU pill ==========================
-function MetricsAdminPill() {
-  const [show, setShow] = React.useState(false);
-  const [metrics, setMetrics] = React.useState({ dau: 0, wau: 0, mau: 0 });
-  const [loaded, setLoaded] = React.useState(false);
-
-  React.useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      if (url.searchParams.get("admin") === "1") {
-        localStorage.setItem("drox.admin", "1");
-        url.searchParams.delete("admin");
-        window.history.replaceState({}, "", url.toString());
-      }
-    } catch {}
-    setShow(localStorage.getItem("drox.admin") === "1");
-  }, []);
-
-  React.useEffect(() => {
-    if (!show) return;
-
-    // daily ping for DAU
-    const KEY = "droxion.track.last";
-    const today = new Date().toISOString().slice(0, 10);
-    const last = localStorage.getItem(KEY);
-    if (last !== today) {
-      localStorage.setItem(KEY, today);
-      axios.post(`${API_BASE}/track`, { type: "ping", date: today }).catch(() => {});
-    }
-
-    // fetch metrics
-    axios.get(`${API_BASE}/metrics`)
-      .then(({ data }) => {
-        // accept both {dau,wau,mau} or {daily,weekly,monthly}
-        const dau = data?.dau ?? data?.daily ?? 0;
-        const wau = data?.wau ?? data?.weekly ?? 0;
-        const mau = data?.mau ?? data?.monthly ?? 0;
-        setMetrics({ dau: Number(dau) || 0, wau: Number(wau) || 0, mau: Number(mau) || 0 });
-        setLoaded(true);
-      })
-      .catch((err) => {
-        console.warn("⚠️ /metrics failed:", err);
-        setLoaded(true); // still render with zeros
-      });
-  }, [show]);
-
-  if (!show) return null;
-
-  const val = (n) => (loaded ? n : "…"); // spinner-ish until first load
-
-  return (
-    <div className="ml-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2">
-      <FiClock />
-      <span>DAU {val(metrics.dau)}</span>
-      <span>•</span>
-      <span>WAU {val(metrics.wau)}</span>
-      <span>•</span>
-      <span>MAU {val(metrics.mau)}</span>
-    </div>
-  );
-}
-// === end admin-only pill ===================================
-
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
