@@ -303,6 +303,7 @@ function ToolsMenu({
 }
 
 /* ---------------------- main component ---------------------- */
+
 function AIChat() {
   // chat + ui
   const [messages, setMessages] = useState([]);
@@ -341,7 +342,10 @@ function AIChat() {
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
-  useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => {
+    localStorage.setItem("drox.theme", theme);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   // keyboard-safe viewport
   useEffect(() => {
@@ -361,6 +365,21 @@ function AIChat() {
       window.removeEventListener("orientationchange", handleVV);
     };
   }, []);
+
+  // ✅ usage tracking only (no UI) — sends one ping per device per day
+  useEffect(() => {
+    const KEY = "droxion.track.last";
+    const today = new Date().toISOString().slice(0, 10);
+    const last = localStorage.getItem(KEY);
+    if (last !== today) {
+      localStorage.setItem(KEY, today);
+      axios.post(`${API_BASE}/track`, { type: "ping", date: today }).catch(() => {});
+    }
+  }, []);
+
+  /* --------- keep the rest of your existing AIChat code below this line ---------
+     (suggestions + previews effects, handleSend, sendImageForAnalysis, render, etc.)
+  */
 
   /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
   useEffect(() => {
