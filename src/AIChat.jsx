@@ -15,6 +15,19 @@ import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
+// === Usage tracking only (no UI) ==========================
+function RecordUsage() {
+  React.useEffect(() => {
+    const KEY = "droxion.track.last";
+    const today = new Date().toISOString().slice(0, 10);
+    const last = localStorage.getItem(KEY);
+    if (last !== today) {
+      localStorage.setItem(KEY, today);
+      axios.post(`${API_BASE}/track`, { type: "ping", date: today }).catch(() => {});
+    }
+  }, []);
+  return null; // renders nothing
+}
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
