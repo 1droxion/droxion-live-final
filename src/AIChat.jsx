@@ -1,4 +1,9 @@
 // src/AIChat.jsx — Droxion (quick image edit MVP: upload + prompt → Remix/Inpaint/BG Swap)
+// - Robust to different backend response shapes: {images:[]} or {outputs:[]}
+// - Clear errors for Replicate 422 + JSON serialization
+// - Reliable inpaint mask drawing (mobile + desktop)
+// - No layout changes beyond this component's tiny inline CSS
+
 import React, { useRef, useState, useEffect } from "react";
 import axios from "axios";
 
@@ -21,6 +26,7 @@ export default function AIChat() {
 
   // file input
   const fileRef = useRef(null);
+  const lastFileObj = useRef(null); // keep original File too (useful later)
 
   function pickFile() {
     fileRef.current?.click();
@@ -38,6 +44,7 @@ export default function AIChat() {
   async function onFileChange(e) {
     const f = e.target.files?.[0];
     if (!f) return;
+    lastFileObj.current = f;
     const b64 = await toBase64(f);
     setImageB64(b64);
     // reset mask for new image
@@ -49,6 +56,7 @@ export default function AIChat() {
     const cRef = useRef(null);
     const [drawing, setDrawing] = useState(false);
 
+    // draw black base (keep) sized to the displayed image
     useEffect(() => {
       if (!base) return;
       const img = new Image();
@@ -60,7 +68,6 @@ export default function AIChat() {
         c.width = Math.round(img.width * scale);
         c.height = Math.round(img.height * scale);
         const ctx = c.getContext("2d");
-        // start with black mask (keep everything)
         ctx.fillStyle = "black";
         ctx.fillRect(0, 0, c.width, c.height);
         onChange(c.toDataURL("image/png"));
@@ -82,6 +89,7 @@ export default function AIChat() {
     }
 
     function onMouseDown(e) {
+      e.preventDefault();
       setDrawing(true);
       drawAt(e.clientX, e.clientY);
     }
@@ -126,11 +134,32 @@ export default function AIChat() {
     );
   }
 
+  // helper: normalize backend response
+  function extractUrls(data) {
+    // supports {images:[...]} or {outputs:[...]} or plain array
+    if (!data) return [];
+    if (Array.isArray(data)) return data.map(String);
+    if (Array.isArray(data.images)) return data.images.map(String);
+    if (Array.isArray(data.outputs)) return data.outputs.map(String);
+    // replicate error passthrough
+    if (data.detail && typeof data.detail === "string") return [data.detail];
+    return [];
+  }
+
+  // pretty error
+  function showErr(err) {
+    const msg =
+      err?.response?.data?.detail ||
+      err?.response?.data?.error ||
+      err?.message ||
+      "Something went wrong.";
+    alert(msg);
+  }
+
   // --- submit ---
   async function createImage() {
     if (!imageB64) return alert("Please upload an image first.");
-    if (!prompt.trim() && mode !== "bg")
-      return alert("Please write a prompt.");
+    if (!prompt.trim() && mode !== "bg") return alert("Please write a prompt.");
 
     try {
       setLoading(true);
@@ -148,20 +177,29 @@ export default function AIChat() {
         path = "/bg-swap";
       }
 
-      const { data } = await axios.post(`${API_BASE}${path}`, payload);
-      if (!data?.ok || !data.images?.length) {
+      const { data } = await axios.post(`${API_BASE}${path}`, payload, {
+        // prevent CORS preflight surprises on some hosts
+        headers: { "Content-Type": "application/json" },
+        timeout: 120000
+      });
+
+      // accept both shapes & validate
+      const urls = extractUrls(data);
+      const ok = data?.ok !== false && urls.length > 0;
+
+      if (!ok) {
         throw new Error(data?.error || "No image returned.");
       }
 
       // show in "chat"
-      const imgs = data.images.map((u, i) => ({ u, i }));
+      const imgs = urls.map((u, i) => ({ u, i }));
       setMessages((m) => [
         ...m,
-        { role: "user", text: `Mode: ${mode}  —  "${prompt || "(no prompt)"}"` },
+        { role: "user", text: `Mode: ${mode} — "${prompt || "(no prompt)"}"` },
         { role: "assistant", images: imgs }
       ]);
     } catch (err) {
-      alert(err?.response?.data?.error || err.message);
+      showErr(err);
     } finally {
       setLoading(false);
     }
@@ -171,6 +209,8 @@ export default function AIChat() {
     setPrompt("");
     setImageB64(null);
     setMaskB64(null);
+    if (fileRef.current) fileRef.current.value = "";
+    lastFileObj.current = null;
   }
 
   return (
