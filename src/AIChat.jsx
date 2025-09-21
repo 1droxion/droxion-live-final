@@ -188,54 +188,48 @@ export default function AIChat() {
   }
 
   async function createImage() {
-    if (!imageB64) return alert("Please upload an image first.");
-    if (!prompt.trim() && mode !== "bg") return alert("Please write a prompt.");
+  if (!imageB64) return alert("Please upload an image first.");
+  if (!prompt.trim() && mode !== "bg") return alert("Please write a prompt.");
 
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      let path = "/remix-image";
-      let payload = { image_base64: imageB64, prompt };
+    let path = "/remix-image";
+    let payload = { image_base64: imageB64, prompt };
 
-      if (mode === "remix") {
-        payload.style_strength = styleStrength;
-      } else if (mode === "inpaint") {
-        path = "/inpaint-image";
-        if (!maskB64) return alert("Please paint a mask (white = change).");
-        payload.mask_base64 = maskB64;
-      } else if (mode === "bg") {
-        path = "/bg-swap";
-      }
-
-      const { data } = await axios.post(`${API_BASE}${path}`, payload, {
-        headers: { "Content-Type": "application/json" },
-        timeout: 120000
-      });
-
-      const urls = extractUrls(data);
-      const ok = data?.ok !== false && urls.length > 0;
-      if (!ok) throw new Error(data?.error || "No image returned.");
-
-      // Detect bg-swap bundle and show composite too
-      const subjectUrl = (data.subject_png && data.subject_png[0]) || null;
-      const backgroundUrl = (data.background && data.background[0]) || null;
-
-      setMessages((m) => [
-        ...m,
-        { role: "user", text: `Mode: ${mode} — "${prompt || "(no prompt)"}"` },
-        {
-          role: "assistant",
-          images: urls.map((u, i) => ({ u, i })),
-          subjectUrl,
-          backgroundUrl
-        }
-      ]);
-    } catch (err) {
-      showErr(err);
-    } finally {
-      setLoading(false);
+    if (mode === "remix") {
+      // Map styleStrength (0–1) → guidance scale (1–20)
+      payload.style_strength = styleStrength;
+      payload.image_guidance_scale = Math.max(1, styleStrength * 10);
+    } else if (mode === "inpaint") {
+      path = "/inpaint-image";
+      if (!maskB64) return alert("Please paint a mask (white = change).");
+      payload.mask_base64 = maskB64;
+    } else if (mode === "bg") {
+      path = "/bg-swap";
     }
+
+    const { data } = await axios.post(`${API_BASE}${path}`, payload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 120000
+    });
+
+    const urls = extractUrls(data);
+    const ok = data?.ok !== false && urls.length > 0;
+    if (!ok) throw new Error(data?.error || "No image returned.");
+
+    const imgs = urls.map((u, i) => ({ u, i }));
+    setMessages((m) => [
+      ...m,
+      { role: "user", text: `Mode: ${mode} — "${prompt || "(no prompt)"}"` },
+      { role: "assistant", images: imgs }
+    ]);
+  } catch (err) {
+    showErr(err);
+  } finally {
+    setLoading(false);
   }
+}
 
   function clearAll() {
     setPrompt("");
