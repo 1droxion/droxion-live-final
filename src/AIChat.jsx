@@ -1,8 +1,9 @@
-// src/AIChat.jsx — Droxion (quick image edit MVP: upload + prompt → Remix/Inpaint/BG Swap)
-// - Robust to different backend response shapes: {images:[]} or {outputs:[]}
-// - Clear errors for Replicate 422 + JSON serialization
+// src/AIChat.jsx — Droxion (smart: prompt → Auto choose Remix/Inpaint/BG)
+// - Adds "Auto (smart)" mode that calls /smart-image
+// - Still supports manual Remix / Inpaint / BG
+// - Robust to backend response shapes: {images:[]} or {outputs:[]}
+// - Clear errors for Replicate 4xx/5xx
 // - Reliable inpaint mask drawing (mobile + desktop)
-// - No layout changes beyond this component's tiny inline CSS
 
 import React, { useRef, useState, useEffect } from "react";
 import axios from "axios";
@@ -13,12 +14,12 @@ const API_BASE = "https://droxion-backend.onrender.com";
 export default function AIChat() {
   // chat-ish store (simple)
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Upload a photo, write a prompt, pick a mode, then Create." }
+    { role: "assistant", text: "Upload a photo, set Mode to Auto, type what you want (e.g., “Studio Ghibli forest background” or “remove logo” or “Pixar-style portrait”), then Create." }
   ]);
 
   // editor state
-  const [mode, setMode] = useState("remix"); // remix | inpaint | bg
-  const [styleStrength, setStyleStrength] = useState(0.6); // remix-only
+  const [mode, setMode] = useState("auto"); // auto | remix | inpaint | bg
+  const [styleStrength, setStyleStrength] = useState(0.6); // remix-only (manual)
   const [prompt, setPrompt] = useState("");
   const [imageB64, setImageB64] = useState(null);
   const [maskB64, setMaskB64] = useState(null);
@@ -141,9 +142,11 @@ export default function AIChat() {
     if (Array.isArray(data)) return data.map(String);
     if (Array.isArray(data.images)) return data.images.map(String);
     if (Array.isArray(data.outputs)) return data.outputs.map(String);
-    // replicate error passthrough
-    if (data.detail && typeof data.detail === "string") return [data.detail];
-    return [];
+    // some smart endpoints also return subject/background — include if present
+    const merged = [];
+    if (Array.isArray(data.subject_png)) merged.push(...data.subject_png.map(String));
+    if (Array.isArray(data.background)) merged.push(...data.background.map(String));
+    return merged;
   }
 
   // pretty error
@@ -164,7 +167,8 @@ export default function AIChat() {
     try {
       setLoading(true);
 
-      let path = "/remix-image";
+      // Auto goes to /smart-image (server decides best path)
+      let path = mode === "auto" ? "/smart-image" : "/remix-image";
       let payload = { image_base64: imageB64, prompt };
 
       if (mode === "remix") {
@@ -175,27 +179,26 @@ export default function AIChat() {
         payload.mask_base64 = maskB64;
       } else if (mode === "bg") {
         path = "/bg-swap";
+      } else if (mode === "auto") {
+        // help the planner if user provided a mask
+        if (maskB64) payload.mask_base64 = maskB64;
       }
 
       const { data } = await axios.post(`${API_BASE}${path}`, payload, {
-        // prevent CORS preflight surprises on some hosts
         headers: { "Content-Type": "application/json" },
         timeout: 120000
       });
 
-      // accept both shapes & validate
       const urls = extractUrls(data);
       const ok = data?.ok !== false && urls.length > 0;
+      const usedMode = data?.mode || mode;
 
-      if (!ok) {
-        throw new Error(data?.error || "No image returned.");
-      }
+      if (!ok) throw new Error(data?.error || "No image returned.");
 
-      // show in "chat"
       const imgs = urls.map((u, i) => ({ u, i }));
       setMessages((m) => [
         ...m,
-        { role: "user", text: `Mode: ${mode} — "${prompt || "(no prompt)"}"` },
+        { role: "user", text: `Mode: ${usedMode} — "${prompt || "(no prompt)"}"` },
         { role: "assistant", images: imgs }
       ]);
     } catch (err) {
@@ -212,6 +215,14 @@ export default function AIChat() {
     if (fileRef.current) fileRef.current.value = "";
     lastFileObj.current = null;
   }
+
+  // quick presets (optional)
+  const presets = [
+    ["Cinematic", "cinematic film still, warm key light, soft bokeh background, 85mm lens, keep face identity"],
+    ["Pixar 3D",   "Pixar-style 3D portrait, soft rim light, smooth shading, glossy jacket, keep face identity"],
+    ["Ghibli",     "Studio Ghibli watercolor forest background, pastel colors, sunlight through trees, gentle film grain, keep face identity"],
+    ["Cyberpunk",  "futuristic cyberpunk portrait, Tokyo neon lights, blue and magenta glow, cinematic atmosphere, keep face identity"]
+  ];
 
   return (
     <div className="wrap">
@@ -249,6 +260,7 @@ export default function AIChat() {
             <div className="block">
               <label className="lbl">2) Mode</label>
               <select value={mode} onChange={(e) => setMode(e.target.value)} className="select">
+                <option value="auto">Auto (smart)</option>
                 <option value="remix">Remix (keep face/style-lock)</option>
                 <option value="inpaint">Inpaint (mask areas to change)</option>
                 <option value="bg">Background Swap</option>
@@ -270,13 +282,22 @@ export default function AIChat() {
               </div>
             )}
 
+            {/* Presets */}
+            <div className="block" style={{display:"flex", gap:8, flexWrap:"wrap"}}>
+              {presets.map(([label, txt]) => (
+                <button key={label} className="btn" onClick={(e)=>{ e.preventDefault(); setPrompt(txt); }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <div className="block">
               <label className="lbl">3) Prompt</label>
               <textarea
                 className="ta"
                 placeholder={
                   mode === "bg"
-                    ? "e.g., on a beach at golden hour, cinematic lighting"
+                    ? "e.g., beach at golden hour, cinematic lighting"
                     : "e.g., Pixar-style portrait, soft studio lights, 85mm, f1.8"
                 }
                 value={prompt}
