@@ -1,5 +1,5 @@
-// src/AIChat.jsx — Droxion (stable, no-blink, metrics, error boundary)
-import React, { useState, useEffect, useRef } from "react";
+// src/AIChat.jsx — Droxion (stable, previews fixed, YouTube+Images, KPIs, Smart Suggestions)
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -13,12 +13,12 @@ import {
 } from "react-icons/fi";
 import "./AIChat.css";
 
-// --- API base: env first, fallback to your backend URL
+/* ==================== Config ==================== */
 const API_BASE =
   (import.meta && import.meta.env && import.meta.env.VITE_API_URL) ||
   "https://droxion-backend.onrender.com";
 
-/* ==================== Crash guard: Error Boundary ==================== */
+/* ==================== Error Boundary ==================== */
 class ErrorBoundary extends React.Component {
   constructor(p){ super(p); this.state = { hasError:false, err:null }; }
   static getDerivedStateFromError(err){ return { hasError:true, err }; }
@@ -38,7 +38,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-/* ==================== helpers ==================== */
+/* ==================== Helpers ==================== */
 const safeUUID = () => {
   try {
     if (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID) {
@@ -61,7 +61,7 @@ const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p ==
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
 
-// ⬇️ your original selector
+// image helpers
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
@@ -70,7 +70,7 @@ const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
 const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
 
-/* small youtube helpers */
+/* YouTube helpers */
 const isYouTube = (raw="") => {
   try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
 };
@@ -93,13 +93,13 @@ const youTubeIdFromUrl = (raw="") => {
   return m ? m[1] : null;
 };
 
-/* quick intent */
+/* Intent */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
 
-/* ranking for previews */
+/* Ranking for previews */
 const HQ = [
   "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
   "theguardian.com","bbc.com","npr.org","coindesk.com","cointelegraph.com",
@@ -119,6 +119,21 @@ const bestPreview = (card, allowFallback=false) => {
   }
   const ph = unsplash(card.title || card.source || "news");
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
+};
+
+/* KPI normalizer (DAU/WAU/MAU always visible) */
+const normalizeKpis = (raw) => {
+  if (!raw || typeof raw !== "object") return null;
+  const pick = (obj, ...names) => {
+    for (const n of names) if (obj[n] != null) return Number(obj[n]) || 0;
+    return 0;
+  };
+  return {
+    DAU: pick(raw, "DAU", "dau", "unique_today", "unique_ips_today"),
+    WAU: pick(raw, "WAU", "wau", "weekly_users", "unique_week"),
+    MAU: pick(raw, "MAU", "mau", "monthly_users", "unique_month"),
+    total_visits: pick(raw, "total_visits", "visits_total", "visits"),
+  };
 };
 
 /* ==================== Weather Card ==================== */
@@ -251,21 +266,21 @@ function ToolsMenu({
   );
 }
 
-/* ==================== Main component ==================== */
+/* ==================== Main ==================== */
 function AIChatInner() {
-  // chat + ui
+  // chat
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
-  // live preview (keep last-good to avoid blink)
+  // previews (persist last-good to avoid blink)
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
-  const [news, setNews] = useState([]);         // last good
-  const [weather, setWeather] = useState(null); // last good
-  const [crypto, setCrypto] = useState([]);     // last good
+  const [news, setNews] = useState([]);
+  const [weather, setWeather] = useState(null);
+  const [crypto, setCrypto] = useState([]);
 
-  // toggles (persisted)
+  // toggles
   const [theme, setTheme] = useState(() => localStorage.getItem("drox.theme") || "dark");
   const [webSearchOn, setWebSearchOn] = useState(() => localStorage.getItem("drox.web") !== "0");
   const [agentOn, setAgentOn] = useState(() => localStorage.getItem("drox.agent") === "1");
@@ -273,10 +288,13 @@ function AIChatInner() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // metrics
+  // metrics + activity
   const [kpi, setKpi] = useState(null);
   const [showActivity, setShowActivity] = useState(false);
   const [logs, setLogs] = useState([]);
+
+  // smart suggestions (below composer)
+  const [smart, setSmart] = useState([]);
 
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
@@ -301,7 +319,7 @@ function AIChatInner() {
   useEffect(() => { localStorage.setItem("drox.agent", agentOn ? "1":"0"); }, [agentOn]);
   useEffect(() => { localStorage.setItem("drox.persona", persona || ""); }, [persona]);
 
-  // keyboard-safe viewport
+  // viewport guards
   useEffect(() => {
     try {
       const vv = window.visualViewport;
@@ -324,7 +342,7 @@ function AIChatInner() {
     } catch {}
   }, []);
 
-  // Track a page view (safe; never crash)
+  // visit tracker (never crash)
   useEffect(() => {
     try {
       const existing = localStorage.getItem("droxion_session");
@@ -345,16 +363,18 @@ function AIChatInner() {
   useEffect(() => {
     const tz = -new Date().getTimezoneOffset();
     fetch(`${API_BASE}/metrics?days=30&tz_offset_minutes=${tz}`)
-      .then(r=>r.json()).then(j=>setKpi(j?.kpis||null)).catch(()=>setKpi(null));
+      .then(r=>r.json())
+      .then(j=> setKpi(normalizeKpis(j?.kpis || j || {})))
+      .catch(()=> setKpi(null));
   }, []);
 
-  // Activity logs
+  // Activity drawer
   useEffect(() => {
     if (!showActivity) return;
     fetch(`${API_BASE}/logs?limit=200`).then(r=>r.json()).then(j=>setLogs(j?.rows||[])).catch(()=>setLogs([]));
   }, [showActivity]);
 
-  /* suggestions */
+  /* suggestions while typing (live) */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -368,7 +388,29 @@ function AIChatInner() {
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* previews — keep last good; cancel in-flight; update only if changed */
+  /* smart suggestions (based on last message) */
+  const lastTurn = useMemo(() => {
+    const last = [...messages].reverse().find(m => m.role === "user");
+    return last?.content || "";
+  }, [messages]);
+  useEffect(() => {
+    if (!lastTurn) { setSmart([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q: lastTurn, mode: "next" } });
+        if (!alive) return;
+        const arr = (data?.suggestions || []).filter(Boolean);
+        const unique = Array.from(new Set(arr)).slice(0, 5);
+        setSmart(unique.length ? unique : ["Summarize it", "Give 3 options", "What’s next?"]);
+      } catch {
+        setSmart(["Summarize it", "Give 3 options", "What’s next?"]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [lastTurn]);
+
+  /* previews — keep last good; no blink */
   const lastPayloadRef = useRef({ n: "", w: "", c: "" });
   useEffect(() => {
     const q = (input || "").trim();
@@ -404,7 +446,7 @@ function AIChatInner() {
         const newCrypto = (rc?.data?.cards || []).filter(Boolean).slice(0,6);
         const cStr = JSON.stringify(newCrypto);
         if (cStr !== lastPayloadRef.current.c) { setCrypto(newCrypto); lastPayloadRef.current.c = cStr; }
-      } catch { /* keep previous to avoid blink */ }
+      } catch { /* keep previous */ }
     }, 340);
     return () => clearTimeout(previewTimer.current);
   }, [input, focused, webSearchOn]);
@@ -430,7 +472,7 @@ function AIChatInner() {
     });
   };
 
-  /* send handler */
+  /* send */
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
     if (sendingRef.current) return;
@@ -442,16 +484,38 @@ function AIChatInner() {
     try {
       const lower = content.toLowerCase();
 
-      // IMAGES
+      // Instant YouTube embed
+      const ytId = youTubeIdFromUrl(content);
+      if (ytId) {
+        await pushWithFollowups(
+          `Here’s the video.`,
+          [{ type: "youtube", url: `https://www.youtube.com/watch?v=${ytId}` }],
+          content,
+          { suppressSources: true }
+        );
+        return;
+      }
+
+      // IMAGES INTENT (accept many shapes + guaranteed fallback)
       if (wantsImages(content)) {
         let cards = [];
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
-          cards = (r.data?.cards || []).filter(Boolean);
+          const raw = (r.data?.cards || []).filter(Boolean);
+          const urls = [];
+          raw.forEach((c) => {
+            if (!c) return;
+            if (Array.isArray(c.images)) urls.push(...c.images.map(x => (typeof x === "string" ? x : x?.url)));
+            if (Array.isArray(c.results)) urls.push(...c.results.map(x => (typeof x === "string" ? x : x?.url || x?.image)));
+            if (Array.isArray(c.items))   urls.push(...c.items.map(x => x?.url || x?.image));
+            const one = firstImageUrl(c);
+            if (one) urls.push(one);
+            if (c.url && /\.(png|jpe?g|webp|gif)$/i.test(c.url)) urls.push(c.url);
+          });
+          const uniq = Array.from(new Set(urls.filter(Boolean)));
+          if (uniq.length) cards = [{ type: "images-grid", images: uniq.slice(0, 12) }];
         } catch {}
-        const hasImages =
-          cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
-        if (!hasImages) {
+        if (!cards.length) {
           const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
             `https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`
@@ -519,7 +583,7 @@ function AIChatInner() {
     }
   };
 
-  /* image upload flow */
+  /* image flow */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -639,66 +703,58 @@ function AIChatInner() {
     );
   };
 
-  /* media block */
+  /* Media block — robust */
   function MediaBlock({ cards = [] }) {
     if (!cards || cards.length === 0) return null;
+
+    const extractImageUrls = (card) => {
+      const urls = [];
+      if (!card) return urls;
+      if (Array.isArray(card.images)) urls.push(...card.images.map(x => (typeof x === "string" ? x : x?.url)));
+      if (Array.isArray(card.results)) urls.push(...card.results.map(x => (typeof x === "string" ? x : x?.url || x?.image)));
+      if (Array.isArray(card.items))   urls.push(...card.items.map(x => x?.url || x?.image));
+      const one = firstImageUrl(card);
+      if (one) urls.push(one);
+      if (card.url && /\.(png|jpe?g|webp|gif)$/i.test(card.url)) urls.push(card.url);
+      return Array.from(new Set(urls.filter(Boolean)));
+    };
 
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
-          if (card?.type === "images-grid" && Array.isArray(card.images)) {
-            const items = card.images.slice(0, 12);
-            return (
-              <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
-                {items.map((it, j) => {
-                  const u = typeof it === "string" ? it : (it?.url || "");
-                  if (!u) return null;
-                  return (
-                    <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
-                      <img
-                        src={u}
-                        alt=""
-                        className="w-full rounded-lg glass"
-                        loading="lazy"
-                        decoding="async"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      />
-                    </a>
-                  );
-                })}
-              </div>
-            );
-          }
+          // Normalize if backend used "link" for video
+          if (card?.link && !card.url) card.url = card.link;
 
-          if (card?.type === "gallery" && Array.isArray(card.images)) {
-            const urls = card.images
-              .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
-              .filter(Boolean)
-              .slice(0, 12);
+          // Image sets
+          if (card?.type === "images-grid" || card?.type === "images" || card?.type === "image_results" || card?.type === "gallery") {
+            const urls = extractImageUrls(card).slice(0, 12);
+            if (!urls.length) return null;
             return (
-              <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
+              <div key={`imgset-${i}`} className="grid grid-cols-2 gap-2">
                 {urls.map((u, j) => (
-                  <img
-                    key={`gal-${i}-${j}`}
-                    src={u}
-                    alt=""
-                    className="w-full rounded-lg glass"
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => { e.currentTarget.style.display = "none"; }}
-                  />
+                  <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={u}
+                      alt=""
+                      className="w-full rounded-lg glass"
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  </a>
                 ))}
               </div>
             );
           }
 
-          if (card?.type === "image" && card.url) {
+          // Single image
+          if (card?.type === "image" && (card.url || card.image)) {
+            const u = card.url || card.image;
             return (
               <img
                 key={`image-${i}`}
-                src={card.url}
+                src={u}
                 alt=""
                 className="w-full rounded-lg glass"
                 loading="lazy"
@@ -709,10 +765,12 @@ function AIChatInner() {
             );
           }
 
+          // Weather
           if (card?.type === "weather") {
             return <WeatherCard key={`wx-${i}`} card={card} />;
           }
 
+          // YouTube
           if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
             const id = youTubeIdFromUrl(card.url || "");
             if (!id) return null;
@@ -826,7 +884,7 @@ function AIChatInner() {
                     <td className="py-2 pr-2">{r.type}</td>
                     <td className="py-2 pr-2">{r.ip}</td>
                     <td className="py-2 pr-2">{r.path}</td>
-                    <td className="py-2 pr-2"><code className="text-[11px]">{JSON.stringify(r.details||{})}</code></td>
+                    <td className="py-2 pr-2"><code className="text/[11px]">{JSON.stringify(r.details||{})}</code></td>
                   </tr>
                 ) : (
                   <tr key={i} className="border-b border-white/5">
@@ -853,7 +911,7 @@ function AIChatInner() {
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               const mediaCards = (msg.cards || []).filter(c =>
-                ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
+                ["youtube", "image", "images", "gallery", "images-grid", "weather", "image_results"].includes(c.type) ||
                 (c.url && isYouTube(c.url))
               );
               return (
@@ -901,7 +959,7 @@ function AIChatInner() {
         </div>
       </div>
 
-      {/* Fixed preview while typing (no blink) */}
+      {/* Fixed preview while typing */}
       {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
@@ -999,6 +1057,18 @@ function AIChatInner() {
             </button>
           </div>
 
+          {/* Smart suggestions under composer (based on last turn) */}
+          {smart.length > 0 && (
+            <div className="flex gap-2 flex-wrap mt-2">
+              {smart.map((s)=>(
+                <button key={s} onClick={()=>handleSend(s)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Quick starters */}
           <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic","Anime","Futuristic","Fantasy","Realistic"].map((s)=>(
               <button key={s} onClick={()=>handleSend(`steps to do ${s.toLowerCase()} project`)} className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition">
@@ -1012,7 +1082,7 @@ function AIChatInner() {
   );
 }
 
-/* ==================== Export wrapped with ErrorBoundary ==================== */
+/* ==================== Export ==================== */
 export default function AIChat(){
   return (
     <ErrorBoundary>
