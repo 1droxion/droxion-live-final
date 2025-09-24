@@ -1,5 +1,5 @@
-// src/AIChat.jsx — Droxion (metrics + no-blink previews) — FINAL
-import React, { useState, useEffect, useRef, useMemo } from "react";
+// src/AIChat.jsx — Droxion (stable, no-blink, metrics, error boundary)
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -13,9 +13,41 @@ import {
 } from "react-icons/fi";
 import "./AIChat.css";
 
-const API_BASE = "https://droxion-backend.onrender.com";
+// --- API base: env first, fallback to your backend URL
+const API_BASE =
+  (import.meta && import.meta.env && import.meta.env.VITE_API_URL) ||
+  "https://droxion-backend.onrender.com";
 
-/* ---------------------- helpers ---------------------- */
+/* ==================== Crash guard: Error Boundary ==================== */
+class ErrorBoundary extends React.Component {
+  constructor(p){ super(p); this.state = { hasError:false, err:null }; }
+  static getDerivedStateFromError(err){ return { hasError:true, err }; }
+  componentDidCatch(err, info){ console.error("AIChat crashed:", err, info); }
+  render(){
+    if (this.state.hasError) {
+      return (
+        <div style={{padding:16, color:"#fff", background:"#000"}}>
+          <div style={{fontWeight:700, marginBottom:8}}>Something went wrong in AIChat.</div>
+          <div style={{fontFamily:"monospace", fontSize:12, opacity:0.85}}>
+            {String(this.state.err)}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ==================== helpers ==================== */
+const safeUUID = () => {
+  try {
+    if (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+  } catch {}
+  return "s-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+};
+
 const normHost = (u = "") => {
   try {
     const url = new URL(u);
@@ -29,14 +61,13 @@ const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p ==
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
 
-// ⬇️ Keep your original working selector
+// ⬇️ your original selector
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
-const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
 const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
 
 /* small youtube helpers */
@@ -62,19 +93,13 @@ const youTubeIdFromUrl = (raw="") => {
   return m ? m[1] : null;
 };
 
-/* ---------------------- quick intent ---------------------- */
+/* quick intent */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-const isSearchy = (s="") => {
-  const q = s.toLowerCase();
-  return q.startsWith("google:") || q.startsWith("search:") ||
-    /\b(now|today|latest|breaking|live|update|news|price|stock|chart|weather|forecast|crypto|btc|eth)\b/.test(q) ||
-    wantsNews(q) || wantsWeather(q) || wantsCrypto(q);
-};
 
-/* ---------------------- ranking for PREVIEW only ---------------------- */
+/* ranking for previews */
 const HQ = [
   "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
   "theguardian.com","bbc.com","npr.org","coindesk.com","cointelegraph.com",
@@ -84,7 +109,6 @@ const rankHost = (h) => !h ? -50 : BAD_HOSTS.some(b => h===b || h.endsWith("."+b
 const dedupeCards = (arr=[]) => { const seen=new Set(); return arr.filter(c=>{ const key=(host(c.url||"")||"")+ "::" + (c.title||"").toLowerCase().slice(0,80); if(seen.has(key)) return false; seen.add(key); return true; }); };
 const rankAndTrim = (cards=[], limit=12) => dedupeCards(cards.filter(c => !!c && !!c.url && !isFilteredSource(c.url))).sort((a,b)=> (rankHost(host(b.url||"")) - rankHost(host(a.url||"")))).slice(0, limit);
 const displaySource = (c) => host(c?.url || "") || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
-
 const bestPreview = (card, allowFallback=false) => {
   const direct = firstImageUrl(card);
   if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" };
@@ -97,7 +121,7 @@ const bestPreview = (card, allowFallback=false) => {
   return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
 };
 
-/* ---------------------- Weather card ---------------------- */
+/* ==================== Weather Card ==================== */
 function WeatherCard({ card }) {
   if (!card) return null;
   const pick = (o,ks,d=null)=>{ for(const k of ks) if(o && o[k]!=null && o[k] !== "") return o[k]; return d; };
@@ -174,7 +198,7 @@ function WeatherCard({ card }) {
   );
 }
 
-/* ---------------------- Tools Menu ---------------------- */
+/* ==================== Tools Menu ==================== */
 function ToolsMenu({
   onSendImageFile,
   onSendAnyFile,
@@ -227,19 +251,19 @@ function ToolsMenu({
   );
 }
 
-/* ---------------------- main component ---------------------- */
-export default function AIChat() {
+/* ==================== Main component ==================== */
+function AIChatInner() {
   // chat + ui
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
-  // live preview (no-blink: keep old until new arrives)
+  // live preview (keep last-good to avoid blink)
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
-  const [news, setNews] = useState([]);         // keep last good
-  const [weather, setWeather] = useState(null); // keep last good
-  const [crypto, setCrypto] = useState([]);     // keep last good
+  const [news, setNews] = useState([]);         // last good
+  const [weather, setWeather] = useState(null); // last good
+  const [crypto, setCrypto] = useState([]);     // last good
 
   // toggles (persisted)
   const [theme, setTheme] = useState(() => localStorage.getItem("drox.theme") || "dark");
@@ -277,51 +301,60 @@ export default function AIChat() {
   useEffect(() => { localStorage.setItem("drox.agent", agentOn ? "1":"0"); }, [agentOn]);
   useEffect(() => { localStorage.setItem("drox.persona", persona || ""); }, [persona]);
 
-  // keyboard-safe viewport (no layout jumps)
+  // keyboard-safe viewport
   useEffect(() => {
-    const vv = window.visualViewport;
-    const handleVV = () => {
+    try {
+      const vv = window.visualViewport;
       if (!vv) return;
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty("--kb", kb + "px");
-    };
-    handleVV();
-    vv?.addEventListener("resize", handleVV);
-    vv?.addEventListener("scroll", handleVV);
-    window.addEventListener("orientationchange", handleVV);
-    return () => {
-      vv?.removeEventListener("resize", handleVV);
-      vv?.removeEventListener("scroll", handleVV);
-      window.removeEventListener("orientationchange", handleVV);
-    };
+      const handleVV = () => {
+        try {
+          const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+          document.documentElement.style.setProperty("--kb", kb + "px");
+        } catch {}
+      };
+      handleVV();
+      vv.addEventListener("resize", handleVV);
+      vv.addEventListener("scroll", handleVV);
+      window.addEventListener("orientationchange", handleVV);
+      return () => {
+        vv.removeEventListener("resize", handleVV);
+        vv.removeEventListener("scroll", handleVV);
+        window.removeEventListener("orientationchange", handleVV);
+      };
+    } catch {}
   }, []);
 
-  // Track a page view (counts even if same IP returns)
+  // Track a page view (safe; never crash)
   useEffect(() => {
-    const session = localStorage.getItem("droxion_session") || crypto.randomUUID();
-    localStorage.setItem("droxion_session", session);
-    fetch(`${API_BASE}/track-visit`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ page: "chat", ref: document.referrer || "", session })
-    }).catch(()=>{});
+    try {
+      const existing = localStorage.getItem("droxion_session");
+      const session = existing || safeUUID();
+      if (!existing) localStorage.setItem("droxion_session", session);
+
+      if (typeof window !== "undefined" && /^https?:\/\//i.test(API_BASE)) {
+        fetch(`${API_BASE}/track-visit`, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ page: "chat", ref: document.referrer || "", session })
+        }).catch(() => {});
+      }
+    } catch (e) { console.warn("track-visit failed:", e); }
   }, []);
 
-  // Fetch KPIs once
+  // KPIs once
   useEffect(() => {
     const tz = -new Date().getTimezoneOffset();
     fetch(`${API_BASE}/metrics?days=30&tz_offset_minutes=${tz}`)
       .then(r=>r.json()).then(j=>setKpi(j?.kpis||null)).catch(()=>setKpi(null));
   }, []);
 
-  // Activity drawer logs
+  // Activity logs
   useEffect(() => {
     if (!showActivity) return;
     fetch(`${API_BASE}/logs?limit=200`).then(r=>r.json()).then(j=>setLogs(j?.rows||[])).catch(()=>setLogs([]));
   }, [showActivity]);
 
-  /* ---------------------- suggestions + live previews (NO BLINK) ---------------------- */
-  // Suggestions (fast debounce; replaces list after fetch)
+  /* suggestions */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -330,12 +363,12 @@ export default function AIChat() {
       try {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
         setTextSug((data?.suggestions || []).slice(0, 8));
-      } catch { /* keep last suggestions */ }
+      } catch { /* keep last */ }
     }, 220);
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  // Previews (news/weather/crypto) — keep previous until new data arrives; cancel in-flight; shallow diff before setState
+  /* previews — keep last good; cancel in-flight; update only if changed */
   const lastPayloadRef = useRef({ n: "", w: "", c: "" });
   useEffect(() => {
     const q = (input || "").trim();
@@ -397,7 +430,7 @@ export default function AIChat() {
     });
   };
 
-  /* ---------------------- send handlers — NO TRIMMING of cards ---------------------- */
+  /* send handler */
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
     if (sendingRef.current) return;
@@ -409,7 +442,7 @@ export default function AIChat() {
     try {
       const lower = content.toLowerCase();
 
-      // IMAGES INTENT
+      // IMAGES
       if (wantsImages(content)) {
         let cards = [];
         try {
@@ -430,6 +463,7 @@ export default function AIChat() {
         return;
       }
 
+      // google:
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
@@ -439,6 +473,7 @@ export default function AIChat() {
         return;
       }
 
+      // search:
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
         const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
@@ -484,7 +519,7 @@ export default function AIChat() {
     }
   };
 
-  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+  /* image upload flow */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -538,7 +573,7 @@ export default function AIChat() {
     }
   };
 
-  /* ---------------------- organized render helpers ---------------------- */
+  /* organized render helpers */
   const extractTitle = (md="") => {
     const h1 = md.match(/^\s*#\s+(.+)/m); if (h1) return h1[1].trim();
     const firstLine = md.split("\n").find(x => x.trim()); if (!firstLine) return "Answer";
@@ -604,7 +639,7 @@ export default function AIChat() {
     );
   };
 
-  /* ---------------------- Media block (images, youtube, weather) ---------------------- */
+  /* media block */
   function MediaBlock({ cards = [] }) {
     if (!cards || cards.length === 0) return null;
 
@@ -699,7 +734,7 @@ export default function AIChat() {
     );
   }
 
-  /* ---------------------- utility ---------------------- */
+  /* utils */
   const clearAll = () => {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
@@ -712,12 +747,12 @@ export default function AIChat() {
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
   };
 
-  // auto-scroll on new message (smooth, no jump)
+  // auto-scroll on new messages
   useEffect(() => {
     try { scrollRef.current?.lastElementChild?.scrollIntoView({behavior:"smooth"}); } catch {}
   }, [messages]);
 
-  /* ---------------------- render ---------------------- */
+  /* render */
   return (
     <div className="flex flex-col min-h-[100svh]">
       {/* Header */}
@@ -727,7 +762,6 @@ export default function AIChat() {
           <div className="text-xs text-gray-400">• Lite</div>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* KPI strip (tiny, no clutter) */}
             {kpi && (
               <div className="hidden md:flex gap-2 text-[11px] text-gray-400 mr-2">
                 <span>DAU <b className="text-white">{kpi.DAU}</b></span>
@@ -749,7 +783,7 @@ export default function AIChat() {
         </div>
       </header>
 
-      {/* Tools menu */}
+      {/* Tools Menu */}
       {menuOpen && (
         <>
           <div onClick={()=>setMenuOpen(false)} style={{ position:"fixed", inset:0, zIndex:999, background:"transparent" }} />
@@ -776,7 +810,7 @@ export default function AIChat() {
         </>
       )}
 
-      {/* Activity drawer (no blink: stable container height via glass card) */}
+      {/* Activity drawer */}
       {showActivity && (
         <div className="max-w-4xl mx-auto px-3 mt-2 mb-2 w-full">
           <div className="glass rounded-xl p-3 overflow-x-auto">
@@ -796,13 +830,16 @@ export default function AIChat() {
                   </tr>
                 ) : (
                   <tr key={i} className="border-b border-white/5">
-                    <td className="py-2 pr-2"><div className="h-3 w-24 skel rounded" /></td>
-                    <td className="py-2 pr-2"><div className="h-3 w-12 skel rounded" /></td>
-                    <td className="py-2 pr-2"><div className="h-3 w-20 skel rounded" /></td>
-                    <td className="py-2 pr-2"><div className="h-3 w-28 skel rounded" /></td>
-                    <td className="py-2 pr-2"><div className="h-3 w-40 skel rounded" /></td>
+                    <td className="py-2 pr-2"><div className="h-3 w-28 bg-white/10 rounded" /></td>
+                    <td className="py-2 pr-2"><div className="h-3 w-16 bg-white/10 rounded" /></td>
+                    <td className="py-2 pr-2"><div className="h-3 w-20 bg-white/10 rounded" /></td>
+                    <td className="py-2 pr-2"><div className="h-3 w-28 bg-white/10 rounded" /></td>
+                    <td className="py-2 pr-2"><div className="h-3 w-40 bg-white/10 rounded" /></td>
                   </tr>
                 ))}
+                {!logs.length && (
+                  <tr><td className="py-3 text-gray-400" colSpan={5}>No activity yet.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -864,7 +901,7 @@ export default function AIChat() {
         </div>
       </div>
 
-      {/* Fixed preview while typing (NO BLINK: keep last data; skeletons only) */}
+      {/* Fixed preview while typing (no blink) */}
       {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
@@ -972,5 +1009,14 @@ export default function AIChat() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ==================== Export wrapped with ErrorBoundary ==================== */
+export default function AIChat(){
+  return (
+    <ErrorBoundary>
+      <AIChatInner/>
+    </ErrorBoundary>
   );
 }
