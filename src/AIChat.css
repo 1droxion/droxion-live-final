@@ -54,11 +54,15 @@ svg { color: currentColor; }
 }
 
 /* ---------- header ---------- */
+.header-bg{
+  background: color-mix(in oklab, transparent 80%, var(--bg));
+}
+.header-bg.backdrop-blur{ backdrop-filter: blur(8px); }
 .brand { letter-spacing: .3px; }
 .pill-btn{
   display:inline-flex;align-items:center;gap:6px;
   height:36px;padding:0 12px;border-radius:999px;
-  background:rgba(255,255,255,.08);
+  background: var(--glass);
   border:1px solid var(--border);
   color:inherit;cursor:pointer;
   transition:background .15s ease, transform .05s ease, box-shadow .15s ease;
@@ -111,8 +115,7 @@ img{
 .weather-card .wstat .wlabel{ color:var(--muted); font-size:11px; }
 .weather-card .wstat .wval{ font-weight:600; font-size:13px; }
 .w-hscroll{ scrollbar-width:thin; }
-.w-hour{ background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:10px; }
-[data-theme="light"] .w-hour{ background:rgba(0,0,0,.03); }
+.w-hour{ background:var(--glass); border:1px solid var(--border); border-radius:10px; }
 
 /* ---------- organized answer ---------- */
 .org-title{ font-size:18px; font-weight:700; margin-bottom:8px; }
@@ -130,6 +133,7 @@ img{
 .chat-scroll{
   padding-bottom:calc(var(--kb) + 110px);
   scroll-behavior:smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* custom scrollbars (WebKit) */
@@ -149,12 +153,19 @@ img{
 
 .msg{ border-radius:12px; }
 
-/* ---------- typing preview rail ---------- */
+/* ---------- typing preview rail (non-blink) ---------- */
 .fixed-panel{
-  position:fixed; left:0; right:0; bottom:calc(74px + env(safe-area-inset-bottom));
+  position:fixed; left:0; right:0;
+  bottom:calc(74px + env(safe-area-inset-bottom));
   z-index:30;
 }
-.fixed-preview .panel{ max-width:100%; }
+.fixed-preview{
+  pointer-events:none;
+  bottom: calc(64px + var(--kb, 0px));
+  transition: opacity .18s ease;
+  will-change: opacity;
+}
+.fixed-preview .panel{ max-width:100%; box-shadow:0 12px 40px rgba(0,0,0,.35); }
 .dim-while-typing .panel{ opacity:.98; }
 .hscroll{ overflow-x:auto; display:flex; gap:10px; }
 .hitem{ width:280px; flex:0 0 auto; }
@@ -172,7 +183,7 @@ img{
   background:var(--glass); color:inherit; cursor:pointer; text-decoration:none;
   transition: background .15s ease, box-shadow .15s ease;
 }
-.action-btn:hover{ background:rgba(255,255,255,.10); }
+.action-btn:hover{ background:var(--hover); }
 .action-btn:focus-visible{ outline:none; box-shadow: var(--focus); }
 .menu-item.active .action-btn{ background:rgba(255,255,255,.10); }
 
