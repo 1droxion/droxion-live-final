@@ -1,4 +1,6 @@
-// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — PERFECT FIX
+// src/AIChat.jsx — Droxion (all fixes: theme, geo weather, sparkline, non-blink preview, YT, images)
+// Owner/creator branding: Dhruv Patel & the Droxion team.
+
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -67,7 +69,7 @@ const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-// NEW: YouTube
+// YouTube
 const wantsYouTube = (s = "") => /\b(youtube|yt|watch|trailer|music video)\b/i.test(s) || /^youtube:\s*/i.test(s);
 
 /* ---------------------- ranking for PREVIEW only ---------------------- */
@@ -241,6 +243,20 @@ function ToolsMenu({
   );
 }
 
+/* ---------------------- tiny sparkline for crypto ---------------------- */
+function Sparkline({ points = [], width = 160, height = 40 }) {
+  if (!points.length) return null;
+  const min = Math.min(...points), max = Math.max(...points);
+  const norm = v => (max === min ? 0.5 : (v - min) / (max - min));
+  const step = width / (points.length - 1);
+  const d = points.map((v, i) => `${i===0?"M":"L"}${(i*step).toFixed(2)},${(height - norm(v)*height).toFixed(2)}`).join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display:"block" }}>
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="2" opacity="0.9"/>
+    </svg>
+  );
+}
+
 /* ---------------------- main component ---------------------- */
 function AIChat() {
   // chat + ui
@@ -260,6 +276,9 @@ function AIChat() {
   const [agentOn, setAgentOn] = useState(false);
   const [webSearchOn, setWebSearchOn] = useState(true);
   const [persona, setPersona] = useState("");
+
+  // geo for weather
+  const [geo, setGeo] = useState(null); // { lat, lon, city? }
 
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
@@ -301,7 +320,35 @@ function AIChat() {
     };
   }, []);
 
-  /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
+  // get user location (GPS -> IP fallback)
+  useEffect(() => {
+    let done = false;
+
+    const byGPS = () =>
+      new Promise(resolve => {
+        if (!("geolocation" in navigator)) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+          () => resolve(null),
+          { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+        );
+      });
+
+    const byIP = () =>
+      fetch("https://ipapi.co/json/")
+        .then(r => r.ok ? r.json() : null)
+        .then(j => j ? { lat: j.latitude, lon: j.longitude, city: j.city } : null)
+        .catch(() => null);
+
+    (async () => {
+      const g = (await byGPS()) || (await byIP());
+      if (!done && g) setGeo(g);
+    })();
+
+    return () => { done = true; };
+  }, []);
+
+  /* ---------------------- suggestions + live previews ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -326,7 +373,7 @@ function AIChat() {
       try {
         const reqs = [
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather", lat: geo?.lat, lon: geo?.lon }, { cancelToken: src.token }).catch(()=>null),
           axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
         ];
         const [rn, rw, rc] = await Promise.all(reqs);
@@ -344,7 +391,7 @@ function AIChat() {
       } catch {}
     }, 350);
     return () => clearTimeout(previewTimer.current);
-  }, [input, focused]);
+  }, [input, focused, geo]);
 
   const copyMessage = async (i) => {
     try {
@@ -379,18 +426,14 @@ function AIChat() {
     try {
       const lower = content.toLowerCase();
 
-      /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
+      /* 🔥 IMAGES INTENT */
       if (wantsImages(content)) {
-        // Try backend first (intent: images). If it gives us cards, use them.
         let cards = [];
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
           cards = (r.data?.cards || []).filter(Boolean);
-        } catch (e) {
-          console.warn("images intent backend error:", e?.message || e);
-        }
+        } catch {}
 
-        // Check for images presence (any schema)
         const hasImages =
           cards.some(c =>
             c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" ||
@@ -398,7 +441,6 @@ function AIChat() {
             (Array.isArray(c?.images) && c.images.length)
           );
 
-        // If backend didn’t return any image cards, fall back to Unsplash sources (proxied).
         if (!hasImages) {
           const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
@@ -411,24 +453,19 @@ function AIChat() {
         await pushWithFollowups(md, cards, content, { suppressSources: true });
         return;
       }
-      /* 🔥 end images branch */
 
-      /* 🔥 YOUTUBE SEARCH (works with "youtube: ..." or any query mentioning youtube/yt) */
+      /* 🔥 YOUTUBE */
       if (wantsYouTube(content)) {
         const q = content.replace(/^youtube:\s*/i, "");
         let results = [];
         try {
           const r = await axios.post(`${API_BASE}/search-youtube`, { q });
           results = Array.isArray(r.data?.results) ? r.data.results : [];
-        } catch (e) {
-          console.warn("search-youtube failed:", e?.message || e);
-          // graceful fallback to realtime intent if available
+        } catch {
           try {
             const r2 = await axios.post(`${API_BASE}/realtime`, { query: q || content, intent: "youtube" });
             results = Array.isArray(r2.data?.results) ? r2.data.results : (r2.data?.cards || []);
-          } catch (e2) {
-            console.warn("realtime youtube fallback failed:", e2?.message || e2);
-          }
+          } catch {}
         }
 
         const cards = (results || [])
@@ -440,7 +477,6 @@ function AIChat() {
         return;
       }
 
-      // ---- existing special cases (keep yours) ----
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
@@ -468,7 +504,7 @@ function AIChat() {
       }
 
       if (wantsWeather(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather", lat: geo?.lat, lon: geo?.lon });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         return;
@@ -476,21 +512,30 @@ function AIChat() {
 
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
-        const cards = (r.data?.cards || []).filter(Boolean);
+        let cards = (r.data?.cards || []).filter(Boolean);
+
+        // optional: ensure sparkline-friendly data shape
+        cards = cards.map(c => ({
+          ...c,
+          history: Array.isArray(c.history) ? c.history : (Array.isArray(c.sparkline) ? c.sparkline : [])
+        }));
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
         return;
       }
 
-      // ---- default chat ----
+      // ---- default chat (brand-safe prompt) ----
+      const branded = `You are Droxion — an independent AI assistant created by Dhruv Patel and the Droxion team.
+If asked "who owns you" or "who made you", reply: "I’m Droxion, built and maintained by the Droxion team."
+Avoid claiming you are owned by OpenAI. Stay neutral and helpful.
+User: ${content}`;
+
       const res = await axios.post(`${API_BASE}/chat`, {
-        prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
+        prompt: branded, memory: [], persona, web: webSearchOn, agent: agentOn
       });
       const md = res.data?.reply || res.data?.text || "";
 
-      // start with any cards your backend already sent
       let cards = (res.data?.cards || []).filter(Boolean);
 
-      // map optional arrays into cards so MediaBlock can render them
       if (Array.isArray(res.data?.images) && res.data.images.length) {
         const urls = res.data.images
           .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
@@ -509,7 +554,6 @@ function AIChat() {
 
       await pushWithFollowups(md, cards, content);
     } catch (err) {
-      console.error("handleSend error:", err?.message || err);
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
@@ -522,11 +566,9 @@ function AIChat() {
       return;
     }
 
-    // Generate local preview URL
     let localUrl = "";
     try { localUrl = URL.createObjectURL(file); } catch {}
 
-    // Insert placeholder message and keep index for later replacement
     const tempMsg = {
       role: "assistant",
       content: "Analyzing your image...",
@@ -534,7 +576,7 @@ function AIChat() {
       meta: { suppressSources: true, localPreview: true }
     };
     setMessages((prev) => [...prev, tempMsg]);
-    const index = messages.length + 1; // predicted index after set
+    const index = messages.length + 1;
 
     try {
       const form = new FormData();
@@ -553,14 +595,13 @@ function AIChat() {
       );
       const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
 
-      // ✅ Replace temp message instead of pushing a new one
       setMessages((prev) => {
         const copy = [...prev];
         copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
         return copy;
       });
       setInput("");
-    } catch (e) {
+    } catch {
       setMessages((prev) => {
         const copy = [...prev];
         copy[index] = {
@@ -646,7 +687,7 @@ function AIChat() {
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
-          // Images grid (array of urls or {url})
+          // Images grid
           if (card?.type === "images-grid" && Array.isArray(card.images)) {
             const items = card.images.slice(0, 12);
             return (
@@ -671,7 +712,7 @@ function AIChat() {
             );
           }
 
-          // Gallery (same idea)
+          // Gallery
           if (card?.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images
               .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -694,7 +735,7 @@ function AIChat() {
             );
           }
 
-          // Single image card (backend might return {type:"image", url})
+          // Single image card
           if (card?.type === "image" && card.url) {
             return (
               <img
@@ -709,7 +750,7 @@ function AIChat() {
             );
           }
 
-          // Weather (pass through to your WeatherCard if present)
+          // Weather
           if (card?.type === "weather") {
             return <WeatherCard key={`wx-${i}`} card={card} />;
           }
@@ -730,7 +771,6 @@ function AIChat() {
             );
           }
 
-          // ✅ Fallback: any card that simply has an image should render as an image card
           const anySrc = firstImageUrl(card);
           if (anySrc) {
             const href = card.url || anySrc;
@@ -773,7 +813,7 @@ function AIChat() {
   return (
     <div className="flex flex-col min-h-[100svh]">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
+      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur header-bg">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
@@ -876,81 +916,87 @@ function AIChat() {
         </div>
       </div>
 
-      {/* Fixed preview while typing */}
-      {focused && (
-        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
-          <div className="max-w-4xl mx-auto px-3">
-            <div className="panel glass rounded-xl p-2 suggestions-panel">
-              <div className="mb-2">
-                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
-                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
-                  <div className="flex gap-2">
-                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
-                      c ? (
-                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
-                          <div className="rounded-xl overflow-hidden glass">
-                            {(() => {
-                              const pv = bestPreview(c, true);
-                              return pv
-                                ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
-                                : <div className="aspect-[16/9] skel" />;
-                            })()}
-                            <div className="p-3">
-                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
-                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
-                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
-                            </div>
-                          </div>
-                        </a>
-                      ) : (
-                        <div key={i} className="hitem pr-3">
-                          <div className="rounded-xl overflow-hidden glass">
-                            <div className="aspect-[16/9] skel" />
-                            <div className="p-3">
-                              <div className="h-3 w-24 skel rounded mb-2" />
-                              <div className="h-3 w-40 skel rounded" />
-                            </div>
+      {/* Fixed preview while typing — always mounted; fade via opacity (no blink) */}
+      <div
+        className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}
+        style={{ opacity: focused ? 1 : 0, transition: "opacity .18s ease", pointerEvents: focused ? "auto" : "none" }}
+      >
+        <div className="max-w-4xl mx-auto px-3">
+          <div className="panel glass rounded-xl p-2 suggestions-panel">
+            <div className="mb-2">
+              <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+              <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                <div className="flex gap-2">
+                  {(news.length ? news : Array.from({length:3})).map((c,i)=>
+                    c ? (
+                      <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                        <div className="rounded-xl overflow-hidden glass">
+                          {(() => {
+                            const pv = bestPreview(c, true);
+                            return pv
+                              ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
+                              : <div className="aspect-[16/9] skel" />;
+                          })()}
+                          <div className="p-3">
+                            <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                            <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                            <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
                           </div>
                         </div>
-                      )
-                    )}
-                  </div>
+                      </a>
+                    ) : (
+                      <div key={i} className="hitem pr-3">
+                        <div className="rounded-xl overflow-hidden glass">
+                          <div className="aspect-[16/9] skel" />
+                          <div className="p-3">
+                            <div className="h-3 w-24 skel rounded mb-2" />
+                            <div className="h-3 w-40 skel rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
-                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
-                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
-                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
-                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
-                      {c.price && <div className="text-base mt-1">{c.price}</div>}
-                      {typeof c.change!=="undefined" && (
-                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
-                      )}
-                    </a>
-                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
-                </div>
-              </div>
-
-              {textSug.length>0 && (
-                <div className="mt-1">
-                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
-                  {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
+
+            <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+              <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
+              <div className="grid grid-cols-1 gap-2">
+                {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
+                  <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                    <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                    <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                    {c.price && <div className="text-base mt-1">{c.price}</div>}
+                    {typeof c.change!=="undefined" && (
+                      <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
+                    )}
+                    {Array.isArray(c.history) && c.history.length > 1 && (
+                      <div className="mt-2" style={{ color: String(c.change).startsWith("-") ? "#ef4444" : "#22c55e" }}>
+                        <Sparkline points={c.history} />
+                      </div>
+                    )}
+                  </a>
+                ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
+              </div>
+            </div>
+
+            {textSug.length>0 && (
+              <div className="mt-1">
+                <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
+                {textSug.map((s,i)=>(
+                  <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Composer — clean (no image button in middle) */}
-      <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
+      {/* Composer */}
+      <div className="fixed-bottom z-50 border-t border-white/10 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
