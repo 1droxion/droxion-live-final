@@ -55,9 +55,16 @@ svg { color: currentColor; }
 
 /* ---------- header ---------- */
 .header-bg{
+  /* primary attempt */
   background: color-mix(in oklab, transparent 80%, var(--bg));
+  /* iOS/Safari fallback */
+  background: linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,.25));
+}
+[data-theme="light"] .header-bg{
+  background: linear-gradient(to bottom, rgba(255,255,255,.75), rgba(255,255,255,.45));
 }
 .header-bg.backdrop-blur{ backdrop-filter: blur(8px); }
+
 .brand { letter-spacing: .3px; }
 .pill-btn{
   display:inline-flex;align-items:center;gap:6px;
@@ -131,7 +138,8 @@ img{
 
 /* ---------- chat area ---------- */
 .chat-scroll{
-  padding-bottom:calc(var(--kb) + 110px);
+  /* extra padding so last message never hides behind the preview + keyboard */
+  padding-bottom: calc(var(--kb) + 220px);
   scroll-behavior:smooth;
   -webkit-overflow-scrolling: touch;
 }
@@ -151,25 +159,36 @@ img{
   background:rgba(0,0,0,.18);
 }
 
+@media (min-width: 768px){
+  .chat-scroll{ padding-bottom: calc(var(--kb) + 140px); }
+}
+
 .msg{ border-radius:12px; }
 
-/* ---------- typing preview rail (non-blink) ---------- */
+/* ---------- typing preview rail (non-blink, correct stacking) ---------- */
 .fixed-panel{
   position:fixed; left:0; right:0;
   bottom:calc(74px + env(safe-area-inset-bottom));
-  z-index:30;
+  z-index:30; /* preview layer */
 }
 .fixed-preview{
   pointer-events:none;
   bottom: calc(64px + var(--kb, 0px));
   transition: opacity .18s ease;
   will-change: opacity;
+  contain: paint;            /* isolate paints, prevents chat flicker */
+  transform: translateZ(0);  /* iOS compositing: no blinking */
 }
 .fixed-preview .panel{ max-width:100%; box-shadow:0 12px 40px rgba(0,0,0,.35); }
 .dim-while-typing .panel{ opacity:.98; }
 .hscroll{ overflow-x:auto; display:flex; gap:10px; }
 .hitem{ width:280px; flex:0 0 auto; }
 .skel{ background:rgba(255,255,255,.08); border-radius:10px; }
+
+/* guarantee interactivity inside preview even though container is non-interactive */
+.fixed-preview .panel,
+.fixed-preview a,
+.fixed-preview button { pointer-events:auto; }
 
 /* line clamp utility */
 .line-clamp-2{
@@ -259,13 +278,12 @@ textarea{
 /* suggestion panel container */
 .suggestions-panel{ padding:8px; }
 
-/* fixed preview should not pass events through */
-.fixed-preview{ pointer-events:none; }
-.fixed-preview .panel,
-.fixed-preview a,
-.fixed-preview button { pointer-events:auto; }
+/* ---------- z-index utilities to match JSX ---------- */
+.z-50{ z-index:50; }  /* composer */
+.z-40{ z-index:40; }  /* header */
+.z-30{ z-index:30; }  /* preview rail */
 
-/* ---------- tiny utilities used in JSX (so they actually work) ---------- */
+/* ---------- tiny utilities used in JSX ---------- */
 .backdrop-blur{ backdrop-filter: blur(8px); }
 .bg-black\/60{ background: rgba(0,0,0,.60); }
 .bg-black\/80{ background: rgba(0,0,0,.80); }
@@ -273,7 +291,12 @@ textarea{
 .text-green-400{ color:#22c55e; }
 .text-red-400{ color:#ef4444; }
 
-/* keyboard-safe spacing (no style change) */
+/* keyboard-safe spacing glue */
 .chat-scroll { scroll-padding-bottom: calc(120px + var(--kb, 0px)); }
 .fixed-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + var(--kb, 0px)); }
 .fixed-preview { bottom: calc(64px + var(--kb, 0px)); }
+
+/* iOS fixed-context quirk */
+@supports (-webkit-touch-callout: none) {
+  .fixed-preview{ position: fixed; }
+}
