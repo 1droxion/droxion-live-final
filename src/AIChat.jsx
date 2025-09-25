@@ -67,12 +67,8 @@ const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-const isSearchy = (s="") => {
-  const q = s.toLowerCase();
-  return q.startsWith("google:") || q.startsWith("search:") ||
-    /\b(now|today|latest|breaking|live|update|news|price|stock|chart|weather|forecast|crypto|btc|eth)\b/.test(q) ||
-    wantsNews(q) || wantsWeather(q) || wantsCrypto(q);
-};
+// NEW: YouTube
+const wantsYouTube = (s = "") => /\b(youtube|yt|watch|trailer|music video)\b/i.test(s) || /^youtube:\s*/i.test(s);
 
 /* ---------------------- ranking for PREVIEW only ---------------------- */
 const HQ = [
@@ -392,10 +388,15 @@ function AIChat() {
           cards = (r.data?.cards || []).filter(Boolean);
         } catch {}
 
-        // If backend didn’t return any image cards, fall back to Unsplash sources.
+        // Check for images presence (any schema)
         const hasImages =
-          cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c));
+          cards.some(c =>
+            c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" ||
+            firstImageUrl(c) ||
+            (Array.isArray(c?.images) && c.images.length)
+          );
 
+        // If backend didn’t return any image cards, fall back to Unsplash sources.
         if (!hasImages) {
           const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
@@ -409,6 +410,16 @@ function AIChat() {
         return;
       }
       /* 🔥 end images branch */
+
+      /* 🔥 YOUTUBE SEARCH (works with "youtube: ..." or any query mentioning youtube/yt) */
+      if (wantsYouTube(content)) {
+        const q = content.replace(/^youtube:\s*/i, "");
+        const r = await axios.post(`${API_BASE}/search-youtube`, { q });
+        const results = Array.isArray(r.data?.results) ? r.data.results : [];
+        const cards = results.map(v => ({ type: "youtube", url: v.url, title: v.title })).slice(0, 6);
+        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `No YouTube results for **${q}**.`, cards, content, { suppressSources: true });
+        return;
+      }
 
       // ---- existing special cases (keep yours) ----
       if (lower.startsWith("google:")) {
@@ -456,71 +467,92 @@ function AIChat() {
         prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
       });
       const md = res.data?.reply || res.data?.text || "";
-      const cards = (res.data?.cards || []).filter(Boolean);
+
+      // start with any cards your backend already sent
+      let cards = (res.data?.cards || []).filter(Boolean);
+
+      // map optional arrays into cards so MediaBlock can render them
+      if (Array.isArray(res.data?.images) && res.data.images.length) {
+        const urls = res.data.images
+          .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
+          .filter(Boolean);
+        if (urls.length) cards = [...cards, { type: "images-grid", images: urls }];
+      }
+      if (Array.isArray(res.data?.youtubeResults) && res.data.youtubeResults.length) {
+        cards = [
+          ...cards,
+          ...res.data.youtubeResults
+            .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
+            .filter(v => v.url)
+            .slice(0, 6)
+        ];
+      }
+
       await pushWithFollowups(md, cards, content);
     } catch {
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
-    /* ---------------------- Image uploader (single temp message + update) ---------------------- */
-const sendImageForAnalysis = async (file) => {
-  if (!file) return;
-  if (!/^image\//.test(file.type)) {
-    await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
-    return;
-  }
 
-  // Generate local preview URL
-  let localUrl = "";
-  try { localUrl = URL.createObjectURL(file); } catch {}
+  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+  const sendImageForAnalysis = async (file) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
+      return;
+    }
 
-  // Insert placeholder message and keep index for later replacement
-  const tempMsg = {
-    role: "assistant",
-    content: "Analyzing your image...",
-    cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
-    meta: { suppressSources: true, localPreview: true }
+    // Generate local preview URL
+    let localUrl = "";
+    try { localUrl = URL.createObjectURL(file); } catch {}
+
+    // Insert placeholder message and keep index for later replacement
+    const tempMsg = {
+      role: "assistant",
+      content: "Analyzing your image...",
+      cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
+      meta: { suppressSources: true, localPreview: true }
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+    const index = messages.length + 1; // predicted index after set
+
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      form.append("prompt", input || "Analyze this image and explain key details.");
+      form.append("agent", String(agentOn));
+      form.append("web", String(webSearchOn));
+      form.append("persona", persona);
+
+      const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
+
+      const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
+      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+      const backendHasImage = cards.some((c) =>
+        c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
+      );
+      const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
+
+      // ✅ Replace temp message instead of pushing a new one
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
+        return copy;
+      });
+      setInput("");
+    } catch {
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[index] = {
+          ...copy[index],
+          content: "Image analysis failed. Please try again."
+        };
+        return copy;
+      });
+    } finally {
+      if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
+    }
   };
-  setMessages((prev) => [...prev, tempMsg]);
-  const index = messages.length + 1; // predicted index after set
-
-  try {
-    const form = new FormData();
-    form.append("image", file);
-    form.append("prompt", input || "Analyze this image and explain key details.");
-    form.append("agent", String(agentOn));
-    form.append("web", String(webSearchOn));
-    form.append("persona", persona);
-
-    const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
-
-    const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
-    const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-    const backendHasImage = cards.some((c) =>
-      c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
-    );
-    const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
-
-    // ✅ Replace temp message instead of pushing a new one
-    setMessages((prev) => {
-      const copy = [...prev];
-      copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
-      return copy;
-    });
-    setInput("");
-  } catch {
-    setMessages((prev) => {
-      const copy = [...prev];
-      copy[index] = {
-        ...copy[index],
-        content: "Image analysis failed. Please try again."
-      };
-      return copy;
-    });
-  } finally {
-    if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
-  }
-};
 
   /* ---------------------- organized render helpers ---------------------- */
   const extractTitle = (md="") => {
@@ -675,6 +707,24 @@ const sendImageForAnalysis = async (file) => {
                   allowFullScreen
                 />
               </div>
+            );
+          }
+
+          // ✅ Fallback: any card that simply has an image should render as an image card
+          const anySrc = firstImageUrl(card);
+          if (anySrc) {
+            const href = card.url || anySrc;
+            return (
+              <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
+                <img
+                  src={anySrc}
+                  alt=""
+                  className="w-full rounded-lg glass"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
+              </a>
             );
           }
 
