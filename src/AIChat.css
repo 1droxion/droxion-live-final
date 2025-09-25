@@ -2,6 +2,7 @@
 
 /* ---------- root / theme ---------- */
 :root{
+  color-scheme: dark;
   --kb: 0px;
   --bg: #0a0a0a;
   --fg: #eaeaea;
@@ -14,6 +15,7 @@
   --focus: 0 0 0 2px #fff, 0 0 0 4px rgba(255,255,255,.25);
 }
 [data-theme="light"]{
+  color-scheme: light;
   --bg: #f8f8f8;
   --fg: #111;
   --muted: #6b7280;
@@ -251,6 +253,14 @@ textarea{
 .fixed-preview .panel,
 .fixed-preview a,
 .fixed-preview button { pointer-events:auto; }
+
+/* ---------- tiny utilities used in JSX (so they actually work) ---------- */
+.backdrop-blur{ backdrop-filter: blur(8px); }
+.bg-black\/60{ background: rgba(0,0,0,.60); }
+.bg-black\/80{ background: rgba(0,0,0,.80); }
+.text-gray-400{ color:#9aa0a6; }
+.text-green-400{ color:#22c55e; }
+.text-red-400{ color:#ef4444; }
 
 /* keyboard-safe spacing (no style change) */
 .chat-scroll { scroll-padding-bottom: calc(120px + var(--kb, 0px)); }
