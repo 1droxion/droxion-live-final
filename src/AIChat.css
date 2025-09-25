@@ -251,3 +251,8 @@ textarea{
 .fixed-preview .panel,
 .fixed-preview a,
 .fixed-preview button { pointer-events:auto; }
+
+/* keyboard-safe spacing (no style change) */
+.chat-scroll { scroll-padding-bottom: calc(120px + var(--kb, 0px)); }
+.fixed-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + var(--kb, 0px)); }
+.fixed-preview { bottom: calc(64px + var(--kb, 0px)); }
