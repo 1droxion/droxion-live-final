@@ -1,4 +1,6 @@
-// src/AIChat.jsx — Droxion (all fixes: theme, geo weather, sparkline, non-blink preview, YT, images)
+// src/AIChat.jsx — Droxion (theme, geo weather, sparkline, non-blink preview,
+// YouTube, images, copy, follow-ups, keyboard-safe, DAU/WAU/MAU tracking)
+//
 // Owner/creator branding: Dhruv Patel & the Droxion team.
 
 import React, { useState, useEffect, useRef } from "react";
@@ -15,7 +17,7 @@ import {
 } from "react-icons/fi";
 import "./AIChat.css";
 
-const API_BASE = "https://droxion-backend.onrender.com";
+const API_BASE = import.meta.env.VITE_BACKEND_URL || "https://droxion-backend.onrender.com";
 
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
@@ -69,7 +71,6 @@ const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-// YouTube
 const wantsYouTube = (s = "") => /\b(youtube|yt|watch|trailer|music video)\b/i.test(s) || /^youtube:\s*/i.test(s);
 
 /* ---------------------- ranking for PREVIEW only ---------------------- */
@@ -85,7 +86,7 @@ const displaySource = (c) => host(c?.url || "") || (c?.source || "").replace(/\s
 
 const bestPreview = (card, allowFallback=false) => {
   const direct = firstImageUrl(card);
-  if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" };
+  if (direct) return { prox: toProxy(direct), orig: direct, title: card.title || card.source || "preview" };
   if (!allowFallback) return null;
   if (card.url && !isFilteredSource(card.url)) {
     const shot = `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`;
@@ -111,7 +112,7 @@ function WeatherCard({ card }) {
   return (
     <div className="weather-card glass rounded-xl p-3">
       <div className="flex items-center gap-3">
-        {card.icon && <img src={card.icon} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+        {card.icon && <img src={toProxy(card.icon)} alt="" className="w-12 h-12 rounded-md bg-white/5 border border-white/10 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
         <div className="min-w-0">
           <div className="text-sm font-semibold truncate">{card.title || "Weather"}</div>
           <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
@@ -133,7 +134,7 @@ function WeatherCard({ card }) {
             {hrs.map((h,i)=>(
               <div key={i} className="w-hour glass rounded-lg p-2 min-w-[86px] text-center">
                 <div className="text-[11px] text-gray-400">{h.t ? hourLabel(h.t) : (h.text || "").split(" ")[0]}</div>
-                {h.icon && <img src={h.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                {h.icon && <img src={toProxy(h.icon)} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-sm font-semibold">{(()=>{
                   const c=h.c, f=h.f;
                   if(typeof c==="number" && typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`;
@@ -153,7 +154,7 @@ function WeatherCard({ card }) {
             {days.map((d,i)=>(
               <div key={i} className="glass rounded-lg p-2 text-center">
                 <div className="text-[11px] text-gray-400 truncate">{d.day || `Day ${i+1}`}</div>
-                {d.icon && <img src={d.icon} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
+                {d.icon && <img src={toProxy(d.icon)} alt="" className="mx-auto my-1 h-8 w-8 object-contain" loading="lazy" referrerPolicy="no-referrer" />}
                 <div className="text-xs font-semibold">
                   {(()=>{
                     const c=d.max_c, f=d.max_f, lc=d.min_c, lf=d.min_f;
@@ -172,7 +173,7 @@ function WeatherCard({ card }) {
   );
 }
 
-/* ---------------------- Tools Menu (single + menu) ---------------------- */
+/* ---------------------- Tools Menu ---------------------- */
 function ToolsMenu({
   onSendImageFile,
   onSendAnyFile,
@@ -189,7 +190,6 @@ function ToolsMenu({
   const photosRef = useRef(null);
   const filesRef = useRef(null);
 
-  // ❌ Do NOT close the menu before the picker returns (iOS)
   const pickCamera = () => camRef.current?.click();
   const pickPhotos = () => photosRef.current?.click();
   const pickFiles  = () => filesRef.current?.click();
@@ -198,27 +198,25 @@ function ToolsMenu({
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "camera" });
     e.target.value = "";
-    onClose?.(); // ✅ close AFTER file is chosen
+    onClose?.();
   };
   const handlePhotoFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendImageFile?.(f, { source: "photos" });
     e.target.value = "";
-    onClose?.(); // ✅ close AFTER file is chosen
+    onClose?.();
   };
   const handleAnyFile = (e) => {
     const f = e.target.files?.[0];
     if (f) onSendAnyFile?.(f);
     e.target.value = "";
-    onClose?.(); // ✅ close AFTER file is chosen
+    onClose?.();
   };
 
-  // safe wrapper ONLY for non-file actions
   const wrap = (fn) => () => { try { fn?.(); } finally { onClose?.(); } };
 
   return (
     <div className="menu-panel">
-      {/* hidden inputs (must remain mounted while picker is open) */}
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCamFile} />
       <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
       <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
@@ -288,6 +286,13 @@ function AIChat() {
 
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
+
+  // ---- DAU/WAU/MAU heartbeat ----
+  useEffect(() => {
+    axios.post(`${API_BASE}/track`, { type: "visit", ts: Date.now(), page: "AIChat" }).catch(()=>{});
+  }, []);
+  const trackMessage = (kind="message") =>
+    axios.post(`${API_BASE}/track`, { type: kind, ts: Date.now(), page: "AIChat" }).catch(()=>{});
 
   // restore & persist chat
   useEffect(() => {
@@ -417,11 +422,12 @@ function AIChat() {
     });
   };
 
-  /* ---------------------- send handlers — NO TRIMMING of cards ---------------------- */
+  /* ---------------------- send handlers ---------------------- */
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
     setMessages((p) => [...p, { role: "user", content }]);
     setInput(""); setTextSug([]);
+    trackMessage("message");
 
     try {
       const lower = content.toLowerCase();
@@ -513,8 +519,6 @@ function AIChat() {
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
         let cards = (r.data?.cards || []).filter(Boolean);
-
-        // optional: ensure sparkline-friendly data shape
         cards = cards.map(c => ({
           ...c,
           history: Array.isArray(c.history) ? c.history : (Array.isArray(c.sparkline) ? c.sparkline : [])
@@ -558,7 +562,7 @@ User: ${content}`;
     }
   };
 
-  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+  /* ---------------------- Image uploader ---------------------- */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -777,7 +781,7 @@ User: ${content}`;
             return (
               <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
                 <img
-                  src={anySrc}
+                  src={toProxy(anySrc)}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
@@ -862,7 +866,6 @@ User: ${content}`;
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
-
               const mediaCards = (msg.cards || []).filter(c =>
                 ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
                 (c.url && isYouTube(c.url))
@@ -883,14 +886,11 @@ User: ${content}`;
                     )}
                   </div>
 
-                  {/* User vs Assistant message text */}
                   {isUser && <div className="answer expanded">{msg.content}</div>}
                   {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
 
-                  {/* ✅ Render images, galleries, youtube, weather */}
                   {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
 
-                  {/* Follow-up suggestions */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-8">
                       {msg.followups.slice(0, 3).map((s, idx) => (
@@ -916,7 +916,7 @@ User: ${content}`;
         </div>
       </div>
 
-      {/* Fixed preview while typing — always mounted; fade via opacity (no blink) */}
+      {/* Fixed preview while typing — mounted always; we fade (no blink) */}
       <div
         className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}
         style={{ opacity: focused ? 1 : 0, transition: "opacity .18s ease", pointerEvents: focused ? "auto" : "none" }}
