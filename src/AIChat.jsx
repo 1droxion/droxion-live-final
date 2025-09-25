@@ -1,4 +1,4 @@
-// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — FIXED
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — PERFECT FIX
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -386,7 +386,9 @@ function AIChat() {
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
           cards = (r.data?.cards || []).filter(Boolean);
-        } catch {}
+        } catch (e) {
+          console.warn("images intent backend error:", e?.message || e);
+        }
 
         // Check for images presence (any schema)
         const hasImages =
@@ -396,11 +398,11 @@ function AIChat() {
             (Array.isArray(c?.images) && c.images.length)
           );
 
-        // If backend didn’t return any image cards, fall back to Unsplash sources.
+        // If backend didn’t return any image cards, fall back to Unsplash sources (proxied).
         if (!hasImages) {
           const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
-            `https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`
+            toProxy(`https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`)
           );
           cards = [{ type: "images-grid", images: urls }];
         }
@@ -414,10 +416,27 @@ function AIChat() {
       /* 🔥 YOUTUBE SEARCH (works with "youtube: ..." or any query mentioning youtube/yt) */
       if (wantsYouTube(content)) {
         const q = content.replace(/^youtube:\s*/i, "");
-        const r = await axios.post(`${API_BASE}/search-youtube`, { q });
-        const results = Array.isArray(r.data?.results) ? r.data.results : [];
-        const cards = results.map(v => ({ type: "youtube", url: v.url, title: v.title })).slice(0, 6);
-        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `No YouTube results for **${q}**.`, cards, content, { suppressSources: true });
+        let results = [];
+        try {
+          const r = await axios.post(`${API_BASE}/search-youtube`, { q });
+          results = Array.isArray(r.data?.results) ? r.data.results : [];
+        } catch (e) {
+          console.warn("search-youtube failed:", e?.message || e);
+          // graceful fallback to realtime intent if available
+          try {
+            const r2 = await axios.post(`${API_BASE}/realtime`, { query: q || content, intent: "youtube" });
+            results = Array.isArray(r2.data?.results) ? r2.data.results : (r2.data?.cards || []);
+          } catch (e2) {
+            console.warn("realtime youtube fallback failed:", e2?.message || e2);
+          }
+        }
+
+        const cards = (results || [])
+          .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
+          .filter(v => v.url)
+          .slice(0, 6);
+
+        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
         return;
       }
 
@@ -476,7 +495,7 @@ function AIChat() {
         const urls = res.data.images
           .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
           .filter(Boolean);
-        if (urls.length) cards = [...cards, { type: "images-grid", images: urls }];
+        if (urls.length) cards = [...cards, { type: "images-grid", images: urls.map(toProxy) }];
       }
       if (Array.isArray(res.data?.youtubeResults) && res.data.youtubeResults.length) {
         cards = [
@@ -489,7 +508,8 @@ function AIChat() {
       }
 
       await pushWithFollowups(md, cards, content);
-    } catch {
+    } catch (err) {
+      console.error("handleSend error:", err?.message || err);
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
@@ -540,7 +560,7 @@ function AIChat() {
         return copy;
       });
       setInput("");
-    } catch {
+    } catch (e) {
       setMessages((prev) => {
         const copy = [...prev];
         copy[index] = {
