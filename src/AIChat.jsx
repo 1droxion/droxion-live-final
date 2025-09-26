@@ -1096,10 +1096,10 @@ function MediaBlock({ cards = [] }) {
           {s}
         </button>
       ))}
-      </div>
-    </div>
-  </div>
-);
-}
+            </div> {/* closes flex gap-2 flex-wrap */}
+    </div>   {/* closes max-w-4xl mx-auto */}
+  </div>     {/* closes fixed-bottom wrapper */}
+);           // closes return JSX
+}            // closes AIChat function
 
 export default AIChat;
