@@ -548,9 +548,6 @@ const res = await axios.post(`${API_BASE}/chat`, {
   user_id: USER_ID
 });
 
-const md = res.data?.reply || res.data?.text || "";
-let cards = Array.isArray(res.data?.cards) ? res.data.cards.filter(Boolean) : [];
-
 // optional arrays → map into cards so MediaBlock can render them
 if (Array.isArray(res.data?.images) && res.data.images.length) {
   const urls = res.data.images
