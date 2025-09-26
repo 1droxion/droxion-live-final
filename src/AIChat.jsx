@@ -1094,12 +1094,13 @@ function MediaBlock({ cards = [] }) {
           className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
         >
           {s}
-        </button>
-      ))}
-            </div> {/* closes flex gap-2 flex-wrap */}
-    </div>   {/* closes max-w-4xl mx-auto */}
-  </div>     {/* closes fixed-bottom wrapper */}
-);           // closes return JSX
-}            // closes AIChat function
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default AIChat;
