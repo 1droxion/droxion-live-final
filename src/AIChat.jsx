@@ -14,6 +14,49 @@ import {
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
+
+// Stable user id for history
+function getUserId() {
+  try {
+    let id = localStorage.getItem("droxion_user_id");
+    if (!id) {
+      id = "u_" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem("droxion_user_id", id);
+    }
+    return id;
+  } catch { return "anon"; }
+}
+const USER_ID = getUserId();
+
+// --- Tiny helpers to save/load chat history ---
+
+async function saveHistory(API_BASE, userId, messages) {
+  try {
+    await axios.post(`${API_BASE}/history/save`, {
+      user_id: userId,
+      messages: messages.map(m => ({
+        role: m.role,
+        text: typeof m.content === "string" ? m.content : (m.content?.toString?.() || "")
+      }))
+    });
+  } catch {
+    // ignore errors silently
+  }
+}
+
+async function loadHistory(API_BASE, userId) {
+  try {
+    const r = await axios.get(`${API_BASE}/history`, { params: { user_id: userId } });
+    const hist = r?.data?.history || [];
+    return hist.map(h => ({
+      role: h.role,
+      content: h.text,
+      time: h.time
+    }));
+  } catch {
+    return [];
+  }
+}
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
@@ -269,7 +312,7 @@ function AIChat() {
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
 
-  // restore & persist chat
+  // restore & persist chat (already in your file)
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -281,7 +324,18 @@ function AIChat() {
   }, [messages]);
   useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
 
-  // keyboard-safe viewport
+  // ✅ STEP 3: load server history on mount (only fills if chat is empty)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const old = await loadHistory(API_BASE, USER_ID); // uses the helper from Step 2
+      if (!mounted || !old.length) return;
+      setMessages(prev => (prev && prev.length ? prev : old.slice(-50)));
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // keyboard-safe viewport (your existing effect)
   useEffect(() => {
     const vv = window.visualViewport;
     const handleVV = () => {
@@ -299,6 +353,9 @@ function AIChat() {
       window.removeEventListener("orientationchange", handleVV);
     };
   }, []);
+
+  // ...rest of your component (handlers, return JSX) ...
+}
 
   /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
   useEffect(() => {
@@ -482,8 +539,39 @@ function AIChat() {
 
       // ---- default chat ----
       const res = await axios.post(`${API_BASE}/chat`, {
-        prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
-      });
+  prompt: content,
+  memory: [],
+  persona,
+  web: webSearchOn,
+  agent: agentOn,
+  user_id: USER_ID
+});
+
+// Get reply from backend
+const md = res.data?.reply || "No reply available";
+const cards = res.data?.cards || [];
+
+// Push reply to UI
+await pushWithFollowups(md, cards, content, { from: "chat" });
+
+// ✅ Persist conversation turn to history
+await saveHistory(API_BASE, USER_ID, [
+  { role: "user", content },
+  { role: "assistant", content: md }
+]);
+
+// ✅ (Optional) Prefer server followups if available
+const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0,3) : [];
+if (serverFollowups.length) {
+  setMessages(prev => {
+    const copy = [...prev];
+    const last = copy[copy.length - 1];
+    if (last?.role === "assistant") {
+      copy[copy.length - 1] = { ...last, followups: serverFollowups };
+    }
+    return copy;
+  });
+}
       const md = res.data?.reply || res.data?.text || "";
 
       // start with any cards your backend already sent
