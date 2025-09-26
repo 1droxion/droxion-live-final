@@ -917,7 +917,7 @@ function AIChat() {
       </div>
 
       {/* Fixed preview while typing */}
-      {focused && (
+      {focused && !loading && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
