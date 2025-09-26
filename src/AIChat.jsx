@@ -1094,7 +1094,7 @@ function MediaBlock({ cards = [] }) {
           className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
         >
           {s}
-              </button>
+             </button>
             ))}
           </div>
         </div>
