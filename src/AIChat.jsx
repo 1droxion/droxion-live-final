@@ -301,25 +301,50 @@ function AIChat() {
     };
   }, []);
 
-  // Suggestions — slower debounce + ignore tiny queries
+  // Live previews (news/weather/crypto) — longer debounce + guard small queries
 useEffect(() => {
   const q = (input || "").trim();
-  clearTimeout(suggestTimer.current);
+  clearTimeout(previewTimer.current);
 
-  if (!focused || q.length < 3) {  // was <1
-    setTextSug([]);
+  // skip if input too short or not focused
+  if (!focused || q.length < 3) {
     return;
   }
 
-  suggestTimer.current = setTimeout(async () => {
+  // cancel any pending request before firing a new one
+  cancelPrev.current.cancel?.();
+  const src = axios.CancelToken.source();
+  cancelPrev.current = { cancel: () => src.cancel("new query") };
+
+  // longer debounce for smoother experience
+  previewTimer.current = setTimeout(async () => {
     try {
-      const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
-      setTextSug((data?.suggestions || []).slice(0, 8));
+      const reqs = [
+        axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
+        axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
+        axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
+      ];
+      const [rn, rw, rc] = await Promise.all(reqs);
+
+      const newsRanked = rankAndTrim(
+        (rn?.data?.cards || [])
+          .filter(Boolean)
+          .map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 
+        10
+      ).filter(c => !!bestPreview(c, true));
+      setNews(newsRanked);
+
+      const wcards = (rw?.data?.cards || []).filter(Boolean);
+      const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
+      setWeather(w || null);
+
+      setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
     } catch {
-      setTextSug([]);
+      // keep previous previews on error
     }
-  }, 600); // was 250 -> smoother
-  return () => clearTimeout(suggestTimer.current);
+  }, 1000); // changed from ~350ms to 1s to stop flickering
+
+  return () => clearTimeout(previewTimer.current);
 }, [input, focused]);
 
   useEffect(() => {
