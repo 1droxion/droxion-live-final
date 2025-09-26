@@ -1102,5 +1102,4 @@ function MediaBlock({ cards = [] }) {
 </div>
 );
 }
-
 export default AIChat;
