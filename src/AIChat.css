@@ -1,8 +1,12 @@
-/* src/AIChat.css — refined, a11y-friendly, keyboard-safe, b/w icons */
+/* src/AIChat.css — FINAL for Droxion
+   - Theme-safe (dark/light)
+   - Only suggestions rail has shadow
+   - Keyboard-safe (iOS visualViewport)
+   - No style changes to the overall look; just fixes & utilities
+*/
 
 /* ---------- root / theme ---------- */
 :root{
-  color-scheme: dark;
   --kb: 0px;
   --bg: #0a0a0a;
   --fg: #eaeaea;
@@ -15,7 +19,6 @@
   --focus: 0 0 0 2px #fff, 0 0 0 4px rgba(255,255,255,.25);
 }
 [data-theme="light"]{
-  color-scheme: light;
   --bg: #f8f8f8;
   --fg: #111;
   --muted: #6b7280;
@@ -27,6 +30,7 @@
   --focus: 0 0 0 2px #000, 0 0 0 4px rgba(0,0,0,.25);
 }
 
+/* preload theme without flash (works with our JS toggle too) */
 html, body, #root { height: 100%; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -38,6 +42,8 @@ body{
   overscroll-behavior-y: contain;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  transition: background-color .25s ease, color .25s ease;
 }
 .hidden { display: none !important; }
 
@@ -46,7 +52,7 @@ svg { color: currentColor; }
 
 /* text selection */
 ::selection{ background: rgba(255,255,255,.2); }
-[data-theme="light"] ::selection{ background: rgba(0,0,0,.2); }
+[data-theme="light"] ::selection{ background: rgba(0,0,0,.16); }
 
 /* reduced motion */
 @media (prefers-reduced-motion: reduce){
@@ -54,6 +60,12 @@ svg { color: currentColor; }
 }
 
 /* ---------- header ---------- */
+.header-bg{
+  /* glassy sticky header that adapts to theme */
+  background:
+    color-mix(in oklab, var(--bg) 70%, transparent);
+  border-bottom: 1px solid var(--border);
+}
 .brand { letter-spacing: .3px; }
 .pill-btn{
   display:inline-flex;align-items:center;gap:6px;
@@ -74,11 +86,14 @@ svg { color: currentColor; }
   border-radius:12px;padding:12px;
   -webkit-backdrop-filter: blur(0px);
   backdrop-filter: blur(0px);
+  /* IMPORTANT: no shadow here (per request) */
+  box-shadow: none;
 }
 .glass-2{
   background:var(--glass-2);
   border:1px solid var(--border-2);
   border-radius:12px;padding:12px;
+  box-shadow: none;
 }
 
 .small-label{ font-size:11px;color:var(--muted); }
@@ -149,12 +164,16 @@ img{
 
 .msg{ border-radius:12px; }
 
-/* ---------- typing preview rail ---------- */
+/* ---------- typing preview rail (suggestions only) ---------- */
 .fixed-panel{
   position:fixed; left:0; right:0; bottom:calc(74px + env(safe-area-inset-bottom));
   z-index:30;
 }
 .fixed-preview .panel{ max-width:100%; }
+/* Only the suggestions rail gets a shadow (per request) */
+.fixed-preview .panel{
+  box-shadow: 0 16px 42px rgba(0,0,0,.45);
+}
 .dim-while-typing .panel{ opacity:.98; }
 .hscroll{ overflow-x:auto; display:flex; gap:10px; }
 .hitem{ width:280px; flex:0 0 auto; }
@@ -181,12 +200,16 @@ img{
   position:sticky; bottom:0;
   padding-bottom: max(env(safe-area-inset-bottom), 12px);
   backdrop-filter: saturate(120%) blur(8px);
+  background:
+    color-mix(in oklab, var(--bg) 82%, transparent);
+  border-top: 1px solid var(--border);
 }
 
 /* prevent iOS zoom on focus */
 textarea{
   font-size:16px; /* >=16px stops iOS auto-zoom */
   line-height:1.6;
+  color: inherit;
 }
 
 /* ---------- + tools menu ---------- */
@@ -196,6 +219,11 @@ textarea{
   border-radius:12px; padding:8px;
   box-shadow:0 12px 40px rgba(0,0,0,.5);
 }
+[data-theme="light"] .menu-panel{
+  background:rgba(255,255,255,.98);
+  border-color:rgba(0,0,0,.12);
+  box-shadow:0 12px 40px rgba(0,0,0,.12);
+}
 .menu-item{
   width:100%; display:flex; align-items:center; gap:10px;
   padding:10px 10px; border-radius:10px;
@@ -204,9 +232,12 @@ textarea{
 }
 .menu-item .icon{ opacity:.9; }
 .menu-item:hover{ background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.12); }
+[data-theme="light"] .menu-item:hover{ background:rgba(0,0,0,.06); border-color:rgba(0,0,0,.12); }
 .menu-item:focus-visible{ outline:none; box-shadow: var(--focus); }
 .menu-sep{ border:none; height:1px; background:rgba(255,255,255,.12); margin:8px 0; }
+[data-theme="light"] .menu-sep{ background:rgba(0,0,0,.12); }
 .menu-item.active{ background:rgba(255,255,255,.10); }
+[data-theme="light"] .menu-item.active{ background:rgba(0,0,0,.08); }
 .menu-item.danger{ color:#ff6b6b; }
 .menu-item.danger:hover{ background:rgba(255,0,0,.08); border-color:rgba(255,0,0,.2); }
 
@@ -240,6 +271,14 @@ textarea{
 .mb-1{ margin-bottom:.25rem; }
 .mb-2{ margin-bottom:.5rem; }
 
+/* handy text utilities so we don’t rely on Tailwind */
+.text-xs{ font-size:12px; }
+.text-sm{ font-size:14px; }
+.text-lg{ font-size:18px; }
+.text-xl{ font-size:20px; }
+.font-bold{ font-weight:700; }
+.text-gray-400{ color: var(--muted); }
+
 /* optional borders utilities */
 .border{ border-width:1px; }
 .border-white\/10{ border-color:rgba(255,255,255,.10); }
@@ -248,21 +287,13 @@ textarea{
 /* suggestion panel container */
 .suggestions-panel{ padding:8px; }
 
-/* fixed preview should not pass events through */
+/* fixed preview should not pass events through except its children */
 .fixed-preview{ pointer-events:none; }
 .fixed-preview .panel,
 .fixed-preview a,
 .fixed-preview button { pointer-events:auto; }
 
-/* ---------- tiny utilities used in JSX (so they actually work) ---------- */
-.backdrop-blur{ backdrop-filter: blur(8px); }
-.bg-black\/60{ background: rgba(0,0,0,.60); }
-.bg-black\/80{ background: rgba(0,0,0,.80); }
-.text-gray-400{ color:#9aa0a6; }
-.text-green-400{ color:#22c55e; }
-.text-red-400{ color:#ef4444; }
-
-/* keyboard-safe spacing (no style change) */
+/* ---------- keyboard-safe spacing (no style change) ---------- */
 .chat-scroll { scroll-padding-bottom: calc(120px + var(--kb, 0px)); }
 .fixed-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + var(--kb, 0px)); }
 .fixed-preview { bottom: calc(64px + var(--kb, 0px)); }
