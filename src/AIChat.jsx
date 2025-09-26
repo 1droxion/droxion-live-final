@@ -373,7 +373,7 @@ const OrganizedAnswer = ({ md }) => {
   );
 };
 
-/* ---------------------- Media block (images, youtube, weather) — tap-safe ---------------------- */
+/* ---------------------- Media block (tap-safe YouTube + images + weather) ---------------------- */
 const _YT_HOSTS_MB = new Set([
   "youtube.com","www.youtube.com","m.youtube.com",
   "youtu.be","www.youtu.be",
@@ -401,6 +401,7 @@ function _youTubeIdFromUrlMB(href = "") {
   } catch { return null; }
 }
 
+/* Try to pull an image URL from many shapes */
 function _firstImageUrlMB(card = {}) {
   const direct = [
     card.image, card.image_url, card.imageUrl,
@@ -424,9 +425,15 @@ function _firstImageUrlMB(card = {}) {
   return null;
 }
 
+/* If we only have a ytimg thumbnail, extract id from it */
+function _youtubeIdFromThumbMB(src = "") {
+  // https://i.ytimg.com/vi/<ID>/hqdefault.jpg
+  const m = /(?:i\.ytimg\.com\/vi\/|i\.ytimg\.com\/vi_webp\/)([^/]+)/.exec(src);
+  return m ? m[1] : null;
+}
+
 function _defaultToProxyMB(u = "") { return u; }
 
-/* clickable poster used as last-resort fallback */
 function _YouTubePosterMB({ id, title }) {
   const watch = `https://www.youtube.com/watch?v=${id}`;
   const thumb = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
@@ -439,17 +446,9 @@ function _YouTubePosterMB({ id, title }) {
       style={{ aspectRatio: "16/9" }}
     >
       <img src={thumb} alt={title || "YouTube"} className="w-full h-full object-cover" loading="lazy" />
-      <div
-        className="absolute inset-0 grid place-items-center"
-        style={{ background: "linear-gradient(transparent, rgba(0,0,0,.25))" }}
-      >
-        <div
-          className="rounded-full"
-          style={{ width: 64, height: 64, background: "rgba(0,0,0,.45)" }}
-        >
-          <svg viewBox="0 0 24 24" className="w-full h-full p-4">
-            <path d="M8 5v14l11-7z" fill="#fff" />
-          </svg>
+      <div className="absolute inset-0 grid place-items-center" style={{ background: "linear-gradient(transparent, rgba(0,0,0,.25))" }}>
+        <div className="rounded-full" style={{ width: 64, height: 64, background: "rgba(0,0,0,.45)" }}>
+          <svg viewBox="0 0 24 24" className="w-full h-full p-4"><path d="M8 5v14l11-7z" fill="#fff"/></svg>
         </div>
       </div>
     </a>
@@ -537,7 +536,6 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
             card.thumbnail ||
             card.thumb ||
             null;
-
           if (u) {
             return (
               <img
@@ -558,61 +556,60 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
           return <WeatherCard key={`wx-${i}`} card={card} />;
         }
 
-        /* ---------- YouTube (tap-safe embed + poster fallback) ---------- */
+        /* ---------- YouTube: robust detection ---------- */
         const linkHref =
           card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || "";
-        if (card?.type === "youtube" || (linkHref && _isYouTubeMB(linkHref))) {
-          const id = _youTubeIdFromUrlMB(linkHref);
-          if (!id) return null;
+        const anyImg = _firstImageUrlMB(card);
+        // prefer explicit id, else from link, else from ytimg thumbnail, else if site says YouTube
+        const guessId =
+          card?.videoId || card?.youtubeId ||
+          _youTubeIdFromUrlMB(linkHref) ||
+          _youtubeIdFromThumbMB(anyImg || "") ||
+          (card?.site === "YouTube" && card?.id && String(card.id).length === 11 ? card.id : null);
 
-          // Try embed first
-          return (
-            <div
-              key={`yt-${i}`}
-              className="embed-responsive embed-16by9 rounded overflow-hidden glass"
-              style={{
-                maxHeight: 280,
-                position: "relative",
-                pointerEvents: "auto",
-                zIndex: 0,             // keeps it above backgrounds
-                WebkitOverflowScrolling: "touch",
-                touchAction: "manipulation",
-              }}
-            >
-              <iframe
-                src={`https://www.youtube.com/embed/${id}?playsinline=1&origin=${encodeURIComponent(window.location.origin)}`}
-                title={card?.title || "YouTube"}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                loading="lazy"
-                referrerPolicy="strict-origin-when-cross-origin"
-                frameBorder="0"
-                // iOS-friendly sizing + tap behavior
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
-                playsInline // React boolean (adds webkit-playsinline on Safari)
-                onError={() => {}}
-              />
-              {/* Poster fallback button (covers nothing unless iframe fails visually) */}
-              <noscript><_YouTubePosterMB id={id} title={card?.title} /></noscript>
-            </div>
-          );
+        if (card?.type === "youtube" || guessId) {
+          const id = guessId;
+          // If we found an id, try inline embed; otherwise fall back to poster (open in new tab)
+          if (id) {
+            return (
+              <div
+                key={`yt-${i}`}
+                className="embed-responsive embed-16by9 rounded overflow-hidden glass"
+                style={{
+                  maxHeight: 280,
+                  position: "relative",
+                  pointerEvents: "auto",
+                  zIndex: 10
+                }}
+              >
+                <iframe
+                  src={`https://www.youtube.com/embed/${id}?playsinline=1`}
+                  title={card?.title || "YouTube"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  frameBorder="0"
+                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", pointerEvents: "auto" }}
+                />
+              </div>
+            );
+          }
         }
 
-        /* ---------- Fallback: show image or YouTube poster ---------- */
-        const anySrc = _firstImageUrlMB(card);
-        if (anySrc) {
-          const href =
-            card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || anySrc;
-
-          if (_isYouTubeMB(href)) {
-            const id = _youTubeIdFromUrlMB(href);
-            if (id) return <_YouTubePosterMB key={`yt-poster-${i}`} id={id} title={card?.title} />;
+        /* ---------- Fallback: image or poster ---------- */
+        if (anyImg) {
+          // If the only thing we have is a ytimg thumbnail but no id yet, parse it and show poster:
+          const idFromThumb = _youtubeIdFromThumbMB(anyImg);
+          if (idFromThumb) {
+            return <_YouTubePosterMB key={`yt-poster-${i}`} id={idFromThumb} title={card?.title} />;
           }
 
+          const href = linkHref || anyImg;
           return (
             <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
               <img
-                src={toProxy(anySrc)}
+                src={toProxy(anyImg)}
                 alt=""
                 className="w-full rounded-lg glass"
                 loading="lazy"
