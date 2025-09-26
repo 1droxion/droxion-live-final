@@ -430,30 +430,30 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // ✅ Image-analysis preview (look for preview fields)
-        if (card?.type === "image-analysis") {
-          const preview =
-            card.preview ||
-            card.preview_url ||
+        // --- Image Analysis preview (vision cards etc.) ---
+        if (
+          card?.type === "vision" ||
+          card?.type === "image-analysis" ||
+          card?.image_url || card?.image || card?.thumbnail || card?.thumb
+        ) {
+          const u =
             card.image_url ||
-            card.url ||
-            (Array.isArray(card.images) && (card.images[0]?.url || card.images[0]));
-          return preview ? (
-            <div key={`ia-${i}`} className="space-y-2">
+            (typeof card.image === "string" ? card.image : card.image?.url) ||
+            card.thumbnail || card.thumb || null;
+
+          if (u) {
+            return (
               <img
-                src={prox(preview)}
-                alt="analysis preview"
+                key={`vision-${i}`}
+                src={toProxy(u)}
+                alt=""
                 className="w-full rounded-lg glass"
                 loading="lazy"
                 referrerPolicy="no-referrer"
                 onError={(e) => { e.currentTarget.style.display = "none"; }}
               />
-              {/* Optional tiny caption of what the model analyzed */}
-              {card.caption && (
-                <div className="text-sm text-white/70">{card.caption}</div>
-              )}
-            </div>
-          ) : null;
+            );
+          }
         }
 
         // Single image card
