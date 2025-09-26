@@ -491,28 +491,47 @@ function MediaBlock({ cards = [] }) {
         }
 
         // --- Fallback: any card with an image-like field ---
-        const anySrc = firstImageUrl(card);
-        if (anySrc) {
-          const href = card.url || anySrc;
-          return (
-            <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
-              <img
-                src={toProxy(anySrc)}
-                alt=""
-                className="w-full rounded-lg glass"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
-              />
-            </a>
-          );
-        }
+const anySrc = firstImageUrl(card);
+if (anySrc) {
+  const href = card.url || anySrc;
 
-        return null;
-      })}
-    </div>
+  // If it's a YouTube link, render an iframe instead of an <img>
+  if (isYouTube(href)) {
+    const id = youTubeIdFromUrl(href);
+    if (id) {
+      return (
+        <div
+          key={`yt-fallback-${i}`}
+          className="embed-responsive embed-16by9 rounded overflow-hidden glass"
+          style={{ maxHeight: 280 }}
+        >
+          <iframe
+            src={`https://www.youtube.com/embed/${id}`}
+            title={card.title || "YouTube"}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </div>
+      );
+    }
+  }
+
+  // Otherwise just show the image (via proxy)
+  return (
+    <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
+      <img
+        src={toProxy(anySrc)}
+        alt=""
+        className="w-full rounded-lg glass"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={(e) => { e.currentTarget.style.display = "none"; }}
+      />
+    </a>
   );
 }
+
+return null;
 
 /* ---------------------- main component ---------------------- */
 function AIChat() {
