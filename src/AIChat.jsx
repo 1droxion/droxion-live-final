@@ -459,7 +459,6 @@ function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   // live preview
   const [focused, setFocused] = useState(false);
@@ -567,7 +566,7 @@ function AIChat() {
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
       } catch {}
     }, 350);
-  return () => clearTimeout(previewTimer.current);
+    return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
   /* ---------------------- chat helpers ---------------------- */
@@ -592,155 +591,148 @@ function AIChat() {
 
   /* ---------------------- send handlers ---------------------- */
   const handleSend = async (text = input) => {
-  const content = (text || "").trim(); if (!content) return;
-  setMessages((p) => [...p, { role: "user", content }]);
-  setInput(""); setTextSug([]);
+    const content = (text || "").trim(); if (!content) return;
+    setMessages((p) => [...p, { role: "user", content }]);
+    setInput(""); setTextSug([]);
 
-  setLoading(true); // NEW
+    try {
+      const lower = content.toLowerCase();
 
-  try {
-    const lower = content.toLowerCase();
-
-    // 🔥 IMAGES
-    if (wantsImages(content)) {
-      let cards = [];
-      try {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
-        cards = (r.data?.cards || []).filter(Boolean);
-      } catch {}
-      const hasImages =
-        cards.some(c =>
-          c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" ||
-          firstImageUrl(c) || (Array.isArray(c?.images) && c.images.length)
-        );
-      if (!hasImages) {
-        const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
-        const urls = Array.from({ length: 10 }).map((_, i) =>
-          toProxy(`https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`)
-        );
-        cards = [{ type: "images-grid", images: urls }];
-      }
-      await pushWithFollowups(`Here are some images. Tap any card to open.`, cards, content, { suppressSources: true });
-      setLoading(false); // NEW
-      return;
-    }
-
-    // 🔥 YOUTUBE
-    if (wantsYouTube(content)) {
-      const q = content.replace(/^youtube:\s*/i, "");
-      let results = [];
-      try {
-        const r = await axios.post(`${API_BASE}/search-youtube`, { q });
-        results = Array.isArray(r.data?.results) ? r.data.results : [];
-      } catch (e) {
+      // 🔥 IMAGES
+      if (wantsImages(content)) {
+        let cards = [];
         try {
-          const r2 = await axios.post(`${API_BASE}/realtime`, { query: q || content, intent: "youtube" });
-          results = Array.isArray(r2.data?.results) ? r2.data.results : (r2.data?.cards || []);
+          const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
+          cards = (r.data?.cards || []).filter(Boolean);
         } catch {}
+        const hasImages =
+          cards.some(c =>
+            c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" ||
+            firstImageUrl(c) || (Array.isArray(c?.images) && c.images.length)
+          );
+        if (!hasImages) {
+          const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
+          const urls = Array.from({ length: 10 }).map((_, i) =>
+            toProxy(`https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`)
+          );
+          cards = [{ type: "images-grid", images: urls }];
+        }
+        await pushWithFollowups(`Here are some images. Tap any card to open.`, cards, content, { suppressSources: true });
+        return;
       }
-      const cards = (results || [])
-        .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
-        .filter(v => v.url)
-        .slice(0, 6);
-      await pushWithFollowups(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
-      setLoading(false); // NEW
-      return;
-    }
 
-    // Special routes
-    if (lower.startsWith("google:")) {
-      const q = content.replace(/^google:\s*/i, "");
-      const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
-      await pushWithFollowups(md, cards, content);
-      setLoading(false); // NEW
-      return;
-    }
-    if (lower.startsWith("search:")) {
-      const q = content.replace(/^search:\s*/i, "");
-      const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
-      const cards = (r.data?.results || []).filter(Boolean).map(it => ({
-        type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet
-      }));
-      await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
-      setLoading(false); // NEW
-      return;
-    }
-    if (wantsNews(content)) {
-      const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
-      setLoading(false); // NEW
-      return;
-    }
-    if (wantsWeather(content)) {
-      const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
-      setLoading(false); // NEW
-      return;
-    }
-    if (wantsCrypto(content)) {
-      const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
-      const cards = (r.data?.cards || []).filter(Boolean);
-      await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
-      setLoading(false); // NEW
-      return;
-    }
-
-    // ---- default chat ----
-    const res = await axios.post(`${API_BASE}/chat`, {
-      prompt: content,
-      memory: [],
-      persona,
-      web: webSearchOn,
-      agent: agentOn,
-      user_id: USER_ID
-    });
-
-    const md = res.data?.reply || res.data?.text || "";
-    let cards = (res.data?.cards || []).filter(Boolean);
-
-    if (Array.isArray(res.data?.images) && res.data.images.length) {
-      const urls = res.data.images
-        .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
-        .filter(Boolean);
-      if (urls.length) cards = [...cards, { type: "images-grid", images: urls.map(toProxy) }];
-    }
-    if (Array.isArray(res.data?.youtubeResults) && res.data.youtubeResults.length) {
-      cards = [
-        ...cards,
-        ...res.data.youtubeResults
+      // 🔥 YOUTUBE
+      if (wantsYouTube(content)) {
+        const q = content.replace(/^youtube:\s*/i, "");
+        let results = [];
+        try {
+          const r = await axios.post(`${API_BASE}/search-youtube`, { q });
+          results = Array.isArray(r.data?.results) ? r.data.results : [];
+        } catch (e) {
+          try {
+            const r2 = await axios.post(`${API_BASE}/realtime`, { query: q || content, intent: "youtube" });
+            results = Array.isArray(r2.data?.results) ? r2.data.results : (r2.data?.cards || []);
+          } catch {}
+        }
+        const cards = (results || [])
           .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
           .filter(v => v.url)
-          .slice(0, 6)
-      ];
-    }
+          .slice(0, 6);
+        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
+        return;
+      }
 
-    await pushWithFollowups(md, cards, content, { from: "chat" });
+      // Special routes
+      if (lower.startsWith("google:")) {
+        const q = content.replace(/^google:\s*/i, "");
+        const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
+        await pushWithFollowups(md, cards, content);
+        return;
+      }
+      if (lower.startsWith("search:")) {
+        const q = content.replace(/^search:\s*/i, "");
+        const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
+        const cards = (r.data?.results || []).filter(Boolean).map(it => ({
+          type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet
+        }));
+        await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
+        return;
+      }
+      if (wantsNews(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
+        return;
+      }
+      if (wantsWeather(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
+        return;
+      }
+      if (wantsCrypto(content)) {
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
+        const cards = (r.data?.cards || []).filter(Boolean);
+        await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
+        return;
+      }
 
-    await saveHistory(API_BASE, USER_ID, [
-      { role: "user", content },
-      { role: "assistant", content: md }
-    ]);
-
-    const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0, 3) : [];
-    if (serverFollowups.length) {
-      setMessages(prev => {
-        const copy = [...prev];
-        const last = copy[copy.length - 1];
-        if (last?.role === "assistant") copy[copy.length - 1] = { ...last, followups: serverFollowups };
-        return copy;
+      // ---- default chat ----
+      const res = await axios.post(`${API_BASE}/chat`, {
+        prompt: content,
+        memory: [],
+        persona,
+        web: webSearchOn,
+        agent: agentOn,
+        user_id: USER_ID
       });
+
+      const md = res.data?.reply || res.data?.text || "";
+      let cards = (res.data?.cards || []).filter(Boolean);
+
+      // optional arrays → map into cards so MediaBlock can render them
+      if (Array.isArray(res.data?.images) && res.data.images.length) {
+        const urls = res.data.images
+          .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
+          .filter(Boolean);
+        if (urls.length) cards = [...cards, { type: "images-grid", images: urls.map(toProxy) }];
+      }
+      if (Array.isArray(res.data?.youtubeResults) && res.data.youtubeResults.length) {
+        cards = [
+          ...cards,
+          ...res.data.youtubeResults
+            .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
+            .filter(v => v.url)
+            .slice(0, 6)
+        ];
+      }
+
+      // push to UI
+      await pushWithFollowups(md, cards, content, { from: "chat" });
+
+      // persist this turn to history
+      await saveHistory(API_BASE, USER_ID, [
+        { role: "user", content },
+        { role: "assistant", content: md }
+      ]);
+
+      // prefer server-provided followups if present
+      const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0, 3) : [];
+      if (serverFollowups.length) {
+        setMessages(prev => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, followups: serverFollowups };
+          return copy;
+        });
+      }
+    } catch (err) {
+      console.error("handleSend error:", err?.message || err);
+      await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
-  } catch (err) {
-    console.error("handleSend error:", err?.message || err);
-    await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
-  } finally {
-    setLoading(false); // NEW
-  }
-};
+  };
 
   /* ---------------------- Image uploader ---------------------- */
   const sendImageForAnalysis = async (file) => {
@@ -904,23 +896,6 @@ function AIChat() {
               );
             })}
 
-            {/* 🔗 LOADING INDICATOR (added) */}
-            {loading && (
-              <div className="msg glass">
-                <div className="small-label">Droxion</div>
-                <div className="answer">
-                  <a
-                    href="https://droxion.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline decoration-gray-600 hover:text-gray-200"
-                  >
-                    Droxion Think.
-                  </a>
-                </div>
-              </div>
-            )}
-
             {typing && (
               <div className="glass rounded-xl p-4">
                 <div className="h-4 w-24 bg-white/10 mb-2 rounded" />
@@ -934,7 +909,7 @@ function AIChat() {
       </div>
 
       {/* Fixed preview while typing */}
-      {focused && !loading && (
+      {focused && (
         <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
           <div className="max-w-4xl mx-auto px-3">
             <div className="panel glass rounded-xl p-2 suggestions-panel">
