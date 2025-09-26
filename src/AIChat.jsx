@@ -1,12 +1,4 @@
-// src/AIChat.jsx — Droxion FINAL
-// - Keeps your locked YouTube logic intact
-// - While typing: ONLY suggestions rail shows (no mixed previews)
-// - No blink (preview stays mounted; fade via opacity)
-// - Theme toggle works (uses data-theme & persists)
-// - Weather uses GPS with IP fallback (lat/lon → backend)
-// - Stocks/Crypto get tiny sparklines (from backend history)
-// - Keyboard-safe; iOS friendly
-
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — PERFECT FIX
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -37,16 +29,17 @@ const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p ==
 const BAD_HOSTS = ["example.com","example.org"];
 const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
 
-// Keep your original image selector
+// ⬇️ Keep your original working selector
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
 const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
+const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
 const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
 
-/* YouTube helpers — unchanged (locked) */
+/* small youtube helpers */
 const isYouTube = (raw="") => {
   try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
 };
@@ -74,34 +67,44 @@ const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
-const wantsStocks  = (s="") => /\b(stock|stocks|price|ticker|nasdaq|nyse|sp500|tsla|aapl|goog|msft)\b/i.test(s);
-const wantsYouTube = (s="") => /^youtube:\s*/i.test(s) || /\b(youtube|yt)\b/i.test(s);
+// NEW: YouTube
+const wantsYouTube = (s = "") => /\b(youtube|yt|watch|trailer|music video)\b/i.test(s) || /^youtube:\s*/i.test(s);
 
-/* ---------------------- tiny sparkline (for stocks/crypto) ---------------------- */
-function Sparkline({ points = [], width = 160, height = 40 }) {
-  if (!points?.length) return null;
-  const min = Math.min(...points), max = Math.max(...points);
-  const norm = v => (max === min ? 0.5 : (v - min) / (max - min));
-  const step = width / (points.length - 1);
-  const d = points.map((v, i) => `${i===0?"M":"L"}${(i*step).toFixed(2)},${(height - norm(v)*height).toFixed(2)}`).join(" ");
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display:"block" }}>
-      <path d={d} fill="none" stroke="currentColor" strokeWidth="2" opacity="0.9"/>
-    </svg>
-  );
-}
+/* ---------------------- ranking for PREVIEW only ---------------------- */
+const HQ = [
+  "forbes.com","bloomberg.com","reuters.com","cnbc.com","apnews.com","ft.com","wsj.com","nytimes.com",
+  "theguardian.com","bbc.com","npr.org","coindesk.com","cointelegraph.com",
+  "finance.yahoo.com","google.com","marketwatch.com","nasdaq.com","sec.gov","wikipedia.org"
+];
+const rankHost = (h) => !h ? -50 : BAD_HOSTS.some(b => h===b || h.endsWith("."+b)) ? -200 : (HQ.some(g => h===g || h.endsWith("."+g)) ? 100 : 10);
+const dedupeCards = (arr=[]) => { const seen=new Set(); return arr.filter(c=>{ const key=(host(c.url||"")||"")+ "::" + (c.title||"").toLowerCase().slice(0,80); if(seen.has(key)) return false; seen.add(key); return true; }); };
+const rankAndTrim = (cards=[], limit=12) => dedupeCards(cards.filter(c => !!c && !!c.url && !isFilteredSource(c.url))).sort((a,b)=> (rankHost(host(b.url||"")) - rankHost(host(a.url||"")))).slice(0, limit);
+const displaySource = (c) => host(c?.url || "") || (c?.source || "").replace(/\s+[-–]\s+.*/,"");
+
+const bestPreview = (card, allowFallback=false) => {
+  const direct = firstImageUrl(card);
+  if (direct) return { prox: direct, orig: direct, title: card.title || card.source || "preview" };
+  if (!allowFallback) return null;
+  if (card.url && !isFilteredSource(card.url)) {
+    const shot = `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(card.url)}`;
+    return { prox: shot, orig: card.url, title: card.title || "preview" };
+  }
+  const ph = unsplash(card.title || card.source || "news");
+  return ph ? { prox: ph, orig: ph, title: card.title || "preview" } : null;
+};
 
 /* ---------------------- Weather card ---------------------- */
 function WeatherCard({ card }) {
   if (!card) return null;
+  const pick = (o,ks,d=null)=>{ for(const k of ks) if(o && o[k]!=null && o[k] !== "") return o[k]; return d; };
   const T = (()=>{ const c=card.temp_c, f=card.temp_f; if(typeof c==="number"&&typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`; if(typeof c==="number") return `${Math.round(c)}°C`; if(typeof f==="number") return `${Math.round(f)}°F`; return ""; })();
   const FEELS = (()=>{ const c=card.feels_c, f=card.feels_f; if(typeof c==="number"&&typeof f==="number") return `${Math.round(c)}°C / ${Math.round(f)}°F`; if(typeof c==="number") return `${Math.round(c)}°C`; if(typeof f==="number") return `${Math.round(f)}°F`; return ""; })();
   const WIND = (()=>{ const k=card.wind_kph, m=card.wind_mph; if(typeof k==="number"&&typeof m==="number") return `${Math.round(k)} km/h • ${Math.round(m)} mph`; if(typeof k==="number") return `${Math.round(k)} km/h`; if(typeof m==="number") return `${Math.round(m)} mph`; return "";})();
   const RH = (typeof card.humidity === "number") ? `${Math.round(card.humidity)}%` : "";
   const RAIN = (card.precip != null && card.precip !== "") ? `${card.precip}${typeof card.precip === "number" ? " mm" : ""}` : "";
   const hourLabel = (ts)=>{ try{ const d=new Date(ts); let h=d.getHours(); const am=h<12; h=h%12||12; return `${h}${am?"am":"pm"}`;}catch{return"";} };
-  const hrs=(card.hourly||[]).slice(0,8).map(h=>({ t:h.time||h.ts||h.timestamp||h.date, icon:h.icon||h.icon_url||h.image, c:h.temp_c??h.tempC??h.temperature_c??h.temperatureC??h.temp, f:h.temp_f??h.tempF??h.temperature_f??h.temperatureF, text:h.text||h.condition||h.desc }));
-  const days=(card.daily||[]).slice(0,3).map(d=>({ day:d.day||d.name||d.weekday||d.label, icon:d.icon||d.icon_url||d.image, min_c:d.min_c??d.minC??d.low_c??d.lowC??d.min, min_f:d.min_f??d.minF??d.low_f??d.lowF, max_c:d.max_c??d.maxC??d.high_c??d.highC??d.max, max_f:d.max_f??d.maxF??d.high_f??d.highF, text:d.text||d.condition||d.desc }));
+  const hrs=(card.hourly||[]).slice(0,8).map(h=>({ t:pick(h,["time","ts","timestamp","date"]), icon:pick(h,["icon","icon_url","image"]), c:pick(h,["temp_c","tempC","temperature_c","temperatureC","temp"]), f:pick(h,["temp_f","tempF","temperature_f","temperatureF"]), text:pick(h,["text","condition","desc"]) }));
+  const days=(card.daily||[]).slice(0,3).map(d=>({ day:pick(d,["day","name","weekday","label"]), icon:pick(d,["icon","icon_url","image"]), min_c:pick(d,["min_c","minC","low_c","lowC","min"]), min_f:pick(d,["min_f","minF","low_f","lowF"]), max_c:pick(d,["max_c","maxC","high_c","highC","max"]), max_f:pick(d,["max_f","maxF","high_f","highF"]), text:pick(d,["text","condition","desc"]) }));
 
   return (
     <div className="weather-card glass rounded-xl p-3">
@@ -112,7 +115,6 @@ function WeatherCard({ card }) {
           <div className="text-xs text-gray-400 truncate">{card.subtitle || ""}</div>
         </div>
       </div>
-
       {(T || FEELS || RH || WIND || RAIN) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
           {T     && <div className="wstat"><div className="wlabel">Temperature</div><div className="wval">{T}</div></div>}
@@ -122,7 +124,6 @@ function WeatherCard({ card }) {
           {RAIN  && <div className="wstat"><div className="wlabel">Precip</div><div className="wval">{RAIN}</div></div>}
         </div>
       )}
-
       {hrs.length>0 && (
         <div className="mt-3">
           <div className="text-[11px] text-gray-400 mb-1">Next hours</div>
@@ -143,7 +144,6 @@ function WeatherCard({ card }) {
           </div>
         </div>
       )}
-
       {days.length>0 && (
         <div className="mt-3">
           <div className="text-[11px] text-gray-400 mb-1">Next days</div>
@@ -170,7 +170,7 @@ function WeatherCard({ card }) {
   );
 }
 
-/* ---------------------- Tools Menu ---------------------- */
+/* ---------------------- Tools Menu (single + menu) ---------------------- */
 function ToolsMenu({
   onSendImageFile,
   onSendAnyFile,
@@ -187,18 +187,36 @@ function ToolsMenu({
   const photosRef = useRef(null);
   const filesRef = useRef(null);
 
+  // ❌ Do NOT close the menu before the picker returns (iOS)
   const pickCamera = () => camRef.current?.click();
   const pickPhotos = () => photosRef.current?.click();
   const pickFiles  = () => filesRef.current?.click();
 
-  const handleCamFile = (e) => { const f = e.target.files?.[0]; if (f) onSendImageFile?.(f, { source: "camera" }); e.target.value=""; onClose?.(); };
-  const handlePhotoFile = (e) => { const f = e.target.files?.[0]; if (f) onSendImageFile?.(f, { source: "photos" }); e.target.value=""; onClose?.(); };
-  const handleAnyFile = (e) => { const f = e.target.files?.[0]; if (f) onSendAnyFile?.(f); e.target.value=""; onClose?.(); };
+  const handleCamFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendImageFile?.(f, { source: "camera" });
+    e.target.value = "";
+    onClose?.(); // ✅ close AFTER file is chosen
+  };
+  const handlePhotoFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendImageFile?.(f, { source: "photos" });
+    e.target.value = "";
+    onClose?.(); // ✅ close AFTER file is chosen
+  };
+  const handleAnyFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) onSendAnyFile?.(f);
+    e.target.value = "";
+    onClose?.(); // ✅ close AFTER file is chosen
+  };
 
+  // safe wrapper ONLY for non-file actions
   const wrap = (fn) => () => { try { fn?.(); } finally { onClose?.(); } };
 
   return (
     <div className="menu-panel">
+      {/* hidden inputs (must remain mounted while picker is open) */}
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCamFile} />
       <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
       <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
@@ -224,17 +242,16 @@ function ToolsMenu({
 }
 
 /* ---------------------- main component ---------------------- */
-function AIChatInner() {
+function AIChat() {
   // chat + ui
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
-  // suggestions only (per request)
+  // live preview
   const [focused, setFocused] = useState(false);
   const [textSug, setTextSug] = useState([]);
-
-  // optional data (we fetch but don't render in rail while typing)
+  const [news, setNews] = useState([]);
   const [weather, setWeather] = useState(null);
   const [crypto, setCrypto] = useState([]);
 
@@ -244,12 +261,11 @@ function AIChatInner() {
   const [webSearchOn, setWebSearchOn] = useState(true);
   const [persona, setPersona] = useState("");
 
-  // geo for weather
-  const [geo, setGeo] = useState(null); // { lat, lon, city? }
-
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
   const suggestTimer = useRef(null);
+  const previewTimer = useRef(null);
+  const cancelPrev = useRef({ cancel: () => {} });
 
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
@@ -285,35 +301,7 @@ function AIChatInner() {
     };
   }, []);
 
-  // get user location (GPS -> IP fallback)
-  useEffect(() => {
-    let done = false;
-
-    const byGPS = () =>
-      new Promise(resolve => {
-        if (!("geolocation" in navigator)) return resolve(null);
-        navigator.geolocation.getCurrentPosition(
-          pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-          () => resolve(null),
-          { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
-        );
-      });
-
-    const byIP = () =>
-      fetch("https://ipapi.co/json/")
-        .then(r => r.ok ? r.json() : null)
-        .then(j => j ? { lat: j.latitude, lon: j.longitude, city: j.city } : null)
-        .catch(() => null);
-
-    (async () => {
-      const g = (await byGPS()) || (await byIP());
-      if (!done && g) setGeo(g);
-    })();
-
-    return () => { done = true; };
-  }, []);
-
-  /* ---------------------- suggestions (debounced) ---------------------- */
+  /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -323,29 +311,46 @@ function AIChatInner() {
         const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
         setTextSug((data?.suggestions || []).slice(0, 8));
       } catch { setTextSug([]); }
-    }, 300);
+    }, 250);
     return () => clearTimeout(suggestTimer.current);
   }, [input, focused]);
 
-  /* -------- optional background previews (not rendered while typing) ----- */
   useEffect(() => {
     const q = (input || "").trim();
-    if (!q) return;
-    // Weather
-    axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather", lat: geo?.lat, lon: geo?.lon })
-      .then(r => {
-        const wcards = (r?.data?.cards || []).filter(Boolean);
+    clearTimeout(previewTimer.current);
+    if (!focused || q.length < 1) return;
+    cancelPrev.current.cancel?.();
+    const src = axios.CancelToken.source();
+    cancelPrev.current = { cancel: () => src.cancel("new query") };
+    previewTimer.current = setTimeout(async () => {
+      try {
+        const reqs = [
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
+          axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
+        ];
+        const [rn, rw, rc] = await Promise.all(reqs);
+
+        const newsRanked = rankAndTrim(
+          (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 10
+        ).filter(c => !!bestPreview(c, true));
+        setNews(newsRanked);
+
+        const wcards = (rw?.data?.cards || []).filter(Boolean);
         const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
         setWeather(w || null);
-      }).catch(()=>{});
-    // Crypto
-    axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" })
-      .then(r => setCrypto((r?.data?.cards || []).filter(Boolean).slice(0,6)))
-      .catch(()=>{});
-  }, [input, geo]);
+
+        setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
+      } catch {}
+    }, 350);
+    return () => clearTimeout(previewTimer.current);
+  }, [input, focused]);
 
   const copyMessage = async (i) => {
-    try { const msg = messages[i]; if (!msg) return; await navigator.clipboard.writeText(msg.content || msg.text || ""); } catch {}
+    try {
+      const msg = messages[i]; if (!msg) return;
+      await navigator.clipboard.writeText(msg.content || "");
+    } catch {}
   };
 
   const fetchFollowups = async (q) => {
@@ -374,44 +379,68 @@ function AIChatInner() {
     try {
       const lower = content.toLowerCase();
 
-      // IMAGES
+      /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
       if (wantsImages(content)) {
+        // Try backend first (intent: images). If it gives us cards, use them.
         let cards = [];
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
           cards = (r.data?.cards || []).filter(Boolean);
-        } catch {}
-        const hasImages = cards.some(c => c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" || firstImageUrl(c) || (Array.isArray(c?.images) && c.images.length));
+        } catch (e) {
+          console.warn("images intent backend error:", e?.message || e);
+        }
+
+        // Check for images presence (any schema)
+        const hasImages =
+          cards.some(c =>
+            c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" ||
+            firstImageUrl(c) ||
+            (Array.isArray(c?.images) && c.images.length)
+          );
+
+        // If backend didn’t return any image cards, fall back to Unsplash sources (proxied).
         if (!hasImages) {
           const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
-          const urls = Array.from({ length: 10 }).map((_, i) => toProxy(`https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`));
+          const urls = Array.from({ length: 10 }).map((_, i) =>
+            toProxy(`https://source.unsplash.com/600x400/?${encodeURIComponent(q)}&sig=${i + 1}`)
+          );
           cards = [{ type: "images-grid", images: urls }];
         }
-        await pushWithFollowups(`Here are some images. Tap any card to open.`, cards, content, { suppressSources: true });
+
+        const md = `Here are some images. Tap any card to open.`;
+        await pushWithFollowups(md, cards, content, { suppressSources: true });
         return;
       }
+      /* 🔥 end images branch */
 
-      // YOUTUBE (locked behavior)
+      /* 🔥 YOUTUBE SEARCH (works with "youtube: ..." or any query mentioning youtube/yt) */
       if (wantsYouTube(content)) {
-        const q = content.replace(/^youtube:\s*/i, "") || content;
+        const q = content.replace(/^youtube:\s*/i, "");
         let results = [];
         try {
           const r = await axios.post(`${API_BASE}/search-youtube`, { q });
           results = Array.isArray(r.data?.results) ? r.data.results : [];
-        } catch {
+        } catch (e) {
+          console.warn("search-youtube failed:", e?.message || e);
+          // graceful fallback to realtime intent if available
           try {
-            const r2 = await axios.post(`${API_BASE}/realtime`, { query: q, intent: "youtube" });
+            const r2 = await axios.post(`${API_BASE}/realtime`, { query: q || content, intent: "youtube" });
             results = Array.isArray(r2.data?.results) ? r2.data.results : (r2.data?.cards || []);
-          } catch {}
+          } catch (e2) {
+            console.warn("realtime youtube fallback failed:", e2?.message || e2);
+          }
         }
+
         const cards = (results || [])
           .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
           .filter(v => v.url)
           .slice(0, 6);
-        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `No videos found.`, cards, content, { suppressSources: true });
+
+        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
         return;
       }
 
+      // ---- existing special cases (keep yours) ----
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
@@ -439,44 +468,29 @@ function AIChatInner() {
       }
 
       if (wantsWeather(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather", lat: geo?.lat, lon: geo?.lon });
+        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         return;
       }
 
-      if (wantsStocks(content)) {
-        const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "stocks", web: webSearchOn });
-        const cards = (r.data?.cards || []).filter(Boolean).map(c => ({
-          ...c,
-          history: Array.isArray(c.history) ? c.history : (Array.isArray(c.sparkline) ? c.sparkline : [])
-        }));
-        await pushWithFollowups(r.data?.markdown || "Stocks:", cards, content);
-        return;
-      }
-
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
-        const cards = (r.data?.cards || []).filter(Boolean).map(c => ({
-          ...c,
-          history: Array.isArray(c.history) ? c.history : (Array.isArray(c.sparkline) ? c.sparkline : [])
-        }));
+        const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
         return;
       }
 
-      // ---- default chat (brand-safe) ----
-      const branded = `You are Droxion — an independent AI assistant created by Dhruv Patel and the Droxion team.
-If asked "who owns you" or "who made you", reply: "I’m Droxion, built and maintained by the Droxion team."
-Avoid claiming you are owned by OpenAI. Stay neutral and helpful.
-User: ${content}`;
-
+      // ---- default chat ----
       const res = await axios.post(`${API_BASE}/chat`, {
-        prompt: branded, memory: [], persona, web: webSearchOn, agent: agentOn
+        prompt: content, memory: [], persona, web: webSearchOn, agent: agentOn
       });
       const md = res.data?.reply || res.data?.text || "";
+
+      // start with any cards your backend already sent
       let cards = (res.data?.cards || []).filter(Boolean);
 
+      // map optional arrays into cards so MediaBlock can render them
       if (Array.isArray(res.data?.images) && res.data.images.length) {
         const urls = res.data.images
           .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
@@ -494,12 +508,13 @@ User: ${content}`;
       }
 
       await pushWithFollowups(md, cards, content);
-    } catch {
+    } catch (err) {
+      console.error("handleSend error:", err?.message || err);
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
 
-  /* ---------------------- Image uploader ---------------------- */
+  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -507,9 +522,11 @@ User: ${content}`;
       return;
     }
 
+    // Generate local preview URL
     let localUrl = "";
     try { localUrl = URL.createObjectURL(file); } catch {}
 
+    // Insert placeholder message and keep index for later replacement
     const tempMsg = {
       role: "assistant",
       content: "Analyzing your image...",
@@ -517,7 +534,7 @@ User: ${content}`;
       meta: { suppressSources: true, localPreview: true }
     };
     setMessages((prev) => [...prev, tempMsg]);
-    const index = messages.length + 1;
+    const index = messages.length + 1; // predicted index after set
 
     try {
       const form = new FormData();
@@ -531,19 +548,25 @@ User: ${content}`;
 
       const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
       const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-      const backendHasImage = cards.some((c) => c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c)));
+      const backendHasImage = cards.some((c) =>
+        c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
+      );
       const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
 
+      // ✅ Replace temp message instead of pushing a new one
       setMessages((prev) => {
         const copy = [...prev];
         copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
         return copy;
       });
       setInput("");
-    } catch {
+    } catch (e) {
       setMessages((prev) => {
         const copy = [...prev];
-        copy[index] = { ...copy[index], content: "Image analysis failed. Please try again." };
+        copy[index] = {
+          ...copy[index],
+          content: "Image analysis failed. Please try again."
+        };
         return copy;
       });
     } finally {
@@ -616,14 +639,14 @@ User: ${content}`;
     );
   };
 
-  /* ---------------------- Media block ---------------------- */
+  /* ---------------------- Media block (images, youtube, weather) ---------------------- */
   function MediaBlock({ cards = [] }) {
     if (!cards || cards.length === 0) return null;
 
     return (
       <div className="grid grid-cols-1 gap-8 mt-3">
         {cards.map((card, i) => {
-          // Images grid
+          // Images grid (array of urls or {url})
           if (card?.type === "images-grid" && Array.isArray(card.images)) {
             const items = card.images.slice(0, 12);
             return (
@@ -648,7 +671,7 @@ User: ${content}`;
             );
           }
 
-          // Gallery
+          // Gallery (same idea)
           if (card?.type === "gallery" && Array.isArray(card.images)) {
             const urls = card.images
               .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -671,7 +694,7 @@ User: ${content}`;
             );
           }
 
-          // Single image card
+          // Single image card (backend might return {type:"image", url})
           if (card?.type === "image" && card.url) {
             return (
               <img
@@ -686,12 +709,12 @@ User: ${content}`;
             );
           }
 
-          // Weather
+          // Weather (pass through to your WeatherCard if present)
           if (card?.type === "weather") {
             return <WeatherCard key={`wx-${i}`} card={card} />;
           }
 
-          // YouTube (locked)
+          // YouTube
           if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
             const id = youTubeIdFromUrl(card.url || "");
             if (!id) return null;
@@ -707,6 +730,7 @@ User: ${content}`;
             );
           }
 
+          // ✅ Fallback: any card that simply has an image should render as an image card
           const anySrc = firstImageUrl(card);
           if (anySrc) {
             const href = card.url || anySrc;
@@ -730,7 +754,7 @@ User: ${content}`;
     );
   }
 
-  // helpers
+  /* ---------------------- + menu helpers ---------------------- */
   const clearAll = () => {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
@@ -742,19 +766,19 @@ User: ${content}`;
     setInput("");
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
   };
+
   const [menuOpen, setMenuOpen] = useState(false);
 
   /* ---------------------- render ---------------------- */
   return (
     <div className="flex flex-col min-h-[100svh]">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur header-bg">
+      <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
           <div className="brand text-lg font-bold">Droxion</div>
           <div className="text-xs text-gray-400">• Lite</div>
 
           <div className="ml-auto flex items-center gap-2">
-            <a href="/dashboard" className="pill-btn" title="Dashboard">📊 <span style={{marginLeft:6}}>Dashboard</span></a>
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
               {theme==="dark" ? <FiMoon /> : <FiSun />} <span style={{marginLeft:6}}>{theme==="dark"?"Dark":"Light"}</span>
             </button>
@@ -765,7 +789,7 @@ User: ${content}`;
         </div>
       </header>
 
-      {/* Tools menu */}
+      {/* Tools menu outside header to avoid tag mismatch */}
       {menuOpen && (
         <>
           <div onClick={()=>setMenuOpen(false)} style={{ position:"fixed", inset:0, zIndex:999, background:"transparent" }} />
@@ -798,6 +822,7 @@ User: ${content}`;
           <div className="space-y-4">
             {messages.map((msg, i) => {
               const isUser = msg.role === "user";
+
               const mediaCards = (msg.cards || []).filter(c =>
                 ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
                 (c.url && isYouTube(c.url))
@@ -807,7 +832,7 @@ User: ${content}`;
                 <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
                   <div className="flex items-center justify-between mb-1">
                     <div className="small-label">{isUser ? "You" : "Droxion"}</div>
-                    {!isUser && (msg.content || msg.text) && (
+                    {!isUser && msg.content && (
                       <button
                         onClick={() => copyMessage(i)}
                         className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
@@ -819,13 +844,13 @@ User: ${content}`;
                   </div>
 
                   {/* User vs Assistant message text */}
-                  {isUser && <div className="answer expanded">{msg.content || msg.text}</div>}
-                  {!isUser && (msg.content || msg.text) && <OrganizedAnswer md={msg.content || msg.text} />}
+                  {isUser && <div className="answer expanded">{msg.content}</div>}
+                  {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
 
-                  {/* Media */}
+                  {/* ✅ Render images, galleries, youtube, weather */}
                   {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
 
-                  {/* Follow-ups */}
+                  {/* Follow-up suggestions */}
                   {!isUser && Array.isArray(msg.followups) && msg.followups.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-8">
                       {msg.followups.slice(0, 3).map((s, idx) => (
@@ -851,31 +876,81 @@ User: ${content}`;
         </div>
       </div>
 
-      {/* Suggestions rail ONLY (no news/weather/crypto while typing) */}
-      <div
-        className="fixed-preview fixed-panel"
-        style={{ opacity: focused && textSug.length ? 1 : 0, transition: "opacity .18s ease", pointerEvents: (focused && textSug.length) ? "auto" : "none" }}
-      >
-        <div className="max-w-4xl mx-auto px-3">
-          <div className="panel glass rounded-xl p-2 suggestions-panel">
-            {textSug.length>0 && (
-              <>
-                <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
-                <div className="flex flex-col gap-2">
+      {/* Fixed preview while typing */}
+      {focused && (
+        <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
+          <div className="max-w-4xl mx-auto px-3">
+            <div className="panel glass rounded-xl p-2 suggestions-panel">
+              <div className="mb-2">
+                <div className="px-1 text-xs text-gray-400 mb-1">Recent Headlines</div>
+                <div className="hscroll pb-1 -mx-2 pl-2 pr-4">
+                  <div className="flex gap-2">
+                    {(news.length ? news : Array.from({length:3})).map((c,i)=>
+                      c ? (
+                        <a key={i} href={c.url} target="_blank" rel="noreferrer" className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            {(() => {
+                              const pv = bestPreview(c, true);
+                              return pv
+                                ? <img src={pv.prox} alt="" className="w-full aspect-[16/9] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e)=>{ e.currentTarget.style.display="none"; }} />
+                                : <div className="aspect-[16/9] skel" />;
+                            })()}
+                            <div className="p-3">
+                              <div className="text-[11px] text-gray-400 mb-1">{displaySource(c)}</div>
+                              <div className="text-sm font-semibold line-clamp-2 leading-tight">{c.title}</div>
+                              <div className="text:[11px] text-gray-500 mt-1">{timeAgo(c.publishedAt || c.time)}</div>
+                            </div>
+                          </div>
+                        </a>
+                      ) : (
+                        <div key={i} className="hitem pr-3">
+                          <div className="rounded-xl overflow-hidden glass">
+                            <div className="aspect-[16/9] skel" />
+                            <div className="p-3">
+                              <div className="h-3 w-24 skel rounded mb-2" />
+                              <div className="h-3 w-40 skel rounded" />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+                <div>{weather ? (<WeatherCard card={weather} />) : (<div className="glass rounded-lg p-6 skel" />)}</div>
+                <div className="grid grid-cols-1 gap-2">
+                  {(crypto.length ? crypto.slice(0,2) : [null,null]).map((c,i)=> c ? (
+                    <a key={i} href={c.url} target="_blank" rel="noreferrer" className="glass rounded-lg p-3 block">
+                      <div className="text-sm font-semibold">{c.title || c.symbol || "Crypto"}</div>
+                      <div className="text-xs text-gray-400">{c.meta || c.source || (c.url ? host(c.url) : "")}</div>
+                      {c.price && <div className="text-base mt-1">{c.price}</div>}
+                      {typeof c.change!=="undefined" && (
+                        <div className={`text-xs mt-1 ${String(c.change).startsWith("-")?"text-red-400":"text-green-400"}`}>{c.change}</div>
+                      )}
+                    </a>
+                  ) : <div key={i} className="glass rounded-lg p-6 skel" />)}
+                </div>
+              </div>
+
+              {textSug.length>0 && (
+                <div className="mt-1">
+                  <div className="px-1 text-xs text-gray-400 mb-1">Suggestions</div>
                   {textSug.map((s,i)=>(
-                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition">
+                    <button key={i} onClick={()=>handleSend(s)} className="w-full text-left text-sm border border-white/10 rounded-md px-3 py-2 hover:bg-white/10 transition mb-2 last:mb-0">
                       {s}
                     </button>
                   ))}
                 </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Composer */}
-      <div className="fixed-bottom z-50 border-t border-white/10 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
+      {/* Composer — clean (no image button in middle) */}
+      <div className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur" style={{ paddingBottom:"max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="max-w-4xl mx-auto px-3 pt-2">
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
@@ -912,4 +987,4 @@ User: ${content}`;
   );
 }
 
-export default function AIChat(){ return <AIChatInner/>; }
+export default AIChat;
