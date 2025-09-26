@@ -372,96 +372,14 @@ const OrganizedAnswer = ({ md }) => {
     </>
   );
 };
-
-/* ---------------------- Media block (tap-safe YouTube + images + weather) ---------------------- */
-const _YT_HOSTS_MB = new Set([
-  "youtube.com","www.youtube.com","m.youtube.com",
-  "youtu.be","www.youtu.be",
-  "youtube-nocookie.com","www.youtube-nocookie.com",
-]);
-
-function _isYouTubeMB(href = "") {
-  try { return _YT_HOSTS_MB.has(new URL(href).hostname); } catch { return false; }
-}
-
-function _youTubeIdFromUrlMB(href = "") {
-  try {
-    const u = new URL(href);
-    if (u.hostname.includes("youtu.be")) {
-      const s = u.pathname.split("/").filter(Boolean);
-      return s[0] || null;
-    }
-    if (u.searchParams.has("v")) return u.searchParams.get("v");
-    if (u.pathname.startsWith("/embed/") || u.pathname.startsWith("/shorts/")) {
-      const s = u.pathname.split("/").filter(Boolean);
-      return s[1] || null;
-    }
-    const s = u.pathname.split("/").filter(Boolean);
-    return s.pop() || null;
-  } catch { return null; }
-}
-
-/* Try to pull an image URL from many shapes */
-function _firstImageUrlMB(card = {}) {
-  const direct = [
-    card.image, card.image_url, card.imageUrl,
-    card.thumbnail, card.thumbnail_url, card.thumbnailUrl,
-    card.cover, card.cover_image, card.coverImage,
-  ].filter(Boolean);
-  if (direct.length && typeof direct[0] === "string") return direct[0];
-
-  const arrays = [card.images, card.outputs].filter(Array.isArray);
-  for (const arr of arrays) {
-    for (const it of arr) {
-      if (typeof it === "string") return it;
-      if (it && typeof it.url === "string") return it.url;
-      if (it && typeof it.src === "string") return it.src;
-    }
-  }
-  if (card.media && typeof card.media === "object") {
-    if (typeof card.media.url === "string") return card.media.url;
-    if (typeof card.media.src === "string") return card.media.src;
-  }
-  return null;
-}
-
-/* If we only have a ytimg thumbnail, extract id from it */
-function _youtubeIdFromThumbMB(src = "") {
-  // https://i.ytimg.com/vi/<ID>/hqdefault.jpg
-  const m = /(?:i\.ytimg\.com\/vi\/|i\.ytimg\.com\/vi_webp\/)([^/]+)/.exec(src);
-  return m ? m[1] : null;
-}
-
-function _defaultToProxyMB(u = "") { return u; }
-
-function _YouTubePosterMB({ id, title }) {
-  const watch = `https://www.youtube.com/watch?v=${id}`;
-  const thumb = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
-  return (
-    <a
-      href={watch}
-      target="_blank"
-      rel="noreferrer"
-      className="block relative rounded overflow-hidden glass"
-      style={{ aspectRatio: "16/9" }}
-    >
-      <img src={thumb} alt={title || "YouTube"} className="w-full h-full object-cover" loading="lazy" />
-      <div className="absolute inset-0 grid place-items-center" style={{ background: "linear-gradient(transparent, rgba(0,0,0,.25))" }}>
-        <div className="rounded-full" style={{ width: 64, height: 64, background: "rgba(0,0,0,.45)" }}>
-          <svg viewBox="0 0 24 24" className="w-full h-full p-4"><path d="M8 5v14l11-7z" fill="#fff"/></svg>
-        </div>
-      </div>
-    </a>
-  );
-}
-
-function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
+/* ---------------------- Media block (images, youtube, weather) ---------------------- */
+function MediaBlock({ cards = [] }) {
   if (!cards || cards.length === 0) return null;
 
   return (
     <div className="grid grid-cols-1 gap-8 mt-3">
       {cards.map((card, i) => {
-        /* ---------- Images grid ---------- */
+        // Images grid (array of urls or {url})
         if (card?.type === "images-grid" && Array.isArray(card.images)) {
           const items = card.images.slice(0, 12);
           return (
@@ -472,7 +390,7 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
                 return (
                   <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
                     <img
-                      src={toProxy(u)}
+                      src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
                       alt=""
                       className="w-full rounded-lg glass"
                       loading="lazy"
@@ -486,7 +404,7 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
           );
         }
 
-        /* ---------- Gallery ---------- */
+        // Gallery
         if (card?.type === "gallery" && Array.isArray(card.images)) {
           const urls = card.images
             .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -497,7 +415,7 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
               {urls.map((u, j) => (
                 <img
                   key={`gal-${i}-${j}`}
-                  src={toProxy(u)}
+                  src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
@@ -509,12 +427,12 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
           );
         }
 
-        /* ---------- Single image ---------- */
+        // Single image card
         if (card?.type === "image" && card.url) {
           return (
             <img
               key={`image-${i}`}
-              src={toProxy(card.url)}
+              src={`${API_BASE}/img?url=${encodeURIComponent(card.url)}`}
               alt=""
               className="w-full rounded-lg glass"
               loading="lazy"
@@ -524,92 +442,35 @@ function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
           );
         }
 
-        /* ---------- Vision / image-analysis ---------- */
-        if (
-          card?.type === "vision" ||
-          card?.type === "image-analysis" ||
-          card?.image_url || card?.image || card?.thumbnail || card?.thumb
-        ) {
-          const u =
-            card.image_url ||
-            (typeof card.image === "string" ? card.image : card.image?.url) ||
-            card.thumbnail ||
-            card.thumb ||
-            null;
-          if (u) {
-            return (
-              <img
-                key={`vision-${i}`}
-                src={toProxy(u)}
-                alt=""
-                className="w-full rounded-lg glass"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
-              />
-            );
-          }
-        }
-
-        /* ---------- Weather ---------- */
+        // Weather
         if (card?.type === "weather") {
           return <WeatherCard key={`wx-${i}`} card={card} />;
         }
 
-        /* ---------- YouTube: robust detection ---------- */
-        const linkHref =
-          card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || "";
-        const anyImg = _firstImageUrlMB(card);
-        // prefer explicit id, else from link, else from ytimg thumbnail, else if site says YouTube
-        const guessId =
-          card?.videoId || card?.youtubeId ||
-          _youTubeIdFromUrlMB(linkHref) ||
-          _youtubeIdFromThumbMB(anyImg || "") ||
-          (card?.site === "YouTube" && card?.id && String(card.id).length === 11 ? card.id : null);
-
-        if (card?.type === "youtube" || guessId) {
-          const id = guessId;
-          // If we found an id, try inline embed; otherwise fall back to poster (open in new tab)
-          if (id) {
-            return (
-              <div
-                key={`yt-${i}`}
-                className="embed-responsive embed-16by9 rounded overflow-hidden glass"
-                style={{
-                  maxHeight: 280,
-                  position: "relative",
-                  pointerEvents: "auto",
-                  zIndex: 10
-                }}
-              >
-                <iframe
-                  src={`https://www.youtube.com/embed/${id}?playsinline=1`}
-                  title={card?.title || "YouTube"}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  frameBorder="0"
-                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", pointerEvents: "auto" }}
-                />
-              </div>
-            );
-          }
+        // YouTube
+        if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
+          const id = youTubeIdFromUrl(card.url || "");
+          if (!id) return null;
+          return (
+            <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${id}`}
+                title={card.title || "YouTube"}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          );
         }
 
-        /* ---------- Fallback: image or poster ---------- */
-        if (anyImg) {
-          // If the only thing we have is a ytimg thumbnail but no id yet, parse it and show poster:
-          const idFromThumb = _youtubeIdFromThumbMB(anyImg);
-          if (idFromThumb) {
-            return <_YouTubePosterMB key={`yt-poster-${i}`} id={idFromThumb} title={card?.title} />;
-          }
-
-          const href = linkHref || anyImg;
+        // Fallback: any card with an image
+        const anySrc = firstImageUrl(card);
+        if (anySrc) {
+          const href = card.url || anySrc;
           return (
             <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
               <img
-                src={toProxy(anyImg)}
+                src={`${API_BASE}/img?url=${encodeURIComponent(anySrc)}`}
                 alt=""
                 className="w-full rounded-lg glass"
                 loading="lazy"
