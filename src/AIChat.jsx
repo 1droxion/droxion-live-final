@@ -1096,10 +1096,10 @@ function MediaBlock({ cards = [] }) {
           {s}
         </button>
       ))}
+      </div>
     </div>
   </div>
-</div>
-</div>
 );
 }
+
 export default AIChat;
