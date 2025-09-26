@@ -377,10 +377,12 @@ const OrganizedAnswer = ({ md }) => {
 function MediaBlock({ cards = [] }) {
   if (!cards || cards.length === 0) return null;
 
+  const prox = (u) => `${API_BASE}/img?url=${encodeURIComponent(u || "")}`;
+
   return (
     <div className="grid grid-cols-1 gap-8 mt-3">
       {cards.map((card, i) => {
-        // --- Images grid (array of urls or {url}) ---
+        // Images grid (array of urls or {url})
         if (card?.type === "images-grid" && Array.isArray(card.images)) {
           const items = card.images.slice(0, 12);
           return (
@@ -391,7 +393,7 @@ function MediaBlock({ cards = [] }) {
                 return (
                   <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
                     <img
-                      src={toProxy(u)}
+                      src={prox(u)}
                       alt=""
                       className="w-full rounded-lg glass"
                       loading="lazy"
@@ -405,7 +407,7 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Gallery ---
+        // Gallery
         if (card?.type === "gallery" && Array.isArray(card.images)) {
           const urls = card.images
             .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -416,7 +418,7 @@ function MediaBlock({ cards = [] }) {
               {urls.map((u, j) => (
                 <img
                   key={`gal-${i}-${j}`}
-                  src={toProxy(u)}
+                  src={prox(u)}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
@@ -428,12 +430,38 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Single image card ---
+        // ✅ Image-analysis preview (look for preview fields)
+        if (card?.type === "image-analysis") {
+          const preview =
+            card.preview ||
+            card.preview_url ||
+            card.image_url ||
+            card.url ||
+            (Array.isArray(card.images) && (card.images[0]?.url || card.images[0]));
+          return preview ? (
+            <div key={`ia-${i}`} className="space-y-2">
+              <img
+                src={prox(preview)}
+                alt="analysis preview"
+                className="w-full rounded-lg glass"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+              {/* Optional tiny caption of what the model analyzed */}
+              {card.caption && (
+                <div className="text-sm text-white/70">{card.caption}</div>
+              )}
+            </div>
+          ) : null;
+        }
+
+        // Single image card
         if (card?.type === "image" && card.url) {
           return (
             <img
               key={`image-${i}`}
-              src={toProxy(card.url)}
+              src={prox(card.url)}
               alt=""
               className="w-full rounded-lg glass"
               loading="lazy"
@@ -443,38 +471,12 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Image Analysis preview (vision cards etc.) ---
-        if (
-          card?.type === "vision" ||
-          card?.type === "image-analysis" ||
-          card?.image_url || card?.image || card?.thumbnail || card?.thumb
-        ) {
-          const u =
-            card.image_url ||
-            (typeof card.image === "string" ? card.image : card.image?.url) ||
-            card.thumbnail || card.thumb || null;
-
-          if (u) {
-            return (
-              <img
-                key={`vision-${i}`}
-                src={toProxy(u)}
-                alt=""
-                className="w-full rounded-lg glass"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
-              />
-            );
-          }
-        }
-
-        // --- Weather ---
+        // Weather
         if (card?.type === "weather") {
           return <WeatherCard key={`wx-${i}`} card={card} />;
         }
 
-        // --- YouTube ---
+        // YouTube
         if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
           const id = youTubeIdFromUrl(card.url || "");
           if (!id) return null;
@@ -490,48 +492,29 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Fallback: any card with an image-like field ---
-const anySrc = firstImageUrl(card);
-if (anySrc) {
-  const href = card.url || anySrc;
+        // Fallback: any card with an image
+        const anySrc = firstImageUrl(card);
+        if (anySrc) {
+          const href = card.url || anySrc;
+          return (
+            <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
+              <img
+                src={prox(anySrc)}
+                alt=""
+                className="w-full rounded-lg glass"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            </a>
+          );
+        }
 
-  // If it's a YouTube link, render an iframe instead of an <img>
-  if (isYouTube(href)) {
-    const id = youTubeIdFromUrl(href);
-    if (id) {
-      return (
-        <div
-          key={`yt-fallback-${i}`}
-          className="embed-responsive embed-16by9 rounded overflow-hidden glass"
-          style={{ maxHeight: 280 }}
-        >
-          <iframe
-            src={`https://www.youtube.com/embed/${id}`}
-            title={card.title || "YouTube"}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
-      );
-    }
-  }
-
-  // Otherwise just show the image (via proxy)
-  return (
-    <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
-      <img
-        src={toProxy(anySrc)}
-        alt=""
-        className="w-full rounded-lg glass"
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={(e) => { e.currentTarget.style.display = "none"; }}
-      />
-    </a>
+        return null;
+      })}
+    </div>
   );
 }
-
-return null;
 
 /* ---------------------- main component ---------------------- */
 function AIChat() {
