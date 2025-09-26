@@ -12,6 +12,7 @@ import {
   FiArrowRight
 } from "react-icons/fi";
 import "./AIChat.css";
+import AIChat from "./AIChat";
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
