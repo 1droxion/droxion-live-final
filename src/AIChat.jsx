@@ -373,21 +373,21 @@ const OrganizedAnswer = ({ md }) => {
   );
 };
 
-/* ---------------------- Media block (images, youtube, weather) ---------------------- */
-const YT_HOSTS = new Set([
+/* ---------------------- Media block (images, youtube, weather) — no name collisions ---------------------- */
+const _YT_HOSTS_MB = new Set([
   "youtube.com","www.youtube.com","m.youtube.com",
   "youtu.be","www.youtu.be",
   "youtube-nocookie.com","www.youtube-nocookie.com",
 ]);
 
-function isYouTube(href = "") {
+function _isYouTubeMB(href = "") {
   try {
     const u = new URL(href);
-    return YT_HOSTS.has(u.hostname);
+    return _YT_HOSTS_MB.has(u.hostname);
   } catch { return false; }
 }
 
-function youTubeIdFromUrl(href = "") {
+function _youTubeIdFromUrlMB(href = "") {
   try {
     const u = new URL(href);
 
@@ -414,7 +414,7 @@ function youTubeIdFromUrl(href = "") {
   } catch { return null; }
 }
 
-function firstImageUrl(card = {}) {
+function _firstImageUrlMB(card = {}) {
   // direct fields
   const direct = [
     card.image, card.image_url, card.imageUrl,
@@ -444,11 +444,9 @@ function firstImageUrl(card = {}) {
 }
 
 // no-op unless you pass your own toProxy; keeps your current behavior
-function defaultToProxy(u = "") {
-  return u;
-}
+function _defaultToProxyMB(u = "") { return u; }
 
-function MediaBlock({ cards = [], toProxy = defaultToProxy }) {
+function MediaBlock({ cards = [], toProxy = _defaultToProxyMB }) {
   if (!cards || cards.length === 0) return null;
 
   return (
@@ -551,12 +549,11 @@ function MediaBlock({ cards = [], toProxy = defaultToProxy }) {
         }
 
         /* ----------------------------- YouTube ----------------------------- */
-        // Accept multiple possible link fields
         const linkHref =
           card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || "";
 
-        if (card?.type === "youtube" || (linkHref && isYouTube(linkHref))) {
-          const id = youTubeIdFromUrl(linkHref);
+        if (card?.type === "youtube" || (linkHref && _isYouTubeMB(linkHref))) {
+          const id = _youTubeIdFromUrlMB(linkHref);
           if (!id) return null;
 
           return (
@@ -580,14 +577,13 @@ function MediaBlock({ cards = [], toProxy = defaultToProxy }) {
         }
 
         /* ---------- Fallback: any card with an image-like field ---------- */
-        const anySrc = firstImageUrl(card);
+        const anySrc = _firstImageUrlMB(card);
         if (anySrc) {
           const href =
             card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || anySrc;
 
-          // YouTube inside generic cards -> embed playable
-          if (isYouTube(href)) {
-            const id = youTubeIdFromUrl(href);
+          if (_isYouTubeMB(href)) {
+            const id = _youTubeIdFromUrlMB(href);
             if (id) {
               return (
                 <div
