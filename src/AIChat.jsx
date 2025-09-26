@@ -567,7 +567,7 @@ function AIChat() {
         setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
       } catch {}
     }, 350);
-    return () => clearTimeout(previewTimer.current);
+  return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
   /* ---------------------- chat helpers ---------------------- */
@@ -903,6 +903,23 @@ function AIChat() {
                 </div>
               );
             })}
+
+            {/* 🔗 LOADING INDICATOR (added) */}
+            {loading && (
+              <div className="msg glass">
+                <div className="small-label">Droxion</div>
+                <div className="answer">
+                  <a
+                    href="https://droxion.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline decoration-gray-600 hover:text-gray-200"
+                  >
+                    🔗 Droxion is thinking…
+                  </a>
+                </div>
+              </div>
+            )}
 
             {typing && (
               <div className="glass rounded-xl p-4">
