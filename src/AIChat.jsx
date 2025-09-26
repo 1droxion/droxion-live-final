@@ -546,65 +546,81 @@ useEffect(() => {
     }
   };
 
-  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
-  const sendImageForAnalysis = async (file) => {
-    if (!file) return;
-    if (!/^image\//.test(file.type)) {
-      await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
-      return;
-    }
+  // Image uploader (single temp message + correct replacement index)
+const sendImageForAnalysis = async (file) => {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) {
+    await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
+    return;
+  }
 
-    // Generate local preview URL
-    let localUrl = "";
-    try { localUrl = URL.createObjectURL(file); } catch {}
+  // Local preview URL
+  let localUrl = "";
+  try { localUrl = URL.createObjectURL(file); } catch {}
 
-    // Insert placeholder message and keep index for later replacement
-    const tempMsg = {
-      role: "assistant",
-      content: "Analyzing your image...",
-      cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
-      meta: { suppressSources: true, localPreview: true }
-    };
-    setMessages((prev) => [...prev, tempMsg]);
-    const index = messages.length + 1; // predicted index after set
-
-    try {
-      const form = new FormData();
-      form.append("image", file);
-      form.append("prompt", input || "Analyze this image and explain key details.");
-      form.append("agent", String(agentOn));
-      form.append("web", String(webSearchOn));
-      form.append("persona", persona);
-
-      const r = await axios.post(`${API_BASE}/analyze-image`, form, { headers: { "Content-Type": "multipart/form-data" } });
-
-      const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
-      const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
-      const backendHasImage = cards.some((c) =>
-        c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
-      );
-      const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
-
-      // ✅ Replace temp message instead of pushing a new one
-      setMessages((prev) => {
-        const copy = [...prev];
-        copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
-        return copy;
-      });
-      setInput("");
-    } catch (e) {
-      setMessages((prev) => {
-        const copy = [...prev];
-        copy[index] = {
-          ...copy[index],
-          content: "Image analysis failed. Please try again."
-        };
-        return copy;
-      });
-    } finally {
-      if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
-    }
+  // 1) Insert temp message and CAPTURE the real index from the updater
+  const tempMsg = {
+    role: "assistant",
+    content: "Analyzing your image...",
+    cards: localUrl ? [{ type: "gallery", images: [localUrl] }] : [],
+    meta: { suppressSources: true, localPreview: true }
   };
+
+  let index = -1; // will be set inside the updater
+  setMessages(prev => {
+    index = prev.length;     // ✅ the position where temp will be inserted
+    return [...prev, tempMsg];
+  });
+
+  try {
+    const form = new FormData();
+    form.append("image", file);
+    form.append("prompt", input || "Analyze this image and explain key details.");
+    form.append("agent", String(agentOn));
+    form.append("web", String(webSearchOn));
+    form.append("persona", persona);
+
+    const r = await axios.post(`${API_BASE}/analyze-image`, form, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+
+    const md = r.data?.ai_description || r.data?.summary || r.data?.reply || "Image analyzed.";
+    const cards = Array.isArray(r.data?.cards) ? r.data.cards.filter(Boolean) : [];
+
+    // Ensure there is at least one visible image card
+    const backendHasImage = cards.some(
+      (c) => c?.type === "gallery" || c?.type === "image" || Boolean(firstImageUrl(c))
+    );
+    const finalCards = backendHasImage
+      ? cards
+      : [{ type: "gallery", images: [localUrl] }, ...cards];
+
+    // 2) Replace the temp message IN-PLACE using the captured index
+    setMessages(prev => {
+      const copy = [...prev];
+      if (index >= 0 && index < copy.length) {
+        copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
+      } else {
+        // fallback if index somehow invalid: push as new
+        copy.push({ role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } });
+      }
+      return copy;
+    });
+
+    setInput("");
+  } catch (e) {
+    // Replace temp with error text
+    setMessages(prev => {
+      const copy = [...prev];
+      if (index >= 0 && index < copy.length) {
+        copy[index] = { ...copy[index], content: "Image analysis failed. Please try again." };
+      }
+      return copy;
+    });
+  } finally {
+    if (localUrl) setTimeout(() => URL.revokeObjectURL(localUrl), 60_000);
+  }
+};
 
   /* ---------------------- organized render helpers ---------------------- */
   const extractTitle = (md="") => {
