@@ -687,120 +687,166 @@ const sendImageForAnalysis = async (file) => {
     );
   };
 
-  /* ---------------------- Media block (images, youtube, weather) ---------------------- */
-  function MediaBlock({ cards = [] }) {
-    if (!cards || cards.length === 0) return null;
+  /* ---------------------- Media block (images, youtube, weather, web) ---------------------- */
+function MediaBlock({ cards = [] }) {
+  if (!cards || cards.length === 0) return null;
 
-    return (
-      <div className="grid grid-cols-1 gap-8 mt-3">
-        {cards.map((card, i) => {
-          // Images grid (array of urls or {url})
-          if (card?.type === "images-grid" && Array.isArray(card.images)) {
-            const items = card.images.slice(0, 12);
-            return (
-              <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
-                {items.map((it, j) => {
-                  const u = typeof it === "string" ? it : (it?.url || "");
-                  if (!u) return null;
-                  return (
-                    <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
-                      <img
-                        src={u}
-                        alt=""
-                        className="w-full rounded-lg glass"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      />
-                    </a>
-                  );
-                })}
-              </div>
-            );
-          }
+  return (
+    <div className="grid grid-cols-1 gap-8 mt-3">
+      {cards.map((card, i) => {
+        // Images grid (array of urls or {url})
+        if (card?.type === "images-grid" && Array.isArray(card.images)) {
+          const items = card.images.slice(0, 12);
+          return (
+            <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
+              {items.map((it, j) => {
+                const u = typeof it === "string" ? it : it?.url || "";
+                if (!u) return null;
+                return (
+                  <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={u}
+                      alt=""
+                      className="w-full rounded-lg glass"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  </a>
+                );
+              })}
+            </div>
+          );
+        }
 
-          // Gallery (same idea)
-          if (card?.type === "gallery" && Array.isArray(card.images)) {
-            const urls = card.images
-              .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
-              .filter(Boolean)
-              .slice(0, 12);
-            return (
-              <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
-                {urls.map((u, j) => (
-                  <img
-                    key={`gal-${i}-${j}`}
-                    src={u}
-                    alt=""
-                    className="w-full rounded-lg glass"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => { e.currentTarget.style.display = "none"; }}
-                  />
-                ))}
-              </div>
-            );
-          }
-
-          // Single image card (backend might return {type:"image", url})
-          if (card?.type === "image" && card.url) {
-            return (
-              <img
-                key={`image-${i}`}
-                src={card.url}
-                alt=""
-                className="w-full rounded-lg glass"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
-              />
-            );
-          }
-
-          // Weather (pass through to your WeatherCard if present)
-          if (card?.type === "weather") {
-            return <WeatherCard key={`wx-${i}`} card={card} />;
-          }
-
-          // YouTube
-          if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
-            const id = youTubeIdFromUrl(card.url || "");
-            if (!id) return null;
-            return (
-              <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
-                <iframe
-                  src={`https://www.youtube.com/embed/${id}`}
-                  title={card.title || "YouTube"}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </div>
-            );
-          }
-
-          // ✅ Fallback: any card that simply has an image should render as an image card
-          const anySrc = firstImageUrl(card);
-          if (anySrc) {
-            const href = card.url || anySrc;
-            return (
-              <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
+        // Gallery
+        if (card?.type === "gallery" && Array.isArray(card.images)) {
+          const urls = card.images
+            .map((it) => (typeof it === "string" ? it : it?.url || it?.thumbnail || it?.thumb))
+            .filter(Boolean)
+            .slice(0, 12);
+          return (
+            <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
+              {urls.map((u, j) => (
                 <img
-                  src={anySrc}
+                  key={`gal-${i}-${j}`}
+                  src={u}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
                   referrerPolicy="no-referrer"
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                 />
-              </a>
-            );
-          }
+              ))}
+            </div>
+          );
+        }
 
-          return null;
-        })}
-      </div>
-    );
-  }
+        // Single image card
+        if (card?.type === "image" && card.url) {
+          return (
+            <img
+              key={`image-${i}`}
+              src={card.url}
+              alt=""
+              className="w-full rounded-lg glass"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          );
+        }
+
+        // Weather card
+        if (card?.type === "weather") {
+          return <WeatherCard key={`wx-${i}`} card={card} />;
+        }
+
+        // YouTube embed
+        if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
+          const id = youTubeIdFromUrl(card.url || "");
+          if (!id) return null;
+          return (
+            <div
+              key={`yt-${i}`}
+              className="embed-responsive embed-16by9 rounded overflow-hidden glass"
+              style={{ maxHeight: 280 }}
+            >
+              <iframe
+                src={`https://www.youtube.com/embed/${id}`}
+                title={card.title || "YouTube"}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          );
+        }
+
+        // ✅ Web link card (from /search or backend sources)
+        if ((card?.type === "web" || (!card?.type && card?.url)) && card.url) {
+          const pv = bestPreview(card, true);
+          return (
+            <a
+              key={`web-${i}`}
+              href={card.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block glass rounded-lg overflow-hidden"
+            >
+              {pv ? (
+                <img
+                  src={pv.prox}
+                  alt=""
+                  className="w-full aspect-[16/9] object-cover"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
+              ) : null}
+              <div className="p-3">
+                <div className="text-[11px] text-gray-400 mb-1">{displaySource(card)}</div>
+                <div className="text-sm font-semibold leading-tight">
+                  {card.title || card.url}
+                </div>
+                {card.snippet && (
+                  <div className="text-xs text-gray-400 mt-1 line-clamp-2">
+                    {card.snippet}
+                  </div>
+                )}
+              </div>
+            </a>
+          );
+        }
+
+        // Fallback: any card with image
+        const anySrc = firstImageUrl(card);
+        if (anySrc) {
+          const href = card.url || anySrc;
+          return (
+            <a
+              key={`img-any-${i}`}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="block"
+            >
+              <img
+                src={anySrc}
+                alt=""
+                className="w-full rounded-lg glass"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            </a>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
 
   /* ---------------------- + menu helpers ---------------------- */
   const clearAll = () => {
