@@ -380,7 +380,7 @@ function MediaBlock({ cards = [] }) {
   return (
     <div className="grid grid-cols-1 gap-8 mt-3">
       {cards.map((card, i) => {
-        // Images grid (array of urls or {url})
+        // --- Images grid (array of urls or {url}) ---
         if (card?.type === "images-grid" && Array.isArray(card.images)) {
           const items = card.images.slice(0, 12);
           return (
@@ -391,7 +391,7 @@ function MediaBlock({ cards = [] }) {
                 return (
                   <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
                     <img
-                      src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
+                      src={toProxy(u)}
                       alt=""
                       className="w-full rounded-lg glass"
                       loading="lazy"
@@ -405,7 +405,7 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // Gallery
+        // --- Gallery ---
         if (card?.type === "gallery" && Array.isArray(card.images)) {
           const urls = card.images
             .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -416,7 +416,7 @@ function MediaBlock({ cards = [] }) {
               {urls.map((u, j) => (
                 <img
                   key={`gal-${i}-${j}`}
-                  src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
+                  src={toProxy(u)}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
@@ -428,12 +428,12 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // Single image card
+        // --- Single image card ---
         if (card?.type === "image" && card.url) {
           return (
             <img
               key={`image-${i}`}
-              src={`${API_BASE}/img?url=${encodeURIComponent(card.url)}`}
+              src={toProxy(card.url)}
               alt=""
               className="w-full rounded-lg glass"
               loading="lazy"
@@ -443,12 +443,38 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // Weather
+        // --- Image Analysis preview (vision cards etc.) ---
+        if (
+          card?.type === "vision" ||
+          card?.type === "image-analysis" ||
+          card?.image_url || card?.image || card?.thumbnail || card?.thumb
+        ) {
+          const u =
+            card.image_url ||
+            (typeof card.image === "string" ? card.image : card.image?.url) ||
+            card.thumbnail || card.thumb || null;
+
+          if (u) {
+            return (
+              <img
+                key={`vision-${i}`}
+                src={toProxy(u)}
+                alt=""
+                className="w-full rounded-lg glass"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            );
+          }
+        }
+
+        // --- Weather ---
         if (card?.type === "weather") {
           return <WeatherCard key={`wx-${i}`} card={card} />;
         }
 
-        // YouTube
+        // --- YouTube ---
         if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
           const id = youTubeIdFromUrl(card.url || "");
           if (!id) return null;
@@ -464,14 +490,14 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // Fallback: any card with an image
+        // --- Fallback: any card with an image-like field ---
         const anySrc = firstImageUrl(card);
         if (anySrc) {
           const href = card.url || anySrc;
           return (
             <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
               <img
-                src={`${API_BASE}/img?url=${encodeURIComponent(anySrc)}`}
+                src={toProxy(anySrc)}
                 alt=""
                 className="w-full rounded-lg glass"
                 loading="lazy"
