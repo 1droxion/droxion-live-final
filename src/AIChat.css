@@ -94,8 +94,16 @@ svg { color: currentColor; }
 .favicon-only:focus-visible{ outline:none; box-shadow: var(--focus); }
 
 /* ---------- embeds / media ---------- */
-.embed-responsive { position: relative; width: 100%; }
-.embed-16by9 { padding-bottom: 56.25%; } /* maintains 16:9 aspect ratio */
+.embed-responsive {
+  position: relative;
+  width: 100%;
+  z-index: 2; /* ✅ keeps video on top so taps work */
+}
+
+.embed-16by9 {
+  padding-bottom: 56.25%; /* maintains 16:9 aspect ratio */
+}
+
 .embed-responsive > iframe {
   position: absolute;
   inset: 0;
