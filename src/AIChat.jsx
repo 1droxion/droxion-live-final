@@ -56,61 +56,26 @@ const normHost = (u = "") => {
     return url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
   } catch { return ""; }
 };
-
 const host = (u) => normHost(u);
-
-const isBlobUrl = (u = "") => {
-  try {
-    const p = new URL(u).protocol;
-    return p === "blob:" || p === "data:";
-  } catch { return false; }
-};
+const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p === "blob:" || p === "data:"; } catch { return false; } };
 
 const BAD_HOSTS = ["example.com","example.org"];
-const isFilteredSource = (u="") => {
-  const h = host(u);
-  return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b));
-};
+const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
 
-// 🔎 pick first known image field from a card
+// ⬇️ Keep your original working selector
 const firstImageUrl = (c) =>
   c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
 
-/** ✅ Image proxy helper
- *  - Leaves blob: / data: / non-http alone (e.g., uploads & data URLs from /analyze-image)
- *  - Proxies real http(s) URLs through your backend /img endpoint for CORS & redirects
- */
 const IMAGE_PROXY = `${API_BASE}/img?url=`;
-const toProxy = (u = "") =>
-  (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
-
+const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
 const unsplash = (q) => (q ? `https://source.unsplash.com/900x600/?${encodeURIComponent(q)}` : null);
-
-const faviconFor = (u="") => {
-  const h = host(u);
-  return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null;
-};
-
-const timeAgo = (d) => {
-  if (!d) return "";
-  const t = typeof d === "string" ? new Date(d).getTime() : +d;
-  if (!t || Number.isNaN(t)) return "";
-  const s = Math.floor((Date.now()-t)/1000);
-  if (s<60) return `${s}s ago`;
-  const m=Math.floor(s/60); if(m<60) return `${m}m ago`;
-  const h=Math.floor(m/60); if(h<24) return `${h}h ago`;
-  const dd=Math.floor(h/24); return `${dd}d ago`;
-};
+const faviconFor = (u="") => { const h = host(u); return h ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(h)}` : null; };
+const timeAgo = (d) => { if (!d) return ""; const t = typeof d === "string" ? new Date(d).getTime() : +d; if (!t || Number.isNaN(t)) return ""; const s = Math.floor((Date.now()-t)/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const dd=Math.floor(h/24); return `${dd}d ago`; };
 
 /* small youtube helpers */
 const isYouTube = (raw="") => {
-  try {
-    const u=new URL(raw);
-    const h=u.hostname.replace(/^www\./,"");
-    return h.includes("youtube.com")||h.includes("youtu.be");
-  } catch { return /youtu\.?be/.test(raw); }
+  try { const u=new URL(raw); const h=u.hostname.replace(/^www\./,""); return h.includes("youtube.com")||h.includes("youtu.be"); } catch { return /youtu\.?be/.test(raw); }
 };
-
 const youTubeIdFromUrl = (raw="") => {
   try {
     const u = new URL(raw);
@@ -372,6 +337,7 @@ const OrganizedAnswer = ({ md }) => {
     </>
   );
 };
+
 /* ---------------------- Media block (images, youtube, weather) ---------------------- */
 function MediaBlock({ cards = [] }) {
   if (!cards || cards.length === 0) return null;
