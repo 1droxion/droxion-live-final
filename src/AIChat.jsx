@@ -1,4 +1,4 @@
-l// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — PERFECT FIX
+// src/AIChat.jsx — Droxion (single + menu, images preserved, no card trimming in messages) — PERFECT FIX
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -12,10 +12,8 @@ import {
   FiArrowRight
 } from "react-icons/fi";
 import "./AIChat.css";
-import AIChat from "./AIChat";
 
 const API_BASE = "https://droxion-backend.onrender.com";
-
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
