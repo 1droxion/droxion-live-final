@@ -29,7 +29,6 @@ function getUserId() {
 const USER_ID = getUserId();
 
 // --- Tiny helpers to save/load chat history ---
-
 async function saveHistory(API_BASE, userId, messages) {
   try {
     await axios.post(`${API_BASE}/history/save`, {
@@ -39,24 +38,16 @@ async function saveHistory(API_BASE, userId, messages) {
         text: typeof m.content === "string" ? m.content : (m.content?.toString?.() || "")
       }))
     });
-  } catch {
-    // ignore errors silently
-  }
+  } catch {}
 }
-
 async function loadHistory(API_BASE, userId) {
   try {
     const r = await axios.get(`${API_BASE}/history`, { params: { user_id: userId } });
     const hist = r?.data?.history || [];
-    return hist.map(h => ({
-      role: h.role,
-      content: h.text,
-      time: h.time
-    }));
-  } catch {
-    return [];
-  }
+    return hist.map(h => ({ role: h.role, content: h.text, time: h.time }));
+  } catch { return []; }
 }
+
 /* ---------------------- helpers ---------------------- */
 const normHost = (u = "") => {
   try {
@@ -283,6 +274,185 @@ function ToolsMenu({
   );
 }
 
+/* ---------------------- Organized answer renderer ---------------------- */
+const extractTitle = (md="") => {
+  const h1 = md.match(/^\s*#\s+(.+)/m); if (h1) return h1[1].trim();
+  const firstLine = md.split("\n").find(x => x.trim()); if (!firstLine) return "Answer";
+  const s = firstLine.replace(/[*_#>]+/g,"").trim();
+  const end = s.indexOf(". ") >= 0 ? s.indexOf(". ") + 1 : Math.min(90, s.length);
+  return s.slice(0,end).trim();
+};
+const extractSummary = (md="") => {
+  const lines = md.split("\n").map(l=>l.trim()).filter(Boolean);
+  const bullets = lines.filter(l => /^[-*•]\s+/.test(l)).slice(0,3).map(l => l.replace(/^[-*•]\s+/, ""));
+  if (bullets.length>=2) return bullets;
+  const para = lines.find(l => /^[A-Za-z0-9]/.test(l)); if (!para) return [];
+  return para.split(/(?<=[.!?])\s+/).slice(0,3);
+};
+const extractSteps = (md="") => {
+  const blocks = md.split("\n");
+  const numbered = blocks.filter(l => /^\d+\.\s+/.test(l)).slice(0,10).map(l => l.replace(/^\d+\.\s+/,""));
+  if (numbered.length) return numbered;
+  const dots = blocks.filter(l => /^[-*•]\s+/.test(l)).slice(0,6).map(l => l.replace(/^[-*•]\s+/, ""));
+  return dots;
+};
+const OrganizedAnswer = ({ md }) => {
+  const title = extractTitle(md);
+  const summary = extractSummary(md);
+  const steps = extractSteps(md);
+  return (
+    <>
+      <div className="org-title">{title}</div>
+      {summary.length>0 && (<div className="org-section"><div className="org-sub">Summary</div><ul className="org-list">{summary.map((s,i)=><li key={i}>{s}</li>)}</ul></div>)}
+      {steps.length>0 && (<div className="org-section"><div className="org-sub">Step-by-step</div><ol className="org-steps">{steps.map((s,i)=><li key={i}>{s}</li>)}</ol></div>)}
+      <div className="org-section">
+        <div className="org-sub">Full answer</div>
+        <div className="answer expanded">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
+            components={{
+              img: (props) => {
+                const src = props.src || "";
+                return (
+                  <img {...props} src={src} className="rounded-lg my-2 w-full glass" loading="lazy" referrerPolicy="no-referrer"
+                    onError={(e)=>{ const el=e.currentTarget; const step=el.dataset.step||"orig";
+                      if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
+                      if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
+                      el.style.display="none"; }} />
+                );
+              },
+              iframe: (p) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...p} allowFullScreen /></div>,
+              a: ({node, ...p}) => <a {...p} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />,
+              code: ({node, inline, className, children, ...p}) => inline
+                ? <code className={className} {...p}>{children}</code>
+                : <pre className={className} style={{ position:"relative" }}>
+                    <button className="code-copy-btn" onClick={() => navigator.clipboard.writeText(String(children || ""))} title="Copy code">Copy</button>
+                    <code {...p}>{children}</code>
+                  </pre>,
+            }}
+          >
+            {md}
+          </ReactMarkdown>
+        </div>
+      </div>
+    </>
+  );
+};
+
+/* ---------------------- Media block (images, youtube, weather) ---------------------- */
+function MediaBlock({ cards = [] }) {
+  if (!cards || cards.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-1 gap-8 mt-3">
+      {cards.map((card, i) => {
+        // Images grid (array of urls or {url})
+        if (card?.type === "images-grid" && Array.isArray(card.images)) {
+          const items = card.images.slice(0, 12);
+          return (
+            <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
+              {items.map((it, j) => {
+                const u = typeof it === "string" ? it : (it?.url || "");
+                if (!u) return null;
+                return (
+                  <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
+                      alt=""
+                      className="w-full rounded-lg glass"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  </a>
+                );
+              })}
+            </div>
+          );
+        }
+
+        // Gallery
+        if (card?.type === "gallery" && Array.isArray(card.images)) {
+          const urls = card.images
+            .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
+            .filter(Boolean)
+            .slice(0, 12);
+          return (
+            <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
+              {urls.map((u, j) => (
+                <img
+                  key={`gal-${i}-${j}`}
+                  src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
+                  alt=""
+                  className="w-full rounded-lg glass"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
+              ))}
+            </div>
+          );
+        }
+
+        // Single image card
+        if (card?.type === "image" && card.url) {
+          return (
+            <img
+              key={`image-${i}`}
+              src={`${API_BASE}/img?url=${encodeURIComponent(card.url)}`}
+              alt=""
+              className="w-full rounded-lg glass"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          );
+        }
+
+        // Weather
+        if (card?.type === "weather") {
+          return <WeatherCard key={`wx-${i}`} card={card} />;
+        }
+
+        // YouTube
+        if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
+          const id = youTubeIdFromUrl(card.url || "");
+          if (!id) return null;
+          return (
+            <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${id}`}
+                title={card.title || "YouTube"}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          );
+        }
+
+        // Fallback: any card with an image
+        const anySrc = firstImageUrl(card);
+        if (anySrc) {
+          const href = card.url || anySrc;
+          return (
+            <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
+              <img
+                src={`${API_BASE}/img?url=${encodeURIComponent(anySrc)}`}
+                alt=""
+                className="w-full rounded-lg glass"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            </a>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
 /* ---------------------- main component ---------------------- */
 function AIChat() {
   // chat + ui
@@ -312,7 +482,7 @@ function AIChat() {
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
 
-  // restore & persist chat (already in your file)
+  // restore & persist chat
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -324,18 +494,18 @@ function AIChat() {
   }, [messages]);
   useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
 
-  // ✅ STEP 3: load server history on mount (only fills if chat is empty)
+  // load server history on mount (only if empty)
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const old = await loadHistory(API_BASE, USER_ID); // uses the helper from Step 2
+      const old = await loadHistory(API_BASE, USER_ID);
       if (!mounted || !old.length) return;
       setMessages(prev => (prev && prev.length ? prev : old.slice(-50)));
     })();
     return () => { mounted = false; };
   }, []);
 
-  // keyboard-safe viewport (your existing effect)
+  // keyboard-safe viewport
   useEffect(() => {
     const vv = window.visualViewport;
     const handleVV = () => {
@@ -354,10 +524,7 @@ function AIChat() {
     };
   }, []);
 
-  // ...rest of your component (handlers, return JSX) ...
-}
-
-  /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
+  /* ---------------------- suggestions + live previews ---------------------- */
   useEffect(() => {
     const q = (input || "").trim();
     clearTimeout(suggestTimer.current);
@@ -402,13 +569,10 @@ function AIChat() {
     return () => clearTimeout(previewTimer.current);
   }, [input, focused]);
 
+  /* ---------------------- chat helpers ---------------------- */
   const copyMessage = async (i) => {
-    try {
-      const msg = messages[i]; if (!msg) return;
-      await navigator.clipboard.writeText(msg.content || "");
-    } catch {}
+    try { const msg = messages[i]; if (msg) await navigator.clipboard.writeText(msg.content || ""); } catch {}
   };
-
   const fetchFollowups = async (q) => {
     try {
       const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q, mode: "followup" } });
@@ -416,7 +580,6 @@ function AIChat() {
       return (arr.length ? arr : ["Explain more","Pros & cons","Give steps"]).slice(0,3);
     } catch { return ["Explain more","Pros & cons","Give steps"]; }
   };
-
   const pushWithFollowups = async (md, cards, q, meta={}) => {
     setMessages((p) => [...p, { role: "assistant", content: md, cards, meta }]);
     const followups = await fetchFollowups(q);
@@ -426,7 +589,7 @@ function AIChat() {
     });
   };
 
-  /* ---------------------- send handlers — NO TRIMMING of cards ---------------------- */
+  /* ---------------------- send handlers ---------------------- */
   const handleSend = async (text = input) => {
     const content = (text || "").trim(); if (!content) return;
     setMessages((p) => [...p, { role: "user", content }]);
@@ -435,26 +598,18 @@ function AIChat() {
     try {
       const lower = content.toLowerCase();
 
-      /* 🔥 IMAGES INTENT — build a grid no matter what the backend says */
+      // 🔥 IMAGES
       if (wantsImages(content)) {
-        // Try backend first (intent: images). If it gives us cards, use them.
         let cards = [];
         try {
           const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "images", web: webSearchOn });
           cards = (r.data?.cards || []).filter(Boolean);
-        } catch (e) {
-          console.warn("images intent backend error:", e?.message || e);
-        }
-
-        // Check for images presence (any schema)
+        } catch {}
         const hasImages =
           cards.some(c =>
             c?.type === "gallery" || c?.type === "image" || c?.type === "images-grid" ||
-            firstImageUrl(c) ||
-            (Array.isArray(c?.images) && c.images.length)
+            firstImageUrl(c) || (Array.isArray(c?.images) && c.images.length)
           );
-
-        // If backend didn’t return any image cards, fall back to Unsplash sources (proxied).
         if (!hasImages) {
           const q = content.replace(/^images?:\s*/i, "").trim() || "wallpaper";
           const urls = Array.from({ length: 10 }).map((_, i) =>
@@ -462,14 +617,11 @@ function AIChat() {
           );
           cards = [{ type: "images-grid", images: urls }];
         }
-
-        const md = `Here are some images. Tap any card to open.`;
-        await pushWithFollowups(md, cards, content, { suppressSources: true });
+        await pushWithFollowups(`Here are some images. Tap any card to open.`, cards, content, { suppressSources: true });
         return;
       }
-      /* 🔥 end images branch */
 
-      /* 🔥 YOUTUBE SEARCH (works with "youtube: ..." or any query mentioning youtube/yt) */
+      // 🔥 YOUTUBE
       if (wantsYouTube(content)) {
         const q = content.replace(/^youtube:\s*/i, "");
         let results = [];
@@ -477,26 +629,20 @@ function AIChat() {
           const r = await axios.post(`${API_BASE}/search-youtube`, { q });
           results = Array.isArray(r.data?.results) ? r.data.results : [];
         } catch (e) {
-          console.warn("search-youtube failed:", e?.message || e);
-          // graceful fallback to realtime intent if available
           try {
             const r2 = await axios.post(`${API_BASE}/realtime`, { query: q || content, intent: "youtube" });
             results = Array.isArray(r2.data?.results) ? r2.data.results : (r2.data?.cards || []);
-          } catch (e2) {
-            console.warn("realtime youtube fallback failed:", e2?.message || e2);
-          }
+          } catch {}
         }
-
         const cards = (results || [])
           .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
           .filter(v => v.url)
           .slice(0, 6);
-
         await pushWithFollowups(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
         return;
       }
 
-      // ---- existing special cases (keep yours) ----
+      // Special routes
       if (lower.startsWith("google:")) {
         const q = content.replace(/^google:\s*/i, "");
         const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
@@ -505,7 +651,6 @@ function AIChat() {
         await pushWithFollowups(md, cards, content);
         return;
       }
-
       if (lower.startsWith("search:")) {
         const q = content.replace(/^search:\s*/i, "");
         const r = await axios.post(`${API_BASE}/search`, { prompt: q, web: webSearchOn });
@@ -515,21 +660,18 @@ function AIChat() {
         await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
         return;
       }
-
       if (wantsNews(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
         return;
       }
-
       if (wantsWeather(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const cards = (r.data?.cards || []).filter(Boolean);
         await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
         return;
       }
-
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
@@ -538,59 +680,19 @@ function AIChat() {
       }
 
       // ---- default chat ----
-      // ---- default chat ----
-const res = await axios.post(`${API_BASE}/chat`, {
-  prompt: content,
-  memory: [],
-  persona,
-  web: webSearchOn,
-  agent: agentOn,
-  user_id: USER_ID
-});
+      const res = await axios.post(`${API_BASE}/chat`, {
+        prompt: content,
+        memory: [],
+        persona,
+        web: webSearchOn,
+        agent: agentOn,
+        user_id: USER_ID
+      });
 
-// optional arrays → map into cards so MediaBlock can render them
-if (Array.isArray(res.data?.images) && res.data.images.length) {
-  const urls = res.data.images
-    .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
-    .filter(Boolean);
-  if (urls.length) cards.push({ type: "images-grid", images: urls });
-}
-if (Array.isArray(res.data?.youtubeResults) && res.data.youtubeResults.length) {
-  cards.push(
-    ...res.data.youtubeResults
-      .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
-      .filter(v => v.url)
-      .slice(0, 6)
-  );
-}
-
-// push to UI
-await pushWithFollowups(md, cards, content, { from: "chat" });
-
-// persist this turn to history
-await saveHistory(API_BASE, USER_ID, [
-  { role: "user", content },
-  { role: "assistant", content: md }
-]);
-
-// prefer server-provided followups if present
-const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0, 3) : [];
-if (serverFollowups.length) {
-  setMessages(prev => {
-    const copy = [...prev];
-    const last = copy[copy.length - 1];
-    if (last?.role === "assistant") {
-      copy[copy.length - 1] = { ...last, followups: serverFollowups };
-    }
-    return copy;
-  });
-}
       const md = res.data?.reply || res.data?.text || "";
-
-      // start with any cards your backend already sent
       let cards = (res.data?.cards || []).filter(Boolean);
 
-      // map optional arrays into cards so MediaBlock can render them
+      // optional arrays → map into cards so MediaBlock can render them
       if (Array.isArray(res.data?.images) && res.data.images.length) {
         const urls = res.data.images
           .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
@@ -607,26 +709,41 @@ if (serverFollowups.length) {
         ];
       }
 
-      await pushWithFollowups(md, cards, content);
+      // push to UI
+      await pushWithFollowups(md, cards, content, { from: "chat" });
+
+      // persist this turn to history
+      await saveHistory(API_BASE, USER_ID, [
+        { role: "user", content },
+        { role: "assistant", content: md }
+      ]);
+
+      // prefer server-provided followups if present
+      const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0, 3) : [];
+      if (serverFollowups.length) {
+        setMessages(prev => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, followups: serverFollowups };
+          return copy;
+        });
+      }
     } catch (err) {
       console.error("handleSend error:", err?.message || err);
       await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
     }
   };
 
-  /* ---------------------- Image uploader (single temp message + update) ---------------------- */
+  /* ---------------------- Image uploader ---------------------- */
   const sendImageForAnalysis = async (file) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
       await pushWithFollowups("Please pick an image file (JPG/PNG/WEBP).", [], "not image", { suppressSources: true });
       return;
     }
-
-    // Generate local preview URL
     let localUrl = "";
     try { localUrl = URL.createObjectURL(file); } catch {}
 
-    // Insert placeholder message and keep index for later replacement
     const tempMsg = {
       role: "assistant",
       content: "Analyzing your image...",
@@ -634,7 +751,7 @@ if (serverFollowups.length) {
       meta: { suppressSources: true, localPreview: true }
     };
     setMessages((prev) => [...prev, tempMsg]);
-    const index = messages.length + 1; // predicted index after set
+    const index = messages.length + 1;
 
     try {
       const form = new FormData();
@@ -653,7 +770,6 @@ if (serverFollowups.length) {
       );
       const finalCards = backendHasImage ? cards : [{ type: "gallery", images: [localUrl] }, ...cards];
 
-      // ✅ Replace temp message instead of pushing a new one
       setMessages((prev) => {
         const copy = [...prev];
         copy[index] = { role: "assistant", content: md, cards: finalCards, meta: { fromImage: true } };
@@ -663,10 +779,7 @@ if (serverFollowups.length) {
     } catch (e) {
       setMessages((prev) => {
         const copy = [...prev];
-        copy[index] = {
-          ...copy[index],
-          content: "Image analysis failed. Please try again."
-        };
+        copy[index] = { ...copy[index], content: "Image analysis failed. Please try again." };
         return copy;
       });
     } finally {
@@ -674,187 +787,7 @@ if (serverFollowups.length) {
     }
   };
 
-  /* ---------------------- organized render helpers ---------------------- */
-  const extractTitle = (md="") => {
-    const h1 = md.match(/^\s*#\s+(.+)/m); if (h1) return h1[1].trim();
-    const firstLine = md.split("\n").find(x => x.trim()); if (!firstLine) return "Answer";
-    const s = firstLine.replace(/[*_#>]+/g,"").trim();
-    const end = s.indexOf(". ") >= 0 ? s.indexOf(". ") + 1 : Math.min(90, s.length);
-    return s.slice(0,end).trim();
-  };
-  const extractSummary = (md="") => {
-    const lines = md.split("\n").map(l=>l.trim()).filter(Boolean);
-    const bullets = lines.filter(l => /^[-*•]\s+/.test(l)).slice(0,3).map(l => l.replace(/^[-*•]\s+/, ""));
-    if (bullets.length>=2) return bullets;
-    const para = lines.find(l => /^[A-Za-z0-9]/.test(l)); if (!para) return [];
-    return para.split(/(?<=[.!?])\s+/).slice(0,3);
-  };
-  const extractSteps = (md="") => {
-    const blocks = md.split("\n");
-    const numbered = blocks.filter(l => /^\d+\.\s+/.test(l)).slice(0,10).map(l => l.replace(/^\d+\.\s+/,""));
-    if (numbered.length) return numbered;
-    const dots = blocks.filter(l => /^[-*•]\s+/.test(l)).slice(0,6).map(l => l.replace(/^[-*•]\s+/, ""));
-    return dots;
-  };
-
-  const OrganizedAnswer = ({ md }) => {
-    const title = extractTitle(md);
-    const summary = extractSummary(md);
-    const steps = extractSteps(md);
-    return (
-      <>
-        <div className="org-title">{title}</div>
-        {summary.length>0 && (<div className="org-section"><div className="org-sub">Summary</div><ul className="org-list">{summary.map((s,i)=><li key={i}>{s}</li>)}</ul></div>)}
-        {steps.length>0 && (<div className="org-section"><div className="org-sub">Step-by-step</div><ol className="org-steps">{steps.map((s,i)=><li key={i}>{s}</li>)}</ol></div>)}
-        <div className="org-section">
-          <div className="org-sub">Full answer</div>
-          <div className="answer expanded">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}
-              components={{
-                img: (props) => {
-                  const src = props.src || "";
-                  return (
-                    <img {...props} src={src} className="rounded-lg my-2 w-full glass" loading="lazy" referrerPolicy="no-referrer"
-                      onError={(e)=>{ const el=e.currentTarget; const step=el.dataset.step||"orig";
-                        if(step==="orig"){ el.dataset.step="proxy"; el.src = toProxy(src); return; }
-                        if(step==="proxy"){ el.dataset.step="fallback"; el.src = unsplash("image"); return; }
-                        el.style.display="none"; }} />
-                  );
-                },
-                iframe: (p) => <div className="embed-responsive embed-16by9 rounded overflow-hidden my-2 glass"><iframe {...p} allowFullScreen /></div>,
-                a: ({node, ...p}) => <a {...p} className="underline decoration-gray-600 hover:text-gray-200" target="_blank" rel="noreferrer" />,
-                code: ({node, inline, className, children, ...p}) => inline
-                  ? <code className={className} {...p}>{children}</code>
-                  : <pre className={className} style={{ position:"relative" }}>
-                      <button className="code-copy-btn" onClick={() => navigator.clipboard.writeText(String(children || ""))} title="Copy code">Copy</button>
-                      <code {...p}>{children}</code>
-                    </pre>,
-              }}
-            >
-              {md}
-            </ReactMarkdown>
-          </div>
-        </div>
-      </>
-    );
-  };
-
-  /* ---------------------- Media block (images, youtube, weather) ---------------------- */
-function MediaBlock({ cards = [] }) {
-  if (!cards || cards.length === 0) return null;
-
-  return (
-    <div className="grid grid-cols-1 gap-8 mt-3">
-      {cards.map((card, i) => {
-        // Images grid (array of urls or {url})
-        if (card?.type === "images-grid" && Array.isArray(card.images)) {
-          const items = card.images.slice(0, 12);
-          return (
-            <div key={`img-grid-${i}`} className="grid grid-cols-2 gap-2">
-              {items.map((it, j) => {
-                const u = typeof it === "string" ? it : (it?.url || "");
-                if (!u) return null;
-                return (
-                  <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
-                    <img
-                      src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
-                      alt=""
-                      className="w-full rounded-lg glass"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                    />
-                  </a>
-                );
-              })}
-            </div>
-          );
-        }
-
-        // Gallery (same idea)
-        if (card?.type === "gallery" && Array.isArray(card.images)) {
-          const urls = card.images
-            .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
-            .filter(Boolean)
-            .slice(0, 12);
-          return (
-            <div key={`gallery-${i}`} className="grid grid-cols-2 gap-2">
-              {urls.map((u, j) => (
-                <img
-                  key={`gal-${i}-${j}`}
-                  src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
-                  alt=""
-                  className="w-full rounded-lg glass"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                />
-              ))}
-            </div>
-          );
-        }
-
-        // Single image card (backend might return {type:"image", url})
-        if (card?.type === "image" && card.url) {
-          return (
-            <img
-              key={`image-${i}`}
-              src={`${API_BASE}/img?url=${encodeURIComponent(card.url)}`}
-              alt=""
-              className="w-full rounded-lg glass"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          );
-        }
-
-        // Weather
-        if (card?.type === "weather") {
-          return <WeatherCard key={`wx-${i}`} card={card} />;
-        }
-
-        // YouTube
-        if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
-          const id = youTubeIdFromUrl(card.url || "");
-          if (!id) return null;
-          return (
-            <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${id}`}
-                title={card.title || "YouTube"}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            </div>
-          );
-        }
-
-        // ✅ Fallback: any card that simply has an image should render as an image card
-        const anySrc = firstImageUrl(card);
-        if (anySrc) {
-          const href = card.url || anySrc;
-          return (
-            <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
-              <img
-                src={`${API_BASE}/img?url=${encodeURIComponent(anySrc)}`}
-                alt=""
-                className="w-full rounded-lg glass"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
-              />
-            </a>
-          );
-        }
-
-        return null;
-      })}
-    </div>
-  );
-}
-
-  /* ---------------------- + menu helpers ---------------------- */
+  /* ---------------------- menu helpers ---------------------- */
   const clearAll = () => {
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
@@ -866,7 +799,6 @@ function MediaBlock({ cards = [] }) {
     setInput("");
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
   };
-
   const [menuOpen, setMenuOpen] = useState(false);
 
   /* ---------------------- render ---------------------- */
@@ -947,7 +879,7 @@ function MediaBlock({ cards = [] }) {
                   {isUser && <div className="answer expanded">{msg.content}</div>}
                   {!isUser && msg.content && <OrganizedAnswer md={msg.content} />}
 
-                  {/* ✅ Render images, galleries, youtube, weather */}
+                  {/* Media */}
                   {!isUser && mediaCards.length > 0 && <MediaBlock cards={mediaCards} />}
 
                   {/* Follow-up suggestions */}
@@ -1049,52 +981,52 @@ function MediaBlock({ cards = [] }) {
         </div>
       )}
 
-      {/* Composer — clean (no image button in middle) */}
-<div
-  className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
-  style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
->
-  <div className="max-w-4xl mx-auto px-3 pt-2">
-    <div className="flex items-center gap-2">
-      <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setTimeout(() => setFocused(false), 150)}
-          rows={1}
-          inputMode="text"
-          placeholder=""
-          className="w-full bg-transparent outline-none resize-none leading-[1.6]"
-          style={{ height: 44, maxHeight: 44, overflowY: "auto" }}
-          aria-label="Type your message"
-        />
-      </div>
-      <button
-        onClick={() => handleSend(input)}
-        className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
-        title="Send"
+      {/* Composer */}
+      <div
+        className="fixed-bottom z-50 border-t border-white/10 bg-black/80 backdrop-blur"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
       >
-        <FiArrowRight />
-      </button>
-    </div>
+        <div className="max-w-4xl mx-auto px-3 pt-2">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 rounded-2xl border border-white/12 bg-white/5 backdrop-blur px-3 py-2 focus-within:border-white/25 transition">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setTimeout(() => setFocused(false), 150)}
+                rows={1}
+                inputMode="text"
+                placeholder=""
+                className="w-full bg-transparent outline-none resize-none leading-[1.6]"
+                style={{ height: 44, maxHeight: 44, overflowY: "auto" }}
+                aria-label="Type your message"
+              />
+            </div>
+            <button
+              onClick={() => handleSend(input)}
+              className="shrink-0 h-10 px-4 rounded-2xl bg-white text-black font-semibold hover:bg-gray-200 active:scale-[0.99] transition"
+              title="Send"
+            >
+              <FiArrowRight />
+            </button>
+          </div>
 
-    <div className="flex gap-2 flex-wrap mt-2">
-      {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
-        <button
-          key={s}
-          onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)}
-          className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
-        >
-          {s}
-             </button>
+          <div className="flex gap-2 flex-wrap mt-2">
+            {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSend(`steps to do ${s.toLowerCase()} project`)}
+                className="px-3 py-1 rounded-full text-sm border border-white/12 bg-white/5 hover:bg-white hover:text-black transition"
+              >
+                {s}
+              </button>
             ))}
           </div>
         </div>
