@@ -301,19 +301,26 @@ function AIChat() {
     };
   }, []);
 
-  /* ---------------------- suggestions + live previews (safe to rank here) ---------------------- */
-  useEffect(() => {
-    const q = (input || "").trim();
-    clearTimeout(suggestTimer.current);
-    if (!focused || q.length < 1) { setTextSug([]); return; }
-    suggestTimer.current = setTimeout(async () => {
-      try {
-        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
-        setTextSug((data?.suggestions || []).slice(0, 8));
-      } catch { setTextSug([]); }
-    }, 250);
-    return () => clearTimeout(suggestTimer.current);
-  }, [input, focused]);
+  // Suggestions — slower debounce + ignore tiny queries
+useEffect(() => {
+  const q = (input || "").trim();
+  clearTimeout(suggestTimer.current);
+
+  if (!focused || q.length < 3) {  // was <1
+    setTextSug([]);
+    return;
+  }
+
+  suggestTimer.current = setTimeout(async () => {
+    try {
+      const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
+      setTextSug((data?.suggestions || []).slice(0, 8));
+    } catch {
+      setTextSug([]);
+    }
+  }, 600); // was 250 -> smoother
+  return () => clearTimeout(suggestTimer.current);
+}, [input, focused]);
 
   useEffect(() => {
     const q = (input || "").trim();
