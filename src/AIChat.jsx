@@ -374,13 +374,87 @@ const OrganizedAnswer = ({ md }) => {
 };
 
 /* ---------------------- Media block (images, youtube, weather) ---------------------- */
-function MediaBlock({ cards = [] }) {
+const YT_HOSTS = new Set([
+  "youtube.com","www.youtube.com","m.youtube.com",
+  "youtu.be","www.youtu.be",
+  "youtube-nocookie.com","www.youtube-nocookie.com",
+]);
+
+function isYouTube(href = "") {
+  try {
+    const u = new URL(href);
+    return YT_HOSTS.has(u.hostname);
+  } catch { return false; }
+}
+
+function youTubeIdFromUrl(href = "") {
+  try {
+    const u = new URL(href);
+
+    // youtu.be/<id>
+    if (u.hostname.includes("youtu.be")) {
+      const seg = u.pathname.split("/").filter(Boolean);
+      return seg[0] || null;
+    }
+    // watch?v=<id>
+    if (u.searchParams.has("v")) return u.searchParams.get("v");
+    // /embed/<id>
+    if (u.pathname.startsWith("/embed/")) {
+      const seg = u.pathname.split("/").filter(Boolean);
+      return seg[1] || null;
+    }
+    // /shorts/<id>
+    if (u.pathname.startsWith("/shorts/")) {
+      const seg = u.pathname.split("/").filter(Boolean);
+      return seg[1] || null;
+    }
+    // fallback: last non-empty segment
+    const seg = u.pathname.split("/").filter(Boolean);
+    return seg.pop() || null;
+  } catch { return null; }
+}
+
+function firstImageUrl(card = {}) {
+  // direct fields
+  const direct = [
+    card.image, card.image_url, card.imageUrl,
+    card.thumbnail, card.thumbnail_url, card.thumbnailUrl,
+    card.cover, card.cover_image, card.coverImage,
+  ].filter(Boolean);
+
+  if (direct.length && typeof direct[0] === "string") return direct[0];
+
+  // arrays: images[] / outputs[]
+  const arrays = [card.images, card.outputs].filter(Array.isArray);
+  for (const arr of arrays) {
+    for (const it of arr) {
+      if (typeof it === "string") return it;
+      if (it && typeof it.url === "string") return it.url;
+      if (it && typeof it.src === "string") return it.src;
+    }
+  }
+
+  // nested media
+  if (card.media && typeof card.media === "object") {
+    if (typeof card.media.url === "string") return card.media.url;
+    if (typeof card.media.src === "string") return card.media.src;
+  }
+
+  return null;
+}
+
+// no-op unless you pass your own toProxy; keeps your current behavior
+function defaultToProxy(u = "") {
+  return u;
+}
+
+function MediaBlock({ cards = [], toProxy = defaultToProxy }) {
   if (!cards || cards.length === 0) return null;
 
   return (
     <div className="grid grid-cols-1 gap-8 mt-3">
       {cards.map((card, i) => {
-        // --- Images grid (array of urls or {url}) ---
+        /* ---------- Images grid (array of urls or {url}) ---------- */
         if (card?.type === "images-grid" && Array.isArray(card.images)) {
           const items = card.images.slice(0, 12);
           return (
@@ -405,7 +479,7 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Gallery ---
+        /* --------------------------- Gallery --------------------------- */
         if (card?.type === "gallery" && Array.isArray(card.images)) {
           const urls = card.images
             .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -428,7 +502,7 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Single image card ---
+        /* ---------------------- Single image card ---------------------- */
         if (card?.type === "image" && card.url) {
           return (
             <img
@@ -443,7 +517,7 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // --- Image Analysis preview (vision cards etc.) ---
+        /* --------------- Image Analysis preview (vision) --------------- */
         if (
           card?.type === "vision" ||
           card?.type === "image-analysis" ||
@@ -471,37 +545,47 @@ function MediaBlock({ cards = [] }) {
           }
         }
 
-        // --- Weather ---
+        /* ----------------------------- Weather ----------------------------- */
         if (card?.type === "weather") {
           return <WeatherCard key={`wx-${i}`} card={card} />;
         }
 
-        // --- YouTube ---
-        if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
-          const id = youTubeIdFromUrl(card.url || "");
+        /* ----------------------------- YouTube ----------------------------- */
+        // Accept multiple possible link fields
+        const linkHref =
+          card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || "";
+
+        if (card?.type === "youtube" || (linkHref && isYouTube(linkHref))) {
+          const id = youTubeIdFromUrl(linkHref);
           if (!id) return null;
+
           return (
             <div
               key={`yt-${i}`}
               className="embed-responsive embed-16by9 rounded overflow-hidden glass"
-              style={{ maxHeight: 280 }}
+              style={{ maxHeight: 280, position: "relative", pointerEvents: "auto" }}
             >
               <iframe
-                src={`https://www.youtube.com/embed/${id}`}
-                title={card.title || "YouTube"}
+                src={`https://www.youtube.com/embed/${id}?playsinline=1`}
+                title={card?.title || "YouTube"}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+                frameBorder="0"
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
               />
             </div>
           );
         }
 
-        // --- Fallback: any card with an image-like field ---
+        /* ---------- Fallback: any card with an image-like field ---------- */
         const anySrc = firstImageUrl(card);
         if (anySrc) {
-          const href = card.url || anySrc;
+          const href =
+            card?.url || card?.href || card?.link || card?.permalink || card?.sourceUrl || anySrc;
 
-          // If the card points to YouTube, render an embed (playable)
+          // YouTube inside generic cards -> embed playable
           if (isYouTube(href)) {
             const id = youTubeIdFromUrl(href);
             if (id) {
@@ -509,13 +593,17 @@ function MediaBlock({ cards = [] }) {
                 <div
                   key={`yt-fallback-${i}`}
                   className="embed-responsive embed-16by9 rounded overflow-hidden glass"
-                  style={{ maxHeight: 280 }}
+                  style={{ maxHeight: 280, position: "relative", pointerEvents: "auto" }}
                 >
                   <iframe
-                    src={`https://www.youtube.com/embed/${id}`}
-                    title={card.title || "YouTube"}
+                    src={`https://www.youtube.com/embed/${id}?playsinline=1`}
+                    title={card?.title || "YouTube"}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    frameBorder="0"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
                   />
                 </div>
               );
