@@ -377,12 +377,10 @@ const OrganizedAnswer = ({ md }) => {
 function MediaBlock({ cards = [] }) {
   if (!cards || cards.length === 0) return null;
 
-  const prox = (u) => `${API_BASE}/img?url=${encodeURIComponent(u || "")}`;
-
   return (
     <div className="grid grid-cols-1 gap-8 mt-3">
       {cards.map((card, i) => {
-        // Images grid (array of urls or {url})
+        // --- Images grid (array of urls or {url}) ---
         if (card?.type === "images-grid" && Array.isArray(card.images)) {
           const items = card.images.slice(0, 12);
           return (
@@ -393,7 +391,7 @@ function MediaBlock({ cards = [] }) {
                 return (
                   <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
                     <img
-                      src={prox(u)}
+                      src={toProxy(u)}
                       alt=""
                       className="w-full rounded-lg glass"
                       loading="lazy"
@@ -407,7 +405,7 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // Gallery
+        // --- Gallery ---
         if (card?.type === "gallery" && Array.isArray(card.images)) {
           const urls = card.images
             .map((it) => (typeof it === "string" ? it : (it?.url || it?.thumbnail || it?.thumb)))
@@ -418,7 +416,7 @@ function MediaBlock({ cards = [] }) {
               {urls.map((u, j) => (
                 <img
                   key={`gal-${i}-${j}`}
-                  src={prox(u)}
+                  src={toProxy(u)}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
@@ -427,6 +425,21 @@ function MediaBlock({ cards = [] }) {
                 />
               ))}
             </div>
+          );
+        }
+
+        // --- Single image card ---
+        if (card?.type === "image" && card.url) {
+          return (
+            <img
+              key={`image-${i}`}
+              src={toProxy(card.url)}
+              alt=""
+              className="w-full rounded-lg glass"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
           );
         }
 
@@ -439,7 +452,9 @@ function MediaBlock({ cards = [] }) {
           const u =
             card.image_url ||
             (typeof card.image === "string" ? card.image : card.image?.url) ||
-            card.thumbnail || card.thumb || null;
+            card.thumbnail ||
+            card.thumb ||
+            null;
 
           if (u) {
             return (
@@ -456,32 +471,21 @@ function MediaBlock({ cards = [] }) {
           }
         }
 
-        // Single image card
-        if (card?.type === "image" && card.url) {
-          return (
-            <img
-              key={`image-${i}`}
-              src={prox(card.url)}
-              alt=""
-              className="w-full rounded-lg glass"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          );
-        }
-
-        // Weather
+        // --- Weather ---
         if (card?.type === "weather") {
           return <WeatherCard key={`wx-${i}`} card={card} />;
         }
 
-        // YouTube
+        // --- YouTube ---
         if (card?.type === "youtube" || (card?.url && isYouTube(card.url))) {
           const id = youTubeIdFromUrl(card.url || "");
           if (!id) return null;
           return (
-            <div key={`yt-${i}`} className="embed-responsive embed-16by9 rounded overflow-hidden glass" style={{ maxHeight: 280 }}>
+            <div
+              key={`yt-${i}`}
+              className="embed-responsive embed-16by9 rounded overflow-hidden glass"
+              style={{ maxHeight: 280 }}
+            >
               <iframe
                 src={`https://www.youtube.com/embed/${id}`}
                 title={card.title || "YouTube"}
@@ -492,14 +496,37 @@ function MediaBlock({ cards = [] }) {
           );
         }
 
-        // Fallback: any card with an image
+        // --- Fallback: any card with an image-like field ---
         const anySrc = firstImageUrl(card);
         if (anySrc) {
           const href = card.url || anySrc;
+
+          // If the card points to YouTube, render an embed (playable)
+          if (isYouTube(href)) {
+            const id = youTubeIdFromUrl(href);
+            if (id) {
+              return (
+                <div
+                  key={`yt-fallback-${i}`}
+                  className="embed-responsive embed-16by9 rounded overflow-hidden glass"
+                  style={{ maxHeight: 280 }}
+                >
+                  <iframe
+                    src={`https://www.youtube.com/embed/${id}`}
+                    title={card.title || "YouTube"}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              );
+            }
+          }
+
+          // Otherwise show the image (via proxy)
           return (
             <a key={`img-any-${i}`} href={href} target="_blank" rel="noreferrer" className="block">
               <img
-                src={prox(anySrc)}
+                src={toProxy(anySrc)}
                 alt=""
                 className="w-full rounded-lg glass"
                 loading="lazy"
