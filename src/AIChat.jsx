@@ -1096,11 +1096,10 @@ function MediaBlock({ cards = [] }) {
           {s}
         </button>
       ))}
+      </div>
     </div>
   </div>
-</div>
-</div>  {/* closes the page wrapper inside return */}
 );
-}       {/* <-- single closing brace for function AIChat */}
+}
 
 export default AIChat;
