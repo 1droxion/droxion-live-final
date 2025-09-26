@@ -915,7 +915,7 @@ function AIChat() {
                     rel="noreferrer"
                     className="underline decoration-gray-600 hover:text-gray-200"
                   >
-                    🔗 Droxion is thinking…
+                    Droxion Think.
                   </a>
                 </div>
               </div>
