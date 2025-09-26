@@ -538,7 +538,8 @@ function AIChat() {
       }
 
       // ---- default chat ----
-      const res = await axios.post(`${API_BASE}/chat`, {
+      // ---- default chat ----
+const res = await axios.post(`${API_BASE}/chat`, {
   prompt: content,
   memory: [],
   persona,
@@ -547,21 +548,36 @@ function AIChat() {
   user_id: USER_ID
 });
 
-// Get reply from backend
-const md = res.data?.reply || "No reply available";
-const cards = res.data?.cards || [];
+const md = res.data?.reply || res.data?.text || "";
+let cards = Array.isArray(res.data?.cards) ? res.data.cards.filter(Boolean) : [];
 
-// Push reply to UI
+// optional arrays → map into cards so MediaBlock can render them
+if (Array.isArray(res.data?.images) && res.data.images.length) {
+  const urls = res.data.images
+    .map(u => (typeof u === "string" ? u : (u?.url || u?.thumbnail || u?.thumb)))
+    .filter(Boolean);
+  if (urls.length) cards.push({ type: "images-grid", images: urls });
+}
+if (Array.isArray(res.data?.youtubeResults) && res.data.youtubeResults.length) {
+  cards.push(
+    ...res.data.youtubeResults
+      .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
+      .filter(v => v.url)
+      .slice(0, 6)
+  );
+}
+
+// push to UI
 await pushWithFollowups(md, cards, content, { from: "chat" });
 
-// ✅ Persist conversation turn to history
+// persist this turn to history
 await saveHistory(API_BASE, USER_ID, [
   { role: "user", content },
   { role: "assistant", content: md }
 ]);
 
-// ✅ (Optional) Prefer server followups if available
-const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0,3) : [];
+// prefer server-provided followups if present
+const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0, 3) : [];
 if (serverFollowups.length) {
   setMessages(prev => {
     const copy = [...prev];
