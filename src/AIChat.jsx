@@ -865,31 +865,45 @@ const sendImageForAnalysis = async (file) => {
       )}
 
       {/* chat scroll area */}
-      <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling:"touch" }}>
-        <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
-          <div className="space-y-4">
-            {messages.map((msg, i) => {
-              const isUser = msg.role === "user";
+<div
+  ref={scrollRef}
+  className="chat-scroll flex-1 overflow-y-auto"
+  style={{ WebkitOverflowScrolling: "touch" }}
+>
+  <div className="max-w-4xl mx-auto w-full px-3 pb-32 pt-3">
+    <div className="space-y-4">
+      {messages.map((msg, i) => {
+        const isUser = msg.role === "user";
 
-              const mediaCards = (msg.cards || []).filter(c =>
-                ["youtube", "image", "images", "gallery", "images-grid", "weather"].includes(c.type) ||
-                (c.url && isYouTube(c.url))
-              );
+        // ✅ include "web" type so /search results show
+        const mediaCards = (msg.cards || []).filter(
+          (c) =>
+            [
+              "youtube",
+              "image",
+              "images",
+              "gallery",
+              "images-grid",
+              "weather",
+              "web",
+            ].includes(c.type) ||
+            (c.url && (isYouTube(c.url) || c.type === "web"))
+        );
 
-              return (
-                <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="small-label">{isUser ? "You" : "Droxion"}</div>
-                    {!isUser && msg.content && (
-                      <button
-                        onClick={() => copyMessage(i)}
-                        className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
-                        title="Copy"
-                      >
-                        <FaRegCopy /> Copy
-                      </button>
-                    )}
-                  </div>
+        return (
+          <div key={i} className={`msg ${isUser ? "glass-2" : "glass"}`}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="small-label">{isUser ? "You" : "Droxion"}</div>
+              {!isUser && msg.content && (
+                <button
+                  onClick={() => copyMessage(i)}
+                  className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1"
+                  title="Copy"
+                >
+                  <FaRegCopy /> Copy
+                </button>
+              )}
+            </div>
 
                   {/* User vs Assistant message text */}
                   {isUser && <div className="answer expanded">{msg.content}</div>}
