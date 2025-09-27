@@ -523,50 +523,63 @@ function AIChat() {
     };
   }, []);
 
-  /* ---------------------- suggestions + live previews ---------------------- */
-  useEffect(() => {
-    const q = (input || "").trim();
-    clearTimeout(suggestTimer.current);
-    if (!focused || q.length < 1) { setTextSug([]); return; }
-    suggestTimer.current = setTimeout(async () => {
-      try {
-        const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
-        setTextSug((data?.suggestions || []).slice(0, 8));
-      } catch { setTextSug([]); }
-    }, 250);
-    return () => clearTimeout(suggestTimer.current);
-  }, [input, focused]);
+  /* ---------------------- visit ping (DAU/WAU/MAU) ---------------------- */
+useEffect(() => {
+  try {
+    const uid = getUserId(); // your existing stable localStorage id
+    axios.post(`${API_BASE}/track`, {
+      type: "visit",
+      user_id: uid,
+      page: "AIChat",
+      time: new Date().toISOString()
+    }).catch(() => {});
+  } catch {}
+}, []);
 
-  useEffect(() => {
-    const q = (input || "").trim();
-    clearTimeout(previewTimer.current);
-    if (!focused || q.length < 1) return;
-    cancelPrev.current.cancel?.();
-    const src = axios.CancelToken.source();
-    cancelPrev.current = { cancel: () => src.cancel("new query") };
-    previewTimer.current = setTimeout(async () => {
-      try {
-        const reqs = [
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
-          axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
-        ];
-        const [rn, rw, rc] = await Promise.all(reqs);
+/* ---------------------- suggestions + live previews ---------------------- */
+useEffect(() => {
+  const q = (input || "").trim();
+  clearTimeout(suggestTimer.current);
+  if (!focused || q.length < 1) { setTextSug([]); return; }
+  suggestTimer.current = setTimeout(async () => {
+    try {
+      const { data } = await axios.get(`${API_BASE}/suggest`, { params: { q } });
+      setTextSug((data?.suggestions || []).slice(0, 8));
+    } catch { setTextSug([]); }
+  }, 250);
+  return () => clearTimeout(suggestTimer.current);
+}, [input, focused]);
 
-        const newsRanked = rankAndTrim(
-          (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 10
-        ).filter(c => !!bestPreview(c, true));
-        setNews(newsRanked);
+useEffect(() => {
+  const q = (input || "").trim();
+  clearTimeout(previewTimer.current);
+  if (!focused || q.length < 1) return;
+  cancelPrev.current.cancel?.();
+  const src = axios.CancelToken.source();
+  cancelPrev.current = { cancel: () => src.cancel("new query") };
+  previewTimer.current = setTimeout(async () => {
+    try {
+      const reqs = [
+        axios.post(`${API_BASE}/realtime`, { query: q, intent: "news"   }, { cancelToken: src.token }).catch(()=>null),
+        axios.post(`${API_BASE}/realtime`, { query: q, intent: "weather"}, { cancelToken: src.token }).catch(()=>null),
+        axios.post(`${API_BASE}/realtime`, { query: q, intent: "crypto" }, { cancelToken: src.token }).catch(()=>null),
+      ];
+      const [rn, rw, rc] = await Promise.all(reqs);
 
-        const wcards = (rw?.data?.cards || []).filter(Boolean);
-        const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
-        setWeather(w || null);
+      const newsRanked = rankAndTrim(
+        (rn?.data?.cards || []).filter(Boolean).map(c => ({ ...c, image: firstImageUrl(c) || c.image, type: c.type || "news" })), 10
+      ).filter(c => !!bestPreview(c, true));
+      setNews(newsRanked);
 
-        setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
-      } catch {}
-    }, 350);
-    return () => clearTimeout(previewTimer.current);
-  }, [input, focused]);
+      const wcards = (rw?.data?.cards || []).filter(Boolean);
+      const w = wcards.find((c)=>c.type==="weather") || wcards[0] || null;
+      setWeather(w || null);
+
+      setCrypto((rc?.data?.cards || []).filter(Boolean).slice(0,6));
+    } catch {}
+  }, 350);
+  return () => clearTimeout(previewTimer.current);
+}, [input, focused]);
 
   /* ---------------------- chat helpers ---------------------- */
   const copyMessage = async (i) => {
