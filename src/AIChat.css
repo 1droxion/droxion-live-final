@@ -82,6 +82,32 @@ svg { color: currentColor; }
 .small-label{ font-size:11px;color:var(--muted); }
 .answer.expanded{ white-space:pre-wrap; line-height:1.6; }
 
+/* ---------- Google Link-Card Styling ---------- */
+.linkcard-thumb {
+  max-height: 180px;
+  width: 100%;
+  object-fit: cover;
+  border-radius: 0.5rem;
+}
+
+.link-card-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.link-card-subtitle img {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+a:hover .linkcard-thumb {
+  opacity: 0.95;
+}
 /* ---------- sources preview (web cards) ---------- */
 .sources-grid{
   display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;
