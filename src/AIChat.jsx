@@ -11,6 +11,7 @@ import {
   FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
   FiArrowRight
 } from "react-icons/fi";
+import { Analytics } from "@vercel/analytics/react";  // ✅ Added for Vercel Analytics
 import "./AIChat.css";
 
 const API_BASE = "https://droxion-backend.onrender.com";
@@ -202,7 +203,13 @@ function WeatherCard({ card }) {
     </div>
   );
 }
+return (
+  <div className="ai-chat-container">
+    {/* ...all your chat UI here... */}
 
+    <Analytics /> {/* ✅ Tracks page views */}
+  </div>
+);
 /* ---------------------- Tools Menu (single + menu) ---------------------- */
 function ToolsMenu({
   onSendImageFile,
