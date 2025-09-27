@@ -337,7 +337,6 @@ const OrganizedAnswer = ({ md }) => {
     </>
   );
 };
-
 /* ---------------------- Media block (images, youtube, weather) ---------------------- */
 function MediaBlock({ cards = [] }) {
   if (!cards || cards.length === 0) return null;
