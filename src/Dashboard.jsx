@@ -1,3 +1,5 @@
+import { ActiveUsersCard } from "./ActiveUsersCard"; 
+// or if you pasted the block directly in Dashboard.jsx, you can skip this import
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
@@ -40,6 +42,8 @@ export function ActiveUsersCard() {
             <div className="text-xs text-gray-400">MAU</div>
             <div className="text-3xl font-bold">{data.mau}</div>
           </div>
+          <div className="grid gap-4"><ActiveUsersCard />
+         </div>
         </div>
       )}
     </div>
