@@ -1017,7 +1017,7 @@ function AIChat() {
             </button>
           </div>
 
-          <div className="flex gap-2 flex-wrap mt-2">
+                    <div className="flex gap-2 flex-wrap mt-2">
             {["Cinematic", "Anime", "Futuristic", "Fantasy", "Realistic"].map((s) => (
               <button
                 key={s}
@@ -1030,17 +1030,11 @@ function AIChat() {
           </div>
         </div>
       </div>
+
+      {/* ✅ Vercel Analytics at the very bottom of the ONE return */}
+      <Analytics />
     </div>
   );
 }
-return (
-  <div className="ai-chat-container">
-    {/* ...all your chat UI here... */}
-
-    {/* ✅ Add Analytics here at very bottom */}
-    <Analytics />
-  </div>
-);
-}  // <— keep this closing brace
 
 export default AIChat;
