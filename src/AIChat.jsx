@@ -337,7 +337,7 @@ const OrganizedAnswer = ({ md }) => {
     </>
   );
 };
-/* ---------------------- Media block (images, youtube, weather) ---------------------- */
+/* ---------------------- Media block (images, youtube, weather, google) ---------------------- */
 function MediaBlock({ cards = [] }) {
   if (!cards || cards.length === 0) return null;
 
@@ -425,6 +425,52 @@ function MediaBlock({ cards = [] }) {
                 allowFullScreen
               />
             </div>
+          );
+        }
+
+        // Google web result (link-card)
+        if (card?.type === "link-card") {
+          return (
+            <a
+              key={`lnk-${i}`}
+              href={card.href || card.url || "#"}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-lg p-3 bg-[var(--glass)] hover:bg-[var(--hover)] transition"
+            >
+              {/* thumbnail if available */}
+              {card.thumb && (
+                <img
+                  src={`${API_BASE}/img?url=${encodeURIComponent(card.thumb)}`}
+                  alt=""
+                  className="w-full rounded mb-2 object-cover linkcard-thumb"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
+              )}
+
+              {/* favicon + domain */}
+              <div className="flex items-center gap-2 text-xs opacity-70 mb-1">
+                {card.favicon && (
+                  <img
+                    src={card.favicon}
+                    alt=""
+                    className="w-4 h-4 rounded"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
+                )}
+                <span>{card.subtitle || card.source || "Google"}</span>
+              </div>
+
+              {/* title + snippet */}
+              <div className="font-semibold leading-snug">{card.title}</div>
+              {card.text && (
+                <p className="text-sm opacity-80 mt-1 line-clamp-3">{card.text}</p>
+              )}
+            </a>
           );
         }
 
