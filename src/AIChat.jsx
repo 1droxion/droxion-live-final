@@ -203,13 +203,6 @@ function WeatherCard({ card }) {
     </div>
   );
 }
-return (
-  <div className="ai-chat-container">
-    {/* ...all your chat UI here... */}
-
-    <Analytics /> {/* ✅ Tracks page views */}
-  </div>
-);
 /* ---------------------- Tools Menu (single + menu) ---------------------- */
 function ToolsMenu({
   onSendImageFile,
@@ -1040,5 +1033,14 @@ function AIChat() {
     </div>
   );
 }
+return (
+  <div className="ai-chat-container">
+    {/* ...all your chat UI here... */}
+
+    {/* ✅ Add Analytics here at very bottom */}
+    <Analytics />
+  </div>
+);
+}  // <— keep this closing brace
 
 export default AIChat;
