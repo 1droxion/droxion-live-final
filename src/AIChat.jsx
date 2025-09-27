@@ -12,7 +12,6 @@ import {
   FiArrowRight
 } from "react-icons/fi";
 import "./AIChat.css";
-import { Analytics } from "@vercel/analytics/next"
 
 const API_BASE = "https://droxion-backend.onrender.com";
 
