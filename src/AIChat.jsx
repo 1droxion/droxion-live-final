@@ -627,6 +627,17 @@ useEffect(() => {
   return () => clearTimeout(previewTimer.current);
 }, [input, focused]);
 
+useEffect(() => {
+  const uid = getUserId();
+  axios.post(`${API_BASE}/track`, {
+    type: "visit",
+    user_id: uid,
+    page: "AIChat",
+    time: new Date().toISOString()
+  })
+  .then(r => console.log("track ok", r.status))
+  .catch(e => console.log("track fail", e?.response?.status, e?.message));
+}, []);
   /* ---------------------- chat helpers ---------------------- */
   const copyMessage = async (i) => {
     try { const msg = messages[i]; if (msg) await navigator.clipboard.writeText(msg.content || ""); } catch {}
