@@ -801,14 +801,14 @@ useEffect(() => {
       ];
 
       const res = await axios.post(`${API_BASE}/chat`, {
-        messages: conversationMessages,
-        prompt: content,
-        memory: [],
-        persona,
-        web: webSearchOn,
-        agent: agentOn,
-        user_id: USER_ID
-      });
+  messages: conversationMessages,
+  prompt: content,
+  memory: conversationMessages,
+  persona,
+  web: webSearchOn,
+  agent: agentOn,
+  user_id: USER_ID
+});
 
       const md = res.data?.reply || res.data?.text || "";
       let cards = (res.data?.cards || []).filter(Boolean);
