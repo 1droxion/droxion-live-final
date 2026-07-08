@@ -502,6 +502,7 @@ function MediaBlock({ cards = [] }) {
 function AIChat() {
   // chat + ui
   const [messages, setMessages] = useState([]);
+  const messagesRef = useRef([]);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
@@ -527,11 +528,15 @@ function AIChat() {
   const STORAGE_KEY = "droxion.chat.v1";
   const MEM_KEY = "droxion.mem.v1";
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // restore & persist chat
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      if (Array.isArray(saved) && saved.length) setMessages(saved);
+      if (Array.isArray(saved) && saved.length) { messagesRef.current = saved; setMessages(saved); }
     } catch {}
   }, []);
   useEffect(() => {
@@ -545,7 +550,11 @@ function AIChat() {
     (async () => {
       const old = await loadHistory(API_BASE, USER_ID);
       if (!mounted || !old.length) return;
-      setMessages(prev => (prev && prev.length ? prev : old.slice(-50)));
+      setMessages(prev => {
+        const next = (prev && prev.length ? prev : old.slice(-50));
+        messagesRef.current = next;
+        return next;
+      });
     })();
     return () => { mounted = false; };
   }, []);
@@ -660,9 +669,34 @@ useEffect(() => {
 
   /* ---------------------- send handlers ---------------------- */
   const handleSend = async (text = input) => {
-    const content = (text || "").trim(); if (!content) return;
-    setMessages((p) => [...p, { role: "user", content }]);
-    setInput(""); setTextSug([]);
+    const content = (text || "").trim();
+    if (!content) return;
+
+    const previousMessages = Array.isArray(messagesRef.current) ? messagesRef.current : [];
+    const userTurn = { role: "user", content };
+    const nextAfterUser = [...previousMessages, userTurn];
+    messagesRef.current = nextAfterUser;
+    setMessages(nextAfterUser);
+    setInput("");
+    setTextSug([]);
+
+    const addAssistant = async (md, cards = [], q = content, meta = {}) => {
+      const assistantTurn = { role: "assistant", content: md, cards, meta };
+      const withAssistant = [...messagesRef.current, assistantTurn];
+      messagesRef.current = withAssistant;
+      setMessages(withAssistant);
+
+      const followups = await fetchFollowups(q);
+      if (followups && followups.length) {
+        const latest = [...messagesRef.current];
+        const last = latest[latest.length - 1];
+        if (last && last.role === "assistant") {
+          latest[latest.length - 1] = { ...last, followups };
+          messagesRef.current = latest;
+          setMessages(latest);
+        }
+      }
+    };
 
     try {
       const lower = content.toLowerCase();
@@ -686,7 +720,7 @@ useEffect(() => {
           );
           cards = [{ type: "images-grid", images: urls }];
         }
-        await pushWithFollowups(`Here are some images. Tap any card to open.`, cards, content, { suppressSources: true });
+        await addAssistant(`Here are some images. Tap any card to open.`, cards, content, { suppressSources: true });
         return;
       }
 
@@ -707,7 +741,7 @@ useEffect(() => {
           .map(v => ({ type: "youtube", url: v.url || v.link, title: v.title }))
           .filter(v => v.url)
           .slice(0, 6);
-        await pushWithFollowups(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
+        await addAssistant(cards.length ? "Top YouTube videos:" : `Error or connection failed.`, cards, content, { suppressSources: true });
         return;
       }
 
@@ -717,7 +751,7 @@ useEffect(() => {
         const r = await axios.post(`${API_BASE}/realtime`, { query: q, web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
         const md = r.data?.markdown || r.data?.summary || `Results for **${q}**`;
-        await pushWithFollowups(md, cards, content);
+        await addAssistant(md, cards, content);
         return;
       }
       if (lower.startsWith("search:")) {
@@ -726,47 +760,44 @@ useEffect(() => {
         const cards = (r.data?.results || []).filter(Boolean).map(it => ({
           type:"web", title: it.title, url: it.url, image: it.image || null, source: it.source, snippet: it.snippet
         }));
-        await pushWithFollowups(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
+        await addAssistant(cards.length ? `### Sources for **${q}**` : `No sources found for **${q}**.`, cards, content);
         return;
       }
       if (wantsNews(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "news", web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
-        await pushWithFollowups((r?.data?.markdown || "Top news:"), cards, content);
+        await addAssistant((r?.data?.markdown || "Top news:"), cards, content);
         return;
       }
       if (wantsWeather(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "weather" });
         const cards = (r.data?.cards || []).filter(Boolean);
-        await pushWithFollowups(r.data?.markdown || "Weather:", cards, content);
+        await addAssistant(r.data?.markdown || "Weather:", cards, content);
         return;
       }
       if (wantsCrypto(content)) {
         const r = await axios.post(`${API_BASE}/realtime`, { query: content, intent: "crypto", web: webSearchOn });
         const cards = (r.data?.cards || []).filter(Boolean);
-        await pushWithFollowups(r.data?.markdown || "Crypto:", cards, content);
+        await addAssistant(r.data?.markdown || "Crypto:", cards, content);
         return;
       }
 
       // ---- default chat ----
-      const userMsg = { role: "user", content };
-
-      let savedMessages = [];
-      try {
-        savedMessages = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      } catch {
-        savedMessages = [];
-      }
-
-      const sourceMessages = (messages && messages.length ? messages : savedMessages)
-        .filter(m => m && typeof m.content === "string" && m.content.trim());
-
       const conversationMessages = [
-        ...sourceMessages.slice(-12).map(m => ({
-          role: m.role === "assistant" ? "assistant" : "user",
-          content: m.content
-        })),
-        userMsg
+        ...previousMessages
+          .filter(m =>
+            m &&
+            (m.role === "user" || m.role === "assistant") &&
+            typeof m.content === "string" &&
+            m.content.trim() &&
+            !m.meta?.suppressSources
+          )
+          .slice(-12)
+          .map(m => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content
+          })),
+        { role: "user", content }
       ];
 
       const res = await axios.post(`${API_BASE}/chat`, {
@@ -799,28 +830,29 @@ useEffect(() => {
         ];
       }
 
-      // push to UI
-      await pushWithFollowups(md, cards, content, { from: "chat" });
+      await addAssistant(md, cards, content, { from: "chat" });
 
-      // persist this turn to history
-      await saveHistory(API_BASE, USER_ID, [
-        { role: "user", content },
-        { role: "assistant", content: md }
-      ]);
+      // persist recent conversation locally + backend compatibility
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messagesRef.current.slice(-50)));
+      } catch {}
+
+      await saveHistory(API_BASE, USER_ID, messagesRef.current.slice(-50));
 
       // prefer server-provided followups if present
       const serverFollowups = Array.isArray(res.data?.followups) ? res.data.followups.slice(0, 3) : [];
       if (serverFollowups.length) {
-        setMessages(prev => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, followups: serverFollowups };
-          return copy;
-        });
+        const latest = [...messagesRef.current];
+        const last = latest[latest.length - 1];
+        if (last?.role === "assistant") {
+          latest[latest.length - 1] = { ...last, followups: serverFollowups };
+          messagesRef.current = latest;
+          setMessages(latest);
+        }
       }
     } catch (err) {
       console.error("handleSend error:", err?.message || err);
-      await pushWithFollowups("Error or connection failed.", [], content, {suppressSources:true});
+      await addAssistant("Error or connection failed.", [], content, { suppressSources:true });
     }
   };
 
