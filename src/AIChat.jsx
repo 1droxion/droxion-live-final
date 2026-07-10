@@ -9,7 +9,7 @@ import {
   FiMoon, FiSun, FiPlus,
   FiCamera, FiImage, FiFile,
   FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
-  FiArrowRight
+  FiArrowRight, FiClock, FiTrash2
 } from "react-icons/fi";
 import { Analytics } from "@vercel/analytics/react";  // ✅ Added for Vercel Analytics
 import "./AIChat.css";
@@ -214,6 +214,7 @@ function ToolsMenu({
   webSearchOn, onToggleWebSearch,
   onClearAll,
   onNewChat,
+  onOpenHistory,
   onClose
 }) {
   const camRef = useRef(null);
@@ -268,8 +269,9 @@ function ToolsMenu({
 
       <hr className="menu-sep" />
 
+      <button className="menu-item" onClick={wrap(onOpenHistory)}><FiClock className="icon" /><span>Chat history</span></button>
       <button className="menu-item" onClick={wrap(onNewChat)}><FiPlus className="icon" /><span>New chat</span></button>
-      <button className="menu-item danger" onClick={wrap(onClearAll)}><span>Clear chat + memory</span></button>
+      <button className="menu-item danger" onClick={wrap(onClearAll)}><span>Clear all chats + memory</span></button>
     </div>
   );
 }
@@ -503,6 +505,10 @@ function AIChat() {
   // chat + ui
   const [messages, setMessages] = useState([]);
   const messagesRef = useRef([]);
+  const [chats, setChats] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyHydratedRef = useRef(false);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
 
@@ -526,38 +532,71 @@ function AIChat() {
   const cancelPrev = useRef({ cancel: () => {} });
 
   const STORAGE_KEY = "droxion.chat.v1";
+  const CHATS_KEY = "droxion.chats.v1";
+  const ACTIVE_CHAT_KEY = "droxion.activeChat.v1";
   const MEM_KEY = "droxion.mem.v1";
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // restore & persist chat
+  // restore & persist multiple chats on this device
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      if (Array.isArray(saved) && saved.length) { messagesRef.current = saved; setMessages(saved); }
-    } catch {}
-  }, []);
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
-  }, [messages]);
-  useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
+      const storedChats = JSON.parse(localStorage.getItem(CHATS_KEY) || "[]");
+      const storedActive = localStorage.getItem(ACTIVE_CHAT_KEY);
 
-  // load server history on mount (only if empty)
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const old = await loadHistory(API_BASE, USER_ID);
-      if (!mounted || !old.length) return;
-      setMessages(prev => {
-        const next = (prev && prev.length ? prev : old.slice(-50));
-        messagesRef.current = next;
-        return next;
-      });
-    })();
-    return () => { mounted = false; };
+      if (Array.isArray(storedChats) && storedChats.length) {
+        const selected = storedChats.find(c => c.id === storedActive) || storedChats[0];
+        setChats(storedChats);
+        setActiveChatId(selected.id);
+        const restored = Array.isArray(selected.messages) ? selected.messages : [];
+        messagesRef.current = restored;
+        setMessages(restored);
+      } else {
+        const legacy = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const firstUser = Array.isArray(legacy) ? legacy.find(m => m?.role === "user" && m?.content) : null;
+        const title = firstUser?.content ? firstUser.content.slice(0, 44) : "New chat";
+        const initialChat = { id, title, messages: Array.isArray(legacy) ? legacy : [], updatedAt: Date.now() };
+        setChats([initialChat]);
+        setActiveChatId(id);
+        messagesRef.current = initialChat.messages;
+        setMessages(initialChat.messages);
+      }
+    } catch {
+      const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      setChats([{ id, title: "New chat", messages: [], updatedAt: Date.now() }]);
+      setActiveChatId(id);
+      messagesRef.current = [];
+      setMessages([]);
+    } finally {
+      historyHydratedRef.current = true;
+    }
   }, []);
+
+  useEffect(() => {
+    if (!historyHydratedRef.current || !activeChatId) return;
+    setChats(prev => prev.map(chat => {
+      if (chat.id !== activeChatId) return chat;
+      const firstUser = messages.find(m => m?.role === "user" && typeof m.content === "string" && m.content.trim());
+      const title = chat.title === "New chat" && firstUser
+        ? firstUser.content.trim().slice(0, 44)
+        : chat.title;
+      return { ...chat, title: title || "New chat", messages: messages.slice(-100), updatedAt: Date.now() };
+    }));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch {}
+  }, [messages, activeChatId]);
+
+  useEffect(() => {
+    if (!historyHydratedRef.current) return;
+    try {
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+      if (activeChatId) localStorage.setItem(ACTIVE_CHAT_KEY, activeChatId);
+    } catch {}
+  }, [chats, activeChatId]);
+
+  useEffect(() => { localStorage.setItem("drox.theme", theme); document.documentElement.dataset.theme = theme; }, [theme]);
 
   // keyboard-safe viewport
   useEffect(() => {
@@ -910,16 +949,63 @@ useEffect(() => {
   };
 
   /* ---------------------- menu helpers ---------------------- */
-  const clearAll = () => {
-    setMessages([]);
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(MEM_KEY);
-  };
   const newChat = () => {
+    const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const chat = { id, title: "New chat", messages: [], updatedAt: Date.now() };
+    setChats(prev => [chat, ...prev]);
+    setActiveChatId(id);
+    messagesRef.current = [];
+    setMessages([]);
+    setInput("");
+    setHistoryOpen(false);
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+  };
+
+  const openChat = (chatId) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (!chat) return;
+    setActiveChatId(chat.id);
+    const restored = Array.isArray(chat.messages) ? chat.messages : [];
+    messagesRef.current = restored;
+    setMessages(restored);
+    setHistoryOpen(false);
+    setInput("");
+  };
+
+  const deleteChat = (chatId) => {
+    setChats(prev => {
+      const remaining = prev.filter(c => c.id !== chatId);
+      if (chatId === activeChatId) {
+        if (remaining.length) {
+          const next = remaining[0];
+          setActiveChatId(next.id);
+          messagesRef.current = next.messages || [];
+          setMessages(next.messages || []);
+        } else {
+          const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const blank = { id, title: "New chat", messages: [], updatedAt: Date.now() };
+          setActiveChatId(id);
+          messagesRef.current = [];
+          setMessages([]);
+          return [blank];
+        }
+      }
+      return remaining;
+    });
+  };
+
+  const clearAll = () => {
+    const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const blank = { id, title: "New chat", messages: [], updatedAt: Date.now() };
+    setChats([blank]);
+    setActiveChatId(id);
+    messagesRef.current = [];
     setMessages([]);
     localStorage.removeItem(STORAGE_KEY);
-    setInput("");
-    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+    localStorage.removeItem(CHATS_KEY);
+    localStorage.removeItem(ACTIVE_CHAT_KEY);
+    localStorage.removeItem(MEM_KEY);
+    setHistoryOpen(false);
   };
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -964,9 +1050,37 @@ useEffect(() => {
               onToggleWebSearch={()=>{ setWebSearchOn(v=>{ const nv=!v; setMessages(m=>[...m,{role:"assistant",content:`Web search ${nv?"enabled":"disabled"}.`,meta:{suppressSources:true}}]); return nv; }); }}
               onClearAll={clearAll}
               onNewChat={newChat}
+              onOpenHistory={()=>setHistoryOpen(true)}
               onClose={()=>setMenuOpen(false)}
             />
           </div>
+        </>
+      )}
+
+      {historyOpen && (
+        <>
+          <div onClick={() => setHistoryOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,.55)" }} />
+          <aside className="glass" style={{ position: "fixed", left: 0, top: 0, bottom: 0, zIndex: 1101, width: "min(360px, 90vw)", padding: 14, overflowY: "auto", borderRight: "1px solid rgba(255,255,255,.12)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="font-bold">Chat history</div>
+                <div className="text-xs text-gray-400">Saved on this device</div>
+              </div>
+              <button className="pill-btn" onClick={() => setHistoryOpen(false)}>Close</button>
+            </div>
+            <button className="menu-item mb-3" onClick={newChat}><FiPlus className="icon" /><span>New chat</span></button>
+            <div className="space-y-2">
+              {[...chats].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(chat => (
+                <div key={chat.id} className={`glass rounded-lg p-2 ${chat.id === activeChatId ? "border border-white/30" : ""}`}>
+                  <button onClick={() => openChat(chat.id)} className="w-full text-left" style={{ background: "transparent" }}>
+                    <div className="text-sm font-semibold truncate">{chat.title || "New chat"}</div>
+                    <div className="text-xs text-gray-400 mt-1">{(chat.messages || []).length} messages</div>
+                  </button>
+                  <button onClick={() => deleteChat(chat.id)} className="text-xs text-red-400 mt-2 inline-flex items-center gap-1"><FiTrash2 /> Delete</button>
+                </div>
+              ))}
+            </div>
+          </aside>
         </>
       )}
 
