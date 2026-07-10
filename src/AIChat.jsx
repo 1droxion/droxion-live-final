@@ -9,7 +9,7 @@ import {
   FiMoon, FiSun, FiPlus,
   FiCamera, FiImage, FiFile,
   FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
-  FiArrowRight, FiClock, FiTrash2, FiEdit3, FiStar, FiSettings
+  FiArrowRight, FiClock, FiTrash2
 } from "react-icons/fi";
 import { Analytics } from "@vercel/analytics/react";  // ✅ Added for Vercel Analytics
 import "./AIChat.css";
@@ -98,6 +98,11 @@ const youTubeIdFromUrl = (raw="") => {
 
 /* ---------------------- quick intent ---------------------- */
 const wantsImages  = (s="") => { const q=s.trim().toLowerCase(); return /^images?:\s*/.test(q) || /\b(show\s+(me\s+)?)?(images?|photos?|pictures?)\b/.test(q) || /\bwallpaper\b/.test(q); };
+const wantsImageGeneration = (s="") => /^(create|generate|make|draw)\s+(an?\s+)?(ai\s+)?(image|photo|picture|art)(\s*:|\s+of|\s+showing|\s+with|\s+for|\s|$)/i.test(s.trim());
+const imageGenerationPrompt = (s="") => s
+  .trim()
+  .replace(/^(create|generate|make|draw)\s+(an?\s+)?(ai\s+)?(image|photo|picture|art)\s*:?\s*/i, "")
+  .trim();
 const wantsNews    = (s="") => /\b(news|headlines|latest news|breaking)\b/i.test(s);
 const wantsWeather = (s="") => /\b(weather|temp|temperature|forecast|rain|humidity|wind)\b/i.test(s);
 const wantsCrypto  = (s="") => /\b(crypto|bitcoin|btc|ethereum|eth|price|chart)\b/i.test(s);
@@ -215,10 +220,6 @@ function ToolsMenu({
   onClearAll,
   onNewChat,
   onOpenHistory,
-  onRenameCurrent,
-  onPinCurrent,
-  onDeleteCurrent,
-  onOpenSettings,
   onClose
 }) {
   const camRef = useRef(null);
@@ -259,29 +260,23 @@ function ToolsMenu({
       <input ref={photosRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
       <input ref={filesRef} type="file" className="hidden" onChange={handleAnyFile} />
 
-      <button className="menu-item" onClick={wrap(onNewChat)}>
-        <FiPlus className="icon" /><span>New chat</span>
-      </button>
+      <button className="menu-item" onClick={pickCamera}><FiCamera className="icon" /><span>Camera</span></button>
+      <button className="menu-item" onClick={pickPhotos}><FiImage className="icon" /><span>Photos</span></button>
+      <button className="menu-item" onClick={pickFiles}><FiFile className="icon" /><span>Files</span></button>
 
-      <button className="menu-item" onClick={wrap(onOpenHistory)}>
-        <FiClock className="icon" /><span>Chat history</span>
-      </button>
+      <hr className="menu-sep" />
 
-      <button className="menu-item" onClick={pickPhotos}>
-        <FiFile className="icon" /><span>Upload</span>
-      </button>
+      <button className={`menu-item ${agentOn ? "active":""}`} onClick={wrap(onToggleAgent)}><FiCpu className="icon" /><span>Agent mode {agentOn?"On":"Off"}</span></button>
+      <button className="menu-item" onClick={wrap(onDeepResearch)}><FiSearch className="icon" /><span>Deep research</span></button>
+      <button className="menu-item" onClick={wrap(() => onSetPersona?.("teacher"))}><FiBook className="icon" /><span>Study &amp; learn</span></button>
+      <button className="menu-item" onClick={wrap(onCreateImage)}><FiAperture className="icon" /><span>Create image</span></button>
+      <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={wrap(onToggleWebSearch)}><FiGlobe className="icon" /><span>Web search {webSearchOn?"On":"Off"}</span></button>
 
-      <button className="menu-item" onClick={wrap(onCreateImage)}>
-        <FiAperture className="icon" /><span>Create image</span>
-      </button>
+      <hr className="menu-sep" />
 
-      <button className={`menu-item ${webSearchOn ? "active":""}`} onClick={wrap(onToggleWebSearch)}>
-        <FiGlobe className="icon" /><span>Web search {webSearchOn ? "On" : "Off"}</span>
-      </button>
-
-      <button className="menu-item" onClick={wrap(onOpenSettings)}>
-        <FiSettings className="icon" /><span>Settings</span>
-      </button>
+      <button className="menu-item" onClick={wrap(onOpenHistory)}><FiClock className="icon" /><span>Chat history</span></button>
+      <button className="menu-item" onClick={wrap(onNewChat)}><FiPlus className="icon" /><span>New chat</span></button>
+      <button className="menu-item danger" onClick={wrap(onClearAll)}><span>Clear all chats + memory</span></button>
     </div>
   );
 }
@@ -367,7 +362,7 @@ function MediaBlock({ cards = [] }) {
                 return (
                   <a key={`img-${i}-${j}`} href={u} target="_blank" rel="noreferrer" className="block">
                     <img
-                      src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
+                      src={toProxy(u)}
                       alt=""
                       className="w-full rounded-lg glass"
                       loading="lazy"
@@ -392,7 +387,7 @@ function MediaBlock({ cards = [] }) {
               {urls.map((u, j) => (
                 <img
                   key={`gal-${i}-${j}`}
-                  src={`${API_BASE}/img?url=${encodeURIComponent(u)}`}
+                  src={toProxy(u)}
                   alt=""
                   className="w-full rounded-lg glass"
                   loading="lazy"
@@ -409,7 +404,7 @@ function MediaBlock({ cards = [] }) {
           return (
             <img
               key={`image-${i}`}
-              src={`${API_BASE}/img?url=${encodeURIComponent(card.url)}`}
+              src={toProxy(card.url)}
               alt=""
               className="w-full rounded-lg glass"
               loading="lazy"
@@ -518,8 +513,6 @@ function AIChat() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [historyQuery, setHistoryQuery] = useState("");
   const historyHydratedRef = useRef(false);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
@@ -761,6 +754,31 @@ useEffect(() => {
 
     try {
       const lower = content.toLowerCase();
+
+      // Original AI image generation must run before ordinary image search.
+      if (wantsImageGeneration(content)) {
+        const prompt = imageGenerationPrompt(content) || "cinematic portrait";
+        try {
+          const { data } = await axios.post(`${API_BASE}/generate-image`, { prompt });
+          const imageUrl = data?.image || data?.url || data?.image_url;
+          if (!imageUrl) throw new Error(data?.error || "No generated image returned");
+          await addAssistant(
+            `Generated an original image for **${prompt}**.`,
+            [{ type: "gallery", images: [imageUrl] }],
+            prompt,
+            { suppressSources: true, generatedImage: true }
+          );
+        } catch (err) {
+          const detail = err?.response?.data?.detail || err?.response?.data?.error;
+          await addAssistant(
+            detail ? `Image generation failed: ${detail}` : "Image generation failed. Please try again.",
+            [],
+            prompt,
+            { suppressSources: true }
+          );
+        }
+        return;
+      }
 
       // 🔥 IMAGES
       if (wantsImages(content)) {
@@ -1016,35 +1034,7 @@ useEffect(() => {
     });
   };
 
-  const renameChat = (chatId = activeChatId) => {
-    const chat = chats.find(c => c.id === chatId);
-    if (!chat) return;
-    const nextTitle = window.prompt("Rename chat", chat.title || "New chat");
-    if (nextTitle == null) return;
-    const clean = nextTitle.trim().slice(0, 80);
-    if (!clean) return;
-    setChats(prev => prev.map(c =>
-      c.id === chatId ? { ...c, title: clean, updatedAt: Date.now() } : c
-    ));
-  };
-
-  const togglePinChat = (chatId = activeChatId) => {
-    setChats(prev => prev.map(c =>
-      c.id === chatId ? { ...c, pinned: !c.pinned, updatedAt: Date.now() } : c
-    ));
-  };
-
-  const deleteCurrentChat = () => {
-    const chat = chats.find(c => c.id === activeChatId);
-    if (!chat) return;
-    const okDelete = window.confirm(`Delete "${chat.title || "New chat"}"?\n\nThis cannot be undone.`);
-    if (!okDelete) return;
-    deleteChat(chat.id);
-  };
-
   const clearAll = () => {
-    const okDelete = window.confirm("Delete ALL chats?\n\nThis cannot be undone.");
-    if (!okDelete) return;
     const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const blank = { id, title: "New chat", messages: [], updatedAt: Date.now() };
     setChats([blank]);
@@ -1066,6 +1056,7 @@ useEffect(() => {
       <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur bg-black/60">
         <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap relative">
           <div className="brand text-lg font-bold">Droxion</div>
+          <div className="text-xs text-gray-400">• Lite</div>
 
           <div className="ml-auto flex items-center gap-2">
             <button onClick={()=>setTheme(t=> t==="dark"?"light":"dark")} className="pill-btn" title="Toggle theme">
@@ -1100,92 +1091,9 @@ useEffect(() => {
               onClearAll={clearAll}
               onNewChat={newChat}
               onOpenHistory={()=>setHistoryOpen(true)}
-              onRenameCurrent={()=>renameChat(activeChatId)}
-              onPinCurrent={()=>togglePinChat(activeChatId)}
-              onDeleteCurrent={deleteCurrentChat}
-              onOpenSettings={()=>setSettingsOpen(true)}
               onClose={()=>setMenuOpen(false)}
             />
           </div>
-        </>
-      )}
-
-      {settingsOpen && (
-        <>
-          <div
-            onClick={() => setSettingsOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 1150, background: "rgba(0,0,0,.55)" }}
-          />
-          <aside
-            className="glass"
-            style={{
-              position: "fixed",
-              right: 0,
-              top: 0,
-              bottom: 0,
-              zIndex: 1151,
-              width: "min(360px, 90vw)",
-              padding: 14,
-              overflowY: "auto",
-              borderLeft: "1px solid rgba(255,255,255,.12)"
-            }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="font-bold">Settings</div>
-                <div className="text-xs text-gray-400">Droxion preferences</div>
-              </div>
-              <button className="pill-btn" onClick={() => setSettingsOpen(false)}>Close</button>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                className="menu-item"
-                onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
-              >
-                {theme === "dark" ? <FiMoon className="icon" /> : <FiSun className="icon" />}
-                <span>Theme: {theme === "dark" ? "Dark" : "Light"}</span>
-              </button>
-
-              <button
-                className={`menu-item ${agentOn ? "active" : ""}`}
-                onClick={() => setAgentOn(v => !v)}
-              >
-                <FiCpu className="icon" />
-                <span>Agent mode {agentOn ? "On" : "Off"}</span>
-              </button>
-
-              <div className="menu-item" style={{ cursor: "default" }}>
-                <FiBook className="icon" />
-                <span>Memory: On (this device)</span>
-              </div>
-
-              <button
-                className={`menu-item ${webSearchOn ? "active" : ""}`}
-                onClick={() => setWebSearchOn(v => !v)}
-              >
-                <FiGlobe className="icon" />
-                <span>Web search {webSearchOn ? "On" : "Off"}</span>
-              </button>
-
-              <div className="menu-item" style={{ cursor: "default" }}>
-                <span>About Droxion</span>
-              </div>
-
-              <hr className="menu-sep" />
-
-              <button
-                className="menu-item danger"
-                onClick={() => {
-                  clearAll();
-                  setSettingsOpen(false);
-                }}
-              >
-                <FiTrash2 className="icon" />
-                <span>Delete all chats</span>
-              </button>
-            </div>
-          </aside>
         </>
       )}
 
@@ -1201,77 +1109,16 @@ useEffect(() => {
               <button className="pill-btn" onClick={() => setHistoryOpen(false)}>Close</button>
             </div>
             <button className="menu-item mb-3" onClick={newChat}><FiPlus className="icon" /><span>New chat</span></button>
-
-            <div className="mb-3">
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 bg-white/5">
-                <FiSearch className="text-gray-400" />
-                <input
-                  value={historyQuery}
-                  onChange={(e) => setHistoryQuery(e.target.value)}
-                  placeholder="Search chats..."
-                  className="w-full bg-transparent outline-none text-sm"
-                />
-              </div>
-            </div>
-
             <div className="space-y-2">
-              {[...chats]
-                .filter(chat => {
-                  const q = historyQuery.trim().toLowerCase();
-                  if (!q) return true;
-                  const title = (chat.title || "").toLowerCase();
-                  const body = (chat.messages || [])
-                    .map(m => typeof m?.content === "string" ? m.content : "")
-                    .join(" ")
-                    .toLowerCase();
-                  return title.includes(q) || body.includes(q);
-                })
-                .sort((a,b) => {
-                  if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-                  return (b.updatedAt || 0) - (a.updatedAt || 0);
-                })
-                .map(chat => (
+              {[...chats].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(chat => (
                 <div key={chat.id} className={`glass rounded-lg p-2 ${chat.id === activeChatId ? "border border-white/30" : ""}`}>
                   <button onClick={() => openChat(chat.id)} className="w-full text-left" style={{ background: "transparent" }}>
-                    <div className="flex items-center gap-2">
-                      {chat.pinned && <FiStar title="Pinned" />}
-                      <div className="text-sm font-semibold truncate">{chat.title || "New chat"}</div>
-                    </div>
+                    <div className="text-sm font-semibold truncate">{chat.title || "New chat"}</div>
                     <div className="text-xs text-gray-400 mt-1">{(chat.messages || []).length} messages</div>
                   </button>
-
-                  <div className="flex flex-wrap gap-3 mt-2">
-                    <button onClick={() => renameChat(chat.id)} className="text-xs text-gray-300 inline-flex items-center gap-1">
-                      <FiEdit3 /> Rename
-                    </button>
-                    <button onClick={() => togglePinChat(chat.id)} className="text-xs text-gray-300 inline-flex items-center gap-1">
-                      <FiStar /> {chat.pinned ? "Unpin" : "Pin"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const okDelete = window.confirm(`Delete "${chat.title || "New chat"}"?\n\nThis cannot be undone.`);
-                        if (okDelete) deleteChat(chat.id);
-                      }}
-                      className="text-xs text-red-400 inline-flex items-center gap-1"
-                    >
-                      <FiTrash2 /> Delete
-                    </button>
-                  </div>
+                  <button onClick={() => deleteChat(chat.id)} className="text-xs text-red-400 mt-2 inline-flex items-center gap-1"><FiTrash2 /> Delete</button>
                 </div>
               ))}
-
-              {chats.filter(chat => {
-                const q = historyQuery.trim().toLowerCase();
-                if (!q) return true;
-                const title = (chat.title || "").toLowerCase();
-                const body = (chat.messages || [])
-                  .map(m => typeof m?.content === "string" ? m.content : "")
-                  .join(" ")
-                  .toLowerCase();
-                return title.includes(q) || body.includes(q);
-              }).length === 0 && (
-                <div className="text-sm text-gray-400 text-center py-6">No chats found.</div>
-              )}
             </div>
           </aside>
         </>
