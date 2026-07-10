@@ -527,6 +527,7 @@ function AIChat() {
 
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
+  const messagesEndRef = useRef(null);
   const suggestTimer = useRef(null);
   const previewTimer = useRef(null);
   const cancelPrev = useRef({ cancel: () => {} });
@@ -538,6 +539,15 @@ function AIChat() {
 
   useEffect(() => {
     messagesRef.current = messages;
+  }, [messages]);
+
+  // Keep the conversation pinned to the newest message.
+  // This runs only when messages change, not while the user is typing.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [messages]);
 
   // restore & persist multiple chats on this device
@@ -1140,12 +1150,13 @@ useEffect(() => {
                 <div className="h-3 w-3/5 bg-white/10 rounded" />
               </div>
             )}
+            <div ref={messagesEndRef} aria-hidden="true" />
           </div>
         </div>
       </div>
 
       {/* Fixed preview while typing */}
-{focused && (
+{focused && messages.length === 0 && (
   <div className={`fixed-preview fixed-panel ${input.length ? "dim-while-typing" : ""}`}>
     <div className="max-w-4xl mx-auto px-3">
       <div className="panel glass rounded-xl p-2 suggestions-panel">
