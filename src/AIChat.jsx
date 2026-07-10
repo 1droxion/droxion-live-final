@@ -9,7 +9,7 @@ import {
   FiMoon, FiSun, FiPlus,
   FiCamera, FiImage, FiFile,
   FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
-  FiArrowRight, FiClock, FiTrash2
+  FiArrowRight, FiClock, FiTrash2, FiEdit3, FiStar
 } from "react-icons/fi";
 import { Analytics } from "@vercel/analytics/react";  // ✅ Added for Vercel Analytics
 import "./AIChat.css";
@@ -215,6 +215,9 @@ function ToolsMenu({
   onClearAll,
   onNewChat,
   onOpenHistory,
+  onRenameCurrent,
+  onPinCurrent,
+  onDeleteCurrent,
   onClose
 }) {
   const camRef = useRef(null);
@@ -271,7 +274,13 @@ function ToolsMenu({
 
       <button className="menu-item" onClick={wrap(onOpenHistory)}><FiClock className="icon" /><span>Chat history</span></button>
       <button className="menu-item" onClick={wrap(onNewChat)}><FiPlus className="icon" /><span>New chat</span></button>
-      <button className="menu-item danger" onClick={wrap(onClearAll)}><span>Clear all chats + memory</span></button>
+      <button className="menu-item" onClick={wrap(onRenameCurrent)}><FiEdit3 className="icon" /><span>Rename current chat</span></button>
+      <button className="menu-item" onClick={wrap(onPinCurrent)}><FiStar className="icon" /><span>Pin / unpin current chat</span></button>
+      <button className="menu-item danger" onClick={wrap(onDeleteCurrent)}><FiTrash2 className="icon" /><span>Delete current chat</span></button>
+
+      <hr className="menu-sep" />
+
+      <button className="menu-item danger" onClick={wrap(onClearAll)}><FiTrash2 className="icon" /><span>Delete all chats</span></button>
     </div>
   );
 }
@@ -508,6 +517,7 @@ function AIChat() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
   const historyHydratedRef = useRef(false);
   const [input, setInput] = useState("");
   const [typing] = useState(false);
@@ -1004,7 +1014,35 @@ useEffect(() => {
     });
   };
 
+  const renameChat = (chatId = activeChatId) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (!chat) return;
+    const nextTitle = window.prompt("Rename chat", chat.title || "New chat");
+    if (nextTitle == null) return;
+    const clean = nextTitle.trim().slice(0, 80);
+    if (!clean) return;
+    setChats(prev => prev.map(c =>
+      c.id === chatId ? { ...c, title: clean, updatedAt: Date.now() } : c
+    ));
+  };
+
+  const togglePinChat = (chatId = activeChatId) => {
+    setChats(prev => prev.map(c =>
+      c.id === chatId ? { ...c, pinned: !c.pinned, updatedAt: Date.now() } : c
+    ));
+  };
+
+  const deleteCurrentChat = () => {
+    const chat = chats.find(c => c.id === activeChatId);
+    if (!chat) return;
+    const okDelete = window.confirm(`Delete "${chat.title || "New chat"}"?\n\nThis cannot be undone.`);
+    if (!okDelete) return;
+    deleteChat(chat.id);
+  };
+
   const clearAll = () => {
+    const okDelete = window.confirm("Delete ALL chats?\n\nThis cannot be undone.");
+    if (!okDelete) return;
     const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const blank = { id, title: "New chat", messages: [], updatedAt: Date.now() };
     setChats([blank]);
@@ -1061,6 +1099,9 @@ useEffect(() => {
               onClearAll={clearAll}
               onNewChat={newChat}
               onOpenHistory={()=>setHistoryOpen(true)}
+              onRenameCurrent={()=>renameChat(activeChatId)}
+              onPinCurrent={()=>togglePinChat(activeChatId)}
+              onDeleteCurrent={deleteCurrentChat}
               onClose={()=>setMenuOpen(false)}
             />
           </div>
@@ -1079,16 +1120,77 @@ useEffect(() => {
               <button className="pill-btn" onClick={() => setHistoryOpen(false)}>Close</button>
             </div>
             <button className="menu-item mb-3" onClick={newChat}><FiPlus className="icon" /><span>New chat</span></button>
+
+            <div className="mb-3">
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 bg-white/5">
+                <FiSearch className="text-gray-400" />
+                <input
+                  value={historyQuery}
+                  onChange={(e) => setHistoryQuery(e.target.value)}
+                  placeholder="Search chats..."
+                  className="w-full bg-transparent outline-none text-sm"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              {[...chats].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(chat => (
+              {[...chats]
+                .filter(chat => {
+                  const q = historyQuery.trim().toLowerCase();
+                  if (!q) return true;
+                  const title = (chat.title || "").toLowerCase();
+                  const body = (chat.messages || [])
+                    .map(m => typeof m?.content === "string" ? m.content : "")
+                    .join(" ")
+                    .toLowerCase();
+                  return title.includes(q) || body.includes(q);
+                })
+                .sort((a,b) => {
+                  if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+                  return (b.updatedAt || 0) - (a.updatedAt || 0);
+                })
+                .map(chat => (
                 <div key={chat.id} className={`glass rounded-lg p-2 ${chat.id === activeChatId ? "border border-white/30" : ""}`}>
                   <button onClick={() => openChat(chat.id)} className="w-full text-left" style={{ background: "transparent" }}>
-                    <div className="text-sm font-semibold truncate">{chat.title || "New chat"}</div>
+                    <div className="flex items-center gap-2">
+                      {chat.pinned && <FiStar title="Pinned" />}
+                      <div className="text-sm font-semibold truncate">{chat.title || "New chat"}</div>
+                    </div>
                     <div className="text-xs text-gray-400 mt-1">{(chat.messages || []).length} messages</div>
                   </button>
-                  <button onClick={() => deleteChat(chat.id)} className="text-xs text-red-400 mt-2 inline-flex items-center gap-1"><FiTrash2 /> Delete</button>
+
+                  <div className="flex flex-wrap gap-3 mt-2">
+                    <button onClick={() => renameChat(chat.id)} className="text-xs text-gray-300 inline-flex items-center gap-1">
+                      <FiEdit3 /> Rename
+                    </button>
+                    <button onClick={() => togglePinChat(chat.id)} className="text-xs text-gray-300 inline-flex items-center gap-1">
+                      <FiStar /> {chat.pinned ? "Unpin" : "Pin"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const okDelete = window.confirm(`Delete "${chat.title || "New chat"}"?\n\nThis cannot be undone.`);
+                        if (okDelete) deleteChat(chat.id);
+                      }}
+                      className="text-xs text-red-400 inline-flex items-center gap-1"
+                    >
+                      <FiTrash2 /> Delete
+                    </button>
+                  </div>
                 </div>
               ))}
+
+              {chats.filter(chat => {
+                const q = historyQuery.trim().toLowerCase();
+                if (!q) return true;
+                const title = (chat.title || "").toLowerCase();
+                const body = (chat.messages || [])
+                  .map(m => typeof m?.content === "string" ? m.content : "")
+                  .join(" ")
+                  .toLowerCase();
+                return title.includes(q) || body.includes(q);
+              }).length === 0 && (
+                <div className="text-sm text-gray-400 text-center py-6">No chats found.</div>
+              )}
             </div>
           </aside>
         </>
