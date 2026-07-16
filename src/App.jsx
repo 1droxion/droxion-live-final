@@ -1,9 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import SmartBar from "./SmartBar";
 import Generator from "./Generator";
@@ -18,15 +14,20 @@ import Settings from "./Settings";
 import Login from "./Login";
 import Signup from "./Signup";
 import Analytics from "./Analytics";
+import NewCampaign from "./NewCampaign";
 import { supabase } from "./supabaseClient";
+
+function LoadingScreen({ message = "Loading Droxion..." }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#0e0e10] text-white">
+      {message}
+    </div>
+  );
+}
 
 function ProtectedRoute({ session, loading, children }) {
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0e0e10] text-white">
-        Loading Droxion...
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!session) {
@@ -38,11 +39,7 @@ function ProtectedRoute({ session, loading, children }) {
 
 function PublicRoute({ session, loading, children }) {
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0e0e10] text-white">
-        Loading...
-      </div>
-    );
+    return <LoadingScreen message="Loading..." />;
   }
 
   if (session) {
@@ -60,13 +57,27 @@ export default function App() {
     let mounted = true;
 
     const loadSession = async () => {
-      const {
-        data: { session: currentSession },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session: currentSession },
+          error,
+        } = await supabase.auth.getSession();
 
-      if (mounted) {
-        setSession(currentSession);
-        setAuthLoading(false);
+        if (error) {
+          console.error("Failed to load Supabase session:", error);
+        }
+
+        if (mounted) {
+          setSession(currentSession);
+          setAuthLoading(false);
+        }
+      } catch (error) {
+        console.error("Unexpected authentication error:", error);
+
+        if (mounted) {
+          setSession(null);
+          setAuthLoading(false);
+        }
       }
     };
 
@@ -75,13 +86,15 @@ export default function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
+
       setSession(newSession);
       setAuthLoading(false);
     });
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
@@ -91,10 +104,11 @@ export default function App() {
     const handleUnload = () => {
       const duration = Math.floor((Date.now() - startTime) / 1000);
 
-      const trackingUrl = `${
+      const backendUrl =
         import.meta.env.VITE_BACKEND_URL ||
-        "https://droxion-backend.onrender.com"
-      }/track`;
+        "https://droxion-backend.onrender.com";
+
+      const trackingUrl = `${backendUrl}/track`;
 
       const payload = JSON.stringify({
         event: "session_time",
@@ -105,12 +119,22 @@ export default function App() {
       });
 
       try {
-        navigator.sendBeacon(
-          trackingUrl,
-          new Blob([payload], {
-            type: "application/json",
-          })
-        );
+        const blob = new Blob([payload], {
+          type: "application/json",
+        });
+
+        const beaconSent = navigator.sendBeacon(trackingUrl, blob);
+
+        if (!beaconSent) {
+          fetch(trackingUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: payload,
+            keepalive: true,
+          }).catch(() => {});
+        }
       } catch {
         fetch(trackingUrl, {
           method: "POST",
@@ -136,10 +160,7 @@ export default function App() {
         <Route
           path="/login"
           element={
-            <PublicRoute
-              session={session}
-              loading={authLoading}
-            >
+            <PublicRoute session={session} loading={authLoading}>
               <Login />
             </PublicRoute>
           }
@@ -148,10 +169,7 @@ export default function App() {
         <Route
           path="/signup"
           element={
-            <PublicRoute
-              session={session}
-              loading={authLoading}
-            >
+            <PublicRoute session={session} loading={authLoading}>
               <Signup />
             </PublicRoute>
           }
@@ -160,10 +178,7 @@ export default function App() {
         <Route
           path="/"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <AIChat />
             </ProtectedRoute>
           }
@@ -172,10 +187,7 @@ export default function App() {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <AIChat />
             </ProtectedRoute>
           }
@@ -184,10 +196,7 @@ export default function App() {
         <Route
           path="/chatboard"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <AIChat />
             </ProtectedRoute>
           }
@@ -196,10 +205,7 @@ export default function App() {
         <Route
           path="/smart"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <SmartBar />
             </ProtectedRoute>
           }
@@ -208,11 +214,17 @@ export default function App() {
         <Route
           path="/generator"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Generator />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/new-campaign"
+          element={
+            <ProtectedRoute session={session} loading={authLoading}>
+              <NewCampaign />
             </ProtectedRoute>
           }
         />
@@ -220,10 +232,7 @@ export default function App() {
         <Route
           path="/ai-image"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <AIImage />
             </ProtectedRoute>
           }
@@ -232,10 +241,7 @@ export default function App() {
         <Route
           path="/plans"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Plans />
             </ProtectedRoute>
           }
@@ -244,10 +250,7 @@ export default function App() {
         <Route
           path="/projects"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Projects />
             </ProtectedRoute>
           }
@@ -256,10 +259,7 @@ export default function App() {
         <Route
           path="/templates"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Templates />
             </ProtectedRoute>
           }
@@ -268,10 +268,7 @@ export default function App() {
         <Route
           path="/connect"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Connect />
             </ProtectedRoute>
           }
@@ -280,10 +277,7 @@ export default function App() {
         <Route
           path="/editor"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Editor />
             </ProtectedRoute>
           }
@@ -292,10 +286,7 @@ export default function App() {
         <Route
           path="/settings"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Settings />
             </ProtectedRoute>
           }
@@ -304,10 +295,7 @@ export default function App() {
         <Route
           path="/analytics"
           element={
-            <ProtectedRoute
-              session={session}
-              loading={authLoading}
-            >
+            <ProtectedRoute session={session} loading={authLoading}>
               <Analytics />
             </ProtectedRoute>
           }
@@ -316,10 +304,7 @@ export default function App() {
         <Route
           path="*"
           element={
-            <Navigate
-              to={session ? "/" : "/login"}
-              replace
-            />
+            <Navigate to={session ? "/" : "/login"} replace />
           }
         />
       </Routes>
