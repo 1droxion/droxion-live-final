@@ -15,8 +15,8 @@ import Login from "./Login";
 import Signup from "./Signup";
 import Analytics from "./Analytics";
 import NewCampaign from "./NewCampaign";
-import { supabase } from "./supabaseClient";
 import CampaignResults from "./CampaignResults";
+import { supabase } from "./supabaseClient";
 
 function LoadingScreen({ message = "Loading Droxion..." }) {
   return (
@@ -231,6 +231,15 @@ export default function App() {
         />
 
         <Route
+          path="/campaign-results"
+          element={
+            <ProtectedRoute session={session} loading={authLoading}>
+              <CampaignResults />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/ai-image"
           element={
             <ProtectedRoute session={session} loading={authLoading}>
@@ -304,9 +313,7 @@ export default function App() {
 
         <Route
           path="*"
-          element={
-            <Navigate to={session ? "/" : "/login"} replace />
-          }
+          element={<Navigate to={session ? "/" : "/login"} replace />}
         />
       </Routes>
     </div>
