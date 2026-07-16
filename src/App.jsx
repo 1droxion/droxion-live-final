@@ -240,6 +240,15 @@ export default function App() {
         />
 
         <Route
+          path="/campaign-results/:id"
+          element={
+            <ProtectedRoute session={session} loading={authLoading}>
+              <CampaignResults />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/ai-image"
           element={
             <ProtectedRoute session={session} loading={authLoading}>
