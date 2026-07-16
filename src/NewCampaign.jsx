@@ -601,8 +601,7 @@ export default function NewCampaign() {
               </div>
 
               <p className="mt-3 text-center text-xs text-gray-500">
-                This version tests the form. AI generation will be connected
-                in the next step.
+                Droxion will analyze your information and generate a complete AI marketing campaign.
               </p>
             </div>
           </form>
