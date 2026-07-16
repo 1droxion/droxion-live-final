@@ -1,3 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global */
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: #0e0e10;
+  color: white;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+}
+
+/* Custom Input */
+
 .input-style {
   width: 100%;
   border-radius: 0.75rem;
