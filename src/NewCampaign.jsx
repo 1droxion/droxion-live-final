@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "./supabaseClient";
 
 const initialForm = {
   productName: "",
@@ -27,6 +29,8 @@ const campaignOutputs = [
 ];
 
 export default function NewCampaign() {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState(initialForm);
   const [productImage, setProductImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -155,107 +159,152 @@ export default function NewCampaign() {
   };
 
   const handleSubmit = async (event) => {
-  event.preventDefault();
+    event.preventDefault();
 
-  const validationError = validateForm();
+    const validationError = validateForm();
 
-  if (validationError) {
-    setError(validationError);
-    setSuccessMessage("");
+    if (validationError) {
+      setError(validationError);
+      setSuccessMessage("");
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
 
-    return;
-  }
+      return;
+    }
 
-  try {
-    setIsGenerating(true);
-    setError("");
-    setSuccessMessage("");
+    try {
+      setIsGenerating(true);
+      setError("");
+      setSuccessMessage("");
 
-    const backendUrl =
-      import.meta.env.VITE_BACKEND_URL ||
-      "https://droxion-backend.onrender.com";
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    const response = await fetch(
-      `${backendUrl}/generate-campaign`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          productName: form.productName.trim(),
-          brandName: form.brandName.trim(),
-          productUrl: form.productUrl.trim(),
-          price: form.price.trim(),
-          currency: form.currency,
-          targetCountry: form.targetCountry,
-          campaignGoal: form.campaignGoal,
-          brandTone: form.brandTone,
-          targetCustomer: form.targetCustomer.trim(),
-          productDescription: form.productDescription.trim(),
-          keyBenefits: form.keyBenefits.trim(),
-          specialOffer: form.specialOffer.trim(),
-        }),
+      if (userError) {
+        throw userError;
       }
-    );
 
-    const result = await response.json().catch(() => null);
+      if (!user) {
+        throw new Error("Your login session expired. Please log in again.");
+      }
 
-    if (!response.ok || !result?.ok) {
-      throw new Error(
-        result?.detail ||
-          result?.error ||
-          `Campaign generation failed with status ${response.status}.`
+      const backendUrl =
+        import.meta.env.VITE_BACKEND_URL ||
+        "https://droxion-backend.onrender.com";
+
+      const response = await fetch(
+        `${backendUrl}/generate-campaign`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            productName: form.productName.trim(),
+            brandName: form.brandName.trim(),
+            productUrl: form.productUrl.trim(),
+            price: form.price.trim(),
+            currency: form.currency,
+            targetCountry: form.targetCountry,
+            campaignGoal: form.campaignGoal,
+            brandTone: form.brandTone,
+            targetCustomer: form.targetCustomer.trim(),
+            productDescription: form.productDescription.trim(),
+            keyBenefits: form.keyBenefits.trim(),
+            specialOffer: form.specialOffer.trim(),
+          }),
+        }
       );
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(
+          result?.detail ||
+            result?.error ||
+            `Campaign generation failed with status ${response.status}.`
+        );
+      }
+
+      if (!result.campaign) {
+        throw new Error("The backend returned no campaign.");
+      }
+
+      const campaignRecord = {
+        user_id: user.id,
+        product_name: form.productName.trim(),
+        brand_name: form.brandName.trim(),
+        product_url: form.productUrl.trim() || null,
+        price: form.price.trim() || null,
+        currency: form.currency,
+        target_country: form.targetCountry,
+        campaign_goal: form.campaignGoal,
+        brand_tone: form.brandTone,
+        target_customer: form.targetCustomer.trim(),
+        product_description: form.productDescription.trim(),
+        key_benefits: form.keyBenefits.trim(),
+        special_offer: form.specialOffer.trim() || null,
+        campaign_data: result.campaign,
+      };
+
+      const {
+        data: savedCampaign,
+        error: saveError,
+      } = await supabase
+        .from("campaigns")
+        .insert(campaignRecord)
+        .select()
+        .single();
+
+      if (saveError) {
+        throw new Error(
+          `Campaign was generated, but saving failed: ${saveError.message}`
+        );
+      }
+
+      localStorage.setItem(
+        "droxion_latest_campaign",
+        JSON.stringify({
+          id: savedCampaign.id,
+          campaign: result.campaign,
+          form,
+          createdAt: savedCampaign.created_at,
+        })
+      );
+
+      setSuccessMessage(
+        "Your AI marketing campaign was generated and saved."
+      );
+
+      navigate("/campaign-results", {
+        state: {
+          campaignId: savedCampaign.id,
+        },
+      });
+    } catch (requestError) {
+      console.error(
+        "Campaign generation error:",
+        requestError
+      );
+
+      setError(
+        requestError?.message ||
+          "Campaign generation failed. Please try again."
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } finally {
+      setIsGenerating(false);
     }
-
-    if (!result.campaign) {
-      throw new Error("The backend returned no campaign.");
-    }
-
-    console.log("Generated campaign:", result.campaign);
-
-    localStorage.setItem(
-      "droxion_latest_campaign",
-      JSON.stringify({
-        campaign: result.campaign,
-        form,
-        createdAt: new Date().toISOString(),
-      })
-    );
-
-    setSuccessMessage(
-      "Your AI marketing campaign was generated successfully."
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  } catch (requestError) {
-    console.error(
-      "Campaign generation error:",
-      requestError
-    );
-
-    setError(
-      requestError?.message ||
-        "Campaign generation failed. Please try again."
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  } finally {
-    setIsGenerating(false);
-  }
-};
+  };
 
   const handleReset = () => {
     setForm(initialForm);
