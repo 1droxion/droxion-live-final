@@ -71,6 +71,11 @@ export default function Projects() {
   };
 
   const handleView = (campaignId) => {
+    if (!campaignId) {
+      setError("This campaign is missing its ID.");
+      return;
+    }
+
     navigate(`/campaign-results/${campaignId}`);
   };
 
