@@ -155,46 +155,107 @@ export default function NewCampaign() {
   };
 
   const handleSubmit = async (event) => {
-    event.preventDefault();
+  event.preventDefault();
 
-    const validationError = validateForm();
+  const validationError = validateForm();
 
-    if (validationError) {
-      setError(validationError);
-      setSuccessMessage("");
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-      return;
-    }
+  if (validationError) {
+    setError(validationError);
+    setSuccessMessage("");
 
-    try {
-      setIsGenerating(true);
-      setError("");
-      setSuccessMessage("");
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
 
-      // Temporary frontend test.
-      // We will replace this with the Flask API request next.
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1200);
-      });
+    return;
+  }
 
-      console.log("Campaign form:", {
-        ...form,
-        productImage,
-      });
+  try {
+    setIsGenerating(true);
+    setError("");
+    setSuccessMessage("");
 
-      setSuccessMessage(
-        "The campaign form is working. Next, we will connect it to the Droxion backend."
+    const backendUrl =
+      import.meta.env.VITE_BACKEND_URL ||
+      "https://droxion-backend.onrender.com";
+
+    const response = await fetch(
+      `${backendUrl}/generate-campaign`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          productName: form.productName.trim(),
+          brandName: form.brandName.trim(),
+          productUrl: form.productUrl.trim(),
+          price: form.price.trim(),
+          currency: form.currency,
+          targetCountry: form.targetCountry,
+          campaignGoal: form.campaignGoal,
+          brandTone: form.brandTone,
+          targetCustomer: form.targetCustomer.trim(),
+          productDescription: form.productDescription.trim(),
+          keyBenefits: form.keyBenefits.trim(),
+          specialOffer: form.specialOffer.trim(),
+        }),
+      }
+    );
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.ok) {
+      throw new Error(
+        result?.detail ||
+          result?.error ||
+          `Campaign generation failed with status ${response.status}.`
       );
-    } catch (requestError) {
-      console.error("Campaign generation error:", requestError);
-      setError("Campaign generation failed. Please try again.");
-    } finally {
-      setIsGenerating(false);
     }
-  };
+
+    if (!result.campaign) {
+      throw new Error("The backend returned no campaign.");
+    }
+
+    console.log("Generated campaign:", result.campaign);
+
+    localStorage.setItem(
+      "droxion_latest_campaign",
+      JSON.stringify({
+        campaign: result.campaign,
+        form,
+        createdAt: new Date().toISOString(),
+      })
+    );
+
+    setSuccessMessage(
+      "Your AI marketing campaign was generated successfully."
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  } catch (requestError) {
+    console.error(
+      "Campaign generation error:",
+      requestError
+    );
+
+    setError(
+      requestError?.message ||
+        "Campaign generation failed. Please try again."
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   const handleReset = () => {
     setForm(initialForm);
