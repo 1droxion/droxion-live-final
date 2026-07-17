@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
+import Home from "./Home";
 import SmartBar from "./SmartBar";
 import Generator from "./Generator";
 import AIChat from "./AIChat";
