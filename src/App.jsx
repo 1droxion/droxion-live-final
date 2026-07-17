@@ -1,28 +1,36 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+} from "react-router-dom";
 
 import Home from "./Home";
-import SmartBar from "./SmartBar";
-import Generator from "./Generator";
 import AIChat from "./AIChat";
 import AIImage from "./AIImage";
-import Plans from "./Plans";
 import Projects from "./Projects";
-import Templates from "./Templates";
-import Connect from "./Connect";
-import Editor from "./Editor";
 import Settings from "./Settings";
 import Login from "./Login";
 import Signup from "./Signup";
-import Analytics from "./Analytics";
 import NewCampaign from "./NewCampaign";
 import CampaignResults from "./CampaignResults";
+
+import AppLayout from "./components/AppLayout";
+import Dashboard from "./pages/Dashboard";
+
 import { supabase } from "./supabaseClient";
 
 function LoadingScreen({ message = "Loading Droxion..." }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0e0e10] text-white">
-      {message}
+    <div className="flex min-h-screen items-center justify-center bg-[#0e0e10] text-white">
+      <div className="text-center">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-blue-500" />
+
+        <p className="mt-4 text-sm text-gray-400">
+          {message}
+        </p>
+      </div>
     </div>
   );
 }
@@ -36,7 +44,7 @@ function ProtectedRoute({ session, loading, children }) {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return children || <Outlet />;
 }
 
 function PublicRoute({ session, loading, children }) {
@@ -45,7 +53,7 @@ function PublicRoute({ session, loading, children }) {
   }
 
   if (session) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -66,7 +74,10 @@ export default function App() {
         } = await supabase.auth.getSession();
 
         if (error) {
-          console.error("Failed to load Supabase session:", error);
+          console.error(
+            "Failed to load Supabase session:",
+            error
+          );
         }
 
         if (mounted) {
@@ -74,7 +85,10 @@ export default function App() {
           setAuthLoading(false);
         }
       } catch (error) {
-        console.error("Unexpected authentication error:", error);
+        console.error(
+          "Unexpected authentication error:",
+          error
+        );
 
         if (mounted) {
           setSession(null);
@@ -87,12 +101,14 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (!mounted) return;
+    } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        if (!mounted) return;
 
-      setSession(newSession);
-      setAuthLoading(false);
-    });
+        setSession(newSession);
+        setAuthLoading(false);
+      }
+    );
 
     return () => {
       mounted = false;
@@ -104,7 +120,9 @@ export default function App() {
     const startTime = Date.now();
 
     const handleUnload = () => {
-      const duration = Math.floor((Date.now() - startTime) / 1000);
+      const duration = Math.floor(
+        (Date.now() - startTime) / 1000
+      );
 
       const backendUrl =
         import.meta.env.VITE_BACKEND_URL ||
@@ -125,7 +143,10 @@ export default function App() {
           type: "application/json",
         });
 
-        const beaconSent = navigator.sendBeacon(trackingUrl, blob);
+        const beaconSent = navigator.sendBeacon(
+          trackingUrl,
+          blob
+        );
 
         if (!beaconSent) {
           fetch(trackingUrl, {
@@ -149,20 +170,33 @@ export default function App() {
       }
     };
 
-    window.addEventListener("beforeunload", handleUnload);
+    window.addEventListener(
+      "beforeunload",
+      handleUnload
+    );
 
     return () => {
-      window.removeEventListener("beforeunload", handleUnload);
+      window.removeEventListener(
+        "beforeunload",
+        handleUnload
+      );
     };
   }, [session]);
 
   return (
     <div className="min-h-screen bg-[#0e0e10] text-white">
       <Routes>
+        {/* Public homepage */}
+        <Route path="/" element={<Home />} />
+
+        {/* Authentication */}
         <Route
           path="/login"
           element={
-            <PublicRoute session={session} loading={authLoading}>
+            <PublicRoute
+              session={session}
+              loading={authLoading}
+            >
               <Login />
             </PublicRoute>
           }
@@ -171,159 +205,161 @@ export default function App() {
         <Route
           path="/signup"
           element={
-            <PublicRoute session={session} loading={authLoading}>
+            <PublicRoute
+              session={session}
+              loading={authLoading}
+            >
               <Signup />
             </PublicRoute>
           }
         />
 
+        {/* Protected professional workspace */}
         <Route
-          path="/"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <AIChat />
+            <ProtectedRoute
+              session={session}
+              loading={authLoading}
+            >
+              <AppLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route
+            path="/dashboard"
+            element={<Dashboard />}
+          />
 
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <AIChat />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/new-campaign"
+            element={<NewCampaign />}
+          />
 
+          <Route
+            path="/projects"
+            element={<Projects />}
+          />
+
+          <Route
+            path="/campaign-results"
+            element={<CampaignResults />}
+          />
+
+          <Route
+            path="/campaign-results/:id"
+            element={<CampaignResults />}
+          />
+
+          <Route
+            path="/ai-image"
+            element={<AIImage />}
+          />
+
+          <Route
+            path="/settings"
+            element={<Settings />}
+          />
+        </Route>
+
+        {/* AI Chat remains full screen for now */}
         <Route
           path="/chatboard"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
+            <ProtectedRoute
+              session={session}
+              loading={authLoading}
+            >
               <AIChat />
             </ProtectedRoute>
           }
         />
 
+        {/* Redirect old routes */}
         <Route
           path="/smart"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <SmartBar />
-            </ProtectedRoute>
+            <Navigate
+              to="/dashboard"
+              replace
+            />
           }
         />
 
         <Route
           path="/generator"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Generator />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/new-campaign"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <NewCampaign />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/campaign-results"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <CampaignResults />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/campaign-results/:id"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <CampaignResults />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/ai-image"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <AIImage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/plans"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Plans />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/projects"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Projects />
-            </ProtectedRoute>
+            <Navigate
+              to="/new-campaign"
+              replace
+            />
           }
         />
 
         <Route
           path="/templates"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Templates />
-            </ProtectedRoute>
+            <Navigate
+              to="/dashboard"
+              replace
+            />
           }
         />
 
         <Route
           path="/connect"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Connect />
-            </ProtectedRoute>
+            <Navigate
+              to="/dashboard"
+              replace
+            />
           }
         />
 
         <Route
           path="/editor"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Editor />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Settings />
-            </ProtectedRoute>
+            <Navigate
+              to="/dashboard"
+              replace
+            />
           }
         />
 
         <Route
           path="/analytics"
           element={
-            <ProtectedRoute session={session} loading={authLoading}>
-              <Analytics />
-            </ProtectedRoute>
+            <Navigate
+              to="/dashboard"
+              replace
+            />
           }
         />
 
         <Route
+          path="/plans"
+          element={
+            <Navigate
+              to="/dashboard"
+              replace
+            />
+          }
+        />
+
+        {/* Unknown page */}
+        <Route
           path="*"
-          element={<Navigate to={session ? "/" : "/login"} replace />}
+          element={
+            <Navigate
+              to={
+                authLoading
+                  ? "/"
+                  : session
+                    ? "/dashboard"
+                    : "/"
+              }
+              replace
+            />
+          }
         />
       </Routes>
     </div>
