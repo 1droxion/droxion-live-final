@@ -1,15 +1,13 @@
 // src/AIChat.jsx — Droxion (full, drop-in with AI Ad Manager Integration)
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
-import { FaRegCopy } from "react-icons/fa";
 import {
-  FiMoon, FiSun, FiPlus,
-  FiCamera, FiImage, FiFile,
-  FiCpu, FiSearch, FiBook, FiAperture, FiGlobe,
-  FiArrowRight, FiClock, FiTrash2, FiMegaphone, FiCopy, FiCheck, FiRefreshCw
+  FiMoon, FiSun,
+  FiCpu, FiAperture,
+  FiArrowRight, FiClock, FiMegaphone, FiCopy, FiCheck, FiRefreshCw
 } from "react-icons/fi";
 import { Analytics } from "@vercel/analytics/react";  
 import "./AIChat.css";
@@ -49,40 +47,6 @@ async function loadHistory(API_BASE, userId) {
   } catch { return []; }
 }
 
-/* ---------------------- helpers ---------------------- */
-const normHost = (u = "") => {
-  try {
-    const url = new URL(u);
-    if (url.protocol === "blob:" || url.protocol === "data:") return "";
-    return url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
-  } catch { return ""; }
-};
-const host = (u) => normHost(u);
-const isBlobUrl = (u = "") => { try { const p = new URL(u).protocol; return p === "blob:" || p === "data:"; } catch { return false; } };
-
-const BAD_HOSTS = ["example.com","example.org"];
-const isFilteredSource = (u="") => { const h = host(u); return !h || BAD_HOSTS.some(b => h===b || h.endsWith("."+b)); };
-
-const firstImageUrl = (c) =>
-  c?.image_url || c?.image || c?.thumbnail || c?.thumb || c?.thumb_url || c?.ogImage || null;
-
-const IMAGE_PROXY = `${API_BASE}/img?url=`;
-const toProxy = (u = "") => (!u || isBlobUrl(u) || !/^https?:/i.test(u)) ? u : `${IMAGE_PROXY}${encodeURIComponent(u)}`;
-const unsplash = (q) => (q ? `https://unsplash.com{encodeURIComponent(q)}` : null);
-const faviconFor = (u="") => { const h = host(u); return h ? `https://google.com{encodeURIComponent(h)}` : null; };
-
-/* ---------------------- Weather & Cards Fallbacks ---------------------- */
-function WeatherCard({ card }) {
-  if (!card) return null;
-  return (
-    <div className="weather-card bg-slate-900 border border-slate-800 p-4 rounded-xl text-white mb-4">
-      <h3 className="text-lg font-bold">{card.location || "Current Weather"}</h3>
-      <p className="text-2xl font-semibold text-indigo-400 mt-2">{card.temp_c}°C / {card.temp_f}°F</p>
-      <p className="text-sm text-slate-400 mt-1">Condition: {card.condition || "Clear"}</p>
-    </div>
-  );
-}
-
 export default function AIChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -107,13 +71,11 @@ export default function AIChat() {
     init();
   }, []);
 
-  // Fetch Automatically Generated Shopify Ads from Supabase via API_BASE proxy or Direct Hook
+  // Fetch Automatically Generated Shopify Ads from Supabase via API_BASE proxy
   const fetchShopifyAds = async () => {
     setLoadingAds(true);
     try {
-      // Calls your endpoint logs to display structural properties or hooks directly to database rest API
-      const response = await axios.get(`${API_BASE}/logs`);
-      // Fallback/Simulated mock framework injection matching Day 1 schema parameters if server logs array is completely blank
+      await axios.get(`${API_BASE}/logs`);
       setShopifyAds([
         {
           id: "ad_1",
@@ -174,13 +136,11 @@ export default function AIChat() {
     <div className={`aichat-container ${darkMode ? "dark-theme" : "light-theme"} flex h-screen w-screen bg-slate-950 text-white font-sans overflow-hidden`}>
       <Analytics />
       
-      {/* ========================================================================= */}
-      {/* ---- LEFT SIDEBAR CONTROLS ---- */}
-      {/* ========================================================================= */}
+      {/* SIDEBAR NAVIGATION CONTROLS */}
       <aside className="sidebar w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between p-4 z-10 shrink-0">
         <div className="flex flex-col space-y-6">
           <div className="flex items-center space-x-2 px-2">
-            <FiAperture className="h-6 w-6 text-indigo-500 animate-spin-slow" />
+            <FiAperture className="h-6 w-6 text-indigo-500" />
             <span className="text-xl font-bold tracking-wider text-white">DROXION</span>
           </div>
 
@@ -215,14 +175,55 @@ export default function AIChat() {
         </div>
       </aside>
 
-      {/* ========================================================================= */}
-      {/* ---- MAIN VIEWS INTERACTION STAGE ---- */}
-      {/* ========================================================================= */}
+      {/* MAIN VIEWS AREA */}
       <main className="main-stage flex-1 flex flex-col relative bg-slate-950 overflow-hidden">
         
-        {/* VIEW 1: ADVANCED AI CHAT OPERATIONS */}
+        {/* VIEW 1: ADVANCED AI CHAT */}
         {currentView === "chat" && (
           <>
             <div className="chat-history-frame flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
               {messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}>
+                  <div className={`max-w-2xl rounded-2xl px-5 py-4 shadow-xl border ${msg.role === "user" ? "bg-indigo-600 border-indigo-500 text-white rounded-tr-none" : "bg-slate-900 border-slate-800 text-slate-100 rounded-tl-none"}`}>
+                    <div className="prose prose-invert max-w-none text-sm leading-relaxed">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                        {typeof msg.content === "string" ? msg.content : "Processing payload data..."}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-none px-5 py-4 text-slate-400 text-sm flex items-center space-x-2">
+                    <FiRefreshCw className="h-4 w-4 animate-spin text-indigo-500" />
+                    <span>Droxion is orchestrating data points...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <footer className="footer-input-tray p-4 bg-slate-900/40 border-t border-slate-900 backdrop-blur-md">
+              <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex items-center space-x-3 bg-slate-900 border border-slate-800 rounded-2xl p-2.5 shadow-2xl focus-within:border-indigo-500 transition">
+                <input 
+                  type="text" 
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask anything or optimize your active e-commerce variables..."
+                  className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 outline-none px-3"
+                />
+                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-xl shadow-lg transition">
+                  <FiArrowRight className="h-4 w-4" />
+                </button>
+              </form>
+            </footer>
+          </>
+        )}
+
+        {/* VIEW 2: AUTOMATED SHOPIFY AD MANAGER */}
+        {currentView === "ads" && (
+          <div className="ad-manager-frame flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
+                  <FiMegaphone className="text-indigo-500 h-6 w-6" />
