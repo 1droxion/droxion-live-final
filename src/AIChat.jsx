@@ -145,6 +145,7 @@ export default function AIChat() {
           </div>
 
           <button 
+            type="button"
             onClick={() => { setCurrentView("chat"); }}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition text-sm font-medium ${currentView === "chat" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
           >
@@ -153,6 +154,7 @@ export default function AIChat() {
           </button>
 
           <button 
+            type="button"
             onClick={() => { setCurrentView("ads"); fetchShopifyAds(); }}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition text-sm font-medium ${currentView === "ads" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
           >
@@ -166,6 +168,7 @@ export default function AIChat() {
             <span>User Hash: {USER_ID}</span>
           </div>
           <button 
+            type="button"
             onClick={() => setDarkMode(!darkMode)}
             className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white transition"
           >
@@ -226,4 +229,3 @@ export default function AIChat() {
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
-                  <FiMegaphone className="text-indigo-500 h-6 w-6" />
