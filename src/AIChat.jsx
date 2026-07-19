@@ -10,11 +10,11 @@ import {
   FiCpu,
   FiAperture,
   FiArrowRight,
-  FiMegaphone,
   FiCopy,
   FiCheck,
   FiRefreshCw,
 } from "react-icons/fi";
+import { Megaphone } from "lucide-react";
 import { Analytics } from "@vercel/analytics/react";
 import "./AIChat.css";
 
@@ -224,7 +224,7 @@ export default function AIChat() {
                 : "text-slate-400 hover:bg-slate-800 hover:text-white"
             }`}
           >
-            <FiMegaphone className="h-5 w-5" />
+            <Megaphone className="h-5 w-5" />
             <span>AI Ad Manager</span>
           </button>
         </div>
@@ -321,7 +321,7 @@ export default function AIChat() {
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
-                  <FiMegaphone className="h-6 w-6 text-indigo-500" />
+                  <Megaphone className="h-6 w-6 text-indigo-500" />
                   <span>AI Ad Manager</span>
                 </h1>
                 <p className="mt-2 text-sm text-slate-400">
@@ -352,7 +352,7 @@ export default function AIChat() {
               </div>
             ) : shopifyAds.length === 0 ? (
               <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 px-6 text-center">
-                <FiMegaphone className="mb-4 h-10 w-10 text-slate-600" />
+                <Megaphone className="mb-4 h-10 w-10 text-slate-600" />
                 <h2 className="text-lg font-semibold text-white">
                   No generated ads found
                 </h2>
