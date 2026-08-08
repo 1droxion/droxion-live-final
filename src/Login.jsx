@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
-function Login() {
+export default function Login() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -12,21 +12,14 @@ function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+
     setError("");
-
-    const cleanEmail = email.trim().toLowerCase();
-
-    if (!cleanEmail || !password) {
-      setError("Please enter your email and password.");
-      return;
-    }
+    setLoading(true);
 
     try {
-      setLoading(true);
-
       const { error: loginError } =
         await supabase.auth.signInWithPassword({
-          email: cleanEmail,
+          email: email.trim().toLowerCase(),
           password,
         });
 
@@ -34,95 +27,91 @@ function Login() {
         throw loginError;
       }
 
-      navigate("/dashboard", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
-      setError(err?.message || "Login failed. Please try again.");
+      setError(err?.message || "Unable to sign in.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-[#0b1120] px-4">
-      <div className="bg-[#111827] p-8 rounded-xl shadow-lg w-full max-w-sm text-white border border-gray-700">
-        <h2 className="text-xl font-bold text-center mb-6">
-          Login to Droxion
-        </h2>
+    <div className="min-h-screen bg-[#07070b] text-white flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-[#111118] border border-white/10 rounded-3xl p-7 shadow-2xl">
+
+        <div className="text-center mb-8">
+          <div className="text-3xl font-black tracking-tight">
+            DROXION
+          </div>
+
+          <div className="text-purple-400 mt-2 font-semibold">
+            Meet the world. Live.
+          </div>
+
+          <p className="text-gray-400 text-sm mt-2">
+            Sign in to your 21+ Droxion account
+          </p>
+        </div>
 
         {error && (
-          <div
-            role="alert"
-            className="mb-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"
-          >
+          <div className="mb-5 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl p-3 text-sm">
             {error}
           </div>
         )}
 
         <form onSubmit={handleLogin}>
-          <label
-            htmlFor="email"
-            className="block mb-2 text-sm font-medium"
-          >
+          <label className="block text-sm mb-2">
             Email
           </label>
 
           <input
-            id="email"
             type="email"
-            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-2.5 mb-4 rounded bg-gray-800 text-white border border-gray-600 outline-none focus:border-green-500"
+            autoComplete="email"
             required
+            placeholder="you@example.com"
+            className="w-full p-3 mb-5 bg-[#191922] border border-white/10 rounded-xl outline-none focus:border-purple-500"
           />
 
-          <label
-            htmlFor="password"
-            className="block mb-2 text-sm font-medium"
-          >
+          <label className="block text-sm mb-2">
             Password
           </label>
 
           <input
-            id="password"
             type="password"
-            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-2.5 mb-6 rounded bg-gray-800 text-white border border-gray-600 outline-none focus:border-green-500"
+            autoComplete="current-password"
             required
+            placeholder="Your password"
+            className="w-full p-3 mb-6 bg-[#191922] border border-white/10 rounded-xl outline-none focus:border-purple-500"
           />
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60 text-white py-2.5 px-4 rounded font-semibold"
+            className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-60 py-3 rounded-xl font-bold"
           >
-            {loading ? "Logging in..." : "Login"}
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
-        <div className="text-sm mt-4 text-center">
+        <div className="text-center text-sm text-gray-400 mt-6">
+          New to Droxion?{" "}
           <Link
             to="/signup"
-            className="text-blue-400 hover:underline"
+            className="text-purple-400 font-semibold"
           >
-            Create an account
+            Create account
           </Link>
         </div>
 
-        <div className="text-xs mt-3 text-center text-gray-400">
-          Forgot password?{" "}
-          <a
-            href="mailto:support@droxion.com"
-            className="text-blue-400 hover:underline"
-          >
-            Contact Support
-          </a>
+        <div className="text-center text-xs text-gray-600 mt-5">
+          Droxion is for adults age 21+.
         </div>
+
       </div>
     </div>
   );
 }
-
-export default Login;
