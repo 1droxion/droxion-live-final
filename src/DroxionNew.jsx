@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from './supabaseClient';
 import {
   Bell, Coins, Compass, Radio, MessageCircle, Star, User, Video, Heart,
   X, Gift, SlidersHorizontal, Globe2, ShieldCheck, PhoneOff, Mic, Camera,
@@ -78,42 +79,772 @@ function Creators(){ return <div className="pagePad"><div className="sectionHead
 
 function Profile(){ return <div className="pagePad"><div className="profileHeader"><div className="avatar">D</div><h2>Dhruv <BadgeCheck size={18}/></h2><p>🌎 Global · 21+</p><div className="stats"><div><strong>128</strong><span>Connections</span></div><div><strong>42</strong><span>Following</span></div><div><strong>4.9</strong><span>Trust</span></div></div></div><div className="settingsList">{['Edit profile','Wallet & coins','Droxion+','Creator dashboard','Safety center','Privacy','Help & support'].map(x=><button key={x}>{x}<span>›</span></button>)}</div></div> }
 
-function CoinStore({close,setCoins}){
-  const packs=[['100','$1.99'],['550','$7.99'],['1,200','$14.99'],['3,000','$29.99']];
-  return <div className="modalShade"><div className="sheet"><div className="sheetHead"><h2>Coin Store</h2><button className="iconBtn" onClick={close}><X size={20}/></button></div><p className="muted">Demo checkout. Connect Stripe or another supported payment provider before launch.</p><div className="packs">{packs.map(([n,price])=><button key={n} onClick={()=>{setCoins(c=>c+parseInt(n.replace(',','')));close();}}><Coins/><div><strong>{n} coins</strong><span>{price}</span></div></button>)}</div></div></div>
+function CoinStore({
+  close,
+  coins,
+  freeMatches,
+  plan,
+  message
+}){
+  const [products,setProducts] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [checkoutId,setCheckoutId] = useState('');
+  const [checkoutError,setCheckoutError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadProducts(){
+
+      const { data, error } = await supabase
+        .from('droxion_products')
+        .select(
+          'id, product_type, name, price_cents, coins_granted, plan, sort_order'
+        )
+        .eq('active', true)
+        .order('sort_order');
+
+      if(!mounted) return;
+
+      if(error){
+        console.error(
+          'Droxion products error:',
+          error.message
+        );
+
+        setCheckoutError(
+          'Unable to load Droxion products.'
+        );
+      } else {
+        setProducts(data || []);
+      }
+
+      setLoading(false);
+    }
+
+    loadProducts();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+
+  async function startCheckout(productId){
+
+    setCheckoutError('');
+    setCheckoutId(productId);
+
+    const { data, error } =
+      await supabase.functions.invoke(
+        'ccbill-checkout',
+        {
+          body: {
+            product_id: productId
+          }
+        }
+      );
+
+    if(error){
+      console.error(
+        'CCBill checkout error:',
+        error
+      );
+
+      setCheckoutError(
+        'Checkout is not available yet. Please try again later.'
+      );
+
+      setCheckoutId('');
+
+      return;
+    }
+
+
+    if(!data?.checkout_url){
+
+      setCheckoutError(
+        data?.error ||
+        'Checkout could not be started.'
+      );
+
+      setCheckoutId('');
+
+      return;
+    }
+
+
+    window.location.assign(
+      data.checkout_url
+    );
+  }
+
+
+  const coinProducts =
+    products.filter(
+      product =>
+        product.product_type ===
+        'coin_pack'
+    );
+
+
+  const subscriptionProducts =
+    products.filter(
+      product =>
+        product.product_type ===
+        'subscription'
+    );
+
+
+  const price = cents =>
+    `$${(
+      Number(cents || 0) / 100
+    ).toFixed(2)}`;
+
+
+  return (
+    <div className="modalShade">
+
+      <div className="sheet">
+
+        <div className="sheetHead">
+
+          <h2>Droxion Wallet</h2>
+
+          <button
+            className="iconBtn"
+            onClick={close}
+          >
+            <X size={20}/>
+          </button>
+
+        </div>
+
+
+        <p className="muted">
+          {coins} coins
+          {' · '}
+          {freeMatches} free matches
+          {' · '}
+          {plan.toUpperCase()} plan
+        </p>
+
+
+        {message && (
+          <p className="warning">
+            {message}
+          </p>
+        )}
+
+
+        {checkoutError && (
+          <p className="warning">
+            {checkoutError}
+          </p>
+        )}
+
+
+        <h3>Buy Coins</h3>
+
+        {loading ? (
+
+          <p className="muted">
+            Loading products...
+          </p>
+
+        ) : (
+
+          <div className="packs">
+
+            {coinProducts.map(product => (
+
+              <button
+                key={product.id}
+                disabled={
+                  checkoutId === product.id
+                }
+                onClick={() =>
+                  startCheckout(product.id)
+                }
+              >
+
+                <Coins/>
+
+                <div>
+
+                  <strong>
+                    {product.coins_granted}
+                    {' '}coins
+                  </strong>
+
+                  <span>
+                    {
+                      checkoutId === product.id
+                        ? 'Opening checkout...'
+                        : price(product.price_cents)
+                    }
+                  </span>
+
+                </div>
+
+              </button>
+
+            ))}
+
+          </div>
+
+        )}
+
+
+        <h3 style={{marginTop:24}}>
+          Droxion Plans
+        </h3>
+
+
+        <div className="packs">
+
+          {subscriptionProducts.map(
+            product => (
+
+              <button
+                key={product.id}
+                disabled={
+                  checkoutId === product.id
+                }
+                onClick={() =>
+                  startCheckout(product.id)
+                }
+              >
+
+                <div>
+
+                  <strong>
+                    {product.name}
+                  </strong>
+
+                  <span>
+                    {
+                      checkoutId === product.id
+                        ? 'Opening checkout...'
+                        : `${price(
+                            product.price_cents
+                          )}/month`
+                    }
+                  </span>
+
+                  <small>
+                    +
+                    {product.coins_granted}
+                    {' '}coins
+                  </small>
+
+                </div>
+
+              </button>
+
+            )
+          )}
+
+        </div>
+
+
+        <p className="muted"
+           style={{marginTop:18}}>
+          Coins and memberships are credited
+          only after payment confirmation.
+        </p>
+
+      </div>
+
+    </div>
+  );
 }
 
-function CallScreen({person,onEnd,coins,setCoins}){
+
+function CallScreen({
+  person,
+  onEnd,
+  coins,
+  onExtend
+}){
   const [seconds,setSeconds] = useState(120);
   const [extended,setExtended] = useState(false);
-  const mins = String(Math.floor(seconds/60)).padStart(2,'0');
-  const secs = String(seconds%60).padStart(2,'0');
-  const extend=()=>{ if(coins>=25){setCoins(coins-25);setSeconds(300);setExtended(true);} };
-  return <div className="callScreen" style={{backgroundImage:`linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.7)),url(${person.image})`}}>
-    <div className="callTop"><div><strong>{person.name}, {person.age}</strong><span>{person.flag} {person.country}</span></div><button className="iconBtn dark"><MoreVertical/></button></div>
-    <div className="timer">{mins}:{secs} {extended?'paid':'free preview'}</div>
-    <div className="selfPreview">YOU</div>
-    <div className="callBottom">
-      <div className="callButtons"><button><Gift/></button><button><Mic/></button><button><Camera/></button><button><RotateCcw/></button><button className="hang" onClick={onEnd}><PhoneOff/></button></div>
-      {!extended && <button className="bigCTA" onClick={extend}>Continue 5 min · 25 🪙</button>}
-      {!extended && coins<25 && <p className="warning">Not enough coins. Add coins to continue.</p>}
+  const [extending,setExtending] = useState(false);
+  const [warning,setWarning] = useState('');
+
+  const mins =
+    String(Math.floor(seconds / 60)).padStart(2,'0');
+
+  const secs =
+    String(seconds % 60).padStart(2,'0');
+
+
+  const extend = async () => {
+
+    setWarning('');
+    setExtending(true);
+
+    const result = await onExtend();
+
+    if(result?.allowed){
+
+      setSeconds(300);
+      setExtended(true);
+
+    } else {
+
+      setWarning(
+        result?.message ||
+        'Not enough coins. Add coins to continue.'
+      );
+
+    }
+
+    setExtending(false);
+  };
+
+
+  return <div
+    className="callScreen"
+    style={{
+      backgroundImage:
+        `linear-gradient(
+          180deg,
+          rgba(0,0,0,.05),
+          rgba(0,0,0,.7)
+        ),
+        url(${person.image})`
+    }}
+  >
+
+    <div className="callTop">
+
+      <div>
+        <strong>
+          {person.name}, {person.age}
+        </strong>
+
+        <span>
+          {person.flag} {person.country}
+        </span>
+      </div>
+
+      <button className="iconBtn dark">
+        <MoreVertical/>
+      </button>
+
     </div>
+
+
+    <div className="timer">
+      {mins}:{secs}
+      {' '}
+      {extended ? 'paid' : 'free preview'}
+    </div>
+
+
+    <div className="selfPreview">
+      YOU
+    </div>
+
+
+    <div className="callBottom">
+
+      <div className="callButtons">
+
+        <button>
+          <Gift/>
+        </button>
+
+        <button>
+          <Mic/>
+        </button>
+
+        <button>
+          <Camera/>
+        </button>
+
+        <button>
+          <RotateCcw/>
+        </button>
+
+        <button
+          className="hang"
+          onClick={onEnd}
+        >
+          <PhoneOff/>
+        </button>
+
+      </div>
+
+
+      {!extended && (
+        <button
+          className="bigCTA"
+          disabled={extending}
+          onClick={extend}
+        >
+          {
+            extending
+              ? 'Checking wallet...'
+              : 'Continue 5 min · 25 🪙'
+          }
+        </button>
+      )}
+
+
+      {!extended && warning && (
+        <p className="warning">
+          {warning}
+        </p>
+      )}
+
+
+      <p className="muted">
+        Wallet balance: {coins} 🪙
+      </p>
+
+    </div>
+
   </div>
 }
 
 export default function Home(){
-  const [tab,setTab]=useState('discover');
-  const [coins,setCoins]=useState(100);
-  const [coinStore,setCoinStore]=useState(false);
-  const [call,setCall]=useState(null);
-  const content=useMemo(()=>{
-    if(tab==='discover') return <Discover onCall={setCall}/>;
-    if(tab==='live') return <LivePage onCall={setCall}/>;
-    if(tab==='messages') return <Messages/>;
-    if(tab==='creators') return <Creators/>;
-    return <Profile/>;
-  },[tab]);
 
-  if(call) return <CallScreen person={call} onEnd={()=>setCall(null)} coins={coins} setCoins={setCoins}/>;
-  return <main className="appShell"><TopBar coins={coins} onCoins={()=>setCoinStore(true)}/><div className="content">{content}</div><BottomNav tab={tab} setTab={setTab}/>{coinStore&&<CoinStore close={()=>setCoinStore(false)} setCoins={setCoins}/>}</main>
+  const [tab,setTab] =
+    useState('discover');
+
+  const [coins,setCoins] =
+    useState(0);
+
+  const [freeMatches,setFreeMatches] =
+    useState(0);
+
+  const [plan,setPlan] =
+    useState('free');
+
+  const [walletLoading,setWalletLoading] =
+    useState(true);
+
+  const [coinStore,setCoinStore] =
+    useState(false);
+
+  const [call,setCall] =
+    useState(null);
+
+  const [moneyMessage,setMoneyMessage] =
+    useState('');
+
+
+  async function loadWallet(){
+
+    setWalletLoading(true);
+
+    const {
+      data: authData,
+      error: authError
+    } = await supabase.auth.getUser();
+
+    const user = authData?.user;
+
+
+    if(authError || !user){
+
+      console.error(
+        'Droxion wallet auth error:',
+        authError?.message
+      );
+
+      setMoneyMessage(
+        'Please sign in again to load your wallet.'
+      );
+
+      setWalletLoading(false);
+
+      return;
+    }
+
+
+    const {
+      data,
+      error
+    } = await supabase
+      .from('droxion_wallets')
+      .select(
+        'coin_balance, free_matches_remaining, plan'
+      )
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+
+    if(error || !data){
+
+      console.error(
+        'Droxion wallet load error:',
+        error?.message
+      );
+
+      setMoneyMessage(
+        'Your wallet could not be loaded.'
+      );
+
+      setWalletLoading(false);
+
+      return;
+    }
+
+
+    setCoins(
+      Number(data.coin_balance ?? 0)
+    );
+
+    setFreeMatches(
+      Number(
+        data.free_matches_remaining ?? 0
+      )
+    );
+
+    setPlan(
+      data.plan || 'free'
+    );
+
+    setMoneyMessage('');
+
+    setWalletLoading(false);
+  }
+
+
+  useEffect(() => {
+
+    loadWallet();
+
+  }, []);
+
+
+  async function startCall(person){
+
+    if(walletLoading){
+
+      setMoneyMessage(
+        'Wallet is still loading. Try again in a moment.'
+      );
+
+      return;
+    }
+
+
+    setMoneyMessage('');
+
+
+    const {
+      data,
+      error
+    } = await supabase.rpc(
+      'droxion_use_match'
+    );
+
+
+    if(error){
+
+      console.error(
+        'Droxion match charge error:',
+        error.message
+      );
+
+      setMoneyMessage(
+        'We could not verify your match allowance. Please try again.'
+      );
+
+      return;
+    }
+
+
+    if(!data?.allowed){
+
+      setCoins(
+        Number(
+          data?.coin_balance ?? coins
+        )
+      );
+
+      setFreeMatches(
+        Number(
+          data?.free_matches_remaining ?? 0
+        )
+      );
+
+      if(data?.plan){
+        setPlan(data.plan);
+      }
+
+      setMoneyMessage(
+        `You need ${
+          data?.required_coins ?? 10
+        } coins for another match.`
+      );
+
+      setCoinStore(true);
+
+      return;
+    }
+
+
+    setCoins(
+      Number(
+        data.coin_balance ?? coins
+      )
+    );
+
+    setFreeMatches(
+      Number(
+        data.free_matches_remaining ??
+        freeMatches
+      )
+    );
+
+    if(data.plan){
+      setPlan(data.plan);
+    }
+
+    setCall(person);
+  }
+
+
+  async function extendCall(){
+
+    const {
+      data,
+      error
+    } = await supabase.rpc(
+      'droxion_extend_call'
+    );
+
+
+    if(error){
+
+      console.error(
+        'Droxion call extension error:',
+        error.message
+      );
+
+      return {
+        allowed:false,
+        message:
+          'We could not verify the wallet. Please try again.'
+      };
+    }
+
+
+    setCoins(
+      Number(
+        data?.coin_balance ?? coins
+      )
+    );
+
+
+    if(!data?.allowed){
+
+      setMoneyMessage(
+        `You need ${
+          data?.required_coins ?? 25
+        } coins to extend this call.`
+      );
+
+      return {
+        allowed:false,
+        message:
+          `Not enough coins. You need ${
+            data?.required_coins ?? 25
+          } coins.`
+      };
+    }
+
+
+    setMoneyMessage('');
+
+    return {
+      allowed:true
+    };
+  }
+
+
+  let content;
+
+
+  if(tab === 'discover'){
+
+    content =
+      <Discover onCall={startCall}/>;
+
+  } else if(tab === 'live'){
+
+    content =
+      <LivePage onCall={startCall}/>;
+
+  } else if(tab === 'messages'){
+
+    content =
+      <Messages/>;
+
+  } else if(tab === 'creators'){
+
+    content =
+      <Creators/>;
+
+  } else {
+
+    content =
+      <Profile/>;
+
+  }
+
+
+  if(call){
+
+    return (
+      <CallScreen
+        person={call}
+        onEnd={() => setCall(null)}
+        coins={coins}
+        onExtend={extendCall}
+      />
+    );
+  }
+
+
+  return (
+    <main className="appShell">
+
+      <TopBar
+        coins={coins}
+        onCoins={() =>
+          setCoinStore(true)
+        }
+      />
+
+      <div className="content">
+        {content}
+      </div>
+
+      <BottomNav
+        tab={tab}
+        setTab={setTab}
+      />
+
+
+      {coinStore && (
+        <CoinStore
+          close={() => {
+            setCoinStore(false);
+            setMoneyMessage('');
+          }}
+          coins={coins}
+          freeMatches={freeMatches}
+          plan={plan}
+          message={moneyMessage}
+        />
+      )}
+
+    </main>
+  );
 }
