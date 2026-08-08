@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from './supabaseClient';
+import DroxionProfile from './DroxionProfile';
 import {
   Bell, Coins, Compass, Radio, MessageCircle, Star, User, Video, Heart,
   X, Gift, SlidersHorizontal, Globe2, ShieldCheck, PhoneOff, Mic, Camera,
@@ -77,7 +78,9 @@ function Messages(){ return <div className="pagePad"><div className="sectionHead
 
 function Creators(){ return <div className="pagePad"><div className="sectionHead"><div><h1>Creators</h1><p>Discover verified hosts and creators.</p></div></div><h3 className="subhead">Trending</h3><div className="creatorList">{creators.map(c=><div className="creatorCard" key={c.name}><img src={c.image}/><div><strong>{c.name} <BadgeCheck size={16}/></strong><span>{c.flag} {c.country}</span><small>{c.followers} followers</small></div><button>Follow</button></div>)}</div><div className="earnCard"><Star size={28}/><div><h3>Earn on Droxion</h3><p>Verified 21+ creators can build an audience and earn from eligible gifts and engagement.</p></div><button>Apply</button></div></div> }
 
-function Profile(){ return <div className="pagePad"><div className="profileHeader"><div className="avatar">D</div><h2>Dhruv <BadgeCheck size={18}/></h2><p>🌎 Global · 21+</p><div className="stats"><div><strong>128</strong><span>Connections</span></div><div><strong>42</strong><span>Following</span></div><div><strong>4.9</strong><span>Trust</span></div></div></div><div className="settingsList">{['Edit profile','Wallet & coins','Droxion+','Creator dashboard','Safety center','Privacy','Help & support'].map(x=><button key={x}>{x}<span>›</span></button>)}</div></div> }
+function Profile(props){
+  return <DroxionProfile {...props}/>;
+}
 
 function CoinStore({
   close,
@@ -794,7 +797,12 @@ export default function Home(){
   } else {
 
     content =
-      <Profile/>;
+      <Profile
+        onOpenWallet={()=>setCoinStore(true)}
+        coins={coins}
+        freeMatches={freeMatches}
+        plan={plan}
+      />;
 
   }
 
