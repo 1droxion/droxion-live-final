@@ -18,11 +18,48 @@ const emptyProfile = {
 };
 
 const panelStyle = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 18,
-  padding: 18,
-  marginTop: 16
+  background: '#ffffff',
+  color: '#111827',
+  border: '1px solid #e7eaf0',
+  borderRadius: 20,
+  padding: 20,
+  marginTop: 16,
+  boxShadow: '0 8px 28px rgba(15, 23, 42, 0.06)'
+};
+
+const profilePageStyle = {
+  color: '#111827',
+  minHeight: '100%',
+  paddingBottom: 110
+};
+
+const mutedTextStyle = {
+  color: '#64748b'
+};
+
+const noticeStyle = {
+  marginTop: 14,
+  padding: 14,
+  borderRadius: 14,
+  background: '#eef2ff',
+  color: '#3730a3',
+  border: '1px solid #c7d2fe',
+  fontWeight: 600
+};
+
+const menuButtonStyle = {
+  width: '100%',
+  border: '1px solid #e7eaf0',
+  background: '#ffffff',
+  color: '#111827',
+  borderRadius: 16,
+  padding: '16px 17px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  cursor: 'pointer',
+  boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)'
 };
 
 const inputStyle = {
@@ -31,15 +68,18 @@ const inputStyle = {
   borderRadius: 12,
   padding: '12px 13px',
   font: 'inherit',
-  background: '#fff',
-  boxSizing: 'border-box'
+  background: '#ffffff',
+  color: '#111827',
+  boxSizing: 'border-box',
+  outline: 'none'
 };
 
 const labelStyle = {
   display: 'block',
+  color: '#374151',
   fontWeight: 700,
   fontSize: 13,
-  marginBottom: 6
+  marginBottom: 7
 };
 
 const gridStyle = {
@@ -717,7 +757,8 @@ export default function DroxionProfile({
               fontWeight: 800,
               cursor: 'pointer',
               padding: 0,
-              marginBottom: 10
+              marginBottom: 10,
+              color: '#4f46e5'
             }}
           >
             ← Profile
@@ -736,7 +777,7 @@ export default function DroxionProfile({
 
   if (loading) {
     return (
-      <div className="pagePad">
+      <div className="pagePad" style={profilePageStyle}>
         <h2>Profile</h2>
         <p>Loading your account...</p>
       </div>
@@ -746,7 +787,7 @@ export default function DroxionProfile({
 
   if (view === 'edit') {
     return (
-      <div className="pagePad">
+      <div className="pagePad" style={profilePageStyle}>
         <BackHeader
           title="Edit Profile"
           description="Your Droxion identity and discovery information."
@@ -985,8 +1026,8 @@ export default function DroxionProfile({
         </div>
 
         {notice && (
-          <div className="infoBox">
-            <div>{notice}</div>
+          <div style={noticeStyle}>
+            {notice}
           </div>
         )}
       </div>
@@ -996,7 +1037,7 @@ export default function DroxionProfile({
 
   if (view === 'creator') {
     return (
-      <div className="pagePad">
+      <div className="pagePad" style={profilePageStyle}>
         <BackHeader
           title="Creator Dashboard"
           description="Creator applications and earnings."
@@ -1033,8 +1074,8 @@ export default function DroxionProfile({
         </div>
 
         {notice && (
-          <div className="infoBox">
-            <div>{notice}</div>
+          <div style={noticeStyle}>
+            {notice}
           </div>
         )}
       </div>
@@ -1044,7 +1085,7 @@ export default function DroxionProfile({
 
   if (view === 'safety') {
     return (
-      <div className="pagePad">
+      <div className="pagePad" style={profilePageStyle}>
         <BackHeader
           title="Safety Center"
           description="Manage blocked users and report safety concerns."
@@ -1161,8 +1202,8 @@ export default function DroxionProfile({
         </div>
 
         {notice && (
-          <div className="infoBox">
-            <div>{notice}</div>
+          <div style={noticeStyle}>
+            {notice}
           </div>
         )}
       </div>
@@ -1195,7 +1236,7 @@ export default function DroxionProfile({
     ];
 
     return (
-      <div className="pagePad">
+      <div className="pagePad" style={profilePageStyle}>
         <BackHeader
           title="Privacy"
           description="Control how people can find and contact you."
@@ -1257,8 +1298,8 @@ export default function DroxionProfile({
         </div>
 
         {notice && (
-          <div className="infoBox">
-            <div>{notice}</div>
+          <div style={noticeStyle}>
+            {notice}
           </div>
         )}
       </div>
@@ -1268,7 +1309,7 @@ export default function DroxionProfile({
 
   if (view === 'support') {
     return (
-      <div className="pagePad">
+      <div className="pagePad" style={profilePageStyle}>
         <BackHeader
           title="Help & Support"
           description="Send a real support request to Droxion."
@@ -1384,8 +1425,8 @@ export default function DroxionProfile({
         </div>
 
         {notice && (
-          <div className="infoBox">
-            <div>{notice}</div>
+          <div style={noticeStyle}>
+            {notice}
           </div>
         )}
       </div>
@@ -1449,7 +1490,7 @@ export default function DroxionProfile({
 
 
   return (
-    <div className="pagePad">
+    <div className="pagePad" style={profilePageStyle}>
 
       <div className="profileHeader">
 
@@ -1481,7 +1522,7 @@ export default function DroxionProfile({
           }
         </h2>
 
-        <p>
+        <p style={mutedTextStyle}>
           {
             profile.country ||
             'Global'
@@ -1550,6 +1591,7 @@ export default function DroxionProfile({
             key={item.title}
             type="button"
             onClick={item.action}
+            style={menuButtonStyle}
           >
             <div
               style={{
@@ -1571,7 +1613,15 @@ export default function DroxionProfile({
               </div>
             </div>
 
-            <span>›</span>
+            <span
+              style={{
+                color: '#94a3b8',
+                fontSize: 24,
+                lineHeight: 1
+              }}
+            >
+              ›
+            </span>
           </button>
         ))}
 
@@ -1580,7 +1630,10 @@ export default function DroxionProfile({
           type="button"
           onClick={logout}
           style={{
-            color: '#dc2626'
+            ...menuButtonStyle,
+            color: '#dc2626',
+            borderColor: '#fecaca',
+            background: '#fff7f7'
           }}
         >
           <strong>
@@ -1593,8 +1646,8 @@ export default function DroxionProfile({
 
 
       {notice && (
-        <div className="infoBox">
-          <div>{notice}</div>
+        <div style={noticeStyle}>
+          {notice}
         </div>
       )}
     </div>
