@@ -1,3 +1,4 @@
+import DroxionNew from './DroxionNew.jsx';
 import React, { useEffect, useState } from "react";
 import {
   Routes,
@@ -186,6 +187,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0e0e10] text-white">
       <Routes>
+        <Route path="/" element={<DroxionNew />} />
         {/* Public homepage */}
         <Route path="/" element={<Home />} />
 
