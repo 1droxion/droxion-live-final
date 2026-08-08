@@ -1,0 +1,419 @@
+.droxionProfilePage {
+  --dp-bg: #090711;
+  --dp-card: #14111f;
+  --dp-card-2: #181426;
+  --dp-input: #0d0b14;
+  --dp-border: rgba(255,255,255,.09);
+  --dp-text: #f8fafc;
+  --dp-muted: #9c97aa;
+  --dp-purple: #a879ff;
+
+  min-height: 100%;
+  padding: 20px 18px 135px !important;
+  color: var(--dp-text) !important;
+
+  background:
+    radial-gradient(
+      circle at 50% -10%,
+      rgba(124, 58, 237, .18),
+      transparent 32%
+    ),
+    #090711 !important;
+}
+
+
+/* =========================
+   PROFILE HEADER
+========================= */
+
+.droxionProfilePage .profileHeader {
+  text-align: center;
+  padding: 14px 0 20px;
+}
+
+.droxionProfilePage .profileHeader img,
+.droxionProfilePage .profileHeader .avatar {
+  width: 96px !important;
+  height: 96px !important;
+  margin: 0 auto 14px !important;
+
+  border-radius: 50% !important;
+
+  border: 3px solid
+    rgba(168,121,255,.45);
+
+  box-shadow:
+    0 0 0 6px rgba(124,58,237,.08),
+    0 12px 35px rgba(0,0,0,.35);
+}
+
+.droxionProfilePage .profileHeader h2 {
+  color: #ffffff !important;
+  font-size: 25px !important;
+  font-weight: 800 !important;
+  margin: 4px 0 4px !important;
+}
+
+.droxionProfilePage .profileHeader p {
+  color: #aaa5b8 !important;
+  font-size: 14px !important;
+}
+
+
+/* =========================
+   STATS
+========================= */
+
+.droxionProfilePage .stats {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px !important;
+  margin-top: 20px !important;
+}
+
+.droxionProfilePage .stats > div {
+  min-width: 0 !important;
+  min-height: 76px;
+
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+
+  padding: 12px 6px !important;
+
+  border-radius: 18px !important;
+
+  background:
+    linear-gradient(
+      180deg,
+      #191525,
+      #111019
+    ) !important;
+
+  border:
+    1px solid
+    rgba(255,255,255,.07) !important;
+
+  box-shadow:
+    0 8px 24px rgba(0,0,0,.18);
+}
+
+.droxionProfilePage .stats strong {
+  color: #b995ff !important;
+  font-size: 20px !important;
+  font-weight: 850 !important;
+}
+
+.droxionProfilePage .stats span {
+  color: #aaa5b8 !important;
+  font-size: 12px !important;
+  margin-top: 4px;
+}
+
+
+/* =========================
+   DARK CARDS
+========================= */
+
+.droxionProfilePage .profilePanel {
+  background:
+    linear-gradient(
+      180deg,
+      #171320,
+      #111019
+    ) !important;
+
+  color: #ffffff !important;
+
+  border:
+    1px solid
+    rgba(255,255,255,.08) !important;
+
+  border-radius: 20px !important;
+
+  padding: 18px !important;
+
+  box-shadow:
+    0 12px 32px rgba(0,0,0,.22) !important;
+}
+
+.droxionProfilePage .profilePanel h2,
+.droxionProfilePage .profilePanel h3,
+.droxionProfilePage .profilePanel strong {
+  color: #ffffff !important;
+}
+
+.droxionProfilePage .profilePanel p {
+  color: #aaa5b8;
+}
+
+
+/* =========================
+   SETTINGS MENU
+========================= */
+
+.droxionProfilePage .settingsList {
+  display: grid !important;
+  gap: 10px !important;
+  margin-top: 14px !important;
+}
+
+.droxionProfilePage .settingsList > button {
+  width: 100% !important;
+
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+
+  padding: 15px 16px !important;
+
+  background:
+    linear-gradient(
+      180deg,
+      #171420,
+      #111019
+    ) !important;
+
+  color: #ffffff !important;
+
+  border:
+    1px solid
+    rgba(255,255,255,.075) !important;
+
+  border-radius: 17px !important;
+
+  box-shadow:
+    0 7px 22px rgba(0,0,0,.16) !important;
+
+  min-height: 68px !important;
+}
+
+.droxionProfilePage
+.settingsList > button::before {
+  content: '';
+
+  width: 5px;
+  height: 36px;
+
+  flex: 0 0 auto;
+
+  margin-right: 13px;
+
+  border-radius: 10px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #b277ff,
+      #6557ff
+    );
+
+  box-shadow:
+    0 0 18px
+    rgba(139,92,246,.35);
+}
+
+.droxionProfilePage
+.settingsList > button > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.droxionProfilePage
+.settingsList > button strong {
+  color: #f8fafc !important;
+  font-size: 16px !important;
+}
+
+.droxionProfilePage
+.settingsList > button
+div div {
+  color: #918d9e !important;
+  opacity: 1 !important;
+  font-size: 12px !important;
+}
+
+.droxionProfilePage
+.settingsList > button > span:last-child {
+  margin-left: auto;
+
+  color: #777284 !important;
+
+  font-size: 25px !important;
+}
+
+
+/* =========================
+   EDIT PROFILE HEADER
+========================= */
+
+.droxionProfilePage .sectionHead {
+  margin-bottom: 14px !important;
+}
+
+.droxionProfilePage .sectionHead h1 {
+  color: #ffffff !important;
+
+  font-size: 27px !important;
+  line-height: 1.15;
+
+  margin: 0 0 5px !important;
+}
+
+.droxionProfilePage .sectionHead p {
+  color: #918d9e !important;
+  font-size: 14px !important;
+}
+
+
+/* =========================
+   INPUTS
+========================= */
+
+.droxionProfilePage label {
+  color: #d8d5df !important;
+}
+
+.droxionProfilePage input,
+.droxionProfilePage textarea,
+.droxionProfilePage select {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+
+  box-sizing: border-box !important;
+
+  background: #0d0b14 !important;
+
+  color: #ffffff !important;
+
+  border:
+    1px solid
+    rgba(255,255,255,.11) !important;
+
+  border-radius: 14px !important;
+
+  padding: 13px 14px !important;
+
+  font-size: 16px !important;
+
+  outline: none !important;
+
+  box-shadow:
+    inset 0 1px 0
+    rgba(255,255,255,.02);
+}
+
+.droxionProfilePage input:focus,
+.droxionProfilePage textarea:focus,
+.droxionProfilePage select:focus {
+  border-color:
+    rgba(168,121,255,.7) !important;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(124,58,237,.12) !important;
+}
+
+.droxionProfilePage input::placeholder,
+.droxionProfilePage textarea::placeholder {
+  color: #686473 !important;
+}
+
+.droxionProfilePage select option {
+  background: #111019;
+  color: white;
+}
+
+
+/* Fix ugly mobile Safari date box */
+
+.droxionProfilePage input[type="date"] {
+  display: block !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  -webkit-appearance: none;
+  appearance: none;
+
+  color-scheme: dark;
+}
+
+
+/* =========================
+   BUTTONS
+========================= */
+
+.droxionProfilePage .bigCTA {
+  min-height: 52px !important;
+
+  border: 0 !important;
+
+  border-radius: 15px !important;
+
+  color: white !important;
+
+  font-size: 15px !important;
+  font-weight: 800 !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      #8b5cf6,
+      #5b5bf7
+    ) !important;
+
+  box-shadow:
+    0 10px 28px
+    rgba(124,58,237,.28) !important;
+}
+
+
+/* =========================
+   PHOTO
+========================= */
+
+.droxionProfilePage
+.profilePanel img {
+  border:
+    3px solid
+    rgba(168,121,255,.35);
+
+  box-shadow:
+    0 8px 25px rgba(0,0,0,.28);
+}
+
+
+/* =========================
+   MOBILE
+========================= */
+
+@media (max-width: 600px) {
+
+  .droxionProfilePage {
+    padding:
+      16px 14px 135px !important;
+  }
+
+  .droxionProfilePage
+  .profilePanel {
+    padding: 16px !important;
+    border-radius: 18px !important;
+  }
+
+  .droxionProfilePage
+  .stats {
+    gap: 8px !important;
+  }
+
+  .droxionProfilePage
+  .stats > div {
+    min-height: 70px;
+  }
+
+  .droxionProfilePage
+  .sectionHead h1 {
+    font-size: 24px !important;
+  }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
+import './DroxionProfile.css';
 
 const emptyProfile = {
   display_name: '',
@@ -777,7 +778,7 @@ export default function DroxionProfile({
 
   if (loading) {
     return (
-      <div className="pagePad" style={profilePageStyle}>
+      <div className="pagePad droxionProfilePage" style={profilePageStyle}>
         <h2>Profile</h2>
         <p>Loading your account...</p>
       </div>
@@ -787,13 +788,13 @@ export default function DroxionProfile({
 
   if (view === 'edit') {
     return (
-      <div className="pagePad" style={profilePageStyle}>
+      <div className="pagePad droxionProfilePage" style={profilePageStyle}>
         <BackHeader
           title="Edit Profile"
           description="Your Droxion identity and discovery information."
         />
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           <div
             style={{
               display: 'flex',
@@ -1037,13 +1038,13 @@ export default function DroxionProfile({
 
   if (view === 'creator') {
     return (
-      <div className="pagePad" style={profilePageStyle}>
+      <div className="pagePad droxionProfilePage" style={profilePageStyle}>
         <BackHeader
           title="Creator Dashboard"
           description="Creator applications and earnings."
         />
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           <h3>Creator status</h3>
 
           <p>
@@ -1085,13 +1086,13 @@ export default function DroxionProfile({
 
   if (view === 'safety') {
     return (
-      <div className="pagePad" style={profilePageStyle}>
+      <div className="pagePad droxionProfilePage" style={profilePageStyle}>
         <BackHeader
           title="Safety Center"
           description="Manage blocked users and report safety concerns."
         />
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           <h3>Blocked users</h3>
 
           {blocks.length === 0 ? (
@@ -1134,7 +1135,7 @@ export default function DroxionProfile({
           )}
         </div>
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           <h3>Report a concern</h3>
 
           <select
@@ -1236,13 +1237,13 @@ export default function DroxionProfile({
     ];
 
     return (
-      <div className="pagePad" style={profilePageStyle}>
+      <div className="pagePad droxionProfilePage" style={profilePageStyle}>
         <BackHeader
           title="Privacy"
           description="Control how people can find and contact you."
         />
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           {toggles.map(
             ([key, title, text]) => (
               <label
@@ -1309,13 +1310,13 @@ export default function DroxionProfile({
 
   if (view === 'support') {
     return (
-      <div className="pagePad" style={profilePageStyle}>
+      <div className="pagePad droxionProfilePage" style={profilePageStyle}>
         <BackHeader
           title="Help & Support"
           description="Send a real support request to Droxion."
         />
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           <select
             style={inputStyle}
             value={
@@ -1384,7 +1385,7 @@ export default function DroxionProfile({
           </button>
         </div>
 
-        <div style={panelStyle}>
+        <div className="profilePanel" style={panelStyle}>
           <h3>Your requests</h3>
 
           {tickets.length === 0 ? (
@@ -1490,7 +1491,7 @@ export default function DroxionProfile({
 
 
   return (
-    <div className="pagePad" style={profilePageStyle}>
+    <div className="pagePad droxionProfilePage" style={profilePageStyle}>
 
       <div className="profileHeader">
 
@@ -1566,7 +1567,7 @@ export default function DroxionProfile({
       </div>
 
 
-      <div style={panelStyle}>
+      <div className="profilePanel" style={panelStyle}>
         <strong>
           {email}
         </strong>
