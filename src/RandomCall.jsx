@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, CameraOff, Coins, Mic, MicOff, PhoneOff, RotateCcw, ShieldCheck, Video, X } from 'lucide-react';
+import {
+  Camera,
+  CameraOff,
+  Coins,
+  MessageCircle,
+  Mic,
+  MicOff,
+  PhoneOff,
+  RotateCcw,
+  Send,
+  ShieldCheck,
+  Video,
+  X
+} from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './random-call.css';
 
@@ -41,10 +54,17 @@ export default function RandomCall() {
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [seconds, setSeconds] = useState(0);
+  const [remoteVideoReady, setRemoteVideoReady] = useState(false);
+  const [soundBlocked, setSoundBlocked] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
+  const [callMessages, setCallMessages] = useState([]);
 
   const localVideo = useRef(null);
   const remoteVideo = useRef(null);
+  const remoteAudio = useRef(null);
   const streamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
   const pcRef = useRef(null);
   const lastSignalId = useRef(0);
   const pendingIce = useRef([]);
@@ -97,10 +117,12 @@ export default function RandomCall() {
 
     streamRef.current?.getTracks().forEach(track => track.stop());
     streamRef.current = null;
+    remoteStreamRef.current = null;
     pendingIce.current = [];
 
     if (localVideo.current) localVideo.current.srcObject = null;
     if (remoteVideo.current) remoteVideo.current.srcObject = null;
+    if (remoteAudio.current) remoteAudio.current.srcObject = null;
   }, []);
 
   const resetCallState = useCallback(() => {
@@ -115,6 +137,11 @@ export default function RandomCall() {
     setSeconds(0);
     setMicOn(true);
     setCameraOn(true);
+    setRemoteVideoReady(false);
+    setSoundBlocked(false);
+    setChatOpen(false);
+    setChatDraft('');
+    setCallMessages([]);
   }, []);
 
   const finishCall = useCallback(async (goBack = true) => {
@@ -145,6 +172,11 @@ export default function RandomCall() {
     setCallId(id);
     setIsInitiator(Boolean(data.is_initiator));
     setSeconds(0);
+    setRemoteVideoReady(false);
+    setSoundBlocked(false);
+    setChatOpen(false);
+    setChatDraft('');
+    setCallMessages([]);
     setMessage('Preparing camera…');
 
     if (!partnerIdRef.current) {
@@ -290,6 +322,36 @@ export default function RandomCall() {
     }
   }, [isInitiator, sendSignal]);
 
+  const attachRemoteStream = useCallback(remoteStream => {
+    if (!remoteStream) return;
+    remoteStreamRef.current = remoteStream;
+
+    if (remoteVideo.current) {
+      if (remoteVideo.current.srcObject !== remoteStream) {
+        remoteVideo.current.srcObject = remoteStream;
+      }
+      // Keep video muted so mobile browsers always allow the face/video to autoplay.
+      remoteVideo.current.muted = true;
+      remoteVideo.current.play?.().catch(() => {});
+    }
+
+    if (remoteAudio.current) {
+      if (remoteAudio.current.srcObject !== remoteStream) {
+        remoteAudio.current.srcObject = remoteStream;
+      }
+      remoteAudio.current.play?.()
+        .then(() => setSoundBlocked(false))
+        .catch(() => setSoundBlocked(true));
+    }
+  }, []);
+
+  const enableRemoteSound = useCallback(() => {
+    remoteVideo.current?.play?.().catch(() => {});
+    remoteAudio.current?.play?.()
+      .then(() => setSoundBlocked(false))
+      .catch(() => setSoundBlocked(true));
+  }, []);
+
   useEffect(() => {
     if (phase !== 'calling' || !callId || !user?.id) return;
     if (activeCallId.current !== callId) return;
@@ -334,11 +396,16 @@ export default function RandomCall() {
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
         pc.ontrack = event => {
-          const remoteStream = event.streams?.[0];
-          if (remoteVideo.current && remoteStream) {
-            remoteVideo.current.srcObject = remoteStream;
-            remoteVideo.current.play?.().catch(() => {});
+          let remoteStream = event.streams?.[0] || remoteStreamRef.current;
+
+          // Some Safari/mobile WebRTC paths provide a track without event.streams[0].
+          // Build a MediaStream ourselves so the remote face still renders.
+          if (!remoteStream) remoteStream = new MediaStream();
+          if (!remoteStream.getTracks().some(track => track.id === event.track.id)) {
+            remoteStream.addTrack(event.track);
           }
+
+          attachRemoteStream(remoteStream);
         };
 
         pc.onicecandidate = event => {
@@ -391,7 +458,7 @@ export default function RandomCall() {
     })();
 
     return () => { cancelled = true; };
-  }, [phase, callId, user?.id, isInitiator, finishCall, markConnected, restartIce, sendSignal]);
+  }, [phase, callId, user?.id, isInitiator, attachRemoteStream, finishCall, markConnected, restartIce, sendSignal]);
 
   useEffect(() => {
     if (!callId || !user?.id || !['calling', 'connected'].includes(phase)) return;
@@ -402,7 +469,6 @@ export default function RandomCall() {
       if (cancelled || processingSignals.current) return;
 
       const pc = pcRef.current;
-      // Critical: never read/consume signaling rows until the peer connection exists.
       if (!pc || pc.signalingState === 'closed') return;
 
       processingSignals.current = true;
@@ -442,7 +508,6 @@ export default function RandomCall() {
               }
             }
 
-            // Advance only after this signal was safely handled or intentionally ignored.
             lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
           } catch (signalError) {
             console.warn('WebRTC signal handling error', row.signal_type, signalError);
@@ -452,7 +517,6 @@ export default function RandomCall() {
                 lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
               } catch {}
             }
-            // Offer/answer errors are retried on the next poll instead of being discarded.
             if (row.signal_type !== 'ice') break;
           }
         }
@@ -497,6 +561,70 @@ export default function RandomCall() {
     };
   }, [phase, callId, finishCall]);
 
+  // Call chat stays available as soon as two people are matched, even while video connects.
+  useEffect(() => {
+    if (!callId || !user?.id || !['calling', 'connected'].includes(phase)) return;
+
+    let stopped = false;
+    let busy = false;
+
+    const pollMessages = async () => {
+      if (stopped || busy) return;
+      busy = true;
+      try {
+        const { data, error } = await supabase
+          .from('droxion_call_messages')
+          .select('id,sender_id,recipient_id,body,created_at')
+          .eq('call_id', callId)
+          .order('id', { ascending: true })
+          .limit(100);
+
+        if (error) throw error;
+        if (!stopped) setCallMessages(data || []);
+      } catch (error) {
+        console.warn('Call chat poll failed', error);
+      } finally {
+        busy = false;
+      }
+    };
+
+    pollMessages();
+    const timer = setInterval(pollMessages, 900);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [callId, user?.id, phase]);
+
+  async function sendCallMessage() {
+    const body = chatDraft.trim();
+    const id = activeCallId.current || callId;
+    const recipient = partnerIdRef.current || partner?.id;
+    if (!body || !id || !user?.id || !recipient) return;
+
+    const { data, error } = await supabase
+      .from('droxion_call_messages')
+      .insert({
+        call_id: id,
+        sender_id: user.id,
+        recipient_id: recipient,
+        body
+      })
+      .select('id,sender_id,recipient_id,body,created_at')
+      .single();
+
+    if (error) {
+      setMessage(error.message || 'Could not send message.');
+      return;
+    }
+
+    setCallMessages(previous => {
+      if (previous.some(item => item.id === data.id)) return previous;
+      return [...previous, data].slice(-100);
+    });
+    setChatDraft('');
+  }
+
   function toggleMic() {
     const track = streamRef.current?.getAudioTracks()?.[0];
     if (!track) return;
@@ -533,7 +661,11 @@ export default function RandomCall() {
 
       const audio = streamRef.current?.getAudioTracks()?.[0];
       streamRef.current = new MediaStream([newTrack, ...(audio ? [audio] : [])]);
-      if (localVideo.current) localVideo.current.srcObject = streamRef.current;
+      if (localVideo.current) {
+        localVideo.current.srcObject = streamRef.current;
+        localVideo.current.play?.().catch(() => {});
+      }
+      setCameraOn(true);
     } catch (error) {
       console.warn('Camera switch failed', error);
       setMessage('Could not switch camera on this device.');
@@ -558,19 +690,113 @@ export default function RandomCall() {
 
   return (
     <main className="videoCallPage">
-      <video ref={remoteVideo} className="callVideo remoteFeed videoMain" autoPlay playsInline aria-label="Other person's video" />
-      <video ref={localVideo} className="callVideo localFeed videoThumb" autoPlay muted playsInline aria-label="Your video" />
-      <div className="callShade"/>
-      <div className="realProfile"><div className="avatarFallback">{(partner?.name || 'D')[0]}</div><div><strong>{partner?.name || 'Droxion user'}</strong><span>{partner?.country || 'Worldwide'}{partner?.language ? ` · ${partner.language}` : ''}</span></div></div>
-      <div className="callState">{phase === 'calling' ? 'Connecting…' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 30 coins/min`}</div>
-      {phase === 'calling' && <div className="callingPulse"/>}
-      {message && <div className="callMessage">{message}</div>}
-      <div className="videoControls">
-        <button onClick={toggleMic}>{micOn ? <Mic/> : <MicOff/>}</button>
-        <button onClick={toggleCamera}>{cameraOn ? <Camera/> : <CameraOff/>}</button>
-        <button onClick={switchCamera}><RotateCcw/></button>
-        <button className="hangButton" onClick={() => finishCall(true)}><PhoneOff/></button>
+      <video
+        ref={remoteVideo}
+        className="callVideo remoteFeed videoMain"
+        autoPlay
+        muted
+        playsInline
+        onPlaying={() => setRemoteVideoReady(true)}
+        onCanPlay={() => remoteVideo.current?.play?.().catch(() => {})}
+        onClick={enableRemoteSound}
+        aria-label="Other person's video"
+      />
+      <audio ref={remoteAudio} autoPlay playsInline />
+
+      {!remoteVideoReady && (
+        <div className="remoteVideoPlaceholder" onClick={enableRemoteSound}>
+          <div className="remoteAvatarLarge">{(partner?.name || 'D')[0]}</div>
+          <strong>{partner?.name || 'Droxion user'}</strong>
+          <span>{phase === 'calling' ? 'Connecting camera…' : 'Waiting for video…'}</span>
+        </div>
+      )}
+
+      <div className={`selfCameraFrame ${cameraOn ? '' : 'cameraDisabled'}`}>
+        <video
+          ref={localVideo}
+          className="callVideo localFeed"
+          autoPlay
+          muted
+          playsInline
+          aria-label="Your video"
+        />
+        {!cameraOn && <div className="selfCameraOff"><CameraOff size={20}/><span>Camera off</span></div>}
       </div>
+
+      <div className="callShade"/>
+
+      <div className="realProfile">
+        <div className="avatarFallback">{(partner?.name || 'D')[0]}</div>
+        <div>
+          <strong>{partner?.name || 'Droxion user'}</strong>
+          <span>{partner?.country || 'Worldwide'}{partner?.language ? ` · ${partner.language}` : ''}</span>
+        </div>
+      </div>
+
+      <div className="callState">
+        {phase === 'calling' ? 'Connecting…' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 30 coins/min`}
+      </div>
+
+      {phase === 'calling' && <div className="callingPulse"/>}
+      {soundBlocked && <button className="soundHint" onClick={enableRemoteSound}>Tap for sound</button>}
+      {message && <div className="callMessage">{message}</div>}
+
+      {chatOpen && (
+        <div className="callChatPanel">
+          <div className="callChatHeader">
+            <div>
+              <strong>Chat with {partner?.name || 'your match'}</strong>
+              <span>{phase === 'calling' ? 'Video is still connecting' : 'Live call chat'}</span>
+            </div>
+            <button onClick={() => setChatOpen(false)} aria-label="Close chat"><X size={18}/></button>
+          </div>
+
+          <div className="callChatMessages">
+            {callMessages.length === 0 && <div className="callChatEmpty">Say hello 👋</div>}
+            {callMessages.map(item => (
+              <div key={item.id} className={`callChatBubble ${item.sender_id === user?.id ? 'mine' : ''}`}>
+                {item.body}
+              </div>
+            ))}
+          </div>
+
+          <div className="callChatComposer">
+            <input
+              value={chatDraft}
+              maxLength={500}
+              onChange={event => setChatDraft(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Enter') sendCallMessage(); }}
+              placeholder="Type a message…"
+              aria-label="Call chat message"
+            />
+            <button onClick={sendCallMessage} disabled={!chatDraft.trim()} aria-label="Send message"><Send size={18}/></button>
+          </div>
+        </div>
+      )}
+
+      <div className="videoControls">
+        <button onClick={toggleMic} aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}>
+          {micOn ? <Mic/> : <MicOff/>}
+          <span>{micOn ? 'Mute' : 'Unmute'}</span>
+        </button>
+        <button onClick={toggleCamera} aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}>
+          {cameraOn ? <Camera/> : <CameraOff/>}
+          <span>Camera</span>
+        </button>
+        <button onClick={switchCamera} aria-label="Flip camera">
+          <RotateCcw/>
+          <span>Flip</span>
+        </button>
+        <button className={chatOpen ? 'activeTool' : ''} onClick={() => setChatOpen(value => !value)} aria-label="Open call chat">
+          <MessageCircle/>
+          <span>Chat</span>
+        </button>
+        <button className="hangButton" onClick={() => finishCall(true)} aria-label="End call">
+          <PhoneOff/>
+          <span>End</span>
+        </button>
+      </div>
+
       <div className="callCoins"><Coins size={16}/> {coins ?? 0}</div>
     </main>
   );
