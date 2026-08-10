@@ -33,10 +33,16 @@ export default async function handler(req, res) {
     }
 
     const captureResult = await capturePayPalOrder({ clientId, clientSecret, baseUrl, orderId });
+    const captureData = captureResult?.purchase_units?.[0]?.payments?.captures?.[0] || {};
     const status = captureResult?.status || '';
-    const captureId = captureResult?.purchase_units?.[0]?.payments?.captures?.[0]?.id || '';
-    const amount = captureResult?.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value || '';
-    const currency = captureResult?.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.currency_code || '';
+    const captureId = captureData?.id || '';
+    const amount = captureData?.amount?.value || '';
+    const currency = captureData?.amount?.currency_code || '';
+
+    if (!captureId && status === 'COMPLETED') {
+      res.status(502).json({ error: 'PayPal completed the capture but did not return a capture id.' });
+      return;
+    }
 
     if (status !== 'COMPLETED') {
       await updateTransactionRecord(accessToken, existingTransaction.id, {
@@ -69,8 +75,10 @@ export default async function handler(req, res) {
       p_status: 'COMPLETED'
     });
 
-    res.status(200).json({ ok: true, alreadyCompleted: false, coins: existingTransaction.coins, transactionId: updatedTransaction?.id || existingTransaction.id });
+    const transactionId = updatedTransaction?.id || existingTransaction?.id || null;
+
+    res.status(200).json({ ok: true, alreadyCompleted: false, coins: existingTransaction.coins, transactionId });
   } catch (error) {
-    res.status(400).json({ error: normalizeError(error) });
+    res.status(502).json({ error: normalizeError(error) });
   }
 }

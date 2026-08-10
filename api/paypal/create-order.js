@@ -54,10 +54,17 @@ export default async function handler(req, res) {
     };
 
     const paypalOrder = await createPayPalOrder({ clientId, clientSecret, baseUrl, orderPayload });
+    const paypalOrderId = paypalOrder?.id;
+
+    if (!paypalOrderId) {
+      res.status(502).json({ error: 'PayPal did not return an order id.' });
+      return;
+    }
+
     const transactionPayload = {
       user_id: user.id,
       package_id: packageProduct.id,
-      paypal_order_id: paypalOrder.id,
+      paypal_order_id: paypalOrderId,
       payment_status: 'pending',
       amount: Number(amount),
       currency: 'USD',
@@ -67,9 +74,15 @@ export default async function handler(req, res) {
     };
 
     const transaction = await createTransactionRecord(accessToken, transactionPayload);
+    const transactionId = transaction?.id;
 
-    res.status(200).json({ orderId: paypalOrder.id, transactionId: transaction.id });
+    if (!transactionId) {
+      res.status(502).json({ error: 'The PayPal order was created, but the purchase record could not be saved.' });
+      return;
+    }
+
+    res.status(200).json({ orderId: paypalOrderId, transactionId });
   } catch (error) {
-    res.status(400).json({ error: normalizeError(error) });
+    res.status(502).json({ error: normalizeError(error) });
   }
 }
