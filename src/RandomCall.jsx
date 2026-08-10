@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, CameraOff, Coins, Gift, MessageCircle, Mic, MicOff, PhoneOff, RotateCcw, Send, ShieldCheck, Video, X } from 'lucide-react';
+import { Camera, CameraOff, Coins, Mic, MicOff, PhoneOff, RotateCcw, ShieldCheck, Video, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './random-call.css';
 
@@ -8,13 +8,6 @@ const FILTERS = [
   { id: 'both', label: 'Both', cost: 'FREE' },
   { id: 'male', label: 'Male', cost: 'FREE' },
   { id: 'female', label: 'Female', cost: '3 coins when connected' }
-];
-
-const GIFTS = [
-  { code: 'rose', name: 'Rose', emoji: '🌹', cost: 5 },
-  { code: 'heart', name: 'Heart', emoji: '💜', cost: 10 },
-  { code: 'star', name: 'Star', emoji: '⭐', cost: 25 },
-  { code: 'crown', name: 'Crown', emoji: '👑', cost: 100 }
 ];
 
 function iceServers() {
@@ -48,33 +41,27 @@ export default function RandomCall() {
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [seconds, setSeconds] = useState(0);
-  const [focusedVideo, setFocusedVideo] = useState('remote');
-  const [giftOpen, setGiftOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatDraft, setChatDraft] = useState('');
-  const [callMessages, setCallMessages] = useState([]);
-  const [giftToast, setGiftToast] = useState(null);
 
   const localVideo = useRef(null);
   const remoteVideo = useRef(null);
   const streamRef = useRef(null);
   const pcRef = useRef(null);
   const lastSignalId = useRef(0);
-  const lastCallMessageId = useRef(0);
-  const lastGiftId = useRef(0);
-  const connectedOnce = useRef(false);
-  const billingTimer = useRef(null);
   const pendingIce = useRef([]);
   const partnerIdRef = useRef(null);
+  const connectedOnce = useRef(false);
+  const billingTimer = useRef(null);
   const reconnectTimer = useRef(null);
-  const reconnectingRef = useRef(false);
-  const giftToastTimer = useRef(null);
+  const processingSignals = useRef(false);
+  const activeCallId = useRef(null);
 
   useEffect(() => {
     let alive = true;
+
     (async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!alive) return;
+
       setUser(authUser || null);
       if (!authUser) {
         setPhase('guest');
@@ -99,87 +86,74 @@ export default function RandomCall() {
     return () => { alive = false; };
   }, []);
 
-  const showGiftToast = useCallback(toast => {
-    if (giftToastTimer.current) clearTimeout(giftToastTimer.current);
-    setGiftToast(toast);
-    giftToastTimer.current = setTimeout(() => setGiftToast(null), 2500);
-  }, []);
-
-  const clearReconnectTimer = useCallback(() => {
-    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-    reconnectTimer.current = null;
-    reconnectingRef.current = false;
-  }, []);
-
-  const cleanupMedia = useCallback(() => {
+  const stopMedia = useCallback(() => {
     if (billingTimer.current) clearInterval(billingTimer.current);
     billingTimer.current = null;
-    clearReconnectTimer();
+    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    reconnectTimer.current = null;
+
     pcRef.current?.close();
     pcRef.current = null;
+
     streamRef.current?.getTracks().forEach(track => track.stop());
     streamRef.current = null;
     pendingIce.current = [];
-    partnerIdRef.current = null;
+
     if (localVideo.current) localVideo.current.srcObject = null;
     if (remoteVideo.current) remoteVideo.current.srcObject = null;
-  }, [clearReconnectTimer]);
+  }, []);
 
-  const resetCallUi = useCallback(() => {
+  const resetCallState = useCallback(() => {
+    activeCallId.current = null;
+    partnerIdRef.current = null;
+    connectedOnce.current = false;
+    lastSignalId.current = 0;
+    pendingIce.current = [];
+    processingSignals.current = false;
     setCallId(null);
     setPartner(null);
     setSeconds(0);
-    setFocusedVideo('remote');
-    setGiftOpen(false);
-    setChatOpen(false);
-    setChatDraft('');
-    setCallMessages([]);
-    connectedOnce.current = false;
-    lastSignalId.current = 0;
-    lastCallMessageId.current = 0;
-    lastGiftId.current = 0;
+    setMicOn(true);
+    setCameraOn(true);
   }, []);
 
-  const endCall = useCallback(async (goBack = true) => {
-    const id = callId;
-    cleanupMedia();
-    if (id) await supabase.rpc('droxion_end_call', { p_call_id: id });
-    resetCallUi();
+  const finishCall = useCallback(async (goBack = true) => {
+    const id = activeCallId.current || callId;
+    stopMedia();
+    if (id) {
+      await supabase.rpc('droxion_end_call', { p_call_id: id });
+    }
+    resetCallState();
     if (goBack) setPhase('choose');
-  }, [callId, cleanupMedia, resetCallUi]);
+  }, [callId, resetCallState, stopMedia]);
 
   useEffect(() => () => {
-    cleanupMedia();
-    if (giftToastTimer.current) clearTimeout(giftToastTimer.current);
-  }, [cleanupMedia]);
-
-  async function cancelWaiting() {
-    await supabase.from('droxion_random_queue').delete().eq('user_id', user.id);
-    setPhase('choose');
-  }
+    stopMedia();
+  }, [stopMedia]);
 
   async function prepareMatch(data) {
+    const id = data?.call_id;
+    if (!id) return;
+
+    stopMedia();
+    activeCallId.current = id;
     lastSignalId.current = 0;
     pendingIce.current = [];
     connectedOnce.current = false;
-    lastCallMessageId.current = 0;
-    lastGiftId.current = 0;
-    setFocusedVideo('remote');
-    setGiftOpen(false);
-    setChatOpen(false);
-    setCallMessages([]);
     partnerIdRef.current = data.partner_id || null;
-    setCallId(data.call_id);
+
+    setCallId(id);
     setIsInitiator(Boolean(data.is_initiator));
+    setSeconds(0);
+    setMessage('Preparing camera…');
 
     if (!partnerIdRef.current) {
       const { data: status } = await supabase.rpc('droxion_random_status');
       partnerIdRef.current = status?.partner_id || null;
     }
 
-    const { data: profile } = await supabase.rpc('droxion_partner_profile', { p_call_id: data.call_id });
+    const { data: profile } = await supabase.rpc('droxion_partner_profile', { p_call_id: id });
     setPartner(profile || { name: 'Droxion user', country: '' });
-    setMessage('');
     setPhase('calling');
   }
 
@@ -192,14 +166,15 @@ export default function RandomCall() {
 
   async function beginSearch() {
     if (!user) return;
-    setMessage('');
 
     if (filter === 'female' && Number(coins || 0) < 3) {
       setMessage('You need at least 3 coins to use the Female filter.');
       return;
     }
 
+    setMessage('');
     setPhase('searching');
+
     try {
       await joinQueue();
     } catch (error) {
@@ -208,9 +183,16 @@ export default function RandomCall() {
     }
   }
 
-  const autoFindNext = useCallback(async () => {
-    cleanupMedia();
-    resetCallUi();
+  async function cancelWaiting() {
+    if (user?.id) {
+      await supabase.from('droxion_random_queue').delete().eq('user_id', user.id);
+    }
+    setPhase('choose');
+  }
+
+  const findNext = useCallback(async () => {
+    stopMedia();
+    resetCallState();
     setMessage('Finding the next available person…');
     setPhase('searching');
 
@@ -222,24 +204,51 @@ export default function RandomCall() {
       setMessage(error?.message || 'Could not find the next person.');
       setPhase('choose');
     }
-  }, [cleanupMedia, filter, resetCallUi]);
+  }, [filter, resetCallState, stopMedia]);
 
   useEffect(() => {
-    if (phase !== 'searching' || !user) return;
+    if (phase !== 'searching' || !user?.id) return;
 
+    let busy = false;
     const timer = setInterval(async () => {
-      const { data } = await supabase.rpc('droxion_random_status');
-      if (data?.call_id) await prepareMatch(data);
-    }, 1500);
+      if (busy) return;
+      busy = true;
+      try {
+        const { data } = await supabase.rpc('droxion_random_status');
+        if (data?.call_id) await prepareMatch(data);
+      } finally {
+        busy = false;
+      }
+    }, 1200);
 
     return () => clearInterval(timer);
-  }, [phase, user]);
+  }, [phase, user?.id]);
+
+  const sendSignal = useCallback(async (signalType, payload) => {
+    const id = activeCallId.current;
+    const recipient = partnerIdRef.current;
+    if (!id || !user?.id || !recipient) return false;
+
+    const { error } = await supabase.from('droxion_call_signals').insert({
+      call_id: id,
+      sender_id: user.id,
+      recipient_id: recipient,
+      signal_type: signalType,
+      payload
+    });
+
+    if (error) {
+      console.warn(`Could not send ${signalType}`, error);
+      return false;
+    }
+    return true;
+  }, [user?.id]);
 
   const flushPendingIce = useCallback(async pc => {
     if (!pc?.remoteDescription || pendingIce.current.length === 0) return;
 
-    const queued = pendingIce.current.splice(0);
-    for (const candidate of queued) {
+    const candidates = pendingIce.current.splice(0);
+    for (const candidate of candidates) {
       try {
         await pc.addIceCandidate(candidate);
       } catch (error) {
@@ -248,28 +257,31 @@ export default function RandomCall() {
     }
   }, []);
 
-  const sendSignal = useCallback(async (signalType, payload, explicitPartnerId = null) => {
-    const recipient = explicitPartnerId || partnerIdRef.current;
-    if (!callId || !user?.id || !recipient) return;
+  const markConnected = useCallback(async () => {
+    const id = activeCallId.current;
+    if (!id || connectedOnce.current) return;
 
-    const { error } = await supabase.from('droxion_call_signals').insert({
-      call_id: callId,
-      sender_id: user.id,
-      recipient_id: recipient,
-      signal_type: signalType,
-      payload
-    });
+    connectedOnce.current = true;
+    const { data, error } = await supabase.rpc('droxion_mark_call_connected', { p_call_id: id });
 
-    if (error) console.warn(`Could not send ${signalType} signal`, error);
-  }, [callId, user?.id]);
+    if (error || !data?.allowed) {
+      connectedOnce.current = false;
+      setMessage(error?.message || 'Not enough coins to connect.');
+      await finishCall(false);
+      setPhase('choose');
+      return;
+    }
+
+    if (data.coin_balance != null) setCoins(Number(data.coin_balance));
+    setMessage('');
+    setPhase('connected');
+  }, [finishCall]);
 
   const restartIce = useCallback(async () => {
     const pc = pcRef.current;
-    if (!pc || pc.signalingState === 'closed' || !isInitiator) return;
-    if (pc.signalingState !== 'stable') return;
+    if (!pc || pc.signalingState === 'closed' || !isInitiator || pc.signalingState !== 'stable') return;
 
     try {
-      setMessage('Reconnecting video…');
       const offer = await pc.createOffer({ iceRestart: true });
       await pc.setLocalDescription(offer);
       await sendSignal('offer', pc.localDescription?.toJSON?.() || offer);
@@ -279,9 +291,10 @@ export default function RandomCall() {
   }, [isInitiator, sendSignal]);
 
   useEffect(() => {
-    if (phase !== 'calling' || !callId || !user) return;
+    if (phase !== 'calling' || !callId || !user?.id) return;
+    if (activeCallId.current !== callId) return;
 
-    let stopped = false;
+    let cancelled = false;
 
     (async () => {
       try {
@@ -299,13 +312,10 @@ export default function RandomCall() {
           }
         });
 
-        if (stopped) {
+        if (cancelled || activeCallId.current !== callId) {
           stream.getTracks().forEach(track => track.stop());
           return;
         }
-
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack && 'contentHint' in videoTrack) videoTrack.contentHint = 'motion';
 
         streamRef.current = stream;
         if (localVideo.current) {
@@ -323,57 +333,40 @@ export default function RandomCall() {
 
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-        pc.ontrack = async event => {
+        pc.ontrack = event => {
           const remoteStream = event.streams?.[0];
           if (remoteVideo.current && remoteStream) {
             remoteVideo.current.srcObject = remoteStream;
             remoteVideo.current.play?.().catch(() => {});
           }
-
-          if (!connectedOnce.current) {
-            connectedOnce.current = true;
-            const { data, error } = await supabase.rpc('droxion_mark_call_connected', { p_call_id: callId });
-
-            if (error || !data?.allowed) {
-              connectedOnce.current = false;
-              setMessage(error?.message || 'Not enough coins to connect.');
-              await endCall(false);
-              setPhase('choose');
-              return;
-            }
-
-            if (data.coin_balance != null) setCoins(Number(data.coin_balance));
-            setMessage('');
-            setPhase('connected');
-          }
         };
 
         pc.onicecandidate = event => {
-          if (!event.candidate) return;
-          sendSignal('ice', event.candidate.toJSON());
+          if (event.candidate) sendSignal('ice', event.candidate.toJSON());
         };
 
-        pc.onconnectionstatechange = () => {
+        pc.onconnectionstatechange = async () => {
           const state = pc.connectionState;
 
           if (state === 'connected') {
-            clearReconnectTimer();
-            setMessage('');
+            if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+            reconnectTimer.current = null;
+            await markConnected();
             return;
           }
 
           if (state === 'disconnected' || state === 'failed') {
-            if (!reconnectingRef.current) {
-              reconnectingRef.current = true;
-              setMessage('Reconnecting video…');
-              restartIce();
-              reconnectTimer.current = setTimeout(() => {
-                reconnectingRef.current = false;
+            setMessage('Reconnecting video…');
+            await restartIce();
+
+            if (!reconnectTimer.current) {
+              reconnectTimer.current = setTimeout(async () => {
+                reconnectTimer.current = null;
                 if (pc.connectionState !== 'connected' && pc.connectionState !== 'closed') {
-                  setMessage('Connection is weak. Still trying to reconnect…');
-                  restartIce();
+                  setMessage('Connection is weak. Trying again…');
+                  await restartIce();
                 }
-              }, 8000);
+              }, 6000);
             }
           }
         };
@@ -381,6 +374,8 @@ export default function RandomCall() {
         pc.oniceconnectionstatechange = () => {
           if (pc.iceConnectionState === 'failed') restartIce();
         };
+
+        setMessage('Connecting…');
 
         if (isInitiator) {
           const offer = await pc.createOffer();
@@ -390,25 +385,29 @@ export default function RandomCall() {
       } catch (error) {
         console.error('Media/WebRTC setup error', error);
         setMessage('Camera and microphone permission are required for a video call.');
-        await endCall(false);
+        await finishCall(false);
         setPhase('choose');
       }
     })();
 
-    return () => { stopped = true; };
-  }, [phase, callId, user?.id, isInitiator, endCall, sendSignal, restartIce, clearReconnectTimer]);
+    return () => { cancelled = true; };
+  }, [phase, callId, user?.id, isInitiator, finishCall, markConnected, restartIce, sendSignal]);
 
   useEffect(() => {
-    if (!callId || !user || !['calling', 'connected'].includes(phase)) return;
+    if (!callId || !user?.id || !['calling', 'connected'].includes(phase)) return;
 
-    let polling = false;
+    let cancelled = false;
 
-    const timer = setInterval(async () => {
-      if (polling) return;
-      polling = true;
+    const poll = async () => {
+      if (cancelled || processingSignals.current) return;
 
+      const pc = pcRef.current;
+      // Critical: never read/consume signaling rows until the peer connection exists.
+      if (!pc || pc.signalingState === 'closed') return;
+
+      processingSignals.current = true;
       try {
-        const { data: rows, error: signalError } = await supabase
+        const { data: rows, error } = await supabase
           .from('droxion_call_signals')
           .select('id,signal_type,payload')
           .eq('call_id', callId)
@@ -416,12 +415,10 @@ export default function RandomCall() {
           .gt('id', lastSignalId.current)
           .order('id');
 
-        if (signalError) throw signalError;
+        if (error) throw error;
 
         for (const row of rows || []) {
-          lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
-          const pc = pcRef.current;
-          if (!pc || pc.signalingState === 'closed') continue;
+          if (cancelled || activeCallId.current !== callId) break;
 
           try {
             if (row.signal_type === 'offer' && !isInitiator) {
@@ -429,7 +426,8 @@ export default function RandomCall() {
               await flushPendingIce(pc);
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
-              await sendSignal('answer', pc.localDescription?.toJSON?.() || answer);
+              const sent = await sendSignal('answer', pc.localDescription?.toJSON?.() || answer);
+              if (!sent) break;
             } else if (row.signal_type === 'answer' && isInitiator) {
               if (pc.signalingState === 'have-local-offer') {
                 await pc.setRemoteDescription(new RTCSessionDescription(row.payload));
@@ -443,31 +441,39 @@ export default function RandomCall() {
                 pendingIce.current.push(candidate);
               }
             }
-          } catch (error) {
-            console.warn('WebRTC signal handling error', row.signal_type, error);
+
+            // Advance only after this signal was safely handled or intentionally ignored.
+            lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
+          } catch (signalError) {
+            console.warn('WebRTC signal handling error', row.signal_type, signalError);
             if (row.signal_type === 'ice') {
               try {
                 pendingIce.current.push(new RTCIceCandidate(row.payload));
+                lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
               } catch {}
             }
+            // Offer/answer errors are retried on the next poll instead of being discarded.
+            if (row.signal_type !== 'ice') break;
           }
         }
 
         const { data: status, error: statusError } = await supabase.rpc('droxion_random_status');
         if (!statusError && status?.partner_id) partnerIdRef.current = status.partner_id;
-
-        if (!statusError && status?.status === 'ended') {
-          await autoFindNext();
-        }
+        if (!statusError && status?.status === 'ended') await findNext();
       } catch (error) {
         console.warn('Call signaling poll failed', error);
       } finally {
-        polling = false;
+        processingSignals.current = false;
       }
-    }, 700);
+    };
 
-    return () => clearInterval(timer);
-  }, [callId, user?.id, phase, isInitiator, autoFindNext, flushPendingIce, sendSignal]);
+    poll();
+    const timer = setInterval(poll, 500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [callId, user?.id, phase, isInitiator, findNext, flushPendingIce, sendSignal]);
 
   useEffect(() => {
     if (phase !== 'connected' || !callId) return;
@@ -479,7 +485,7 @@ export default function RandomCall() {
 
       if (error || !data?.allowed) {
         setMessage('Call ended because there are not enough coins.');
-        await endCall(false);
+        await finishCall(false);
         setPhase('choose');
       }
     }, 10000);
@@ -489,98 +495,7 @@ export default function RandomCall() {
       if (billingTimer.current) clearInterval(billingTimer.current);
       billingTimer.current = null;
     };
-  }, [phase, callId, endCall]);
-
-  useEffect(() => {
-    if (phase !== 'connected' || !callId || !user?.id) return;
-
-    let busy = false;
-    const timer = setInterval(async () => {
-      if (busy) return;
-      busy = true;
-
-      try {
-        const { data: messages } = await supabase
-          .from('droxion_call_messages')
-          .select('id,sender_id,recipient_id,body,created_at')
-          .eq('call_id', callId)
-          .gt('id', lastCallMessageId.current)
-          .order('id');
-
-        for (const item of messages || []) {
-          lastCallMessageId.current = Math.max(lastCallMessageId.current, Number(item.id));
-          setCallMessages(previous => [...previous.slice(-49), item]);
-        }
-
-        const { data: gifts } = await supabase
-          .from('droxion_call_gifts')
-          .select('id,gift_code,gift_name,cost_coins,sender_id,recipient_id,created_at')
-          .eq('call_id', callId)
-          .eq('recipient_id', user.id)
-          .gt('id', lastGiftId.current)
-          .order('id');
-
-        for (const item of gifts || []) {
-          lastGiftId.current = Math.max(lastGiftId.current, Number(item.id));
-          const gift = GIFTS.find(value => value.code === item.gift_code);
-          showGiftToast({
-            emoji: gift?.emoji || '🎁',
-            text: `${partner?.name || 'Your match'} sent ${item.gift_name || 'a gift'}`
-          });
-        }
-      } catch (error) {
-        console.warn('Call social polling failed', error);
-      } finally {
-        busy = false;
-      }
-    }, 1200);
-
-    return () => clearInterval(timer);
-  }, [phase, callId, user?.id, partner?.name, showGiftToast]);
-
-  async function sendCallMessage() {
-    const body = chatDraft.trim();
-    const recipient = partnerIdRef.current || partner?.id;
-    if (!body || !callId || !user?.id || !recipient) return;
-
-    const { data, error } = await supabase
-      .from('droxion_call_messages')
-      .insert({ call_id: callId, sender_id: user.id, recipient_id: recipient, body })
-      .select('id,sender_id,recipient_id,body,created_at')
-      .single();
-
-    if (error) {
-      setMessage(error.message || 'Could not send chat message.');
-      return;
-    }
-
-    setCallMessages(previous => [...previous.slice(-49), data]);
-    lastCallMessageId.current = Math.max(lastCallMessageId.current, Number(data.id));
-    setChatDraft('');
-  }
-
-  async function sendGift(gift) {
-    if (!callId) return;
-    if (Number(coins || 0) < gift.cost) {
-      setMessage(`You need ${gift.cost} coins for ${gift.name}.`);
-      return;
-    }
-
-    const { data, error } = await supabase.rpc('droxion_send_call_gift', {
-      p_call_id: callId,
-      p_gift_code: gift.code
-    });
-
-    if (error || !data?.allowed) {
-      setMessage(error?.message || data?.reason || 'Could not send gift.');
-      return;
-    }
-
-    if (data.coin_balance != null) setCoins(Number(data.coin_balance));
-    setMessage('');
-    setGiftOpen(false);
-    showGiftToast({ emoji: gift.emoji, text: `You sent ${gift.name}` });
-  }
+  }, [phase, callId, finishCall]);
 
   function toggleMic() {
     const track = streamRef.current?.getAudioTracks()?.[0];
@@ -607,22 +522,18 @@ export default function RandomCall() {
         video: {
           facingMode: { ideal: nextMode },
           width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30, max: 30 }
+          height: { ideal: 720 }
         },
         audio: false
       });
       const newTrack = newStream.getVideoTracks()[0];
-      if (newTrack && 'contentHint' in newTrack) newTrack.contentHint = 'motion';
       const sender = pcRef.current?.getSenders().find(item => item.track?.kind === 'video');
       await sender?.replaceTrack(newTrack);
       current.stop();
+
       const audio = streamRef.current?.getAudioTracks()?.[0];
       streamRef.current = new MediaStream([newTrack, ...(audio ? [audio] : [])]);
-      if (localVideo.current) {
-        localVideo.current.srcObject = streamRef.current;
-        localVideo.current.play?.().catch(() => {});
-      }
+      if (localVideo.current) localVideo.current.srcObject = streamRef.current;
     } catch (error) {
       console.warn('Camera switch failed', error);
       setMessage('Could not switch camera on this device.');
@@ -634,83 +545,33 @@ export default function RandomCall() {
   }
 
   if (phase === 'guest') {
-    return <main className="randomCallPage"><button className="randomClose" onClick={() => navigate('/')}><X /></button><div className="welcomeCoin"><Coins /> 50 welcome coins</div><h1>Meet someone real.</h1><p>Create a verified 21+ account before entering random video chat. Your 50 welcome coins are credited once after email verification.</p><button className="randomPrimary" onClick={() => navigate('/signup')}>Create account</button><button className="randomSecondary" onClick={() => navigate('/login')}>Log in</button></main>;
+    return <main className="randomCallPage"><button className="randomClose" onClick={() => navigate('/')}><X /></button><div className="welcomeCoin"><Coins /> 50 welcome coins</div><h1>Meet someone real.</h1><p>Create a verified 21+ account before entering random video chat.</p><button className="randomPrimary" onClick={() => navigate('/signup')}>Create account</button><button className="randomSecondary" onClick={() => navigate('/login')}>Log in</button></main>;
   }
 
   if (phase === 'choose') {
-    return <main className="randomCallPage"><button className="randomClose" onClick={() => navigate('/')}><X /></button><div className="randomWallet"><Coins size={18}/> {coins ?? 0}</div><Video size={48}/><h1>Random Call</h1><p>Connect only with real Droxion users who are available now.</p><div className="genderChoices">{FILTERS.map(item => <button key={item.id} className={filter === item.id ? 'selected' : ''} onClick={() => setFilter(item.id)}><strong>{item.label}</strong><span>{item.cost}</span></button>)}</div><p className="priceNote">Searching, waiting, ringing, busy and rejected calls are free. Connected video costs 5 coins every 10 seconds (30/min). Female filter adds 3 coins only when connected.</p>{message && <p className="randomError">{message}</p>}<button className="randomPrimary" onClick={beginSearch}>Find someone</button><div className="safetyLine"><ShieldCheck size={18}/> 21+ · Real accounts only.</div></main>;
+    return <main className="randomCallPage"><button className="randomClose" onClick={() => navigate('/')}><X /></button><div className="randomWallet"><Coins size={18}/> {coins ?? 0}</div><Video size={48}/><h1>Random Call</h1><p>Connect only with real Droxion users who are available now.</p><div className="genderChoices">{FILTERS.map(item => <button key={item.id} className={filter === item.id ? 'selected' : ''} onClick={() => setFilter(item.id)}><strong>{item.label}</strong><span>{item.cost}</span></button>)}</div><p className="priceNote">Searching and waiting are free. Connected video costs 5 coins every 10 seconds (30/min). Female filter adds 3 coins only when connected.</p>{message && <p className="randomError">{message}</p>}<button className="randomPrimary" onClick={beginSearch}>Find someone</button><div className="safetyLine"><ShieldCheck size={18}/> 21+ · Real accounts only.</div></main>;
   }
 
   if (phase === 'searching') {
-    return <main className="randomCallPage searchingPage"><div className="finderWrap"><div className="finderPulse"/><div className="finderPulse second"/><Video size={44}/></div><h1>Finding someone…</h1><p>{message || `Looking for an available ${filter === 'both' ? 'person' : filter === 'female' ? 'woman' : 'man'}.`}</p><p className="priceNote">No charge while waiting. If another call ends, an available person can match with you automatically.</p><button className="randomSecondary" onClick={cancelWaiting}>Cancel</button></main>;
+    return <main className="randomCallPage searchingPage"><div className="finderWrap"><div className="finderPulse"/><div className="finderPulse second"/><Video size={44}/></div><h1>Finding someone…</h1><p>{message || `Looking for an available ${filter === 'both' ? 'person' : filter === 'female' ? 'woman' : 'man'}.`}</p><p className="priceNote">No charge while waiting.</p><button className="randomSecondary" onClick={cancelWaiting}>Cancel</button></main>;
   }
 
   return (
     <main className="videoCallPage">
-      <video
-        ref={remoteVideo}
-        className={`callVideo remoteFeed ${focusedVideo === 'remote' ? 'videoMain' : 'videoThumb'}`}
-        autoPlay
-        playsInline
-        onClick={() => setFocusedVideo('remote')}
-        aria-label="Other person's video"
-      />
-      <video
-        ref={localVideo}
-        className={`callVideo localFeed ${focusedVideo === 'local' ? 'videoMain' : 'videoThumb'}`}
-        autoPlay
-        muted
-        playsInline
-        onClick={() => setFocusedVideo('local')}
-        aria-label="Your video"
-      />
-
+      <video ref={remoteVideo} className="callVideo remoteFeed videoMain" autoPlay playsInline aria-label="Other person's video" />
+      <video ref={localVideo} className="callVideo localFeed videoThumb" autoPlay muted playsInline aria-label="Your video" />
       <div className="callShade"/>
       <div className="realProfile"><div className="avatarFallback">{(partner?.name || 'D')[0]}</div><div><strong>{partner?.name || 'Droxion user'}</strong><span>{partner?.country || 'Worldwide'}{partner?.language ? ` · ${partner.language}` : ''}</span></div></div>
-      <div className="callState">{phase === 'calling' ? 'Calling…' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 30 coins/min`}</div>
+      <div className="callState">{phase === 'calling' ? 'Connecting…' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} · 30 coins/min`}</div>
       {phase === 'calling' && <div className="callingPulse"/>}
-      {giftToast && <div className="giftToast"><span>{giftToast.emoji}</span><strong>{giftToast.text}</strong></div>}
       {message && <div className="callMessage">{message}</div>}
-
-      {giftOpen && phase === 'connected' && (
-        <div className="callDrawer giftDrawer">
-          <div className="callDrawerHead"><strong>Send a gift</strong><button onClick={() => setGiftOpen(false)}><X size={18}/></button></div>
-          <div className="giftGrid">
-            {GIFTS.map(gift => (
-              <button key={gift.code} onClick={() => sendGift(gift)}>
-                <span>{gift.emoji}</span>
-                <strong>{gift.name}</strong>
-                <small><Coins size={12}/> {gift.cost}</small>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {chatOpen && phase === 'connected' && (
-        <div className="callDrawer callChatDrawer">
-          <div className="callDrawerHead"><strong>Call chat</strong><button onClick={() => setChatOpen(false)}><X size={18}/></button></div>
-          <div className="callChatMessages">
-            {callMessages.length === 0 && <span className="callChatEmpty">Say hello 👋</span>}
-            {callMessages.map(item => <div key={item.id} className={item.sender_id === user?.id ? 'callChatBubble mine' : 'callChatBubble'}>{item.body}</div>)}
-          </div>
-          <div className="callChatComposer">
-            <input value={chatDraft} maxLength={500} onChange={event => setChatDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendCallMessage(); }} placeholder="Message during call…"/>
-            <button onClick={sendCallMessage} disabled={!chatDraft.trim()}><Send size={18}/></button>
-          </div>
-        </div>
-      )}
-
       <div className="videoControls">
         <button onClick={toggleMic}>{micOn ? <Mic/> : <MicOff/>}</button>
         <button onClick={toggleCamera}>{cameraOn ? <Camera/> : <CameraOff/>}</button>
         <button onClick={switchCamera}><RotateCcw/></button>
-        <button className={giftOpen ? 'activeTool' : ''} onClick={() => { setGiftOpen(value => !value); setChatOpen(false); }} disabled={phase !== 'connected'}><Gift/></button>
-        <button className={chatOpen ? 'activeTool' : ''} onClick={() => { setChatOpen(value => !value); setGiftOpen(false); }} disabled={phase !== 'connected'}><MessageCircle/></button>
-        <button className="hangButton" onClick={() => endCall(true)}><PhoneOff/></button>
+        <button className="hangButton" onClick={() => finishCall(true)}><PhoneOff/></button>
       </div>
       <div className="callCoins"><Coins size={16}/> {coins ?? 0}</div>
-      <div className="tapVideoHint">Tap either video to make it full screen</div>
     </main>
   );
 }
