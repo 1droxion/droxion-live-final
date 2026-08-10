@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabaseClient';
 import DroxionProfile from './DroxionProfile';
 import {
@@ -87,12 +87,18 @@ function CoinStore({
   coins,
   freeMatches,
   plan,
-  message
+  message,
+  onBalanceRefresh
 }){
   const [products,setProducts] = useState([]);
   const [loading,setLoading] = useState(true);
   const [checkoutId,setCheckoutId] = useState('');
   const [checkoutError,setCheckoutError] = useState('');
+  const [checkoutSuccess,setCheckoutSuccess] = useState('');
+  const [selectedProduct,setSelectedProduct] = useState(null);
+  const [paypalOrderId,setPaypalOrderId] = useState('');
+  const [paypalReady,setPaypalReady] = useState(false);
+  const paypalContainerRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
@@ -133,53 +139,56 @@ function CoinStore({
   }, []);
 
 
-  async function startCheckout(productId){
+  async function startCheckout(product) {
+    if (checkoutId) {
+      return;
+    }
+
+    if (product.product_type !== 'coin_pack') {
+      setCheckoutError('Plan checkout is not enabled in this PayPal rollout yet.');
+      setCheckoutSuccess('');
+      return;
+    }
 
     setCheckoutError('');
-    setCheckoutId(productId);
+    setCheckoutSuccess('');
+    setCheckoutId(product.id);
+    setSelectedProduct(product);
+    setPaypalOrderId('');
+    setPaypalReady(false);
 
-    const { data, error } =
-      await supabase.functions.invoke(
-        'ccbill-checkout',
-        {
-          body: {
-            product_id: productId
-          }
-        }
-      );
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
 
-    if(error){
-      console.error(
-        'CCBill checkout error:',
-        error
-      );
+      if (!accessToken) {
+        throw new Error('Please sign in again before buying coins.');
+      }
 
-      setCheckoutError(
-        'Checkout is not available yet. Please try again later.'
-      );
+      const response = await fetch('/api/paypal/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ packageId: product.id })
+      });
 
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload.orderId) {
+        throw new Error(payload.error || 'PayPal checkout could not be started.');
+      }
+
+      setPaypalOrderId(payload.orderId);
+    } catch (err) {
+      console.error('PayPal checkout error:', err);
+      setCheckoutError(err.message || 'PayPal checkout could not be started.');
       setCheckoutId('');
-
-      return;
+      setSelectedProduct(null);
+      setPaypalOrderId('');
+      setPaypalReady(false);
     }
-
-
-    if(!data?.checkout_url){
-
-      setCheckoutError(
-        data?.error ||
-        'Checkout could not be started.'
-      );
-
-      setCheckoutId('');
-
-      return;
-    }
-
-
-    window.location.assign(
-      data.checkout_url
-    );
   }
 
 
@@ -204,6 +213,113 @@ function CoinStore({
       Number(cents || 0) / 100
     ).toFixed(2)}`;
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSdk() {
+      if (!selectedProduct || !paypalOrderId || typeof window === 'undefined') {
+        return;
+      }
+
+      if (!import.meta.env.VITE_PAYPAL_CLIENT_ID) {
+        setCheckoutError('PayPal is not configured for this environment yet.');
+        return;
+      }
+
+      if (!document.getElementById('paypal-sdk')) {
+        const script = document.createElement('script');
+        script.id = 'paypal-sdk';
+        script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(import.meta.env.VITE_PAYPAL_CLIENT_ID)}&currency=USD&intent=capture&commit=true`;
+        script.async = true;
+        script.onload = () => setPaypalReady(true);
+        script.onerror = () => setCheckoutError('PayPal could not be loaded.');
+        document.body.appendChild(script);
+        return;
+      }
+
+      if (window.paypal) {
+        setPaypalReady(true);
+      }
+    }
+
+    loadSdk();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProduct, paypalOrderId]);
+
+  useEffect(() => {
+    if (!selectedProduct || !paypalOrderId || !paypalReady || !paypalContainerRef.current || !window.paypal?.Buttons) {
+      return;
+    }
+
+    const container = paypalContainerRef.current;
+    container.innerHTML = '';
+
+    const buttons = window.paypal.Buttons({
+      createOrder: () => paypalOrderId,
+      onApprove: async (data) => {
+        setCheckoutError('');
+        setCheckoutSuccess('');
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const accessToken = session?.access_token;
+
+          if (!accessToken) {
+            throw new Error('Please sign in again before finishing your purchase.');
+          }
+
+          const response = await fetch('/api/paypal/capture-order', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({ orderId: data.orderID })
+          });
+
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok || payload.error) {
+            throw new Error(payload.error || 'Payment verification failed.');
+          }
+
+          setCheckoutSuccess('Payment complete. Your coins have been added to your wallet.');
+          await onBalanceRefresh?.();
+        } catch (err) {
+          console.error('PayPal approval error:', err);
+          setCheckoutError(err.message || 'Payment verification failed.');
+        } finally {
+          setCheckoutId('');
+          setPaypalOrderId('');
+          setPaypalReady(false);
+          setSelectedProduct(null);
+        }
+      },
+      onCancel: () => {
+        setCheckoutError('PayPal checkout was cancelled.');
+        setCheckoutId('');
+        setPaypalOrderId('');
+        setPaypalReady(false);
+        setSelectedProduct(null);
+      },
+      onError: (err) => {
+        console.error('PayPal buttons error:', err);
+        setCheckoutError('PayPal checkout failed. Please try again.');
+        setCheckoutId('');
+        setPaypalOrderId('');
+        setPaypalReady(false);
+        setSelectedProduct(null);
+      }
+    });
+
+    buttons.render(container);
+
+    return () => {
+      container.innerHTML = '';
+    };
+  }, [paypalOrderId, paypalReady, selectedProduct]);
 
   return (
     <div className="modalShade">
@@ -246,6 +362,11 @@ function CoinStore({
           </p>
         )}
 
+        {checkoutSuccess && (
+          <p className="warning" style={{ color: '#4ade80' }}>
+            {checkoutSuccess}
+          </p>
+        )}
 
         <h3>Buy Coins</h3>
 
@@ -267,7 +388,7 @@ function CoinStore({
                   checkoutId === product.id
                 }
                 onClick={() =>
-                  startCheckout(product.id)
+                  startCheckout(product)
                 }
               >
 
@@ -315,7 +436,7 @@ function CoinStore({
                   checkoutId === product.id
                 }
                 onClick={() =>
-                  startCheckout(product.id)
+                  startCheckout(product)
                 }
               >
 
@@ -350,6 +471,13 @@ function CoinStore({
 
         </div>
 
+
+        {selectedProduct && paypalOrderId && (
+          <div style={{ marginTop: 18 }}>
+            <p className="muted">PayPal checkout for {selectedProduct.name}</p>
+            <div ref={paypalContainerRef} />
+          </div>
+        )}
 
         <p className="muted"
            style={{marginTop:18}}>
@@ -850,6 +978,7 @@ export default function Home(){
           freeMatches={freeMatches}
           plan={plan}
           message={moneyMessage}
+          onBalanceRefresh={loadWallet}
         />
       )}
 
