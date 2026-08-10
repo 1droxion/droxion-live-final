@@ -16,7 +16,9 @@ create index if not exists droxion_direct_messages_pair_idx
 alter table public.droxion_direct_messages enable row level security;
 
 revoke all on public.droxion_direct_messages from public, anon;
-grant select, insert, update on public.droxion_direct_messages to authenticated;
+grant select, insert on public.droxion_direct_messages to authenticated;
+revoke update on public.droxion_direct_messages from authenticated;
+grant update (read_at) on public.droxion_direct_messages to authenticated;
 
 drop policy if exists "messages participants read" on public.droxion_direct_messages;
 create policy "messages participants read"
