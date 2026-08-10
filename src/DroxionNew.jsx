@@ -258,7 +258,12 @@ function CoinStore({
     container.innerHTML = '';
 
     const buttons = window.paypal.Buttons({
-      createOrder: () => paypalOrderId,
+      createOrder: () => {
+        if (typeof paypalOrderId !== 'string' || !paypalOrderId.trim()) {
+          return Promise.reject(new Error('PayPal order ID is missing.'));
+        }
+        return paypalOrderId;
+      },
       onApprove: async (data) => {
         setCheckoutError('');
         setCheckoutSuccess('');
@@ -270,13 +275,22 @@ function CoinStore({
             throw new Error('Please sign in again before finishing your purchase.');
           }
 
+          const approvedOrderId =
+            typeof data?.orderID === 'string' && data.orderID.trim()
+              ? data.orderID.trim()
+              : paypalOrderId;
+
+          if (!approvedOrderId) {
+            throw new Error('PayPal approval did not return an order ID.');
+          }
+
           const response = await fetch('/api/paypal/capture-order', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${accessToken}`
             },
-            body: JSON.stringify({ orderId: data.orderID })
+            body: JSON.stringify({ orderId: approvedOrderId })
           });
 
           const payload = await response.json().catch(() => ({}));
@@ -306,7 +320,7 @@ function CoinStore({
       },
       onError: (err) => {
         console.error('PayPal buttons error:', err);
-        setCheckoutError('PayPal checkout failed. Please try again.');
+        setCheckoutError(err?.message || 'PayPal checkout failed. Please try again.');
         setCheckoutId('');
         setPaypalOrderId('');
         setPaypalReady(false);
@@ -314,7 +328,11 @@ function CoinStore({
       }
     });
 
-    buttons.render(container);
+    const renderResult = buttons.render(container);
+    renderResult?.catch?.((err) => {
+      console.error('PayPal render error:', err);
+      setCheckoutError(err?.message || 'PayPal checkout could not be displayed.');
+    });
 
     return () => {
       container.innerHTML = '';

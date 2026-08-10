@@ -1,4 +1,13 @@
-import { callRpc, findTransactionByCaptureId, getPayPalConfig, normalizeError, readJsonBody, verifyWebhookSignature } from './lib.js';
+import {
+  callRpc,
+  findTransactionByCaptureId,
+  findTransactionByOrderId,
+  getPayPalConfig,
+  normalizeError,
+  readJsonBody,
+  updateTransactionRecord,
+  verifyWebhookSignature
+} from './lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,41 +40,69 @@ export default async function handler(req, res) {
     }
 
     const eventType = event?.event_type;
-    if (eventType !== 'PAYMENT.CAPTURE.COMPLETED' && eventType !== 'PAYMENT.CAPTURE.DENIED' && eventType !== 'PAYMENT.CAPTURE.REFUNDED') {
+    const supportedEvents = new Set([
+      'PAYMENT.CAPTURE.COMPLETED',
+      'PAYMENT.CAPTURE.DENIED',
+      'PAYMENT.CAPTURE.REFUNDED'
+    ]);
+
+    if (!supportedEvents.has(eventType)) {
       res.status(200).json({ ok: true, ignored: true });
       return;
     }
 
     const resource = event?.resource || {};
-    const captureId = resource?.id || '';
-    const orderId = resource?.supplementary_data?.related_ids?.order_id || '';
-    const status = resource?.status || '';
+    const captureId = typeof resource?.id === 'string' ? resource.id.trim() : '';
+    const orderId = typeof resource?.supplementary_data?.related_ids?.order_id === 'string'
+      ? resource.supplementary_data.related_ids.order_id.trim()
+      : '';
+    const status = String(resource?.status || '').toUpperCase();
 
     if (!captureId || !orderId) {
       res.status(400).json({ error: 'Webhook resource is missing identifiers.' });
       return;
     }
 
-    const transaction = await findTransactionByCaptureId(null, captureId);
+    // A webhook can arrive before the normal capture endpoint has recorded the
+    // capture ID, so fall back to the PayPal order ID to recover the pending row.
+    let transaction = await findTransactionByCaptureId(null, captureId);
+    if (!transaction) {
+      transaction = await findTransactionByOrderId(null, orderId, null);
+    }
+
     if (!transaction) {
       res.status(404).json({ error: 'No matching purchase record was found.' });
       return;
     }
 
     if (eventType === 'PAYMENT.CAPTURE.COMPLETED' && status === 'COMPLETED') {
-      const result = await callRpc('', 'droxion_fulfill_paypal_purchase', {
+      const amount = resource?.amount?.value;
+      const currency = String(resource?.amount?.currency_code || '').toUpperCase();
+
+      if (currency !== String(transaction.currency || '').toUpperCase() || Number(amount) !== Number(transaction.amount)) {
+        res.status(400).json({ error: 'Webhook amount or currency does not match the pending purchase.' });
+        return;
+      }
+
+      const result = await callRpc(null, 'droxion_fulfill_paypal_purchase', {
         p_user_id: transaction.user_id,
         p_paypal_order_id: orderId,
         p_paypal_capture_id: captureId,
         p_package_id: transaction.package_id,
         p_amount: Number(transaction.amount),
-        p_currency: transaction.currency,
+        p_currency: currency,
         p_coins: Number(transaction.coins),
         p_status: 'COMPLETED'
       });
+
       res.status(200).json({ ok: true, capture: captureId, result });
       return;
     }
+
+    await updateTransactionRecord(null, transaction.id, {
+      payment_status: status || eventType,
+      paypal_capture_id: transaction.paypal_capture_id || captureId
+    });
 
     res.status(200).json({ ok: true, status });
   } catch (error) {

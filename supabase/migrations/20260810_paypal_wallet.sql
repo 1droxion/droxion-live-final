@@ -172,19 +172,9 @@ begin
     raise exception 'This PayPal order was already fulfilled in an unexpected state.';
   end if;
 
-  -- Ensure a wallet exists. The unique index above makes this race-safe.
-  insert into public.droxion_wallets (
-    user_id,
-    coin_balance,
-    free_matches_remaining,
-    plan
-  )
-  values (
-    p_user_id,
-    0,
-    0,
-    'free'
-  )
+  -- Ensure a wallet exists while preserving Droxion's existing defaults.
+  insert into public.droxion_wallets (user_id)
+  values (p_user_id)
   on conflict (user_id) do nothing;
 
   -- Record completion first inside the same database transaction.

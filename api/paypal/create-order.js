@@ -1,4 +1,12 @@
-import { createPayPalOrder, createTransactionRecord, getPayPalConfig, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, normalizeError, readJsonBody } from './lib.js';
+import {
+  createPayPalOrder,
+  createTransactionRecord,
+  getPayPalConfig,
+  getProductById,
+  getSupabaseUser,
+  normalizeError,
+  readJsonBody
+} from './lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -13,20 +21,14 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const { packageId } = body || {};
 
-    if (!packageId) {
+    if (packageId === undefined || packageId === null || String(packageId).trim() === '') {
       res.status(400).json({ error: 'A package selection is required.' });
       return;
     }
 
     const user = await getSupabaseUser(accessToken);
     const { clientId, clientSecret, baseUrl } = getPayPalConfig();
-    const { supabaseUrl } = getSupabaseConfig();
-    const packageProduct = await fetch(`${supabaseUrl}/rest/v1/droxion_products?select=id,product_type,name,price_cents,coins_granted,active&active=eq.true&product_type=eq.coin_pack&id=eq.${encodeURIComponent(packageId)}`, {
-      headers: {
-        ...getSupabaseHeaders(accessToken, true),
-        Authorization: accessToken ? `Bearer ${accessToken}` : undefined
-      }
-    }).then((response) => response.json().catch(() => [])).then((data) => Array.isArray(data) && data.length ? data[0] : null);
+    const packageProduct = await getProductById(packageId);
 
     if (!packageProduct || Number(packageProduct.price_cents) <= 0 || Number(packageProduct.coins_granted) <= 0) {
       res.status(400).json({ error: 'The selected package is invalid.' });
@@ -47,25 +49,23 @@ export default async function handler(req, res) {
       application_context: {
         brand_name: 'Droxion',
         shipping_preference: 'NO_SHIPPING',
-        user_action: 'PAY_NOW',
-        return_url: `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host || 'droxion.app'}/wallet`,
-        cancel_url: `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host || 'droxion.app'}/wallet`
+        user_action: 'PAY_NOW'
       }
     };
 
     const paypalOrder = await createPayPalOrder({ clientId, clientSecret, baseUrl, orderPayload });
-    const paypalOrderId = paypalOrder?.id;
+    const paypalOrderId = typeof paypalOrder?.id === 'string' ? paypalOrder.id.trim() : '';
 
     if (!paypalOrderId) {
-      res.status(502).json({ error: 'PayPal did not return an order id.' });
+      res.status(502).json({ error: 'PayPal did not return an order ID.' });
       return;
     }
 
     const transactionPayload = {
       user_id: user.id,
-      package_id: packageProduct.id,
+      package_id: String(packageProduct.id),
       paypal_order_id: paypalOrderId,
-      payment_status: 'pending',
+      payment_status: 'PENDING',
       amount: Number(amount),
       currency: 'USD',
       coins: Number(packageProduct.coins_granted),
@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     };
 
     const transaction = await createTransactionRecord(accessToken, transactionPayload);
-    const transactionId = transaction?.id;
+    const transactionId = typeof transaction?.id === 'string' ? transaction.id : '';
 
     if (!transactionId) {
       res.status(502).json({ error: 'The PayPal order was created, but the purchase record could not be saved.' });

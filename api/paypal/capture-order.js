@@ -1,4 +1,13 @@
-import { callRpc, capturePayPalOrder, findTransactionByOrderId, getPayPalConfig, getSupabaseUser, normalizeError, readJsonBody, updateTransactionRecord } from './lib.js';
+import {
+  callRpc,
+  capturePayPalOrder,
+  findTransactionByOrderId,
+  getPayPalConfig,
+  getSupabaseUser,
+  normalizeError,
+  readJsonBody,
+  updateTransactionRecord
+} from './lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,7 +20,7 @@ export default async function handler(req, res) {
     const authHeader = req.headers.authorization || '';
     const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     const body = await readJsonBody(req);
-    const { orderId } = body || {};
+    const orderId = typeof body?.orderId === 'string' ? body.orderId.trim() : '';
 
     if (!orderId) {
       res.status(400).json({ error: 'A PayPal order ID is required.' });
@@ -27,30 +36,33 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (existingTransaction.fulfilled && existingTransaction.payment_status === 'COMPLETED') {
-      res.status(200).json({ ok: true, alreadyCompleted: true, coins: existingTransaction.coins, transactionId: existingTransaction.id });
+    if (existingTransaction.fulfilled && String(existingTransaction.payment_status).toUpperCase() === 'COMPLETED') {
+      res.status(200).json({
+        ok: true,
+        alreadyCompleted: true,
+        coins: existingTransaction.coins,
+        transactionId: existingTransaction.id
+      });
       return;
     }
 
     const captureResult = await capturePayPalOrder({ clientId, clientSecret, baseUrl, orderId });
-    const captureData = captureResult?.purchase_units?.[0]?.payments?.captures?.[0] || {};
-    const status = captureResult?.status || '';
-    const captureId = captureData?.id || '';
-    const amount = captureData?.amount?.value || '';
-    const currency = captureData?.amount?.currency_code || '';
+    const captureData = captureResult?.purchase_units?.[0]?.payments?.captures?.[0] || null;
+    const status = String(captureData?.status || captureResult?.status || '').toUpperCase();
+    const captureId = typeof captureData?.id === 'string' ? captureData.id.trim() : '';
+    const amount = captureData?.amount?.value;
+    const currency = String(captureData?.amount?.currency_code || '').toUpperCase();
 
-    if (!captureId && status === 'COMPLETED') {
-      res.status(502).json({ error: 'PayPal completed the capture but did not return a capture id.' });
+    if (status !== 'COMPLETED') {
+      await updateTransactionRecord(null, existingTransaction.id, {
+        payment_status: status || 'PENDING'
+      });
+      res.status(409).json({ error: 'PayPal capture is not completed yet.' });
       return;
     }
 
-    if (status !== 'COMPLETED') {
-      await updateTransactionRecord(accessToken, existingTransaction.id, {
-        payment_status: status || 'PENDING',
-        paypal_capture_id: captureId,
-        updated_at: new Date().toISOString()
-      });
-      res.status(400).json({ error: 'PayPal capture is not completed yet.' });
+    if (!captureId) {
+      res.status(502).json({ error: 'PayPal completed the capture but did not return a capture ID.' });
       return;
     }
 
@@ -64,7 +76,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const updatedTransaction = await callRpc(accessToken, 'droxion_fulfill_paypal_purchase', {
+    const updatedTransaction = await callRpc(null, 'droxion_fulfill_paypal_purchase', {
       p_user_id: user.id,
       p_paypal_order_id: orderId,
       p_paypal_capture_id: captureId,
@@ -77,7 +89,14 @@ export default async function handler(req, res) {
 
     const transactionId = updatedTransaction?.id || existingTransaction?.id || null;
 
-    res.status(200).json({ ok: true, alreadyCompleted: false, coins: existingTransaction.coins, transactionId });
+    res.status(200).json({
+      ok: true,
+      alreadyCompleted: Boolean(updatedTransaction?.already_completed),
+      coins: Number(existingTransaction.coins),
+      transactionId,
+      orderId,
+      captureId
+    });
   } catch (error) {
     res.status(502).json({ error: normalizeError(error) });
   }
