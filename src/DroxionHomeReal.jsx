@@ -51,7 +51,7 @@ function genderMatches(profileGender, filter) {
   return false;
 }
 
-function BottomNav({ tab, onTab }) {
+function BottomNav({ tab, onTab, unreadCount = 0 }) {
   const items = [
     ['live', 'Live', Radio],
     ['discover', 'Discover', Compass],
@@ -68,7 +68,14 @@ function BottomNav({ tab, onTab }) {
           className={tab === key ? `realNavItem active ${key === 'random' ? 'randomCenter' : ''}` : `realNavItem ${key === 'random' ? 'randomCenter' : ''}`}
           onClick={() => onTab(key)}
         >
-          <span className="navIcon"><Icon size={key === 'random' ? 25 : 21} /></span>
+          <span className="navIcon" style={{ position: 'relative' }}>
+            <Icon size={key === 'random' ? 25 : 21} />
+            {key === 'chat' && unreadCount > 0 && (
+              <b style={{ position: 'absolute', top: -8, right: -10, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, display: 'grid', placeItems: 'center', background: '#ef4444', color: '#fff', fontSize: 10, lineHeight: 1 }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </b>
+            )}
+          </span>
           <span>{label}</span>
         </button>
       ))}
@@ -263,7 +270,7 @@ function LiveReal({ currentUserId, onChat }) {
   );
 }
 
-function ChatInbox({ currentUserId, onOpenConversation, onOpenDiscover }) {
+function ChatInbox({ currentUserId, onOpenConversation, onOpenDiscover, onUnreadChanged }) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -279,15 +286,31 @@ function ChatInbox({ currentUserId, onOpenConversation, onOpenDiscover }) {
         setError(inboxError.message || 'Could not load chats.');
       } else {
         setError('');
-        setConversations(data || []);
+        const rows = data || [];
+        setConversations(rows);
+        onUnreadChanged?.(rows.reduce((sum, row) => sum + Number(row.unread_count || 0), 0));
       }
       setLoading(false);
     }
 
     refresh();
     const timer = setInterval(refresh, 2500);
-    return () => { alive = false; clearInterval(timer); };
-  }, [currentUserId]);
+    const channel = supabase
+      .channel(`droxion-inbox-${currentUserId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'droxion_direct_messages',
+        filter: `recipient_id=eq.${currentUserId}`
+      }, refresh)
+      .subscribe();
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId, onUnreadChanged]);
 
   return (
     <section className="realPage chatInboxPage">
@@ -334,7 +357,7 @@ function ChatInbox({ currentUserId, onOpenConversation, onOpenDiscover }) {
   );
 }
 
-function ChatReal({ currentUserId, partner, onBackToInbox, onOpenWallet, onWalletChanged }) {
+function ChatReal({ currentUserId, partner, onBackToInbox, onOpenWallet, onWalletChanged, onUnreadChanged }) {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -373,13 +396,30 @@ function ChatReal({ currentUserId, partner, onBackToInbox, onOpenWallet, onWalle
         setError('');
         setMessages(data || []);
         await supabase.rpc('droxion_mark_conversation_read', { p_partner_id: partner.user_id });
+        onUnreadChanged?.();
       }
     }
 
     refresh();
-    const timer = setInterval(refresh, 1500);
-    return () => { alive = false; clearInterval(timer); };
-  }, [currentUserId, partner?.user_id]);
+    const timer = setInterval(refresh, 2500);
+    const channel = supabase
+      .channel(`droxion-thread-${currentUserId}-${partner.user_id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'droxion_direct_messages',
+        filter: `recipient_id=eq.${currentUserId}`
+      }, payload => {
+        if (payload.new?.sender_id === partner.user_id) refresh();
+      })
+      .subscribe();
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId, partner?.user_id, onUnreadChanged]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -400,10 +440,11 @@ function ChatReal({ currentUserId, partner, onBackToInbox, onOpenWallet, onWalle
     }
 
     if (!data?.allowed) {
-      setChatCoins(Number(data?.coin_balance || 0));
+      const balance = Number(data?.coin_balance || 0);
+      setChatCoins(balance);
       setFreeMessages(Number(data?.free_messages_remaining || 0));
-      setError('You used your 2 free messages. Add coins to continue chatting — each message costs 1 coin.');
-      onOpenWallet?.();
+      setError('You used your 2 free messages and have no coins. Add coins to continue chatting — each message costs 1 coin.');
+      if (balance <= 0) onOpenWallet?.();
       setSending(false);
       return;
     }
@@ -423,8 +464,11 @@ function ChatReal({ currentUserId, partner, onBackToInbox, onOpenWallet, onWalle
     onWalletChanged?.(balance);
 
     if (remaining === 0 && charged === 0) {
-      setError('Your 2 free messages are used. Future messages cost 1 coin each.');
-      onOpenWallet?.();
+      setError(balance > 0
+        ? `Your 2 free messages are used. You have ${balance} coins, so future messages cost 1 coin each.`
+        : 'Your 2 free messages are used. Future messages cost 1 coin each.');
+    } else {
+      setError('');
     }
 
     setSending(false);
@@ -485,6 +529,7 @@ export default function DroxionHomeReal() {
   const [plan, setPlan] = useState('free');
   const [walletOpen, setWalletOpen] = useState(false);
   const [chatPartner, setChatPartner] = useState(storedChatPartner);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   async function loadWallet(authUser = user) {
     if (!authUser?.id) return;
@@ -498,6 +543,13 @@ export default function DroxionHomeReal() {
     setPlan(wallet?.plan || 'free');
   }
 
+  async function loadUnreadCount() {
+    if (!user?.id) return;
+    const { data, error } = await supabase.rpc('droxion_chat_conversations');
+    if (error) return;
+    setUnreadCount((data || []).reduce((sum, row) => sum + Number(row.unread_count || 0), 0));
+  }
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -508,6 +560,35 @@ export default function DroxionHomeReal() {
     })();
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+
+    async function refreshUnread() {
+      const { data, error } = await supabase.rpc('droxion_chat_conversations');
+      if (!alive || error) return;
+      setUnreadCount((data || []).reduce((sum, row) => sum + Number(row.unread_count || 0), 0));
+    }
+
+    refreshUnread();
+    const timer = setInterval(refreshUnread, 3000);
+    const channel = supabase
+      .channel(`droxion-global-chat-${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'droxion_direct_messages',
+        filter: `recipient_id=eq.${user.id}`
+      }, refreshUnread)
+      .subscribe();
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     try {
@@ -534,6 +615,7 @@ export default function DroxionHomeReal() {
   function openChatInbox() {
     setChatPartner(null);
     setTab('chat');
+    loadUnreadCount();
   }
 
   function changeTab(next) {
@@ -558,6 +640,7 @@ export default function DroxionHomeReal() {
       onBackToInbox={openChatInbox}
       onOpenWallet={() => setWalletOpen(true)}
       onWalletChanged={balance => setCoins(Number(balance || 0))}
+      onUnreadChanged={loadUnreadCount}
     />
   );
   else if (tab === 'chat') content = (
@@ -565,6 +648,7 @@ export default function DroxionHomeReal() {
       currentUserId={user?.id}
       onOpenConversation={openChat}
       onOpenDiscover={() => setTab('discover')}
+      onUnreadChanged={setUnreadCount}
     />
   );
   else content = <DroxionProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} freeMatches={freeMatches} plan={plan} />;
@@ -576,7 +660,7 @@ export default function DroxionHomeReal() {
         <button className="realCoins" onClick={() => setWalletOpen(true)} aria-label="Open Droxion wallet and plans"><Coins size={18} /> {coins}</button>
       </header>
       <div className="realContent">{content}</div>
-      <BottomNav tab={tab} onTab={changeTab} />
+      <BottomNav tab={tab} onTab={changeTab} unreadCount={unreadCount} />
       {walletOpen && (
         <DroxionWallet
           coins={coins}
