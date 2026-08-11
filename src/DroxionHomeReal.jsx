@@ -28,7 +28,7 @@ function genderMatches(profileGender, filter) {
   if (filter === 'both') return true;
   if (filter === 'male') return value === 'man' || value === 'male';
   if (filter === 'female') return value === 'woman' || value === 'female';
-  return true;
+  return false;
 }
 
 function BottomNav({ tab, onTab }) {
@@ -186,7 +186,7 @@ function DiscoverReal({ currentUserId, onChat }) {
       {notice && <div className="realNotice">{notice}</div>}
       {loading && <div className="realEmpty">Loading real profiles…</div>}
       {error && <div className="realEmpty">{error}</div>}
-      {!loading && !error && visible.length === 0 && <div className="realEmpty">No real profiles match this filter yet.</div>}
+      {!loading && !error && visible.length === 0 && <div className="realEmpty">No {filter === 'male' ? 'male' : filter === 'female' ? 'female' : 'real'} profiles match this filter yet.</div>}
       <div className="realProfileGrid">
         {visible.map(profile => (
           <RealProfileCard
@@ -243,11 +243,28 @@ function LiveReal({ currentUserId, onChat }) {
   );
 }
 
-function ChatReal({ currentUserId, partner, onBackToDiscover }) {
+function ChatReal({ currentUserId, partner, onBackToDiscover, onOpenWallet, onWalletChanged }) {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [freeMessages, setFreeMessages] = useState(2);
+  const [chatCoins, setChatCoins] = useState(0);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let alive = true;
+
+    async function loadChatStatus() {
+      const { data, error: statusError } = await supabase.rpc('droxion_chat_status');
+      if (!alive || statusError || !data) return;
+      setFreeMessages(Number(data.free_messages_remaining || 0));
+      setChatCoins(Number(data.coin_balance || 0));
+    }
+
+    loadChatStatus();
+    return () => { alive = false; };
+  }, [currentUserId, partner?.user_id]);
 
   useEffect(() => {
     if (!currentUserId || !partner?.user_id) return;
@@ -277,18 +294,51 @@ function ChatReal({ currentUserId, partner, onBackToDiscover }) {
   async function sendMessage() {
     const body = draft.trim();
     if (!body || !currentUserId || !partner?.user_id || sending) return;
+
     setSending(true);
     setError('');
-    const { data, error: insertError } = await supabase
-      .from('droxion_direct_messages')
-      .insert({ sender_id: currentUserId, recipient_id: partner.user_id, body })
-      .select('id,sender_id,recipient_id,body,created_at')
-      .single();
-    if (insertError) setError(insertError.message);
-    else {
-      setMessages(previous => [...previous, data]);
-      setDraft('');
+
+    const { data, error: sendError } = await supabase.rpc('droxion_send_direct_message', {
+      p_recipient_id: partner.user_id,
+      p_body: body
+    });
+
+    if (sendError) {
+      setError(sendError.message || 'Could not send message.');
+      setSending(false);
+      return;
     }
+
+    if (!data?.allowed) {
+      setChatCoins(Number(data?.coin_balance || 0));
+      setFreeMessages(Number(data?.free_messages_remaining || 0));
+      setError('You used your 2 free messages. Add coins to continue chatting — each message costs 1 coin.');
+      onOpenWallet?.();
+      setSending(false);
+      return;
+    }
+
+    const sentMessage = data.message;
+    if (sentMessage?.id) {
+      setMessages(previous => previous.some(item => item.id === sentMessage.id) ? previous : [...previous, sentMessage]);
+    }
+
+    const remaining = Number(data.free_messages_remaining || 0);
+    const balance = Number(data.coin_balance || 0);
+    const charged = Number(data.charged_coins || 0);
+
+    setDraft('');
+    setFreeMessages(remaining);
+    setChatCoins(balance);
+    onWalletChanged?.(balance);
+
+    if (remaining === 0 && charged === 0) {
+      setError('Your 2 free messages are used. Future messages cost 1 coin each.');
+      onOpenWallet?.();
+    } else if (charged > 0) {
+      setError('');
+    }
+
     setSending(false);
   }
 
@@ -311,7 +361,15 @@ function ChatReal({ currentUserId, partner, onBackToDiscover }) {
           <span>{partner.country || 'Worldwide'}</span>
         </div>
       </div>
+
+      <div className="realNotice">
+        {freeMessages > 0
+          ? `${freeMessages} free message${freeMessages === 1 ? '' : 's'} left`
+          : `1 coin per message · ${chatCoins} coins available`}
+      </div>
+
       {error && <div className="realNotice">{error}</div>}
+
       <div className="chatMessages">
         {messages.length === 0 && !error && <div className="realEmpty">No messages yet. Say hello.</div>}
         {messages.map(message => (
@@ -320,8 +378,15 @@ function ChatReal({ currentUserId, partner, onBackToDiscover }) {
           </div>
         ))}
       </div>
+
       <div className="chatComposer">
-        <input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendMessage(); }} maxLength={1000} placeholder="Message…" />
+        <input
+          value={draft}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) sendMessage(); }}
+          maxLength={1000}
+          placeholder={freeMessages > 0 ? 'Message…' : 'Message · 1 coin'}
+        />
         <button disabled={sending || !draft.trim()} onClick={sendMessage}><Send size={19} /></button>
       </div>
     </section>
@@ -381,7 +446,15 @@ export default function DroxionHomeReal() {
   let content;
   if (tab === 'live') content = <LiveReal currentUserId={user?.id} onChat={openChat} />;
   else if (tab === 'discover') content = <DiscoverReal currentUserId={user?.id} onChat={openChat} />;
-  else if (tab === 'chat') content = <ChatReal currentUserId={user?.id} partner={chatPartner} onBackToDiscover={() => setTab('discover')} />;
+  else if (tab === 'chat') content = (
+    <ChatReal
+      currentUserId={user?.id}
+      partner={chatPartner}
+      onBackToDiscover={() => setTab('discover')}
+      onOpenWallet={() => setWalletOpen(true)}
+      onWalletChanged={balance => setCoins(Number(balance || 0))}
+    />
+  );
   else content = <DroxionProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} freeMatches={freeMatches} plan={plan} />;
 
   return (
