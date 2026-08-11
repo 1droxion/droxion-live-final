@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Bell, Coins, Crown, MessageCircle, Radio, Trophy, User, Video } from 'lucide-react';
+import { Bell, Coins, Crown, Home, MessageCircle, Trophy, User, Video } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperience';
-import DroxionProfile from './DroxionProfile';
+import LiveProfile from './LiveProfile';
 import DroxionWallet from './DroxionWallet';
+import './real-home.css';
 import './live-first-app.css';
 
 const TABS = [
-  { id: 'live', label: 'LIVE', icon: Radio },
+  { id: 'live', label: 'Home', icon: Home },
   { id: 'rankings', label: 'Rankings', icon: Trophy },
   { id: 'go-live', label: 'GO LIVE', icon: Video, primary: true },
   { id: 'inbox', label: 'Inbox', icon: MessageCircle },
@@ -86,9 +87,10 @@ export default function LiveFirstApp() {
   function chooseTab(nextTab) {
     if (nextTab === 'go-live') {
       setTab('live');
-      requestAnimationFrame(() => {
-        document.querySelector('.liveGoButton')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
+      window.setTimeout(() => {
+        const button = document.querySelector('.liveGoButton');
+        if (button) button.click();
+      }, 80);
       return;
     }
     setTab(nextTab);
@@ -109,13 +111,13 @@ export default function LiveFirstApp() {
   } else if (tab === 'inbox') {
     content = <Inbox />;
   } else {
-    content = <DroxionProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
+    content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
   }
 
   return (
     <main className="lfShell">
       <header className="lfTopbar">
-        <button className="lfBrand" type="button" onClick={() => setTab('live')} aria-label="Open Droxion LIVE">
+        <button className="lfBrand" type="button" onClick={() => setTab('live')} aria-label="Open Droxion home">
           <span className="lfBrandMark">D</span>
           <span><strong>DROXION</strong><small>LIVE SOCIAL</small></span>
         </button>
@@ -129,7 +131,7 @@ export default function LiveFirstApp() {
       <nav className="lfNav" aria-label="Droxion navigation">
         {TABS.map(item => {
           const Icon = item.icon;
-          const active = item.id === tab || (item.id === 'go-live' && tab === 'live' && false);
+          const active = item.id === tab;
           return (
             <button
               type="button"
