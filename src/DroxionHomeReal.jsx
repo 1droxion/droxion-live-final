@@ -4,6 +4,7 @@ import { Coins, Compass, Radio, MessageCircle, User, Video, BadgeCheck, UserPlus
 import { supabase } from './supabaseClient';
 import DroxionProfile from './DroxionProfile';
 import DroxionWallet from './DroxionWallet';
+import LiveExperience from './LiveExperience';
 import './real-home.css';
 
 const FILTERS = [
@@ -226,46 +227,6 @@ function DiscoverReal({ currentUserId, onChat }) {
           />
         ))}
       </div>
-    </section>
-  );
-}
-
-function LiveReal({ currentUserId, onChat }) {
-  const [profiles, setProfiles] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await loadAllDiscoverableProfiles();
-        if (!alive) return;
-        setProfiles(data.filter(p => p.user_id !== currentUserId && p.allow_video_calls !== false));
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [currentUserId]);
-
-  return (
-    <section className="realPage">
-      <div className="realHeading"><h1>Live</h1><p>Real members who allow video calls.</p></div>
-      <div className="realNotice">We only label somebody “online” when real presence data confirms it. No fake online profiles.</div>
-      {loading ? <div className="realEmpty">Loading…</div> : profiles.length === 0 ? <div className="realEmpty">No available members yet.</div> : (
-        <div className="realProfileGrid">
-          {profiles.map(profile => (
-            <RealProfileCard
-              key={profile.user_id}
-              profile={profile}
-              following={false}
-              busy={false}
-              onToggleFollow={() => {}}
-              onChat={onChat}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
@@ -631,7 +592,14 @@ export default function DroxionHomeReal() {
   }
 
   let content;
-  if (tab === 'live') content = <LiveReal currentUserId={user?.id} onChat={openChat} />;
+  if (tab === 'live') content = (
+    <LiveExperience
+      currentUserId={user?.id}
+      coins={coins}
+      onCoinsChanged={balance => setCoins(Number(balance || 0))}
+      onOpenWallet={() => setWalletOpen(true)}
+    />
+  );
   else if (tab === 'discover') content = <DiscoverReal currentUserId={user?.id} onChat={openChat} />;
   else if (tab === 'chat' && chatPartner) content = (
     <ChatReal
