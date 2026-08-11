@@ -12,6 +12,26 @@ const FILTERS = [
   { id: 'female', label: 'Female' }
 ];
 
+function storedTab() {
+  try {
+    const value = window.localStorage.getItem('droxion-active-tab');
+    return ['live', 'discover', 'chat', 'profile'].includes(value) ? value : 'discover';
+  } catch {
+    return 'discover';
+  }
+}
+
+function storedChatPartner() {
+  try {
+    const raw = window.localStorage.getItem('droxion-chat-partner');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.user_id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function ageFromDob(value) {
   if (!value) return null;
   const dob = new Date(`${value}T00:00:00`);
@@ -243,7 +263,78 @@ function LiveReal({ currentUserId, onChat }) {
   );
 }
 
-function ChatReal({ currentUserId, partner, onBackToDiscover, onOpenWallet, onWalletChanged }) {
+function ChatInbox({ currentUserId, onOpenConversation, onOpenDiscover }) {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let alive = true;
+
+    async function refresh() {
+      const { data, error: inboxError } = await supabase.rpc('droxion_chat_conversations');
+      if (!alive) return;
+      if (inboxError) {
+        setError(inboxError.message || 'Could not load chats.');
+      } else {
+        setError('');
+        setConversations(data || []);
+      }
+      setLoading(false);
+    }
+
+    refresh();
+    const timer = setInterval(refresh, 2500);
+    return () => { alive = false; clearInterval(timer); };
+  }, [currentUserId]);
+
+  return (
+    <section className="realPage chatInboxPage">
+      <div className="realHeading"><h1>Chat</h1><p>Your Droxion conversations.</p></div>
+      {loading && <div className="realEmpty">Loading chats…</div>}
+      {error && <div className="realNotice">{error}</div>}
+      {!loading && !error && conversations.length === 0 && (
+        <>
+          <div className="realEmpty">No conversations yet. Start from Discover.</div>
+          <button className="realPrimaryButton" onClick={onOpenDiscover}>Open Discover</button>
+        </>
+      )}
+      <div className="chatHistoryList">
+        {conversations.map(item => {
+          const partner = {
+            user_id: item.partner_id,
+            display_name: item.display_name,
+            avatar_url: item.avatar_url,
+            country: item.country,
+            allow_messages: item.allow_messages
+          };
+          return (
+            <button className="chatHistoryItem" key={item.partner_id} onClick={() => onOpenConversation(partner)}>
+              {item.avatar_url ? (
+                <img className="chatHistoryAvatar" src={item.avatar_url} alt={item.display_name || 'Droxion user'} />
+              ) : (
+                <div className="chatHistoryAvatar chatHistoryFallback">{(item.display_name || 'D')[0]?.toUpperCase()}</div>
+              )}
+              <div className="chatHistoryText">
+                <div className="chatHistoryTop">
+                  <strong>{item.display_name || 'Droxion user'}</strong>
+                  <span>{item.latest_at ? new Date(item.latest_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                </div>
+                <div className="chatHistoryBottom">
+                  <span>{item.latest_sender_id === currentUserId ? 'You: ' : ''}{item.latest_body || ''}</span>
+                  {Number(item.unread_count || 0) > 0 && <b>{Number(item.unread_count)}</b>}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ChatReal({ currentUserId, partner, onBackToInbox, onOpenWallet, onWalletChanged }) {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -271,23 +362,22 @@ function ChatReal({ currentUserId, partner, onBackToDiscover, onOpenWallet, onWa
     let alive = true;
 
     async function refresh() {
-      const pair = `and(sender_id.eq.${currentUserId},recipient_id.eq.${partner.user_id}),and(sender_id.eq.${partner.user_id},recipient_id.eq.${currentUserId})`;
-      const { data, error: queryError } = await supabase
-        .from('droxion_direct_messages')
-        .select('id,sender_id,recipient_id,body,created_at')
-        .or(pair)
-        .order('created_at', { ascending: true })
-        .limit(200);
+      const { data, error: queryError } = await supabase.rpc('droxion_get_direct_conversation', {
+        p_partner_id: partner.user_id,
+        p_limit: 200
+      });
       if (!alive) return;
-      if (queryError) setError(queryError.message);
-      else {
+      if (queryError) {
+        setError(queryError.message || 'Could not load messages.');
+      } else {
         setError('');
         setMessages(data || []);
+        await supabase.rpc('droxion_mark_conversation_read', { p_partner_id: partner.user_id });
       }
     }
 
     refresh();
-    const timer = setInterval(refresh, 2500);
+    const timer = setInterval(refresh, 1500);
     return () => { alive = false; clearInterval(timer); };
   }, [currentUserId, partner?.user_id]);
 
@@ -335,27 +425,20 @@ function ChatReal({ currentUserId, partner, onBackToDiscover, onOpenWallet, onWa
     if (remaining === 0 && charged === 0) {
       setError('Your 2 free messages are used. Future messages cost 1 coin each.');
       onOpenWallet?.();
-    } else if (charged > 0) {
-      setError('');
     }
 
     setSending(false);
   }
 
-  if (!partner) {
-    return (
-      <section className="realPage">
-        <div className="realHeading"><h1>Chat</h1><p>Your real Droxion conversations.</p></div>
-        <div className="realEmpty">Choose Chat on a Discover profile to start a conversation.</div>
-        <button className="realPrimaryButton" onClick={onBackToDiscover}>Open Discover</button>
-      </section>
-    );
-  }
-
   return (
     <section className="realPage chatPage">
       <div className="chatHeader">
-        <button onClick={onBackToDiscover}>←</button>
+        <button onClick={onBackToInbox}>←</button>
+        {partner.avatar_url ? (
+          <img className="chatHeaderAvatar" src={partner.avatar_url} alt={partner.display_name || 'Droxion user'} />
+        ) : (
+          <div className="chatHeaderAvatar chatHistoryFallback">{(partner.display_name || 'D')[0]?.toUpperCase()}</div>
+        )}
         <div>
           <strong>{partner.display_name || 'Droxion user'}</strong>
           <span>{partner.country || 'Worldwide'}</span>
@@ -395,13 +478,13 @@ function ChatReal({ currentUserId, partner, onBackToDiscover, onOpenWallet, onWa
 
 export default function DroxionHomeReal() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('discover');
+  const [tab, setTab] = useState(storedTab);
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [freeMatches, setFreeMatches] = useState(0);
   const [plan, setPlan] = useState('free');
   const [walletOpen, setWalletOpen] = useState(false);
-  const [chatPartner, setChatPartner] = useState(null);
+  const [chatPartner, setChatPartner] = useState(storedChatPartner);
 
   async function loadWallet(authUser = user) {
     if (!authUser?.id) return;
@@ -426,6 +509,19 @@ export default function DroxionHomeReal() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('droxion-active-tab', tab);
+    } catch {}
+  }, [tab]);
+
+  useEffect(() => {
+    try {
+      if (chatPartner?.user_id) window.localStorage.setItem('droxion-chat-partner', JSON.stringify(chatPartner));
+      else window.localStorage.removeItem('droxion-chat-partner');
+    } catch {}
+  }, [chatPartner]);
+
   function openChat(profile) {
     if (!user) {
       navigate('/login');
@@ -435,9 +531,18 @@ export default function DroxionHomeReal() {
     setTab('chat');
   }
 
+  function openChatInbox() {
+    setChatPartner(null);
+    setTab('chat');
+  }
+
   function changeTab(next) {
     if (next === 'random') {
       navigate('/random');
+      return;
+    }
+    if (next === 'chat') {
+      setTab('chat');
       return;
     }
     setTab(next);
@@ -446,13 +551,20 @@ export default function DroxionHomeReal() {
   let content;
   if (tab === 'live') content = <LiveReal currentUserId={user?.id} onChat={openChat} />;
   else if (tab === 'discover') content = <DiscoverReal currentUserId={user?.id} onChat={openChat} />;
-  else if (tab === 'chat') content = (
+  else if (tab === 'chat' && chatPartner) content = (
     <ChatReal
       currentUserId={user?.id}
       partner={chatPartner}
-      onBackToDiscover={() => setTab('discover')}
+      onBackToInbox={openChatInbox}
       onOpenWallet={() => setWalletOpen(true)}
       onWalletChanged={balance => setCoins(Number(balance || 0))}
+    />
+  );
+  else if (tab === 'chat') content = (
+    <ChatInbox
+      currentUserId={user?.id}
+      onOpenConversation={openChat}
+      onOpenDiscover={() => setTab('discover')}
     />
   );
   else content = <DroxionProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} freeMatches={freeMatches} plan={plan} />;
