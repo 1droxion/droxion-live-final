@@ -9,8 +9,8 @@ workflows:
 
     environment:
       vars:
-        APP_NAME: Droxion
-        BUNDLE_ID: com.droxion.app
+        APP_NAME: Droxion Live
+        BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
         CM_CLONE_DEPTH: "1"
         GIT_LFS_SKIP_SMUDGE: "1"
@@ -22,7 +22,7 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.droxion.app
+        bundle_identifier: com.droxion.live
 
     cache:
       cache_paths:
