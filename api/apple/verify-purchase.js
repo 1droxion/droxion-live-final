@@ -4,13 +4,18 @@ import { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, readJs
 const BUNDLE_ID = 'com.droxion.live';
 const APPLE_PRODUCTION_VERIFY_URL = 'https://buy.itunes.apple.com/verifyReceipt';
 const APPLE_SANDBOX_VERIFY_URL = 'https://sandbox.itunes.apple.com/verifyReceipt';
-
-// Apple publishes these trusted root SHA-256 fingerprints in its root store documentation.
+const APPLE_ROOT_CERT_URLS = [
+  'https://www.apple.com/certificateauthority/AppleRootCA-G2.cer',
+  'https://www.apple.com/certificateauthority/AppleRootCA-G3.cer',
+  'https://www.apple.com/appleca/AppleIncRootCertificate.cer'
+];
 const APPLE_ROOT_SHA256 = new Set([
-  'C2B9B042DD57830E7D117DAC55AC8AE19407D38E41D88F3215BC3A890444A050', // Apple Root CA - G2
-  '63343ABFB89A6A03EBB57E9B3F5FA7BE7C4F5C756F3017B3A8C488C3653E9179', // Apple Root CA - G3
-  'B0B1730ECBC7FF4505142C49F1295E6EDA6BCAED7E2C68C5BE91B5A11001F024' // Apple Root CA
+  'C2B9B042DD57830E7D117DAC55AC8AE19407D38E41D88F3215BC3A890444A050',
+  '63343ABFB89A6A03EBB57E9B3F5FA7BE7C4F5C756F3017B3A8C488C3653E9179',
+  'B0B1730ECBC7FF4505142C49F1295E6EDA6BCAED7E2C68C5BE91B5A11001F024'
 ]);
+
+let appleRootsPromise;
 
 function base64UrlBuffer(value) {
   const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -37,7 +42,22 @@ function certIsCurrentlyValid(cert) {
   return Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end;
 }
 
-function verifyStoreKitJws(jws) {
+async function loadAppleRoots() {
+  if (!appleRootsPromise) {
+    appleRootsPromise = Promise.all(APPLE_ROOT_CERT_URLS.map(async url => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Could not load Apple root certificate.');
+      const cert = new X509Certificate(Buffer.from(await response.arrayBuffer()));
+      if (!APPLE_ROOT_SHA256.has(normalizedFingerprint(cert))) {
+        throw new Error('Downloaded Apple root certificate fingerprint was not trusted.');
+      }
+      return cert;
+    }));
+  }
+  return appleRootsPromise;
+}
+
+async function verifyStoreKitJws(jws) {
   const parts = String(jws || '').split('.');
   if (parts.length !== 3) throw new Error('Apple signed transaction is malformed.');
 
@@ -58,8 +78,17 @@ function verifyStoreKitJws(jws) {
     }
   }
 
-  const root = certs[certs.length - 1];
-  if (!APPLE_ROOT_SHA256.has(normalizedFingerprint(root))) {
+  const lastPresented = certs[certs.length - 1];
+  let anchored = APPLE_ROOT_SHA256.has(normalizedFingerprint(lastPresented));
+  if (!anchored) {
+    const roots = await loadAppleRoots();
+    anchored = roots.some(root =>
+      lastPresented.issuer === root.subject &&
+      certIsCurrentlyValid(root) &&
+      lastPresented.verify(root.publicKey)
+    );
+  }
+  if (!anchored) {
     throw new Error('Apple signed transaction did not chain to a trusted Apple root.');
   }
 
@@ -168,7 +197,7 @@ export default async function handler(req, res) {
     let appAccountToken = '';
 
     if (jwsRepresentation) {
-      const signed = normalizeSignedTransaction(verifyStoreKitJws(jwsRepresentation));
+      const signed = normalizeSignedTransaction(await verifyStoreKitJws(jwsRepresentation));
       if (signed.bundleId !== BUNDLE_ID) {
         res.status(400).json({ error: 'Apple signed transaction bundle does not match Droxion Live.' });
         return;
@@ -245,6 +274,7 @@ export default async function handler(req, res) {
       environment
     });
   } catch (error) {
+    console.error('Apple purchase verification error:', error);
     res.status(502).json({ error: error?.message || 'Apple purchase verification failed.' });
   }
 }
