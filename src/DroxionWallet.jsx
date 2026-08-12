@@ -4,6 +4,8 @@ import { NativePurchases, PURCHASE_TYPE } from '@capgo/native-purchases';
 import { Coins, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
+const DROXION_API_ORIGIN = 'https://www.droxion.com';
+
 function getNativeStorePlatform() {
   try {
     const platform = Capacitor.getPlatform?.();
@@ -94,7 +96,8 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       throw new Error('Apple did not return a verifiable signed transaction.');
     }
 
-    const response = await fetch('/api/apple/verify-purchase', {
+    const verifyUrl = `${DROXION_API_ORIGIN}/api/apple/verify-purchase`;
+    const response = await fetch(verifyUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -108,7 +111,9 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Apple purchase verification failed.');
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || `Apple purchase verification failed (${response.status}).`);
+    }
 
     try {
       await NativePurchases.acknowledgePurchase({ purchaseToken: transaction.transactionId });
