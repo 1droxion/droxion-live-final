@@ -28,18 +28,23 @@ workflows:
         - $HOME/Library/Developer/Xcode/DerivedData
 
     scripts:
-      - name: Install dependencies
+      - name: Install web dependencies
         script: |
           set -e
           npm config set audit false
           npm config set fund false
           npm config set progress false
-          npm ci || npm install
+          npm ci
 
       - name: Build Droxion web bundle
         script: |
           set -e
           npm run build
+
+      - name: Install Capacitor tooling for CI
+        script: |
+          set -e
+          npm install --no-save @capacitor/cli@7 @capacitor/core@7 @capacitor/ios@7
 
       - name: Create or sync native iOS project
         script: |
