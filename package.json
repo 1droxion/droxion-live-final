@@ -9,7 +9,7 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
-    "@capgo/native-purchases": "^7.16.0",
+    "@capgo/native-purchases": "7.16.0",
     "@capacitor/core": "^7.0.0",
     "@supabase/supabase-js": "^2.57.4",
     "@vercel/analytics": "^1.3.1",
