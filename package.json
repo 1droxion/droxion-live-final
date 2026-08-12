@@ -9,6 +9,9 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
+    "@apple/app-store-server-library": "^3.1.0",
+    "@capgo/native-purchases": "^7.16.0",
+    "@capacitor/core": "^7.0.0",
     "@supabase/supabase-js": "^2.57.4",
     "@vercel/analytics": "^1.3.1",
     "@vitejs/plugin-react": "^4.3.0",
