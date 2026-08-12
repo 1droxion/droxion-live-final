@@ -12,6 +12,8 @@ workflows:
         APP_NAME: Droxion Live
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
+        VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
+        VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
         CM_CLONE_DEPTH: "1"
         GIT_LFS_SKIP_SMUDGE: "1"
         COCOAPODS_DISABLE_STATS: "true"
