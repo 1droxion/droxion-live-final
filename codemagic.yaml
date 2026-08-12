@@ -19,7 +19,7 @@ workflows:
         COCOAPODS_DISABLE_STATS: "true"
         HUSKY: "0"
         CI: "true"
-      node: 20
+      node: 22
       xcode: latest
       cocoapods: default
       ios_signing:
@@ -51,7 +51,32 @@ workflows:
       - name: Install Capacitor tooling for CI
         script: |
           set -e
-          npm install --no-save @capacitor/cli@7 @capacitor/ios@7 @capacitor/assets@3.0.5
+
+          # @capacitor/assets 3.0.5 uses sharp 0.32.6, whose legacy installer
+          # downloads libvips from GitHub. Prime Sharp's npm cache with retries
+          # so a transient network reset does not fail the whole iOS build.
+          LIBVIPS_CACHE="$HOME/.npm/_libvips"
+          LIBVIPS_FILE="$LIBVIPS_CACHE/libvips-8.14.5-darwin-arm64v8.tar.br"
+          LIBVIPS_URL="https://github.com/lovell/sharp-libvips/releases/download/v8.14.5/libvips-8.14.5-darwin-arm64v8.tar.br"
+
+          mkdir -p "$LIBVIPS_CACHE"
+
+          if [ ! -s "$LIBVIPS_FILE" ]; then
+            echo "Priming Sharp libvips cache..."
+            rm -f "${LIBVIPS_FILE}.tmp"
+            curl --fail --location \
+              --retry 5 \
+              --retry-delay 3 \
+              --retry-all-errors \
+              --connect-timeout 30 \
+              --output "${LIBVIPS_FILE}.tmp" \
+              "$LIBVIPS_URL"
+            mv "${LIBVIPS_FILE}.tmp" "$LIBVIPS_FILE"
+          else
+            echo "Using cached Sharp libvips archive."
+          fi
+
+          npm install --no-save --no-audit --no-fund @capacitor/cli@7 @capacitor/ios@7 @capacitor/assets@3.0.5
 
       - name: Create or sync native iOS project
         script: |
