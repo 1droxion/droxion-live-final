@@ -53,6 +53,30 @@ export default function LiveFirstApp() {
     return () => { mounted = false; listener?.subscription?.unsubscribe(); };
   }, []);
 
+  useEffect(() => {
+    if (!immersiveLive) return;
+
+    const unlockLiveAudio = () => {
+      const audioElements = Array.from(document.querySelectorAll('.liveRoomV4 audio'));
+      audioElements.forEach(audio => {
+        audio.muted = false;
+        audio.volume = 1;
+        const playback = audio.play?.();
+        if (playback?.catch) playback.catch(() => {});
+      });
+    };
+
+    const events = ['pointerdown', 'touchend', 'keydown'];
+    events.forEach(eventName => document.addEventListener(eventName, unlockLiveAudio, { passive: true }));
+    unlockLiveAudio();
+
+    const retry = window.setInterval(unlockLiveAudio, 1200);
+    return () => {
+      window.clearInterval(retry);
+      events.forEach(eventName => document.removeEventListener(eventName, unlockLiveAudio));
+    };
+  }, [immersiveLive]);
+
   function chooseTab(nextTab) {
     setImmersiveLive(false);
     if (nextTab === 'go-live') {
