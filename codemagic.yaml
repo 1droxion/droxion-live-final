@@ -73,12 +73,9 @@ workflows:
           cd "$IOS_PROJECT_PATH"
           pod install --repo-update
 
-      - name: Configure App Store signing
+      - name: Apply Codemagic signing profiles
         script: |
           set -e
-          keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain add-certificates
           xcode-project use-profiles --project "$IOS_PROJECT_PATH/App.xcodeproj" || xcode-project use-profiles
 
       - name: Set build number
