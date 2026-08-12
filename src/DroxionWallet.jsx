@@ -1,20 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { NativePurchases, PURCHASE_TYPE } from '@capgo/native-purchases';
 import { Coins, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 function getNativeStorePlatform() {
-  if (typeof window === 'undefined') return '';
   try {
-    const platform = window.Capacitor?.getPlatform?.();
+    const platform = Capacitor.getPlatform?.();
     if (platform === 'ios' || platform === 'android') return platform;
-    if (window.Capacitor?.isNativePlatform?.()) return platform || 'native';
+    if (Capacitor.isNativePlatform?.()) return platform || 'native';
   } catch {}
   return '';
 }
 
+function storeProductKey(product) {
+  return product?.identifier || product?.productIdentifier || '';
+}
+
 export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free', onClose, onBalanceRefresh }) {
   const [products, setProducts] = useState([]);
+  const [appleProducts, setAppleProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [storeLoading, setStoreLoading] = useState(false);
   const [checkoutId, setCheckoutId] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [paypalOrderId, setPaypalOrderId] = useState('');
@@ -24,13 +31,14 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   const paypalRef = useRef(null);
   const nativeStorePlatform = getNativeStorePlatform();
   const nativeMobile = Boolean(nativeStorePlatform);
+  const isIOS = nativeStorePlatform === 'ios';
 
   useEffect(() => {
     let alive = true;
     (async () => {
       const { data, error: queryError } = await supabase
         .from('droxion_products')
-        .select('id,product_type,name,price_cents,coins_granted,plan,sort_order')
+        .select('id,product_type,name,price_cents,coins_granted,plan,sort_order,apple_product_id')
         .eq('active', true)
         .order('sort_order');
       if (!alive) return;
@@ -41,15 +49,115 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
     return () => { alive = false; };
   }, []);
 
-  const price = cents => `$${(Number(cents || 0) / 100).toFixed(2)}`;
   const coinProducts = products.filter(product => product.product_type === 'coin_pack');
   const plans = products.filter(product => product.product_type === 'subscription');
+  const appleProductMap = useMemo(() => {
+    const map = new Map();
+    appleProducts.forEach(product => {
+      const key = storeProductKey(product);
+      if (key) map.set(key, product);
+    });
+    return map;
+  }, [appleProducts]);
+
+  useEffect(() => {
+    if (!isIOS || loading || !coinProducts.length) return;
+    let alive = true;
+    (async () => {
+      setStoreLoading(true);
+      try {
+        const { isBillingSupported } = await NativePurchases.isBillingSupported();
+        if (!isBillingSupported) throw new Error('Apple In-App Purchase is not available on this device.');
+        const ids = coinProducts.map(product => product.apple_product_id).filter(Boolean);
+        if (!ids.length) throw new Error('Droxion coin products are not configured for the App Store.');
+        const { products: storeProducts } = await NativePurchases.getProducts({
+          productIdentifiers: ids,
+          productType: PURCHASE_TYPE.INAPP
+        });
+        if (alive) setAppleProducts(storeProducts || []);
+      } catch (err) {
+        if (alive) setError(err?.message || 'Could not load Apple coin products.');
+      } finally {
+        if (alive) setStoreLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [isIOS, loading, products]);
+
+  const webPrice = cents => `$${(Number(cents || 0) / 100).toFixed(2)}`;
+
+  async function verifyAppleTransaction(transaction, expectedProductId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token || !session?.user?.id) throw new Error('Please sign in again before buying coins.');
+    if (!transaction?.transactionId || !transaction?.receipt) throw new Error('Apple did not return a verifiable purchase receipt.');
+
+    const response = await fetch('/api/apple/verify-purchase', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        receipt: transaction.receipt,
+        transactionId: transaction.transactionId,
+        productId: expectedProductId
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Apple purchase verification failed.');
+
+    try {
+      await NativePurchases.acknowledgePurchase({ purchaseToken: transaction.transactionId });
+    } catch (ackError) {
+      console.warn('StoreKit finish retry needed', ackError);
+    }
+
+    await onBalanceRefresh?.();
+    return payload;
+  }
+
+  async function buyAppleCoins(product) {
+    if (checkoutId) return;
+    const productId = product.apple_product_id;
+    const storeProduct = appleProductMap.get(productId);
+    if (!productId || !storeProduct) {
+      setError('This coin pack is not available from Apple yet.');
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setCheckoutId(product.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) throw new Error('Please sign in again before buying coins.');
+
+      const transaction = await NativePurchases.purchaseProduct({
+        productIdentifier: productId,
+        productType: PURCHASE_TYPE.INAPP,
+        quantity: 1,
+        appAccountToken: session.user.id,
+        isConsumable: true,
+        autoAcknowledgePurchases: false
+      });
+
+      const result = await verifyAppleTransaction(transaction, productId);
+      setSuccess(`${result.coinsGranted || product.coins_granted} coins added to your Droxion wallet.`);
+    } catch (err) {
+      const message = String(err?.message || 'Apple purchase was not completed.');
+      if (!/cancel/i.test(message)) setError(message);
+    } finally {
+      setCheckoutId('');
+    }
+  }
 
   async function buyCoins(product) {
+    if (isIOS) {
+      await buyAppleCoins(product);
+      return;
+    }
     if (nativeMobile) {
-      setError(nativeStorePlatform === 'ios'
-        ? 'Coin purchases on iPhone must use Apple In-App Purchase. Store products are being connected for release.'
-        : 'Coin purchases on Android must use Google Play Billing. Store products are being connected for release.');
+      setError('Coin purchases on Android will use Google Play Billing in the Android release.');
       return;
     }
     if (checkoutId) return;
@@ -173,38 +281,43 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         {success && <div className="walletSuccess">{success}</div>}
 
         <h3>Buy Coins</h3>
-        {nativeMobile ? (
-          <div className="publishBillingNotice">
-            {nativeStorePlatform === 'ios'
-              ? 'Apple In-App Purchase is required for coin purchases on iPhone. Purchases are disabled until the App Store coin products are connected.'
-              : 'Google Play Billing is required for coin purchases on Android. Purchases are disabled until the Play Store coin products are connected.'}
-          </div>
-        ) : loading ? <p className="walletMuted">Loading…</p> : (
+        {loading || (isIOS && storeLoading) ? <p className="walletMuted">Loading store…</p> : nativeStorePlatform === 'android' ? (
+          <div className="publishBillingNotice">Google Play Billing will be enabled in the Android release.</div>
+        ) : (
           <div className="walletGrid">
-            {coinProducts.map(product => (
-              <button key={product.id} disabled={Boolean(checkoutId)} onClick={() => buyCoins(product)}>
-                <Coins size={22} />
-                <strong>{product.coins_granted} coins</strong>
-                <span>{checkoutId === product.id ? 'Opening PayPal…' : price(product.price_cents)}</span>
-              </button>
-            ))}
+            {coinProducts.map(product => {
+              const storeProduct = isIOS ? appleProductMap.get(product.apple_product_id) : null;
+              const displayPrice = isIOS ? (storeProduct?.priceString || 'Unavailable') : webPrice(product.price_cents);
+              const unavailable = isIOS && !storeProduct;
+              return (
+                <button key={product.id} disabled={Boolean(checkoutId) || unavailable} onClick={() => buyCoins(product)}>
+                  <Coins size={22} />
+                  <strong>{product.coins_granted} coins</strong>
+                  <span>{checkoutId === product.id ? (isIOS ? 'Purchasing…' : 'Opening PayPal…') : displayPrice}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        <h3>Droxion Plans</h3>
-        <div className="walletPlans">
-          {plans.length === 0 && !loading && <p className="walletMuted">No active plans are available right now.</p>}
-          {plans.map(product => (
-            <div className="walletPlan" key={product.id}>
-              <div>
-                <strong>{product.name}</strong>
-                <span>{price(product.price_cents)}/month</span>
-              </div>
-              <small>+{product.coins_granted || 0} coins</small>
-              <button type="button" disabled title="Subscription checkout will be enabled after store billing setup is complete">Coming soon</button>
+        {!nativeMobile && (
+          <>
+            <h3>Droxion Plans</h3>
+            <div className="walletPlans">
+              {plans.length === 0 && !loading && <p className="walletMuted">No active plans are available right now.</p>}
+              {plans.map(product => (
+                <div className="walletPlan" key={product.id}>
+                  <div>
+                    <strong>{product.name}</strong>
+                    <span>{webPrice(product.price_cents)}/month</span>
+                  </div>
+                  <small>+{product.coins_granted || 0} coins</small>
+                  <button type="button" disabled title="Subscription checkout will be enabled after store billing setup is complete">Coming soon</button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
 
         {!nativeMobile && selectedProduct && paypalOrderId && (
           <div className="paypalBox">
