@@ -1,6 +1,6 @@
 {
-  "appId": "com.droxion.app",
-  "appName": "Droxion",
+  "appId": "com.droxion.live",
+  "appName": "Droxion Live",
   "webDir": "dist",
   "bundledWebRuntime": false
 }
