@@ -5,14 +5,8 @@ import { supabase } from './supabaseClient';
 import './profile-avatar.css';
 
 const BUCKET = 'droxion-avatars';
-const MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
-function extensionFor(file) {
-  if (file.type === 'image/png') return 'png';
-  if (file.type === 'image/webp') return 'webp';
-  return 'jpg';
-}
+const MAX_SOURCE_BYTES = 12 * 1024 * 1024;
+const OUTPUT_SIZE = 1200;
 
 function ownedPath(url, userId) {
   if (!url || !userId) return '';
@@ -25,6 +19,48 @@ function ownedPath(url, userId) {
 
 function PlusBadge({ uploading }) {
   return uploading ? <LoaderCircle size={16} className="lpAvatarSpinner" /> : <Plus size={17} strokeWidth={3} />;
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('This photo format could not be opened. Try a different photo.'));
+    };
+    image.src = url;
+  });
+}
+
+async function normalizeAvatar(file) {
+  if (!file?.type?.startsWith('image/')) throw new Error('Choose an image for your profile photo.');
+  if (file.size > MAX_SOURCE_BYTES) throw new Error('Profile photo must be 12 MB or smaller.');
+
+  const image = await loadImage(file);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) throw new Error('This photo could not be read.');
+
+  const square = Math.min(sourceWidth, sourceHeight);
+  const sx = Math.max(0, (sourceWidth - square) / 2);
+  const sy = Math.max(0, (sourceHeight - square) / 2);
+  const output = Math.min(OUTPUT_SIZE, square);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = output;
+  canvas.height = output;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Photo editing is not available on this device.');
+  context.drawImage(image, sx, sy, square, square, 0, 0, output, output);
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+  if (!blob) throw new Error('Could not prepare this photo for upload.');
+  return new File([blob], 'avatar.jpg', { type: 'image/jpeg', lastModified: Date.now() });
 }
 
 export default function ProfileAvatarEnhancer() {
@@ -48,16 +84,16 @@ export default function ProfileAvatarEnhancer() {
 
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = 'image/jpeg,image/png,image/webp';
+      input.accept = 'image/*';
       input.className = 'lpAvatarNativeInput';
-      input.setAttribute('aria-hidden', 'true');
+      input.setAttribute('aria-label', 'Choose profile photo');
       input.tabIndex = -1;
+      document.body.appendChild(input);
 
       const badge = document.createElement('span');
       badge.className = 'lpAvatarPlusBadge';
       badge.setAttribute('aria-hidden', 'true');
       wrap.appendChild(badge);
-      wrap.appendChild(input);
       const badgeRoot = createRoot(badge);
       badgeRoot.render(<PlusBadge uploading={false} />);
 
@@ -68,18 +104,9 @@ export default function ProfileAvatarEnhancer() {
       }
 
       async function onFile(event) {
-        const file = event.target.files?.[0];
+        const sourceFile = event.target.files?.[0];
         event.target.value = '';
-        if (!file) return;
-
-        if (!ALLOWED.has(file.type)) {
-          window.alert('Choose a JPG, PNG or WebP profile photo.');
-          return;
-        }
-        if (file.size > MAX_BYTES) {
-          window.alert('Profile photo must be 5 MB or smaller.');
-          return;
-        }
+        if (!sourceFile) return;
 
         wrap.classList.add('uploading');
         badgeRoot.render(<PlusBadge uploading />);
@@ -87,12 +114,13 @@ export default function ProfileAvatarEnhancer() {
         const oldImage = wrap.querySelector('img');
         const oldUrl = oldImage?.src || '';
         const oldPath = ownedPath(oldUrl, userId);
-        const path = `${userId}/avatar-${Date.now()}.${extensionFor(file)}`;
+        const path = `${userId}/avatar-${Date.now()}.jpg`;
 
         try {
+          const file = await normalizeAvatar(sourceFile);
           const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, {
             cacheControl: '3600',
-            contentType: file.type,
+            contentType: 'image/jpeg',
             upsert: false
           });
           if (uploadError) throw uploadError;

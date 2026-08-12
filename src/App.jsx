@@ -3,6 +3,7 @@ import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
+import LegalPage from "./LegalPage.jsx";
 
 export default function App() {
   return (
@@ -12,6 +13,10 @@ export default function App() {
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/privacy" element={<LegalPage />} />
+        <Route path="/terms" element={<LegalPage />} />
+        <Route path="/community-guidelines" element={<LegalPage />} />
+        <Route path="/support" element={<LegalPage />} />
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="/random" element={<Navigate to="/" replace />} />
         <Route path="/direct-call" element={<Navigate to="/" replace />} />

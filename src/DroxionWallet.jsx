@@ -2,6 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Coins, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
+function getNativeStorePlatform() {
+  if (typeof window === 'undefined') return '';
+  try {
+    const platform = window.Capacitor?.getPlatform?.();
+    if (platform === 'ios' || platform === 'android') return platform;
+    if (window.Capacitor?.isNativePlatform?.()) return platform || 'native';
+  } catch {}
+  return '';
+}
+
 export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free', onClose, onBalanceRefresh }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,6 +22,8 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const paypalRef = useRef(null);
+  const nativeStorePlatform = getNativeStorePlatform();
+  const nativeMobile = Boolean(nativeStorePlatform);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +46,12 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   const plans = products.filter(product => product.product_type === 'subscription');
 
   async function buyCoins(product) {
+    if (nativeMobile) {
+      setError(nativeStorePlatform === 'ios'
+        ? 'Coin purchases on iPhone must use Apple In-App Purchase. Store products are being connected for release.'
+        : 'Coin purchases on Android must use Google Play Billing. Store products are being connected for release.');
+      return;
+    }
     if (checkoutId) return;
     setError('');
     setSuccess('');
@@ -64,7 +82,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   }
 
   useEffect(() => {
-    if (!selectedProduct || !paypalOrderId || typeof window === 'undefined') return;
+    if (nativeMobile || !selectedProduct || !paypalOrderId || typeof window === 'undefined') return;
     if (!import.meta.env.VITE_PAYPAL_CLIENT_ID) {
       setError('PayPal is not configured for this environment yet.');
       return;
@@ -89,10 +107,10 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       script?.removeEventListener('load', onLoad);
       script?.removeEventListener('error', onError);
     };
-  }, [selectedProduct, paypalOrderId]);
+  }, [nativeMobile, selectedProduct, paypalOrderId]);
 
   useEffect(() => {
-    if (!paypalReady || !paypalOrderId || !selectedProduct || !paypalRef.current || !window.paypal?.Buttons) return;
+    if (nativeMobile || !paypalReady || !paypalOrderId || !selectedProduct || !paypalRef.current || !window.paypal?.Buttons) return;
     const container = paypalRef.current;
     container.innerHTML = '';
     const buttons = window.paypal.Buttons({
@@ -138,7 +156,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
     });
     buttons.render(container).catch(err => setError(err?.message || 'PayPal checkout could not be displayed.'));
     return () => { container.innerHTML = ''; };
-  }, [paypalReady, paypalOrderId, selectedProduct, onBalanceRefresh]);
+  }, [nativeMobile, paypalReady, paypalOrderId, selectedProduct, onBalanceRefresh]);
 
   return (
     <div className="walletOverlay" role="dialog" aria-modal="true" aria-label="Droxion Wallet">
@@ -155,7 +173,13 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         {success && <div className="walletSuccess">{success}</div>}
 
         <h3>Buy Coins</h3>
-        {loading ? <p className="walletMuted">Loading…</p> : (
+        {nativeMobile ? (
+          <div className="publishBillingNotice">
+            {nativeStorePlatform === 'ios'
+              ? 'Apple In-App Purchase is required for coin purchases on iPhone. Purchases are disabled until the App Store coin products are connected.'
+              : 'Google Play Billing is required for coin purchases on Android. Purchases are disabled until the Play Store coin products are connected.'}
+          </div>
+        ) : loading ? <p className="walletMuted">Loading…</p> : (
           <div className="walletGrid">
             {coinProducts.map(product => (
               <button key={product.id} disabled={Boolean(checkoutId)} onClick={() => buyCoins(product)}>
@@ -177,12 +201,12 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
                 <span>{price(product.price_cents)}/month</span>
               </div>
               <small>+{product.coins_granted || 0} coins</small>
-              <button type="button" disabled title="Subscription checkout will be enabled after billing setup is complete">Coming soon</button>
+              <button type="button" disabled title="Subscription checkout will be enabled after store billing setup is complete">Coming soon</button>
             </div>
           ))}
         </div>
 
-        {selectedProduct && paypalOrderId && (
+        {!nativeMobile && selectedProduct && paypalOrderId && (
           <div className="paypalBox">
             <p>PayPal checkout for {selectedProduct.name}</p>
             <div ref={paypalRef} />
