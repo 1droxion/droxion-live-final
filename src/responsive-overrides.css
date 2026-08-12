@@ -106,3 +106,18 @@
   .liveTopV4{top:max(calc(env(safe-area-inset-top) + 6px),18px)!important}
   .liveRoomV4 .liveGuestVideo{top:max(calc(env(safe-area-inset-top) + 58px),70px)!important}
 }
+
+/* Droxion brand mark */
+.lfBrandMark{
+  width:38px!important;
+  height:38px!important;
+  flex:0 0 38px!important;
+  display:block!important;
+  border-radius:12px!important;
+  object-fit:cover!important;
+  background:#090713!important;
+  box-shadow:0 8px 26px rgba(98,55,255,.34)!important;
+}
+@media(max-width:420px){
+  .lfBrandMark{width:34px!important;height:34px!important;flex-basis:34px!important;border-radius:10px!important}
+}
