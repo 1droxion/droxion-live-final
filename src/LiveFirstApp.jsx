@@ -1,28 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Bell, Coins, Crown, Home, MessageCircle, Trophy, User, Video } from 'lucide-react';
+import { Coins, Home, User, Video } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperience';
 import LiveProfile from './LiveProfile';
 import DroxionWallet from './DroxionWallet';
 import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
+import PublishReadyEnhancer from './PublishReadyEnhancer';
 import './real-home.css';
 import './live-first-app.css';
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
-  { id: 'rankings', label: 'Rankings', icon: Trophy },
   { id: 'go-live', label: 'GO LIVE', icon: Video, primary: true },
-  { id: 'inbox', label: 'Inbox', icon: MessageCircle },
   { id: 'me', label: 'Me', icon: User },
 ];
-
-function Rankings() {
-  return <section className="lfPage lfPlaceholder"><div className="lfEyebrow"><Trophy size={16} /> DROXION RANKINGS</div><h1>Top creators will live here.</h1><p>Daily, weekly, monthly, rising creators, most viewed and most gifted rankings are next after the LIVE core is stable.</p><div className="lfComingCard"><Crown size={28} /><div><strong>Rankings foundation ready</strong><span>We will connect this to real LIVE views, follows and gifts.</span></div></div></section>;
-}
-
-function Inbox() {
-  return <section className="lfPage lfPlaceholder"><div className="lfEyebrow"><Bell size={16} /> INBOX</div><h1>LIVE activity and messages.</h1><p>Creator-goes-live alerts, guest requests, follows, gifts and direct messages will be consolidated here.</p></section>;
-}
 
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
@@ -88,16 +79,14 @@ export default function LiveFirstApp() {
     setTab(nextTab);
   }
 
-  let content;
-  if (tab === 'live') {
-    content = <LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} />;
-  } else if (tab === 'rankings') content = <Rankings />;
-  else if (tab === 'inbox') content = <Inbox />;
-  else content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
+  const content = tab === 'live'
+    ? <LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} />
+    : <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
 
   return (
     <main className={`lfShell ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
       <ProfileAvatarEnhancer />
+      <PublishReadyEnhancer />
       {!immersiveLive && <header className="lfTopbar"><button className="lfBrand" type="button" onClick={() => setTab('live')} aria-label="Open Droxion home"><img className="lfBrandMark" src="/droxion-logo.svg" alt="" aria-hidden="true" /><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button><button className="lfCoins" type="button" onClick={() => setWalletOpen(true)}><Coins size={17} /> {coins}</button></header>}
 
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{content}</div>
