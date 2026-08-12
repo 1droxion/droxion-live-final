@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Gift, Maximize2, MessageCircle, Mic, MicOff, Radio, RefreshCw, Send, Smartphone, UserPlus, Users, Video, X } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Gift, Maximize2, MessageCircle, Mic, MicOff, Radio, RefreshCw, Send, Smartphone, Sparkles, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
@@ -41,6 +41,8 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [facingMode, setFacingMode] = useState('user');
+  const [beautyMode, setBeautyMode] = useState('off');
+  const [remoteBeautyMode, setRemoteBeautyMode] = useState('off');
   const [hostVideoReady, setHostVideoReady] = useState(false);
   const [guestVideoReady, setGuestVideoReady] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -63,7 +65,6 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
   const lastChatId = useRef(0);
   const processingSignals = useRef(false);
   const requestedStreams = useRef(new Set());
-  const autoOpened = useRef(false);
   const touchStartY = useRef(null);
   const lastGiftAt = useRef(null);
 
@@ -74,6 +75,11 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
 
   useEffect(() => { onImmersiveChange?.(immersive); }, [immersive, onImmersiveChange]);
   useEffect(() => () => onImmersiveChange?.(false), [onImmersiveChange]);
+  useEffect(() => {
+    if (!notice || !['You are live.', 'Live ended.', 'Guest accepted.', 'Guest request declined.'].includes(notice)) return;
+    const timer = window.setTimeout(() => setNotice(''), 1800);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   async function loadLive() {
     const { data } = await supabase.rpc('droxion_live_feed');
@@ -189,6 +195,7 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     lastSignalId.current = 0;
     remoteHostStreamRef.current = null;
     remoteGuestStreamRef.current = null;
+    setRemoteBeautyMode('off');
     setHostVideoReady(false);
     setGuestVideoReady(false);
     if (remoteHostVideo.current) remoteHostVideo.current.srcObject = null;
@@ -232,12 +239,6 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId || isLive || sessionId || autoOpened.current || profiles.length === 0) return;
-    autoOpened.current = true;
-    openRoom(profiles[0], true);
-  }, [profiles, currentUserId, isLive, sessionId]);
-
-  useEffect(() => {
     if (!isLive) return;
     const heartbeat = async () => {
       const { data } = await supabase.rpc('droxion_live_heartbeat');
@@ -256,13 +257,14 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     try { await ensureCamera(liveSetup.orientation, 'user'); }
     catch (error) {
       const name = error?.name || '';
-      setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError' ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for droxion.com in your browser settings, then try again.' : error?.message || 'Camera and microphone are required to go live.');
+      setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError' ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion in your device settings, then try again.' : error?.message || 'Camera and microphone are required to go live.');
       return;
     }
     const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8);
     const { data, error } = await supabase.rpc('droxion_start_live', { p_title: liveSetup.title.trim() || 'Live on Droxion', p_tags: tags, p_orientation: liveSetup.orientation, p_allow_guest_requests: liveSetup.allowGuests });
     if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }
     const room = { user_id: currentUserId, session_id: data.session_id, display_name: 'Your Live', title: data.title || liveSetup.title || 'Live on Droxion', tags: data.tags || tags, orientation: data.orientation || liveSetup.orientation, allow_guest_requests: data.allow_guest_requests !== false };
+    setBeautyMode('off');
     setIsLive(true);
     setOwnSessionId(data.session_id || '');
     setActiveRoom(room);
@@ -283,11 +285,10 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     closePeers();
     stopCamera();
     setNotice('Live ended.');
-    autoOpened.current = true;
     await loadLive();
   }
 
-  async function openRoom(profile, auto = false) {
+  async function openRoom(profile) {
     if (!profile?.user_id) return;
     setNotice('');
     if (sessionId && !isHostRoom) await supabase.rpc('droxion_leave_live', { p_session_id: sessionId });
@@ -299,12 +300,13 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     setGiftDrawerOpen(false);
     setMyJoinRequest(null);
     setInvite(null);
+    setRemoteBeautyMode('off');
     lastChatId.current = 0;
     lastGiftAt.current = new Date().toISOString();
     const { data, error } = await supabase.rpc('droxion_join_live', { p_host_id: profile.user_id });
     if (error || !data?.allowed) {
       setNotice(error?.message || 'This live has ended.');
-      if (!auto) await loadLive();
+      await loadLive();
       return;
     }
     setActiveRoom({ ...profile, session_id: data.session_id });
@@ -322,8 +324,8 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     setMessages([]);
     setGiftEvents([]);
     setGiftDrawerOpen(false);
+    setRemoteBeautyMode('off');
     closePeers();
-    autoOpened.current = true;
   }
 
   async function switchLive(direction) {
@@ -484,6 +486,21 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     await supabase.rpc('droxion_send_live_signal', { p_session_id: sessionId, p_recipient_id: recipientId, p_stream_role: role, p_signal_type: type, p_payload: payload });
   }, [sessionId]);
 
+  async function setBeauty(nextMode) {
+    setBeautyMode(nextMode);
+    const sends = [];
+    broadcasterPeers.current.forEach((_pc, key) => {
+      const [role, viewerId] = key.split(':');
+      if (viewerId) sends.push(sendLiveSignal(viewerId, role, 'beauty_mode', { mode: nextMode }));
+    });
+    await Promise.allSettled(sends);
+  }
+
+  async function cycleBeauty() {
+    const next = beautyMode === 'off' ? 'soft' : beautyMode === 'soft' ? 'clear' : 'off';
+    await setBeauty(next);
+  }
+
   const createBroadcasterPeer = useCallback(async (viewerId, role) => {
     const key = `${role}:${viewerId}`;
     broadcasterPeers.current.get(key)?.close();
@@ -495,7 +512,8 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await sendLiveSignal(viewerId, role, 'offer', pc.localDescription?.toJSON?.() || offer);
-  }, [ensureCamera, sendLiveSignal, roomOrientation, facingMode]);
+    await sendLiveSignal(viewerId, role, 'beauty_mode', { mode: beautyMode });
+  }, [ensureCamera, sendLiveSignal, roomOrientation, facingMode, beautyMode]);
 
   const createViewerPeer = useCallback((senderId, role) => {
     const key = `${role}:${senderId}`;
@@ -556,6 +574,9 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
                 if (pc.remoteDescription) await pc.addIceCandidate(candidate);
                 else pendingIce.current.set(key, [...(pendingIce.current.get(key) || []), candidate]);
               }
+            } else if (row.signal_type === 'beauty_mode' && row.stream_role === 'host') {
+              const mode = ['off', 'soft', 'clear'].includes(row.payload?.mode) ? row.payload.mode : 'off';
+              setRemoteBeautyMode(mode);
             }
           } catch (error) { console.warn('Live signal error', error); }
           lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
@@ -655,6 +676,7 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     const host = isHostRoom ? { user_id: currentUserId, display_name: 'Your Live', ...activeRoom } : activeRoom;
     const liveIndex = profiles.findIndex(profile => profile.user_id === activeRoom?.user_id);
     const showRemoteGuest = guestVideoReady && !guestMode;
+    const currentBeauty = isHostRoom ? beautyMode : remoteBeautyMode;
     const combinedEvents = [
       ...messages.slice(-8).map(item => ({ type: 'chat', time: item.created_at || '', key: `c-${item.id}`, ...item })),
       ...giftEvents.slice(-5).map(item => ({ type: 'gift', time: item.created_at || '', key: `g-${item.id}`, ...item }))
@@ -664,19 +686,19 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
       <section className={`liveRoomPage liveRoomV4 liveRoom-${roomOrientation}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className={`liveStage liveStageV4 liveStage-${roomOrientation}`}>
           {isHostRoom
-            ? <video ref={localVideoRef} autoPlay playsInline muted className={`liveMainVideo liveLocalPreview ${facingMode === 'user' ? 'mirrored' : ''}`} />
-            : <video ref={remoteHostVideo} autoPlay playsInline muted className="liveMainVideo" />}
+            ? <video ref={localVideoRef} autoPlay playsInline muted className={`liveMainVideo liveLocalPreview beauty-${currentBeauty} ${facingMode === 'user' ? 'mirrored' : ''}`} />
+            : <video ref={remoteHostVideo} autoPlay playsInline muted className={`liveMainVideo beauty-${currentBeauty}`} />}
           <audio ref={remoteHostAudio} autoPlay playsInline />
 
           {isHostRoom && !cameraOn && <div className="liveVideoLoading"><CameraOff size={30} /><strong>Camera is off</strong></div>}
           {!isHostRoom && !hostVideoReady && <div className="liveVideoLoading"><Radio size={30} /><strong>Connecting LIVE video…</strong></div>}
 
-          {guestMode && <video ref={localVideoRef} autoPlay playsInline muted className={`liveGuestVideo liveGuestSelfVideo ${facingMode === 'user' ? 'mirrored' : ''}`} />}
+          {guestMode && <video ref={localVideoRef} autoPlay playsInline muted className={`liveGuestVideo liveGuestSelfVideo beauty-${beautyMode} ${facingMode === 'user' ? 'mirrored' : ''}`} />}
           {showRemoteGuest && <video ref={remoteGuestVideo} autoPlay playsInline muted className="liveGuestVideo" />}
           <audio ref={remoteGuestAudio} autoPlay playsInline />
 
           <div className="liveTopOverlay liveTopV4">
-            <button className="liveBackButton" onClick={isHostRoom ? endLive : leaveRoom}><ArrowLeft size={21} /></button>
+            <button className="liveBackButton" aria-label={isHostRoom ? 'End live' : 'Exit live'} onClick={isHostRoom ? endLive : leaveRoom}><ArrowLeft size={21} /><span>{isHostRoom ? 'End' : 'Exit'}</span></button>
             <div className="liveIdentity">
               <span className="liveBadge">LIVE</span>
               <div className="liveIdentityText"><strong>{host?.display_name || 'Droxion Live'}</strong><small>{host?.title || liveSetup.title || 'Live on Droxion'}</small></div>
@@ -710,13 +732,14 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
               <button onClick={toggleMic}>{micOn ? <Mic size={19} /> : <MicOff size={19} />}</button>
               <button onClick={toggleCamera}>{cameraOn ? <Camera size={19} /> : <CameraOff size={19} />}</button>
               <button onClick={flipCamera}><RefreshCw size={19} /></button>
+              <button className={`beauty beauty-${beautyMode}`} onClick={cycleBeauty}><Sparkles size={18} /><span>{beautyMode === 'off' ? 'Beauty' : beautyMode === 'soft' ? 'Soft' : 'Clear'}</span></button>
               {isHostRoom && <button className="end" onClick={endLive}><X size={19} /></button>}
             </div>
           )}
         </div>
 
         {invite && <div className="liveInviteCard liveOverlayCardV4"><div><strong>{invite.host_name} invited you to join the LIVE.</strong><span>Your camera and mic will turn on.</span></div><button onClick={() => respondInvite(false)}>Decline</button><button className="accept" onClick={() => respondInvite(true)}>Join</button></div>}
-        {notice && <div className="liveNotice liveNoticeV4">{notice}</div>}
+        {notice && <div className={`liveNotice liveNoticeV4 ${notice === 'You are live.' ? 'liveToastSuccess' : ''}`}>{notice}</div>}
 
         {isHostRoom && joinRequests.length > 0 && <div className="liveViewerPanel liveRequestPanel liveHostPanelV4"><div className="livePanelHead"><div><strong>Requests to join</strong><span>{joinRequests.length} waiting</span></div></div><div className="liveRequestList">{joinRequests.map(request => <div className="liveRequestPerson" key={request.request_id}>{personAvatar(request)}<strong>{request.display_name}</strong><button onClick={() => respondJoinRequest(request.request_id, false)}>Decline</button><button className="accept" onClick={() => respondJoinRequest(request.request_id, true)}>Accept</button></div>)}</div></div>}
 
@@ -736,10 +759,10 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
   }
 
   return (
-    <section className="realPage liveBrowsePage liveFeedPage">
-      <div className="liveFeedHero"><div><span className="liveCountPill"><Radio size={14} /> {profiles.length} LIVE now</span><h1>See who’s live.</h1><p>Open Home and jump straight into the conversation.</p></div><button className="liveGoButton" onClick={openGoLiveSetup}><Video size={20} /> Go Live</button></div>
+    <section className="realPage liveBrowsePage liveFeedPage liveOnlyHome">
+      <div className="liveOnlyHomeHead"><strong><Radio size={15} /> {profiles.length} LIVE now</strong><span>{profiles.length ? 'Tap a creator to watch. Scroll for more.' : 'No one is live right now.'}</span></div>
       {notice && <div className="liveNotice">{notice}</div>}
-      {profiles.length === 0 ? <div className="liveZeroState"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE yet</h2><p>Start the first conversation and let people discover you.</p><button onClick={openGoLiveSetup}><Video size={18} /> Be the first to go LIVE</button></div> : <div className="liveFeedScroll" aria-label="People live now">{profiles.map(profile => <button key={profile.user_id} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}>{profile.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} /> : <div className="liveBrowseFallback">{(profile.display_name || 'D')[0]}</div>}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveFeedOrientation">{profile.orientation === 'horizontal' ? <Maximize2 size={14} /> : <Smartphone size={14} />} {profile.orientation === 'horizontal' ? 'Horizontal' : 'Vertical'}</div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>{Array.isArray(profile.tags) && profile.tags.length > 0 && <div className="liveFeedTags">{profile.tags.slice(0, 3).map(tag => <span key={tag}>#{tag}</span>)}</div>}<em>Tap to watch & join</em></div></button>)}</div>}
+      {profiles.length === 0 ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE right now</h2><p>When creators go LIVE, they will appear here.</p></div> : <div className="liveFeedScroll liveOnlyScroll" aria-label="People live now">{profiles.map(profile => <button key={profile.user_id} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}>{profile.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} /> : <div className="liveBrowseFallback">{(profile.display_name || 'D')[0]}</div>}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>{Array.isArray(profile.tags) && profile.tags.length > 0 && <div className="liveFeedTags">{profile.tags.slice(0, 3).map(tag => <span key={tag}>#{tag}</span>)}</div>}<em>Tap to watch</em></div></button>)}</div>}
 
       {setupOpen && <div className="liveSetupOverlay" role="dialog" aria-modal="true"><div className="liveSetupSheet"><div className="liveSetupHead"><div><span>🔴 GO LIVE</span><h2>Set up your LIVE</h2></div><button onClick={() => setSetupOpen(false)}><X size={21} /></button></div><label>LIVE title<input value={liveSetup.title} maxLength={100} placeholder="What are you talking about?" onChange={event => setLiveSetup(state => ({ ...state, title: event.target.value }))} /></label><label>Tags<input value={liveSetup.tags} placeholder="music, chatting, business" onChange={event => setLiveSetup(state => ({ ...state, tags: event.target.value }))} /></label><div className="liveOrientationChoice"><button className={liveSetup.orientation === 'vertical' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'vertical' }))}><Smartphone size={22} /><strong>Vertical</strong><span>Best for phones</span></button><button className={liveSetup.orientation === 'horizontal' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'horizontal' }))}><Maximize2 size={22} /><strong>Horizontal</strong><span>Wide LIVE</span></button></div><label className="liveGuestToggle"><input type="checkbox" checked={liveSetup.allowGuests} onChange={event => setLiveSetup(state => ({ ...state, allowGuests: event.target.checked }))} /><span><strong>Allow viewers to request to join</strong><small>You approve every guest before they come on camera.</small></span></label><button className="liveStartButton" onClick={startLive}><Radio size={19} /> START LIVE</button></div></div>}
     </section>
