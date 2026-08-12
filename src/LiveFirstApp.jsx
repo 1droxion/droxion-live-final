@@ -4,6 +4,7 @@ import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperience';
 import LiveProfile from './LiveProfile';
 import DroxionWallet from './DroxionWallet';
+import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
 import './real-home.css';
 import './live-first-app.css';
 
@@ -96,6 +97,7 @@ export default function LiveFirstApp() {
 
   return (
     <main className={`lfShell ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
+      <ProfileAvatarEnhancer />
       {!immersiveLive && <header className="lfTopbar"><button className="lfBrand" type="button" onClick={() => setTab('live')} aria-label="Open Droxion home"><img className="lfBrandMark" src="/droxion-logo.svg" alt="" aria-hidden="true" /><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button><button className="lfCoins" type="button" onClick={() => setWalletOpen(true)}><Coins size={17} /> {coins}</button></header>}
 
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{content}</div>
