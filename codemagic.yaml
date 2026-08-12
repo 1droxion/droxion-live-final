@@ -49,7 +49,7 @@ workflows:
       - name: Install Capacitor tooling for CI
         script: |
           set -e
-          npm install --no-save @capacitor/cli@7 @capacitor/core@7 @capacitor/ios@7
+          npm install --no-save @capacitor/cli@7 @capacitor/core@7 @capacitor/ios@7 @capacitor/assets@3.0.5
 
       - name: Create or sync native iOS project
         script: |
@@ -58,6 +58,16 @@ workflows:
             npx cap add ios
           fi
           npx cap sync ios
+
+      - name: Generate Droxion iOS branding
+        script: |
+          set -e
+          npx @capacitor/assets generate --ios \
+            --assetPath assets \
+            --iconBackgroundColor '#08080c' \
+            --iconBackgroundColorDark '#08080c' \
+            --splashBackgroundColor '#08080c' \
+            --splashBackgroundColorDark '#08080c'
 
       - name: Configure iOS privacy permissions
         script: |
