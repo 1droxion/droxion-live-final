@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+  --droxion-bg: #08080c;
+  --droxion-safe-top: env(safe-area-inset-top, 0px);
+  --droxion-safe-right: env(safe-area-inset-right, 0px);
+  --droxion-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --droxion-safe-left: env(safe-area-inset-left, 0px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
@@ -11,10 +26,61 @@ body,
   padding: 0;
 }
 
+html {
+  background: var(--droxion-bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
-  background: #0e0e10;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background: var(--droxion-bg);
   color: white;
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  isolation: isolate;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+/* Login/signup pages also respect native phone safe areas. */
+#root > div.min-h-screen {
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  padding-top: max(24px, env(safe-area-inset-top)) !important;
+  padding-right: max(16px, env(safe-area-inset-right)) !important;
+  padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+  padding-left: max(16px, env(safe-area-inset-left)) !important;
 }
 
 .input-style {
@@ -35,4 +101,24 @@ body {
 .input-style:focus {
   border-color: rgb(59 130 246);
   box-shadow: 0 0 0 3px rgb(59 130 246 / 0.15);
+}
+
+@media (max-width: 640px) {
+  /* Prevent iOS Safari/WKWebView from zooming when an input receives focus. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
