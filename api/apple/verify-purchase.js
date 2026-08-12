@@ -44,15 +44,30 @@ function certIsCurrentlyValid(cert) {
 
 async function loadAppleRoots() {
   if (!appleRootsPromise) {
-    appleRootsPromise = Promise.all(APPLE_ROOT_CERT_URLS.map(async url => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Could not load Apple root certificate.');
-      const cert = new X509Certificate(Buffer.from(await response.arrayBuffer()));
-      if (!APPLE_ROOT_SHA256.has(normalizedFingerprint(cert))) {
-        throw new Error('Downloaded Apple root certificate fingerprint was not trusted.');
+    appleRootsPromise = (async () => {
+      const settled = await Promise.allSettled(APPLE_ROOT_CERT_URLS.map(async url => {
+        const response = await fetch(url, { redirect: 'follow' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const cert = new X509Certificate(Buffer.from(await response.arrayBuffer()));
+        if (!APPLE_ROOT_SHA256.has(normalizedFingerprint(cert))) {
+          throw new Error('fingerprint mismatch');
+        }
+        return cert;
+      }));
+
+      const roots = settled
+        .filter(item => item.status === 'fulfilled')
+        .map(item => item.value);
+
+      if (!roots.length) {
+        const reasons = settled
+          .filter(item => item.status === 'rejected')
+          .map(item => item.reason?.message || String(item.reason))
+          .join('; ');
+        throw new Error(`Could not load a trusted Apple root certificate${reasons ? `: ${reasons}` : '.'}`);
       }
-      return cert;
-    }));
+      return roots;
+    })();
   }
   return appleRootsPromise;
 }
@@ -83,14 +98,12 @@ async function verifyStoreKitJws(jws) {
   if (!anchored) {
     const roots = await loadAppleRoots();
     anchored = roots.some(root =>
-      lastPresented.issuer === root.subject &&
       certIsCurrentlyValid(root) &&
+      lastPresented.issuer === root.subject &&
       lastPresented.verify(root.publicKey)
     );
   }
-  if (!anchored) {
-    throw new Error('Apple signed transaction did not chain to a trusted Apple root.');
-  }
+  if (!anchored) throw new Error('Apple signed transaction did not chain to a trusted Apple root.');
 
   const signedData = Buffer.from(`${encodedHeader}.${encodedPayload}`);
   const signature = base64UrlBuffer(encodedSignature);
@@ -274,7 +287,8 @@ export default async function handler(req, res) {
       environment
     });
   } catch (error) {
-    console.error('Apple purchase verification error:', error);
-    res.status(502).json({ error: error?.message || 'Apple purchase verification failed.' });
+    const message = error?.message || 'Apple purchase verification failed.';
+    console.error('Apple purchase verification error:', message, error?.stack || '');
+    res.status(502).json({ error: message });
   }
 }

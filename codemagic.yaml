@@ -60,6 +60,8 @@ workflows:
             npx cap add ios
           fi
           npx cap sync ios
+          sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/" "${IOS_PROJECT_PATH}/Podfile"
+          ruby -e "p='${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj'; s=File.read(p); s=s.gsub(/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/, 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;'); File.write(p,s)"
 
       - name: Generate Droxion iOS branding
         script: |
