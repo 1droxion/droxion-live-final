@@ -1,6 +1,6 @@
 workflows:
   ios-capacitor:
-    name: Droxion iOS Build
+    name: Droxion iOS TestFlight
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -8,15 +8,14 @@ workflows:
       vars:
         APP_NAME: Droxion
         BUNDLE_ID: com.droxion.app
-        WEB_DIR: dist
         IOS_PROJECT_PATH: ios/App
-        CM_CLONE_DEPTH: "1"            # shallow clone speeds up “Fetching app sources”
-        GIT_LFS_SKIP_SMUDGE: "1"       # skip pulling large LFS blobs on checkout
+        CM_CLONE_DEPTH: "1"
+        GIT_LFS_SKIP_SMUDGE: "1"
         COCOAPODS_DISABLE_STATS: "true"
         HUSKY: "0"
         CI: "true"
       node: 20
-      xcode: 15.4
+      xcode: latest
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -29,77 +28,63 @@ workflows:
         - $HOME/Library/Developer/Xcode/DerivedData
 
     scripts:
-      - name: Show tools
+      - name: Install web dependencies
         script: |
           set -e
-          node -v
-          npm -v
-          xcodebuild -version
-          pod --version || true
-          git --version
-
-      - name: NPM config (faster)
-        script: |
-          npm config set prefer-offline true
           npm config set audit false
           npm config set fund false
           npm config set progress false
-          npm config set fetch-retries 5
-          npm config set fetch-timeout 600000
+          npm ci
 
-      - name: Install dependencies (fix Rollup on Apple Silicon)
+      - name: Build Droxion web bundle
         script: |
           set -e
-          npm ci || (rm -rf node_modules package-lock.json && npm install)
-          # ensure rollup binary exists for darwin/arm64 so Vite doesn't crash
-          npm install @rollup/rollup-darwin-arm64 --save-dev --no-fund --no-audit
+          npm run build
 
-      - name: Build web app
-        script: npm run build
-
-      - name: Ensure Capacitor CLI & iOS, then sync
+      - name: Install Capacitor tooling for CI
         script: |
           set -e
-          # self-heal: always ensure these are present
-          npm install --save-dev @capacitor/cli
-          npm install @capacitor/core
-          npm install @capacitor/ios
-          # run the local binary explicitly (more reliable than npx on CI)
-          ./node_modules/.bin/cap --version
-          ./node_modules/.bin/cap sync ios || npx cap sync ios
+          npm install --no-save @capacitor/cli@7 @capacitor/core@7 @capacitor/ios@7
 
-      - name: Force target bundle id to match
+      - name: Create or sync native iOS project
+        script: |
+          set -e
+          if [ ! -d "ios/App" ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+
+      - name: Configure iOS privacy permissions
         script: |
           set -e
           PLIST="${IOS_PROJECT_PATH}/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$PLIST" || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$PLIST" || true
-          echo "CFBundleIdentifier ensured: ${BUNDLE_ID}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_NAME}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_NAME}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion uses your camera when you go LIVE or join a LIVE conversation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion uses your camera when you go LIVE or join a LIVE conversation." "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
 
-      - name: Install CocoaPods (fast, using CDN)
+      - name: Install CocoaPods
         script: |
           set -e
           cd "$IOS_PROJECT_PATH"
-          pod install --repo-update --silent
+          pod install --repo-update
 
-      - name: Configure signing (from Codemagic)
+      - name: Configure App Store signing
         script: |
           set -e
           keychain initialize
-          # requires App Store Connect API key connected in Codemagic Integrations
           app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
-          # apply fetched profiles
           xcode-project use-profiles --project "$IOS_PROJECT_PATH/App.xcodeproj" || xcode-project use-profiles
 
-      - name: Increment build number
+      - name: Set build number
         script: |
           set -e
           cd "$IOS_PROJECT_PATH"
-          agvtool new-version -all $(date +%s)
+          agvtool new-version -all "$BUILD_NUMBER"
 
-      - name: Build IPA
+      - name: Build signed IPA
         script: |
           set -e
           xcode-project build-ipa \
@@ -111,11 +96,7 @@ workflows:
       - $CM_EXPORT_DIR/*.dSYM.zip
       - $CM_EXPORT_DIR/*.xcarchive
 
-    # Optional: auto-upload to TestFlight after successful build
-    # publishing:
-    #   app_store_connect:
-    #     auth: api_key
-    #     api_key: $APP_STORE_CONNECT_API_KEY_JSON
-    #     submit_to_testflight: true
-    #     beta_groups:
-    #       - Internal Testers
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
