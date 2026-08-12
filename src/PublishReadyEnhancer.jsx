@@ -75,7 +75,7 @@ export default function PublishReadyEnhancer() {
 
     function addNativePaymentGuard() {
       const platform = nativePlatform();
-      if (!platform) return;
+      if (platform !== 'android') return;
 
       document.querySelectorAll('.liveBuyCoinsV4').forEach(button => {
         button.style.display = 'none';
@@ -91,9 +91,7 @@ export default function PublishReadyEnhancer() {
       if (heading) {
         const note = document.createElement('div');
         note.className = 'publishBillingNotice';
-        note.textContent = platform === 'ios'
-          ? 'Coin purchases use Apple In-App Purchase on iPhone. Store products are being connected for the App Store release.'
-          : 'Coin purchases use Google Play Billing on Android. Store products are being connected for the Play Store release.';
+        note.textContent = 'Coin purchases use Google Play Billing on Android. Store products will be connected for the Play Store release.';
         heading.insertAdjacentElement('afterend', note);
       }
     }
