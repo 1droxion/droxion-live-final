@@ -29,6 +29,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const paypalRef = useRef(null);
+  const recoveryStartedRef = useRef(false);
   const nativeStorePlatform = getNativeStorePlatform();
   const nativeMobile = Boolean(nativeStorePlatform);
   const isIOS = nativeStorePlatform === 'ios';
@@ -86,10 +87,12 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
 
   const webPrice = cents => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 
-  async function verifyAppleTransaction(transaction, expectedProductId) {
+  async function verifyAppleTransaction(transaction, expectedProductId, refreshBalance = true) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token || !session?.user?.id) throw new Error('Please sign in again before buying coins.');
-    if (!transaction?.transactionId || !transaction?.receipt) throw new Error('Apple did not return a verifiable purchase receipt.');
+    if (!transaction?.transactionId || (!transaction?.jwsRepresentation && !transaction?.receipt)) {
+      throw new Error('Apple did not return a verifiable signed transaction.');
+    }
 
     const response = await fetch('/api/apple/verify-purchase', {
       method: 'POST',
@@ -98,7 +101,8 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         Authorization: `Bearer ${session.access_token}`
       },
       body: JSON.stringify({
-        receipt: transaction.receipt,
+        receipt: transaction.receipt || null,
+        jwsRepresentation: transaction.jwsRepresentation || null,
         transactionId: transaction.transactionId,
         productId: expectedProductId
       })
@@ -112,9 +116,39 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       console.warn('StoreKit finish retry needed', ackError);
     }
 
-    await onBalanceRefresh?.();
+    if (refreshBalance) await onBalanceRefresh?.();
     return payload;
   }
+
+  useEffect(() => {
+    if (!isIOS || loading || storeLoading || !appleProducts.length || recoveryStartedRef.current) return;
+    recoveryStartedRef.current = true;
+
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.id) return;
+        const ids = new Set(coinProducts.map(product => product.apple_product_id).filter(Boolean));
+        const { purchases } = await NativePurchases.getPurchases({ appAccountToken: session.user.id });
+        const recoverable = (purchases || []).filter(transaction => ids.has(transaction?.productIdentifier));
+        let recoveredCoins = 0;
+
+        for (const transaction of recoverable) {
+          try {
+            const result = await verifyAppleTransaction(transaction, transaction.productIdentifier, false);
+            if (!result?.alreadyCompleted) recoveredCoins += Number(result?.coinsGranted || 0);
+          } catch (recoverError) {
+            console.warn('Could not recover Apple purchase', transaction?.transactionId, recoverError);
+          }
+        }
+
+        if (recoverable.length) await onBalanceRefresh?.();
+        if (recoveredCoins > 0) setSuccess(`${recoveredCoins} previously purchased coins were restored to your Droxion wallet.`);
+      } catch (recoveryError) {
+        console.warn('Apple purchase recovery skipped', recoveryError);
+      }
+    })();
+  }, [isIOS, loading, storeLoading, appleProducts, products, onBalanceRefresh]);
 
   async function buyAppleCoins(product) {
     if (checkoutId) return;
