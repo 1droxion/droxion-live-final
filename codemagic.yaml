@@ -87,14 +87,20 @@ workflows:
       - name: Build signed IPA
         script: |
           set -e
+          cd "$IOS_PROJECT_PATH"
           xcode-project build-ipa \
-            --workspace "$IOS_PROJECT_PATH/App.xcworkspace" \
+            --workspace "App.xcworkspace" \
             --scheme "App"
+          echo "Generated iOS artifacts:"
+          find build/ios/ipa -maxdepth 2 -type f -print || true
+          test -n "$(find build/ios/ipa -name '*.ipa' -print -quit)"
 
     artifacts:
-      - $CM_EXPORT_DIR/*.ipa
-      - $CM_EXPORT_DIR/*.dSYM.zip
-      - $CM_EXPORT_DIR/*.xcarchive
+      - ios/App/build/ios/ipa/*.ipa
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
       app_store_connect:
