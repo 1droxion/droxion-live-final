@@ -14,8 +14,27 @@ const APPLE_ROOT_SHA256 = new Set([
   '63343ABFB89A6A03EBB57E9B3F5FA7BE7C4F5C756F3017B3A8C488C3653E9179',
   'B0B1730ECBC7FF4505142C49F1295E6EDA6BCAED7E2C68C5BE91B5A11001F024'
 ]);
+const ALLOWED_CLIENT_ORIGINS = new Set([
+  'capacitor://localhost',
+  'ionic://localhost',
+  'http://localhost',
+  'https://localhost',
+  'https://droxion.com',
+  'https://www.droxion.com'
+]);
 
 let appleRootsPromise;
+
+function applyCors(req, res) {
+  const origin = String(req.headers.origin || '').trim();
+  if (origin && ALLOWED_CLIENT_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
 
 function base64UrlBuffer(value) {
   const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -176,8 +195,15 @@ function normalizeSignedTransaction(payload) {
 }
 
 export default async function handler(req, res) {
+  applyCors(req, res);
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+    res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({ error: 'Method not allowed.' });
     return;
   }
