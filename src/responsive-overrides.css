@@ -77,3 +77,32 @@
   .lfContent{max-width:1240px}
   .lpPage{max-width:980px}
 }
+
+/* In native TestFlight/WKWebView the status area can be taller than env(safe-area-inset-top).
+   Keep LIVE chrome clear of the Dynamic Island and make Back a compact round control. */
+@media(max-width:760px){
+  .liveTopV4{
+    top:max(calc(env(safe-area-inset-top) + 10px),56px)!important;
+    padding-left:max(10px,env(safe-area-inset-left))!important;
+    padding-right:max(10px,env(safe-area-inset-right))!important;
+  }
+  .liveTopV4 .liveBackButton{
+    width:40px!important;
+    min-width:40px!important;
+    height:40px!important;
+    padding:0!important;
+    border-radius:50%!important;
+  }
+  .liveTopV4 .liveBackButton span{display:none!important}
+  .liveSwipeHint{
+    top:max(calc(env(safe-area-inset-top) + 68px),112px)!important;
+  }
+  .liveRoomV4 .liveGuestVideo{
+    top:max(calc(env(safe-area-inset-top) + 78px),122px)!important;
+  }
+}
+
+@media(max-height:560px) and (orientation:landscape){
+  .liveTopV4{top:max(calc(env(safe-area-inset-top) + 6px),18px)!important}
+  .liveRoomV4 .liveGuestVideo{top:max(calc(env(safe-area-inset-top) + 58px),70px)!important}
+}
