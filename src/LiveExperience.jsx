@@ -618,7 +618,7 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
     };
     poll();
     const timer = setInterval(poll, 800);
-    return () => { stopped = true; clearInterval(timer); };
+    return () => clearInterval(timer);
   }, [sessionId]);
 
   useEffect(() => {
@@ -760,6 +760,7 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
 
   return (
     <section className="realPage liveBrowsePage liveFeedPage liveOnlyHome">
+      <button type="button" className="liveGoButton liveNavGoTrigger" onClick={openGoLiveSetup} aria-hidden="true" tabIndex={-1}>Go Live</button>
       <div className="liveOnlyHomeHead"><strong><Radio size={15} /> {profiles.length} LIVE now</strong><span>{profiles.length ? 'Tap a creator to watch. Scroll for more.' : 'No one is live right now.'}</span></div>
       {notice && <div className="liveNotice">{notice}</div>}
       {profiles.length === 0 ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE right now</h2><p>When creators go LIVE, they will appear here.</p></div> : <div className="liveFeedScroll liveOnlyScroll" aria-label="People live now">{profiles.map(profile => <button key={profile.user_id} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}>{profile.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} /> : <div className="liveBrowseFallback">{(profile.display_name || 'D')[0]}</div>}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>{Array.isArray(profile.tags) && profile.tags.length > 0 && <div className="liveFeedTags">{profile.tags.slice(0, 3).map(tag => <span key={tag}>#{tag}</span>)}</div>}<em>Tap to watch</em></div></button>)}</div>}
