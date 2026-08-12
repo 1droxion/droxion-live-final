@@ -260,445 +260,162 @@ export default function LiveExperience({ currentUserId, coins = 0, onCoinsChange
       setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError' ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion in your device settings, then try again.' : error?.message || 'Camera and microphone are required to go live.');
       return;
     }
-    const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8);
-    const { data, error } = await supabase.rpc('droxion_start_live', { p_title: liveSetup.title.trim() || 'Live on Droxion', p_tags: tags, p_orientation: liveSetup.orientation, p_allow_guest_requests: liveSetup.allowGuests });
-    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }
-    const room = { user_id: currentUserId, session_id: data.session_id, display_name: 'Your Live', title: data.title || liveSetup.title || 'Live on Droxion', tags: data.tags || tags, orientation: data.orientation || liveSetup.orientation, allow_guest_requests: data.allow_guest_requests !== false };
-    setBeautyMode('off');
-    setIsLive(true);
-    setOwnSessionId(data.session_id || '');
-    setActiveRoom(room);
+    const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 12);
+    const { data, error } = await supabase.rpc('droxion_start_live', { p_title: liveSetup.title.trim() || null, p_tags: tags, p_orientation: liveSetup.orientation, p_allow_guest_requests: liveSetup.allowGuests });
+    if (error || data?.started === false) { stopCamera(); return setNotice(error?.message || data?.reason || 'Could not start LIVE.'); }
     setSetupOpen(false);
+    setIsLive(true);
+    setOwnSessionId(data.session_id);
+    setActiveRoom({ session_id: data.session_id, user_id: currentUserId, display_name: 'You', orientation: liveSetup.orientation, allow_guest_requests: liveSetup.allowGuests, title: liveSetup.title });
     setNotice('You are live.');
-    requestAnimationFrame(() => { attachLocal(); window.setTimeout(attachLocal, 200); });
-    await loadLive();
   }
 
   async function endLive() {
-    const { error } = await supabase.rpc('droxion_set_live', { p_live: false });
-    if (error) return setNotice(error.message || 'Could not end LIVE.');
-    setIsLive(false);
-    setOwnSessionId('');
-    setActiveRoom(null);
-    setGuestMode(false);
-    setJoinRequests([]);
-    closePeers();
-    stopCamera();
-    setNotice('Live ended.');
-    await loadLive();
+    await supabase.rpc('droxion_end_live');
+    closePeers(); stopCamera(); setIsLive(false); setOwnSessionId(''); setActiveRoom(null); setRoomStatus(null); setMessages([]); setInvite(null); setGuestMode(false); setNotice('Live ended.'); await loadLive();
+  }
+
+  function leaveRoom() {
+    closePeers(); if (guestMode) stopCamera(); setActiveRoom(null); setRoomStatus(null); setMessages([]); setInvite(null); setGuestMode(false); setMyJoinRequest(null); setBeautyMode('off');
   }
 
   async function openRoom(profile) {
-    if (!profile?.user_id) return;
-    setNotice('');
-    if (sessionId && !isHostRoom) await supabase.rpc('droxion_leave_live', { p_session_id: sessionId });
-    closePeers();
-    if (guestMode) stopCamera();
-    setGuestMode(false);
-    setMessages([]);
-    setGiftEvents([]);
-    setGiftDrawerOpen(false);
-    setMyJoinRequest(null);
-    setInvite(null);
-    setRemoteBeautyMode('off');
-    lastChatId.current = 0;
-    lastGiftAt.current = new Date().toISOString();
-    const { data, error } = await supabase.rpc('droxion_join_live', { p_host_id: profile.user_id });
-    if (error || !data?.allowed) {
-      setNotice(error?.message || 'This live has ended.');
-      await loadLive();
-      return;
-    }
-    setActiveRoom({ ...profile, session_id: data.session_id });
+    if (!profile?.session_id) return;
+    closePeers(); setMessages([]); setGiftEvents([]); setInvite(null); setGuestMode(false); setMyJoinRequest(null); setNotice(''); setRemoteBeautyMode('off'); setActiveRoom(profile);
   }
 
-  async function leaveRoom() {
-    if (sessionId && !isHostRoom) await supabase.rpc('droxion_leave_live', { p_session_id: sessionId });
-    if (guestMode) stopCamera();
-    setGuestMode(false);
-    setInvite(null);
-    setMyJoinRequest(null);
-    setActiveRoom(null);
-    setRoomStatus(null);
-    setViewers([]);
-    setMessages([]);
-    setGiftEvents([]);
-    setGiftDrawerOpen(false);
-    setRemoteBeautyMode('off');
-    closePeers();
+  async function createBroadcasterPeer(viewerId) {
+    if (!viewerId || !streamRef.current) return;
+    broadcasterPeers.current.get(viewerId)?.close();
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
+    broadcasterPeers.current.set(viewerId, pc);
+    streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current));
+    pc.onicecandidate = event => { if (event.candidate) supabase.rpc('droxion_live_send_signal', { p_session_id: sessionId, p_target_user_id: viewerId, p_signal_type: 'ice', p_payload: event.candidate.toJSON() }); };
+    const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+    await supabase.rpc('droxion_live_send_signal', { p_session_id: sessionId, p_target_user_id: viewerId, p_signal_type: 'offer', p_payload: offer });
   }
 
-  async function switchLive(direction) {
-    if (isHostRoom || profiles.length < 2 || !activeRoom?.user_id) return;
-    const currentIndex = profiles.findIndex(profile => profile.user_id === activeRoom.user_id);
-    const base = currentIndex >= 0 ? currentIndex : 0;
-    const nextIndex = (base + direction + profiles.length) % profiles.length;
-    if (profiles[nextIndex]?.user_id !== activeRoom.user_id) await openRoom(profiles[nextIndex]);
-  }
-
-  function handleTouchStart(event) { touchStartY.current = event.touches?.[0]?.clientY ?? null; }
-  function handleTouchEnd(event) {
-    if (touchStartY.current == null || isHostRoom) return;
-    const end = event.changedTouches?.[0]?.clientY ?? touchStartY.current;
-    const delta = touchStartY.current - end;
-    touchStartY.current = null;
-    if (Math.abs(delta) < 70) return;
-    switchLive(delta > 0 ? 1 : -1);
-  }
-
-  useEffect(() => {
-    if (!sessionId || isHostRoom) return;
-    const beat = () => supabase.rpc('droxion_live_viewer_heartbeat', { p_session_id: sessionId });
-    beat();
-    const timer = setInterval(beat, 15000);
-    return () => clearInterval(timer);
-  }, [sessionId, isHostRoom]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    let stopped = false;
-    const refresh = async () => {
-      const [{ data: status }, { data: viewerRows }] = await Promise.all([
-        supabase.rpc('droxion_live_room_status', { p_session_id: sessionId }),
-        supabase.rpc('droxion_live_room_viewers', { p_session_id: sessionId })
-      ]);
-      if (stopped) return;
-      setRoomStatus(status || null);
-      setViewers(viewerRows || []);
-      if (status && status.active === false && !isHostRoom) {
-        const others = profiles.filter(profile => profile.user_id !== activeRoom?.user_id);
-        if (others[0]) await openRoom(others[0]); else await leaveRoom();
-      }
-    };
-    refresh();
-    const timer = setInterval(refresh, 2500);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [sessionId, isHostRoom, profiles, activeRoom?.user_id]);
-
-  useEffect(() => {
-    if (!sessionId || !isHostRoom) { setJoinRequests([]); return; }
-    let stopped = false;
-    const poll = async () => {
-      const { data } = await supabase.rpc('droxion_live_join_requests', { p_session_id: sessionId });
-      if (!stopped) setJoinRequests(data || []);
-    };
-    poll();
-    const timer = setInterval(poll, 1200);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [sessionId, isHostRoom]);
-
-  useEffect(() => {
-    if (!sessionId || isHostRoom || guestMode) return;
-    let stopped = false;
-    const poll = async () => {
-      const { data } = await supabase.rpc('droxion_my_live_join_request', { p_session_id: sessionId });
-      if (stopped || !data?.request_id) return;
-      setMyJoinRequest(data);
-      if (data.status === 'accepted' && !guestMode) {
-        try {
-          await ensureCamera(activeRoom?.orientation || 'vertical', 'user');
-          if (!stopped) { setGuestMode(true); setNotice('You joined the LIVE.'); requestAnimationFrame(attachLocal); }
-        } catch { setNotice('Camera and microphone permission are required to join the LIVE.'); }
-      } else if (data.status === 'declined') setNotice('The host declined your join request.');
-    };
-    poll();
-    const timer = setInterval(poll, 1200);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [sessionId, isHostRoom, guestMode, activeRoom?.orientation, ensureCamera, attachLocal]);
-
-  useEffect(() => {
-    if (!sessionId || isHostRoom) return;
-    let stopped = false;
-    const poll = async () => {
-      const { data } = await supabase.rpc('droxion_my_live_invite');
-      if (!stopped) setInvite(data?.invite_id && data?.session_id === sessionId ? data : null);
-    };
-    poll();
-    const timer = setInterval(poll, 1500);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [sessionId, isHostRoom]);
-
-  useEffect(() => {
-    if (!currentUserId || isHostRoom || !activeRoom?.user_id) { setFollowingHost(false); return; }
-    let alive = true;
-    supabase.from('droxion_follows').select('followed_id').eq('follower_id', currentUserId).eq('followed_id', activeRoom.user_id).maybeSingle().then(({ data }) => { if (alive) setFollowingHost(Boolean(data)); });
-    return () => { alive = false; };
-  }, [currentUserId, isHostRoom, activeRoom?.user_id]);
-
-  async function toggleFollow() {
-    if (!currentUserId || !activeRoom?.user_id || followBusy) return;
-    setFollowBusy(true);
-    if (followingHost) {
-      const { error } = await supabase.from('droxion_follows').delete().eq('follower_id', currentUserId).eq('followed_id', activeRoom.user_id);
-      if (!error) setFollowingHost(false); else setNotice(error.message);
-    } else {
-      const { error } = await supabase.from('droxion_follows').insert({ follower_id: currentUserId, followed_id: activeRoom.user_id });
-      if (!error) setFollowingHost(true); else setNotice(error.message);
-    }
-    setFollowBusy(false);
-  }
-
-  async function requestToJoin() {
-    if (!sessionId || guestMode) return;
-    const { data, error } = await supabase.rpc('droxion_request_live_guest', { p_session_id: sessionId });
-    if (error || !data?.allowed) {
-      const reason = data?.reason;
-      setNotice(reason === 'requests_disabled' ? 'This creator is not accepting guest requests.' : reason === 'guest_already_joined' ? 'A guest is already on this LIVE.' : error?.message || 'Could not send join request.');
-      return;
-    }
-    setMyJoinRequest({ request_id: data.request_id, status: 'requested', session_id: sessionId });
-    setNotice('Join request sent to the host.');
-  }
-
-  async function respondJoinRequest(requestId, accept) {
-    const { data, error } = await supabase.rpc('droxion_respond_live_join_request', { p_request_id: requestId, p_accept: accept });
-    if (error || !data?.allowed) setNotice(error?.message || 'This request is no longer available.');
-    else setNotice(accept ? 'Guest accepted.' : 'Guest request declined.');
-    setJoinRequests(current => current.filter(item => item.request_id !== requestId));
-  }
-
-  async function respondInvite(accept) {
-    if (!invite?.invite_id) return;
-    if (accept) {
-      try { await ensureCamera(activeRoom?.orientation || 'vertical', 'user'); }
-      catch { setNotice('Camera and microphone permission are required to join the live.'); return; }
-    }
-    const { data, error } = await supabase.rpc('droxion_respond_live_invite', { p_invite_id: invite.invite_id, p_accept: accept });
-    if (error || !data?.allowed) {
-      setNotice(error?.message || 'Invite is no longer available.');
-      if (accept) stopCamera();
-    } else {
-      setGuestMode(Boolean(accept));
-      setNotice(accept ? 'You joined as a guest.' : 'Invite declined.');
-      if (accept) requestAnimationFrame(attachLocal);
-    }
-    setInvite(null);
-  }
-
-  async function inviteViewer(viewerId) {
-    const { data, error } = await supabase.rpc('droxion_invite_live_guest', { p_session_id: sessionId, p_invitee_id: viewerId });
-    setNotice(error?.message || (data?.allowed ? 'Guest invite sent.' : 'Could not invite this viewer.'));
-  }
-  async function removeGuest() { await supabase.rpc('droxion_remove_live_guest', { p_session_id: sessionId }); setNotice('Guest removed.'); }
-
-  const sendLiveSignal = useCallback(async (recipientId, role, type, payload = {}) => {
-    if (!sessionId || !recipientId) return;
-    await supabase.rpc('droxion_send_live_signal', { p_session_id: sessionId, p_recipient_id: recipientId, p_stream_role: role, p_signal_type: type, p_payload: payload });
-  }, [sessionId]);
-
-  async function setBeauty(nextMode) {
-    setBeautyMode(nextMode);
-    const sends = [];
-    broadcasterPeers.current.forEach((_pc, key) => {
-      const [role, viewerId] = key.split(':');
-      if (viewerId) sends.push(sendLiveSignal(viewerId, role, 'beauty_mode', { mode: nextMode }));
-    });
-    await Promise.allSettled(sends);
-  }
-
-  async function cycleBeauty() {
-    const next = beautyMode === 'off' ? 'soft' : beautyMode === 'soft' ? 'clear' : 'off';
-    await setBeauty(next);
-  }
-
-  const createBroadcasterPeer = useCallback(async (viewerId, role) => {
-    const key = `${role}:${viewerId}`;
-    broadcasterPeers.current.get(key)?.close();
-    const stream = await ensureCamera(roomOrientation, facingMode);
-    const pc = new RTCPeerConnection({ iceServers: iceServers(), iceCandidatePoolSize: 10 });
-    broadcasterPeers.current.set(key, pc);
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-    pc.onicecandidate = event => { if (event.candidate) sendLiveSignal(viewerId, role, 'ice', event.candidate.toJSON()); };
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await sendLiveSignal(viewerId, role, 'offer', pc.localDescription?.toJSON?.() || offer);
-    await sendLiveSignal(viewerId, role, 'beauty_mode', { mode: beautyMode });
-  }, [ensureCamera, sendLiveSignal, roomOrientation, facingMode, beautyMode]);
-
-  const createViewerPeer = useCallback((senderId, role) => {
-    const key = `${role}:${senderId}`;
-    if (viewerPeers.current.has(key)) return viewerPeers.current.get(key);
-    const pc = new RTCPeerConnection({ iceServers: iceServers(), iceCandidatePoolSize: 10 });
+  async function createViewerPeer(offer, senderId) {
+    const key = `host:${senderId}`;
+    viewerPeers.current.get(key)?.close();
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
     viewerPeers.current.set(key, pc);
-    pc.onicecandidate = event => { if (event.candidate) sendLiveSignal(senderId, role, 'ice', event.candidate.toJSON()); };
-    pc.ontrack = event => {
-      let stream = event.streams?.[0];
-      if (!stream) {
-        const existing = role === 'guest' ? remoteGuestStreamRef.current : remoteHostStreamRef.current;
-        stream = existing || new MediaStream();
-        if (!stream.getTracks().some(track => track.id === event.track.id)) stream.addTrack(event.track);
-      }
-      if (role === 'guest') {
-        remoteGuestStreamRef.current = stream;
-        setGuestVideoReady(true);
-        requestAnimationFrame(() => attachRemote('guest'));
-      } else {
-        remoteHostStreamRef.current = stream;
-        setHostVideoReady(true);
-        requestAnimationFrame(() => attachRemote('host'));
-      }
-    };
-    return pc;
-  }, [sendLiveSignal, attachRemote]);
+    const stream = new MediaStream(); remoteHostStreamRef.current = stream;
+    pc.ontrack = event => { if (!stream.getTracks().some(track => track.id === event.track.id)) stream.addTrack(event.track); setHostVideoReady(true); attachRemote('host'); };
+    pc.onicecandidate = event => { if (event.candidate) supabase.rpc('droxion_live_send_signal', { p_session_id: sessionId, p_target_user_id: senderId, p_signal_type: 'ice', p_payload: event.candidate.toJSON() }); };
+    await pc.setRemoteDescription(offer); await flushIce(key, pc);
+    const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
+    await supabase.rpc('droxion_live_send_signal', { p_session_id: sessionId, p_target_user_id: senderId, p_signal_type: 'answer', p_payload: answer });
+  }
 
-  useEffect(() => {
-    if (!sessionId || !currentUserId) return;
-    let stopped = false;
-    const poll = async () => {
-      if (processingSignals.current || stopped) return;
-      processingSignals.current = true;
-      try {
-        const { data: rows } = await supabase.rpc('droxion_live_signals_for_me', { p_session_id: sessionId, p_after_id: lastSignalId.current });
-        for (const row of rows || []) {
-          const key = `${row.stream_role}:${row.sender_id}`;
-          try {
-            if (row.signal_type === 'watch_request') {
-              if ((row.stream_role === 'host' && isHostRoom) || (row.stream_role === 'guest' && guestMode)) await createBroadcasterPeer(row.sender_id, row.stream_role);
-            } else if (row.signal_type === 'offer') {
-              const pc = createViewerPeer(row.sender_id, row.stream_role);
-              await pc.setRemoteDescription(new RTCSessionDescription(row.payload));
-              await flushIce(key, pc);
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              await sendLiveSignal(row.sender_id, row.stream_role, 'answer', pc.localDescription?.toJSON?.() || answer);
-            } else if (row.signal_type === 'answer') {
-              const pc = broadcasterPeers.current.get(key);
-              if (pc && pc.signalingState === 'have-local-offer') {
-                await pc.setRemoteDescription(new RTCSessionDescription(row.payload));
-                await flushIce(key, pc);
-              }
-            } else if (row.signal_type === 'ice') {
-              const pc = broadcasterPeers.current.get(key) || viewerPeers.current.get(key);
-              if (pc) {
-                const candidate = new RTCIceCandidate(row.payload);
-                if (pc.remoteDescription) await pc.addIceCandidate(candidate);
-                else pendingIce.current.set(key, [...(pendingIce.current.get(key) || []), candidate]);
-              }
-            } else if (row.signal_type === 'beauty_mode' && row.stream_role === 'host') {
-              const mode = ['off', 'soft', 'clear'].includes(row.payload?.mode) ? row.payload.mode : 'off';
-              setRemoteBeautyMode(mode);
-            }
-          } catch (error) { console.warn('Live signal error', error); }
-          lastSignalId.current = Math.max(lastSignalId.current, Number(row.id));
+  async function requestWatch() {
+    if (!sessionId || isHostRoom || requestedStreams.current.has(sessionId)) return;
+    requestedStreams.current.add(sessionId);
+    await supabase.rpc('droxion_live_send_signal', { p_session_id: sessionId, p_target_user_id: activeRoom.user_id, p_signal_type: 'watch', p_payload: {} });
+  }
+
+  useEffect(() => { if (sessionId && !isHostRoom) requestWatch(); }, [sessionId, isHostRoom]);
+
+  async function pollSignals() {
+    if (!sessionId || processingSignals.current) return;
+    processingSignals.current = true;
+    try {
+      const { data } = await supabase.rpc('droxion_live_signals', { p_session_id: sessionId, p_after_id: lastSignalId.current || null });
+      for (const signal of data || []) {
+        lastSignalId.current = Math.max(lastSignalId.current, Number(signal.signal_id || 0));
+        if (signal.signal_type === 'watch' && isHostRoom) await createBroadcasterPeer(signal.sender_user_id);
+        else if (signal.signal_type === 'offer' && !isHostRoom) await createViewerPeer(signal.payload, signal.sender_user_id);
+        else if (signal.signal_type === 'answer' && isHostRoom) { const pc = broadcasterPeers.current.get(signal.sender_user_id); if (pc) { await pc.setRemoteDescription(signal.payload); await flushIce(`viewer:${signal.sender_user_id}`, pc); } }
+        else if (signal.signal_type === 'ice') {
+          const key = isHostRoom ? `viewer:${signal.sender_user_id}` : `host:${signal.sender_user_id}`;
+          const pc = isHostRoom ? broadcasterPeers.current.get(signal.sender_user_id) : viewerPeers.current.get(key);
+          if (pc?.remoteDescription) { try { await pc.addIceCandidate(signal.payload); } catch {} }
+          else pendingIce.current.set(key, [...(pendingIce.current.get(key) || []), signal.payload]);
         }
-      } finally { processingSignals.current = false; }
-    };
-    poll();
-    const timer = setInterval(poll, 500);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [sessionId, currentUserId, isHostRoom, guestMode, createBroadcasterPeer, createViewerPeer, sendLiveSignal, flushIce]);
+      }
+    } finally { processingSignals.current = false; }
+  }
 
-  useEffect(() => {
-    if (!sessionId || isHostRoom || !activeRoom?.user_id) return;
-    const key = `host:${activeRoom.user_id}`;
-    if (!requestedStreams.current.has(key)) {
-      requestedStreams.current.add(key);
-      sendLiveSignal(activeRoom.user_id, 'host', 'watch_request', {});
-    }
-  }, [sessionId, isHostRoom, activeRoom?.user_id, sendLiveSignal]);
-
-  useEffect(() => {
-    const guestId = roomStatus?.guest_id;
-    if (!sessionId || !guestId || guestId === currentUserId) return;
-    const key = `guest:${guestId}`;
-    if (!requestedStreams.current.has(key)) {
-      requestedStreams.current.add(key);
-      sendLiveSignal(guestId, 'guest', 'watch_request', {});
-    }
-  }, [sessionId, roomStatus?.guest_id, currentUserId, sendLiveSignal]);
+  async function loadRoom() {
+    if (!sessionId) return;
+    const [statusResult, viewerResult, chatResult, requestResult, ownRequestResult, giftsResult] = await Promise.all([
+      supabase.rpc('droxion_live_room_status', { p_session_id: sessionId }),
+      isHostRoom ? supabase.rpc('droxion_live_viewers', { p_session_id: sessionId }) : Promise.resolve({ data: [] }),
+      supabase.rpc('droxion_live_chat', { p_session_id: sessionId, p_after_id: lastChatId.current || null }),
+      isHostRoom ? supabase.rpc('droxion_live_join_requests', { p_session_id: sessionId }) : Promise.resolve({ data: [] }),
+      !isHostRoom ? supabase.rpc('droxion_my_live_join_request', { p_session_id: sessionId }) : Promise.resolve({ data: null }),
+      supabase.rpc('droxion_live_gift_events', { p_session_id: sessionId, p_after: lastGiftAt.current })
+    ]);
+    setRoomStatus(statusResult.data || null); setViewers(viewerResult.data || []); setJoinRequests(requestResult.data || []); setMyJoinRequest(ownRequestResult.data || null);
+    if (chatResult.data?.length) { lastChatId.current = Math.max(...chatResult.data.map(row => Number(row.id || 0)), lastChatId.current); setMessages(current => [...current, ...chatResult.data].slice(-80)); }
+    if (giftsResult.data?.length) { lastGiftAt.current = giftsResult.data[giftsResult.data.length - 1]?.created_at || lastGiftAt.current; setGiftEvents(current => [...current, ...giftsResult.data].slice(-40)); }
+    if (!statusResult.data?.is_live) leaveRoom();
+  }
 
   useEffect(() => {
     if (!sessionId) return;
-    let stopped = false;
-    const poll = async () => {
-      const { data } = await supabase.rpc('droxion_live_chat_messages', { p_session_id: sessionId, p_after_id: lastChatId.current });
-      if (stopped || !data?.length) return;
-      setMessages(current => [...current, ...data].slice(-200));
-      lastChatId.current = Math.max(lastChatId.current, ...data.map(row => Number(row.id)));
-    };
-    poll();
-    const timer = setInterval(poll, 800);
+    loadRoom(); pollSignals();
+    const timer = setInterval(() => { loadRoom(); pollSignals(); }, 1200);
     return () => clearInterval(timer);
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    lastGiftAt.current = new Date().toISOString();
-    setGiftEvents([]);
-    let stopped = false;
-    const poll = async () => {
-      const { data } = await supabase.rpc('droxion_live_gift_events', { p_session_id: sessionId, p_after: lastGiftAt.current });
-      if (stopped || !data?.length) return;
-      setGiftEvents(current => [...current, ...data].slice(-30));
-      lastGiftAt.current = data[data.length - 1].created_at;
-    };
-    const timer = setInterval(poll, 900);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [sessionId]);
+  }, [sessionId, isHostRoom]);
 
   async function sendChat() {
-    const body = draft.trim();
-    if (!body || !sessionId) return;
-    const { data, error } = await supabase.rpc('droxion_send_live_chat', { p_session_id: sessionId, p_body: body });
-    if (error || !data?.allowed) setNotice(error?.message || 'Message could not be sent.');
-    else setDraft('');
+    const body = draft.trim(); if (!body || !sessionId) return;
+    const { error } = await supabase.rpc('droxion_send_live_chat', { p_session_id: sessionId, p_body: body });
+    if (!error) setDraft(''); else setNotice(error.message);
   }
 
-  async function sendGift(profile, gift) {
-    if (busyGift) return;
-    setBusyGift(`${profile.user_id}:${gift.gift_code}`);
-    const { data, error } = await supabase.rpc('droxion_send_live_gift', { p_recipient_id: profile.user_id, p_gift_code: gift.gift_code });
-    if (error) setNotice(error.message || 'Gift could not be sent.');
-    else if (!data?.allowed) {
-      if (data?.reason === 'insufficient_coins') { setNotice(`You need ${data.required_coins} coins.`); onOpenWallet?.(); }
-      else setNotice('Gift could not be sent.');
-    } else {
-      onCoinsChanged?.(Number(data.coin_balance || 0));
-      setNotice(`${data.emoji} ${data.gift_name} sent.`);
-      setGiftDrawerOpen(false);
-    }
+  async function requestToJoin() { const { data, error } = await supabase.rpc('droxion_request_live_guest', { p_session_id: sessionId }); if (error) setNotice(error.message); else setMyJoinRequest(data); }
+  async function respondJoinRequest(requestId, accept) { const { error } = await supabase.rpc('droxion_respond_live_join_request', { p_request_id: requestId, p_accept: accept }); if (error) setNotice(error.message); else setNotice(accept ? 'Guest accepted.' : 'Guest request declined.'); }
+  async function inviteViewer(userId) { const { data, error } = await supabase.rpc('droxion_invite_live_guest', { p_session_id: sessionId, p_viewer_user_id: userId }); if (error) setNotice(error.message); else setNotice(data?.message || 'Invite sent.'); }
+  async function removeGuest() { const { error } = await supabase.rpc('droxion_remove_live_guest', { p_session_id: sessionId }); if (error) setNotice(error.message); }
+  async function respondInvite(accept) { if (!invite) return; if (!accept) { await supabase.rpc('droxion_respond_live_invite', { p_invite_id: invite.invite_id, p_accept: false }); setInvite(null); return; } try { await ensureCamera(roomOrientation); const { error } = await supabase.rpc('droxion_respond_live_invite', { p_invite_id: invite.invite_id, p_accept: true }); if (error) throw error; setGuestMode(true); setInvite(null); } catch (error) { setNotice(error.message || 'Could not join LIVE.'); } }
+  async function toggleFollow() { if (!currentUserId || !activeRoom?.user_id || followBusy) return; setFollowBusy(true); const { error } = followingHost ? await supabase.from('droxion_follows').delete().eq('follower_id', currentUserId).eq('following_id', activeRoom.user_id) : await supabase.from('droxion_follows').upsert({ follower_id: currentUserId, following_id: activeRoom.user_id }); if (!error) setFollowingHost(value => !value); setFollowBusy(false); }
+  function toggleMic() { streamRef.current?.getAudioTracks().forEach(track => { track.enabled = !track.enabled; setMicOn(track.enabled); }); }
+  function toggleCamera() { streamRef.current?.getVideoTracks().forEach(track => { track.enabled = !track.enabled; setCameraOn(track.enabled); }); }
+  function cycleBeauty() { setBeautyMode(mode => mode === 'off' ? 'soft' : mode === 'soft' ? 'clear' : 'off'); }
+
+  async function sendGift(host, gift) {
+    if (!host?.user_id || !gift || busyGift) return;
+    setBusyGift(gift.gift_code);
+    const { data, error } = await supabase.rpc('droxion_send_live_gift', { p_session_id: sessionId, p_recipient_user_id: host.user_id, p_gift_code: gift.gift_code });
+    if (error || data?.sent === false) setNotice(error?.message || data?.reason || 'Could not send gift.');
+    else { onCoinsChanged?.(data.new_balance); setGiftDrawerOpen(false); }
     setBusyGift('');
   }
 
-  function toggleMic() {
-    const next = !micOn;
-    streamRef.current?.getAudioTracks().forEach(track => { track.enabled = next; });
-    setMicOn(next);
-  }
-  function toggleCamera() {
-    const next = !cameraOn;
-    streamRef.current?.getVideoTracks().forEach(track => { track.enabled = next; });
-    setCameraOn(next);
-    if (next) requestAnimationFrame(attachLocal);
+  useEffect(() => {
+    if (!sessionId || isHostRoom) return;
+    supabase.from('droxion_follows').select('following_id').eq('follower_id', currentUserId).eq('following_id', activeRoom?.user_id).maybeSingle().then(({ data }) => setFollowingHost(Boolean(data)));
+  }, [sessionId, isHostRoom, currentUserId, activeRoom?.user_id]);
+
+  const liveIndex = profiles.findIndex(item => item.session_id === sessionId);
+  function handleTouchStart(event) { touchStartY.current = event.touches?.[0]?.clientY ?? null; }
+  function handleTouchEnd(event) {
+    if (isHostRoom || profiles.length < 2 || touchStartY.current == null) return;
+    const endY = event.changedTouches?.[0]?.clientY ?? touchStartY.current; const delta = touchStartY.current - endY; touchStartY.current = null;
+    if (Math.abs(delta) < 55) return;
+    const next = delta > 0 ? (liveIndex + 1) % profiles.length : (liveIndex - 1 + profiles.length) % profiles.length;
+    openRoom(profiles[next]);
   }
 
-  if (sessionId) {
-    const host = isHostRoom ? { user_id: currentUserId, display_name: 'Your Live', ...activeRoom } : activeRoom;
-    const liveIndex = profiles.findIndex(profile => profile.user_id === activeRoom?.user_id);
-    const showRemoteGuest = guestVideoReady && !guestMode;
-    const currentBeauty = isHostRoom ? beautyMode : remoteBeautyMode;
+  if (immersive) {
+    const host = isHostRoom ? { user_id: currentUserId, display_name: 'You', title: liveSetup.title } : activeRoom;
     const combinedEvents = [
-      ...messages.slice(-8).map(item => ({ type: 'chat', time: item.created_at || '', key: `c-${item.id}`, ...item })),
-      ...giftEvents.slice(-5).map(item => ({ type: 'gift', time: item.created_at || '', key: `g-${item.id}`, ...item }))
-    ].sort((a, b) => String(a.time).localeCompare(String(b.time))).slice(-8);
+      ...messages.map(message => ({ type: 'chat', key: `c-${message.id}`, created_at: message.created_at, display_name: message.display_name || 'User', body: message.body })),
+      ...giftEvents.map(event => ({ type: 'gift', key: `g-${event.id}`, created_at: event.created_at, display_name: event.display_name || 'Viewer', gift_name: event.gift_name, emoji: event.emoji }))
+    ].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(-20);
 
     return (
-      <section className={`liveRoomPage liveRoomV4 liveRoom-${roomOrientation}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        <div className={`liveStage liveStageV4 liveStage-${roomOrientation}`}>
-          {isHostRoom
-            ? <video ref={localVideoRef} autoPlay playsInline muted className={`liveMainVideo liveLocalPreview beauty-${currentBeauty} ${facingMode === 'user' ? 'mirrored' : ''}`} />
-            : <video ref={remoteHostVideo} autoPlay playsInline muted className={`liveMainVideo beauty-${currentBeauty}`} />}
-          <audio ref={remoteHostAudio} autoPlay playsInline />
-
-          {isHostRoom && !cameraOn && <div className="liveVideoLoading"><CameraOff size={30} /><strong>Camera is off</strong></div>}
-          {!isHostRoom && !hostVideoReady && <div className="liveVideoLoading"><Radio size={30} /><strong>Connecting LIVE video…</strong></div>}
-
-          {guestMode && <video ref={localVideoRef} autoPlay playsInline muted className={`liveGuestVideo liveGuestSelfVideo beauty-${beautyMode} ${facingMode === 'user' ? 'mirrored' : ''}`} />}
-          {showRemoteGuest && <video ref={remoteGuestVideo} autoPlay playsInline muted className="liveGuestVideo" />}
-          <audio ref={remoteGuestAudio} autoPlay playsInline />
+      <section className={`liveRoom liveRoomV4 liveRoom-${roomOrientation}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <div className="liveStage liveStageV4">
+          {isHostRoom || guestMode ? <video ref={localVideoRef} className={`liveMainVideo liveLocalPreview mirrored beauty-${beautyMode}`} autoPlay muted playsInline /> : <video ref={remoteHostVideo} className={`liveMainVideo beauty-${remoteBeautyMode}`} autoPlay muted playsInline />}
+          {!isHostRoom && <audio ref={remoteHostAudio} autoPlay playsInline />}
+          {(roomStatus?.guest_id || guestMode) && <video ref={remoteGuestVideo} className={`liveGuestVideo beauty-${remoteBeautyMode}`} autoPlay muted playsInline />}
+          {(roomStatus?.guest_id || guestMode) && <audio ref={remoteGuestAudio} autoPlay playsInline />}
 
           <div className="liveTopOverlay liveTopV4">
-            <button className="liveBackButton" aria-label={isHostRoom ? 'End live' : 'Exit live'} onClick={isHostRoom ? endLive : leaveRoom}><ArrowLeft size={21} /><span>{isHostRoom ? 'End' : 'Exit'}</span></button>
+            <button className="liveBackButton" aria-label={isHostRoom ? 'End live' : 'Exit live'} title={isHostRoom ? 'End live' : 'Exit live'} onClick={isHostRoom ? endLive : leaveRoom}><ArrowLeft size={22} /></button>
             <div className="liveIdentity">
               <span className="liveBadge">LIVE</span>
               <div className="liveIdentityText"><strong>{host?.display_name || 'Droxion Live'}</strong><small>{host?.title || liveSetup.title || 'Live on Droxion'}</small></div>
