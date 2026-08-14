@@ -21,11 +21,22 @@ function nativePlatform() {
   return '';
 }
 
+function commentParts(line) {
+  const strong = line?.querySelector('strong');
+  const displayName = strong?.textContent?.trim() || '';
+  const fullText = line?.textContent?.trim() || '';
+  const body = displayName && fullText.startsWith(displayName)
+    ? fullText.slice(displayName.length).trim()
+    : fullText;
+  return { displayName, body, key: `${displayName}::${body}` };
+}
+
 export default function PublishReadyEnhancer() {
   useEffect(() => {
     let timerInterval = null;
     let timerStartedAt = null;
     let contextBusy = false;
+    const hiddenComments = new Set();
 
     function addDeleteAccount() {
       const menu = document.querySelector('.lpPage .lpMenu');
@@ -96,6 +107,128 @@ export default function PublishReadyEnhancer() {
       }
     }
 
+    async function resolveCommentUser(room, displayName) {
+      const { data: context, error: contextError } = await supabase.rpc('droxion_current_live_context');
+      if (contextError || !context?.active || !context?.session_id) return null;
+
+      const hostName = room.querySelector('.liveIdentityText strong')?.textContent?.trim() || '';
+      if (context.host_id && displayName === hostName) {
+        return { user_id: context.host_id, display_name: displayName, is_host: true };
+      }
+
+      const { data: viewers, error: viewersError } = await supabase.rpc('droxion_live_room_viewers', { p_session_id: context.session_id });
+      if (viewersError) return null;
+      const matches = (viewers || []).filter(viewer => viewer.display_name?.trim() === displayName);
+      if (matches.length === 1) return matches[0];
+      return null;
+    }
+
+    function hideMatchingComments(room, key) {
+      hiddenComments.add(key);
+      room.querySelectorAll('.liveChatLine:not(.liveGiftEvent)').forEach(line => {
+        if (commentParts(line).key === key) line.classList.add('publishCommentHidden');
+      });
+    }
+
+    function applyHiddenComments(room) {
+      if (!hiddenComments.size) return;
+      room.querySelectorAll('.liveChatLine:not(.liveGiftEvent)').forEach(line => {
+        if (hiddenComments.has(commentParts(line).key)) line.classList.add('publishCommentHidden');
+      });
+    }
+
+    function addLiveCommentModeration(room) {
+      applyHiddenComments(room);
+      if (room.dataset.commentModerationReady === 'true') return;
+      room.dataset.commentModerationReady = 'true';
+
+      room.addEventListener('click', async event => {
+        const line = event.target.closest('.liveChatLine:not(.liveGiftEvent)');
+        if (!line || !room.contains(line)) return;
+        const { displayName, body, key } = commentParts(line);
+        if (!displayName || !body) return;
+
+        const existing = room.querySelector('.publishCommentBackdrop');
+        if (existing) existing.remove();
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'publishSafetyBackdrop publishCommentBackdrop';
+        backdrop.innerHTML = `
+          <div class="publishSafetySheet publishCommentSheet" role="dialog" aria-modal="true" aria-label="Comment safety options">
+            <div class="publishSafetyHead"><strong>Comment options</strong><button type="button" data-close>×</button></div>
+            <div class="publishCommentPreview"><b></b><span></span></div>
+            <button type="button" class="publishCommentAction" data-hide>Hide this comment</button>
+            <button type="button" class="publishCommentAction" data-report-toggle>Report user</button>
+            <div class="publishReportGrid publishCommentReports" hidden>
+              <button type="button" data-report="harassment">Harassment</button>
+              <button type="button" data-report="hate">Hate</button>
+              <button type="button" data-report="sexual">Sexual content</button>
+              <button type="button" data-report="violence">Violence</button>
+              <button type="button" data-report="spam">Spam / scam</button>
+              <button type="button" data-report="underage">Underage concern</button>
+              <button type="button" data-report="other">Other</button>
+            </div>
+            <button type="button" class="publishBlockButton" data-block>Block user</button>
+          </div>`;
+        backdrop.querySelector('.publishCommentPreview b').textContent = displayName;
+        backdrop.querySelector('.publishCommentPreview span').textContent = body;
+        room.appendChild(backdrop);
+
+        const close = () => backdrop.remove();
+        backdrop.addEventListener('click', clickEvent => {
+          if (clickEvent.target === backdrop || clickEvent.target.closest('[data-close]')) close();
+        });
+        backdrop.querySelector('[data-hide]')?.addEventListener('click', () => {
+          hideMatchingComments(room, key);
+          close();
+        });
+        backdrop.querySelector('[data-report-toggle]')?.addEventListener('click', () => {
+          const reports = backdrop.querySelector('.publishCommentReports');
+          if (reports) reports.hidden = !reports.hidden;
+        });
+
+        backdrop.querySelectorAll('[data-report]').forEach(reportButton => {
+          reportButton.addEventListener('click', async () => {
+            const target = await resolveCommentUser(room, displayName);
+            if (!target?.user_id) {
+              window.alert('Could not identify this user. Please use the LIVE safety menu to report the creator.');
+              return;
+            }
+            const category = reportButton.getAttribute('data-report') || 'other';
+            const details = `LIVE chat comment: ${body}`.slice(0, 500);
+            const { data, error } = await supabase.rpc('droxion_report_user', {
+              p_reported_user_id: target.user_id,
+              p_category: category,
+              p_details: details
+            });
+            if (error || !data?.allowed) window.alert(error?.message || 'Could not submit report.');
+            else {
+              hideMatchingComments(room, key);
+              window.alert('Report submitted. Thank you for helping keep Droxion safe.');
+              close();
+            }
+          });
+        });
+
+        backdrop.querySelector('[data-block]')?.addEventListener('click', async () => {
+          const target = await resolveCommentUser(room, displayName);
+          if (!target?.user_id) {
+            window.alert('Could not identify this user. Please use the LIVE safety menu to block the creator.');
+            return;
+          }
+          if (!window.confirm(`Block ${displayName}? Their comments and future interactions with you will be restricted.`)) return;
+          const { data, error } = await supabase.rpc('droxion_block_user', { p_blocked_user_id: target.user_id });
+          if (error || !data?.allowed) {
+            window.alert(error?.message || 'Could not block this user.');
+            return;
+          }
+          hideMatchingComments(room, key);
+          close();
+          window.alert(`${displayName} has been blocked.`);
+        });
+      });
+    }
+
     async function refreshLiveContext() {
       if (contextBusy) return;
       const room = document.querySelector('.liveRoomV4');
@@ -106,6 +239,7 @@ export default function PublishReadyEnhancer() {
       }
       contextBusy = true;
       try {
+        addLiveCommentModeration(room);
         const { data } = await supabase.rpc('droxion_current_live_context');
         if (!data?.active) return;
         timerStartedAt = data.started_at ? new Date(data.started_at).getTime() : Date.now();
