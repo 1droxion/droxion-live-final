@@ -90,7 +90,7 @@ export default function LiveFirstApp() {
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
 
   return (
-    <main className={`lfShell ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
+    <main className={`lfShell ${tab === 'chat' ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
       <ProfileAvatarEnhancer />
       <PublishReadyEnhancer />
 
