@@ -7,6 +7,7 @@ import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
 import HomeDiscoveryControls from './HomeDiscoveryControls';
 import DroxionWallet from './DroxionWallet';
+import NotificationsPanel from './NotificationsPanel';
 import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
 import PublishReadyEnhancer from './PublishReadyEnhancer';
 import './real-home.css';
@@ -29,6 +30,8 @@ export default function LiveFirstApp() {
   const [immersiveLive, setImmersiveLive] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   async function refreshWallet(authUser = user) {
     if (!authUser?.id) { setCoins(0); return; }
@@ -72,6 +75,7 @@ export default function LiveFirstApp() {
   function chooseTab(nextTab) {
     setImmersiveLive(false);
     setSearchOpen(false);
+    setNotificationsOpen(false);
     if (nextTab === 'go-live') {
       setTab('live');
       window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
@@ -94,16 +98,17 @@ export default function LiveFirstApp() {
         <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><img className="lfBrandMark" src="/droxion-logo.svg" alt="" aria-hidden="true" /><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
         {tab === 'live' ? <div className="lfHomeActions">
           <button className="lfSearchButton" type="button" onClick={() => setSearchOpen(value => !value)} aria-label="Search LIVE creators"><Search size={19} /></button>
-          <button className="lfNotificationButton" type="button" aria-label="Notifications"><Bell size={19} /><i /></button>
+          <button className="lfNotificationButton" type="button" onClick={() => setNotificationsOpen(true)} aria-label="Notifications"><Bell size={19} />{unreadNotifications > 0 && <i />}</button>
         </div> : <div className="lfSectionLabel">{TABS.find(item => item.id === tab)?.label}</div>}
         {tab === 'live' && searchOpen && <label className="lfSearchOverlay"><Search size={17} /><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search creators or LIVE streams" /><button type="button" onClick={() => { setSearchQuery(''); setSearchOpen(false); }}>×</button></label>}
       </header>}
 
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{content}</div>
 
-      {!immersiveLive && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab || (item.id === 'go-live' && false); return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={`${active ? 'active' : ''} ${item.primary ? 'primary' : ''}`}><span className="lfNavIcon"><Icon size={item.primary ? 24 : 20} /></span><span>{item.label}</span></button>; })}</nav>}
+      {!immersiveLive && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={`${active ? 'active' : ''} ${item.primary ? 'primary' : ''}`}><span className="lfNavIcon"><Icon size={item.primary ? 24 : 20} /></span><span>{item.label}</span></button>; })}</nav>}
 
       {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={() => refreshWallet()} />}
+      {user && <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} onUnreadChange={setUnreadNotifications} />}
     </main>
   );
 }
