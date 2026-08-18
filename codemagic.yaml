@@ -12,6 +12,7 @@ workflows:
         APP_NAME: Droxion Live
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
+        IOS_MARKETING_VERSION: "1.1"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
         CM_CLONE_DEPTH: "1"
@@ -119,11 +120,14 @@ workflows:
           set -e
           xcode-project use-profiles --project "$IOS_PROJECT_PATH/App.xcodeproj" || xcode-project use-profiles
 
-      - name: Set build number
+      - name: Set iOS version and build number
         script: |
           set -e
           cd "$IOS_PROJECT_PATH"
+          agvtool new-marketing-version "$IOS_MARKETING_VERSION"
           agvtool new-version -all "$BUILD_NUMBER"
+          echo "Droxion iOS marketing version: $IOS_MARKETING_VERSION"
+          echo "Droxion iOS build number: $BUILD_NUMBER"
 
       - name: Build signed IPA
         script: |
