@@ -11,6 +11,7 @@ import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
 import PublishReadyEnhancer from './PublishReadyEnhancer';
 import './real-home.css';
 import './live-first-app.css';
+import './product-shell.css';
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
