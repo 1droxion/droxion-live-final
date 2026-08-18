@@ -95,7 +95,7 @@ export default function LiveFirstApp() {
       <PublishReadyEnhancer />
 
       {!immersiveLive && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
-        <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><img className="lfBrandMark" src="/droxion-logo.svg" alt="" aria-hidden="true" /><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
+        <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
         {tab === 'live' ? <div className="lfHomeActions">
           <button className="lfSearchButton" type="button" onClick={() => setSearchOpen(value => !value)} aria-label="Search LIVE creators"><Search size={19} /></button>
           <button className="lfNotificationButton" type="button" onClick={() => setNotificationsOpen(true)} aria-label="Notifications"><Bell size={19} />{unreadNotifications > 0 && <i />}</button>
