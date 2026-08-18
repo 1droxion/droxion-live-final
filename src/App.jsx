@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
+import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import LegalPage from "./LegalPage.jsx";
@@ -9,6 +10,7 @@ export default function App() {
   return (
     <>
       <GlobalEnhancements />
+      <CreatorV11Enhancer />
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/login" element={<Login />} />
