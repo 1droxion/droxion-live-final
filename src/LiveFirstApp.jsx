@@ -18,7 +18,7 @@ import './product-shell.css';
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'rankings', label: 'Rankings', icon: Trophy },
-  { id: 'go-live', label: 'GO LIVE', icon: Video, primary: true },
+  { id: 'go-live', label: 'GO LIVE', icon: Video },
   { id: 'chat', label: 'Chat', icon: MessageCircle },
   { id: 'profile', label: 'Profile', icon: User },
 ];
