@@ -1,42 +1,6 @@
-create table if not exists public.droxion_notifications (
-  id uuid primary key default gen_random_uuid(),
-  recipient_id uuid not null references auth.users(id) on delete cascade,
-  actor_id uuid references auth.users(id) on delete cascade,
-  notification_type text not null,
-  title text not null,
-  body text,
-  session_id uuid,
-  read_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
 create unique index if not exists droxion_notifications_live_once_idx
-  on public.droxion_notifications(recipient_id, notification_type, session_id)
+  on public.droxion_notifications(user_id, type, session_id)
   where session_id is not null;
-
-create index if not exists droxion_notifications_recipient_created_idx
-  on public.droxion_notifications(recipient_id, created_at desc);
-
-create index if not exists droxion_notifications_unread_idx
-  on public.droxion_notifications(recipient_id, created_at desc)
-  where read_at is null;
-
-alter table public.droxion_notifications enable row level security;
-
-drop policy if exists "Users read own Droxion notifications" on public.droxion_notifications;
-create policy "Users read own Droxion notifications"
-  on public.droxion_notifications
-  for select
-  to authenticated
-  using (auth.uid() = recipient_id);
-
-drop policy if exists "Users update own Droxion notifications" on public.droxion_notifications;
-create policy "Users update own Droxion notifications"
-  on public.droxion_notifications
-  for update
-  to authenticated
-  using (auth.uid() = recipient_id)
-  with check (auth.uid() = recipient_id);
 
 create or replace function public.droxion_chat_participants()
 returns table(
@@ -85,50 +49,6 @@ $$;
 revoke all on function public.droxion_chat_participants() from public;
 grant execute on function public.droxion_chat_participants() to authenticated;
 
-create or replace function public.droxion_my_notifications(p_limit integer default 50)
-returns table(
-  id uuid,
-  notification_type text,
-  actor_id uuid,
-  actor_name text,
-  actor_avatar_url text,
-  title text,
-  body text,
-  session_id uuid,
-  read_at timestamptz,
-  created_at timestamptz,
-  is_live boolean
-)
-language sql
-stable
-security definer
-set search_path = public, auth
-as $$
-  select
-    n.id,
-    n.notification_type,
-    n.actor_id,
-    coalesce(nullif(btrim(p.display_name), ''), 'Creator') as actor_name,
-    p.avatar_url as actor_avatar_url,
-    n.title,
-    n.body,
-    n.session_id,
-    n.read_at,
-    n.created_at,
-    coalesce(lp.is_live, false)
-      and lp.session_id = n.session_id
-      and lp.last_seen_at >= now() - interval '60 seconds' as is_live
-  from public.droxion_notifications n
-  left join public.droxion_profiles p on p.user_id = n.actor_id
-  left join public.droxion_live_presence lp on lp.user_id = n.actor_id
-  where n.recipient_id = auth.uid()
-  order by n.created_at desc
-  limit greatest(1, least(coalesce(p_limit, 50), 100));
-$$;
-
-revoke all on function public.droxion_my_notifications(integer) from public;
-grant execute on function public.droxion_my_notifications(integer) to authenticated;
-
 create or replace function public.droxion_notify_followers_live()
 returns trigger
 language plpgsql
@@ -156,9 +76,9 @@ begin
   v_name := coalesce(v_name, 'A creator');
 
   insert into public.droxion_notifications(
-    recipient_id,
+    user_id,
     actor_id,
-    notification_type,
+    type,
     title,
     body,
     session_id
@@ -173,7 +93,7 @@ begin
   from public.droxion_follows f
   where f.followed_id = new.user_id
     and f.follower_id <> new.user_id
-  on conflict (recipient_id, notification_type, session_id)
+  on conflict (user_id, type, session_id)
     where session_id is not null
   do nothing;
 
