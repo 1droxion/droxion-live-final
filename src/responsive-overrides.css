@@ -57,6 +57,17 @@
   left:max(16px,env(safe-area-inset-left))!important;
 }
 
+/* Viewer Join LIVE is a secondary action, so keep it neutral instead of highlighted. */
+.liveRoomV4 .liveFloatingJoin{
+  background:rgba(18,18,24,.72)!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+  color:#fff!important;
+  box-shadow:none!important;
+}
+.liveRoomV4 .liveFloatingJoin svg{
+  color:#fff!important;
+}
+
 /* Forms stay usable on narrow phones and large desktops. */
 @media(max-width:640px){
   .min-h-screen .max-w-md,.min-h-screen .max-w-lg{border-radius:22px!important;padding:22px 18px!important}
