@@ -42,9 +42,6 @@ async function openCreatorCenter() {
     const { wallet, analytics, recent } = await getCreatorData();
     if (!document.body.contains(backdrop)) return;
 
-    const creatorShare = Number(analytics?.creator_share_percent ?? wallet?.creator_share_percent ?? 0);
-    const platformShare = Number(analytics?.platform_share_percent ?? wallet?.platform_share_percent ?? 0);
-    const splitReady = creatorShare === 51 && platformShare === 49;
     const recentHtml = recent.length
       ? recent.slice(0, 10).map(row => `
           <div class="creatorV11GiftRow">
@@ -66,10 +63,6 @@ async function openCreatorCenter() {
         <div><span>Last 30 days</span><strong>${dollars(analytics?.last_30d_creator_coins || 0)}</strong></div>
         <div><span>Supporters</span><strong>${Number(analytics?.unique_supporters || 0).toLocaleString()}</strong></div>
         <div><span>LIVE gifts</span><strong>${Number(analytics?.lifetime_gifts || recent.length || 0).toLocaleString()}</strong></div>
-      </div>
-      <div class="creatorV11Split ${splitReady ? 'ready' : 'pending'}">
-        <strong>${splitReady ? '51% Creator · 49% Droxion' : 'Creator payout update pending'}</strong>
-        <span>${splitReady ? 'Your LIVE gift share is calculated server-side.' : 'The 51/49 server migration has not been activated on this environment yet.'}</span>
       </div>
       ${analytics?.top_supporter_name ? `<div class="creatorV11Top"><span>Top supporter</span><strong>${analytics.top_supporter_name}</strong><small>${Number(analytics.top_supporter_spend_coins || 0).toLocaleString()} coins across ${Number(analytics.top_supporter_gifts || 0).toLocaleString()} gifts</small></div>` : ''}
       <h3>Recent LIVE gifts</h3>
@@ -141,7 +134,6 @@ export default function CreatorV11Enhancer() {
         }
         badge.innerHTML = `<span>LIVE EARNINGS</span><strong>${dollars(summary?.creator_coins || 0)}</strong><small>${Number(summary?.total_gifts || 0)} gifts · ${Number(summary?.unique_supporters || 0)} supporters</small>`;
       } catch {
-        // The live experience must never fail because analytics are unavailable.
       } finally {
         liveBusy = false;
       }
