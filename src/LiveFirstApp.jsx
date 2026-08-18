@@ -10,6 +10,7 @@ import DroxionWallet from './DroxionWallet';
 import NotificationsPanel from './NotificationsPanel';
 import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
 import PublishReadyEnhancer from './PublishReadyEnhancer';
+import ProfileAccountActionsEnhancer from './ProfileAccountActionsEnhancer';
 import './real-home.css';
 import './live-first-app.css';
 import './product-shell.css';
@@ -93,6 +94,7 @@ export default function LiveFirstApp() {
     <main className={`lfShell ${tab === 'chat' ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
       <ProfileAvatarEnhancer />
       <PublishReadyEnhancer />
+      <ProfileAccountActionsEnhancer />
 
       {!immersiveLive && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
         <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
