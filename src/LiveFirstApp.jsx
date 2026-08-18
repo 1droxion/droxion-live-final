@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, Home, MessageCircle, Search, Trophy, User, Video } from 'lucide-react';
+import { Bell, Home, MessageCircle, Plus, Search, Trophy, User } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperience';
 import LiveProfile from './LiveProfile';
@@ -18,7 +18,7 @@ import './product-shell.css';
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'rankings', label: 'Rankings', icon: Trophy },
-  { id: 'go-live', label: 'GO LIVE', icon: Video },
+  { id: 'go-live', label: 'GO LIVE', icon: Plus },
   { id: 'chat', label: 'Chat', icon: MessageCircle },
   { id: 'profile', label: 'Profile', icon: User },
 ];
@@ -107,7 +107,7 @@ export default function LiveFirstApp() {
 
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{content}</div>
 
-      {!immersiveLive && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={`${active ? 'active' : ''} ${item.primary ? 'primary' : ''}`}><span className="lfNavIcon"><Icon size={item.primary ? 24 : 20} /></span><span>{item.label}</span></button>; })}</nav>}
+      {!immersiveLive && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={`${active ? 'active' : ''}`}><span className="lfNavIcon"><Icon size={20} /></span><span>{item.label}</span></button>; })}</nav>}
 
       {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={() => refreshWallet()} />}
       {user && <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} onUnreadChange={setUnreadNotifications} />}
