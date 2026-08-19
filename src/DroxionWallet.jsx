@@ -21,7 +21,7 @@ function storeProductKey(product) {
 
 export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free', onClose, onBalanceRefresh }) {
   const [products, setProducts] = useState([]);
-  const [appleProducts, setAppleProducts] = useState([]);
+  const [storeProducts, setStoreProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [storeLoading, setStoreLoading] = useState(false);
   const [checkoutId, setCheckoutId] = useState('');
@@ -35,13 +35,14 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   const nativeStorePlatform = getNativeStorePlatform();
   const nativeMobile = Boolean(nativeStorePlatform);
   const isIOS = nativeStorePlatform === 'ios';
+  const isAndroid = nativeStorePlatform === 'android';
 
   useEffect(() => {
     let alive = true;
     (async () => {
       const { data, error: queryError } = await supabase
         .from('droxion_products')
-        .select('id,product_type,name,price_cents,coins_granted,plan,sort_order,apple_product_id')
+        .select('id,product_type,name,price_cents,coins_granted,plan,sort_order,apple_product_id,google_product_id')
         .eq('active', true)
         .order('sort_order');
       if (!alive) return;
@@ -54,38 +55,44 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
 
   const coinProducts = products.filter(product => product.product_type === 'coin_pack');
   const plans = products.filter(product => product.product_type === 'subscription');
-  const appleProductMap = useMemo(() => {
+  const storeProductMap = useMemo(() => {
     const map = new Map();
-    appleProducts.forEach(product => {
+    storeProducts.forEach(product => {
       const key = storeProductKey(product);
       if (key) map.set(key, product);
     });
     return map;
-  }, [appleProducts]);
+  }, [storeProducts]);
+
+  function productStoreId(product) {
+    if (isIOS) return product.apple_product_id;
+    if (isAndroid) return product.google_product_id;
+    return '';
+  }
 
   useEffect(() => {
-    if (!isIOS || loading || !coinProducts.length) return;
+    if ((!isIOS && !isAndroid) || loading || !coinProducts.length) return;
     let alive = true;
     (async () => {
       setStoreLoading(true);
       try {
         const { isBillingSupported } = await NativePurchases.isBillingSupported();
-        if (!isBillingSupported) throw new Error('Apple In-App Purchase is not available on this device.');
-        const ids = coinProducts.map(product => product.apple_product_id).filter(Boolean);
-        if (!ids.length) throw new Error('Droxion coin products are not configured for the App Store.');
-        const { products: storeProducts } = await NativePurchases.getProducts({
+        if (!isBillingSupported) throw new Error(`${isAndroid ? 'Google Play Billing' : 'Apple In-App Purchase'} is not available on this device.`);
+        const ids = coinProducts.map(productStoreId).filter(Boolean);
+        if (!ids.length) throw new Error(`Droxion coin products are not configured for ${isAndroid ? 'Google Play' : 'the App Store'}.`);
+        const { products: loadedProducts } = await NativePurchases.getProducts({
           productIdentifiers: ids,
           productType: PURCHASE_TYPE.INAPP
         });
-        if (alive) setAppleProducts(storeProducts || []);
+        if (alive) setStoreProducts(loadedProducts || []);
       } catch (err) {
-        if (alive) setError(err?.message || 'Could not load Apple coin products.');
+        if (alive) setError(err?.message || 'Could not load store coin products.');
       } finally {
         if (alive) setStoreLoading(false);
       }
     })();
     return () => { alive = false; };
-  }, [isIOS, loading, products]);
+  }, [isIOS, isAndroid, loading, products]);
 
   const webPrice = cents => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 
@@ -96,13 +103,9 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       throw new Error('Apple did not return a verifiable signed transaction.');
     }
 
-    const verifyUrl = `${DROXION_API_ORIGIN}/api/apple/verify-purchase`;
-    const response = await fetch(verifyUrl, {
+    const response = await fetch(`${DROXION_API_ORIGIN}/api/apple/verify-purchase`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({
         receipt: transaction.receipt || null,
         jwsRepresentation: transaction.jwsRepresentation || null,
@@ -111,9 +114,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.ok) {
-      throw new Error(payload?.error || `Apple purchase verification failed (${response.status}).`);
-    }
+    if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Apple purchase verification failed (${response.status}).`);
 
     try {
       await NativePurchases.acknowledgePurchase({ purchaseToken: transaction.transactionId });
@@ -125,42 +126,60 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
     return payload;
   }
 
+  async function verifyGoogleTransaction(transaction, expectedProductId, refreshBalance = true) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token || !session?.user?.id) throw new Error('Please sign in again before buying coins.');
+    if (!transaction?.purchaseToken) throw new Error('Google Play did not return a verifiable purchase token.');
+
+    const response = await fetch(`${DROXION_API_ORIGIN}/api/google/verify-purchase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ purchaseToken: transaction.purchaseToken, productId: expectedProductId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Google Play purchase verification failed (${response.status}).`);
+    if (refreshBalance) await onBalanceRefresh?.();
+    return payload;
+  }
+
   useEffect(() => {
-    if (!isIOS || loading || storeLoading || !appleProducts.length || recoveryStartedRef.current) return;
+    if ((!isIOS && !isAndroid) || loading || storeLoading || !storeProducts.length || recoveryStartedRef.current) return;
     recoveryStartedRef.current = true;
 
     (async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user?.id) return;
-        const ids = new Set(coinProducts.map(product => product.apple_product_id).filter(Boolean));
+        const ids = new Set(coinProducts.map(productStoreId).filter(Boolean));
         const { purchases } = await NativePurchases.getPurchases({ appAccountToken: session.user.id });
         const recoverable = (purchases || []).filter(transaction => ids.has(transaction?.productIdentifier));
         let recoveredCoins = 0;
 
         for (const transaction of recoverable) {
           try {
-            const result = await verifyAppleTransaction(transaction, transaction.productIdentifier, false);
+            const result = isAndroid
+              ? await verifyGoogleTransaction(transaction, transaction.productIdentifier, false)
+              : await verifyAppleTransaction(transaction, transaction.productIdentifier, false);
             if (!result?.alreadyCompleted) recoveredCoins += Number(result?.coinsGranted || 0);
           } catch (recoverError) {
-            console.warn('Could not recover Apple purchase', transaction?.transactionId, recoverError);
+            console.warn('Could not recover native purchase', transaction?.transactionId, recoverError);
           }
         }
 
         if (recoverable.length) await onBalanceRefresh?.();
         if (recoveredCoins > 0) setSuccess(`${recoveredCoins} previously purchased coins were restored to your Droxion wallet.`);
       } catch (recoveryError) {
-        console.warn('Apple purchase recovery skipped', recoveryError);
+        console.warn('Native purchase recovery skipped', recoveryError);
       }
     })();
-  }, [isIOS, loading, storeLoading, appleProducts, products, onBalanceRefresh]);
+  }, [isIOS, isAndroid, loading, storeLoading, storeProducts, products, onBalanceRefresh]);
 
-  async function buyAppleCoins(product) {
+  async function buyNativeCoins(product) {
     if (checkoutId) return;
-    const productId = product.apple_product_id;
-    const storeProduct = appleProductMap.get(productId);
+    const productId = productStoreId(product);
+    const storeProduct = storeProductMap.get(productId);
     if (!productId || !storeProduct) {
-      setError('This coin pack is not available from Apple yet.');
+      setError(`This coin pack is not available from ${isAndroid ? 'Google Play' : 'Apple'} yet.`);
       return;
     }
 
@@ -180,10 +199,16 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         autoAcknowledgePurchases: false
       });
 
-      const result = await verifyAppleTransaction(transaction, productId);
+      if (isAndroid && String(transaction?.purchaseState || '') === '0') {
+        throw new Error('Google Play payment is still pending. Coins will be added after the payment completes.');
+      }
+
+      const result = isAndroid
+        ? await verifyGoogleTransaction(transaction, productId)
+        : await verifyAppleTransaction(transaction, productId);
       setSuccess(`${result.coinsGranted || product.coins_granted} coins added to your Droxion wallet.`);
     } catch (err) {
-      const message = String(err?.message || 'Apple purchase was not completed.');
+      const message = String(err?.message || 'Store purchase was not completed.');
       if (!/cancel/i.test(message)) setError(message);
     } finally {
       setCheckoutId('');
@@ -191,14 +216,11 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   }
 
   async function buyCoins(product) {
-    if (isIOS) {
-      await buyAppleCoins(product);
+    if (isIOS || isAndroid) {
+      await buyNativeCoins(product);
       return;
     }
-    if (nativeMobile) {
-      setError('Coin purchases on Android will use Google Play Billing in the Android release.');
-      return;
-    }
+    if (nativeMobile) return;
     if (checkoutId) return;
     setError('');
     setSuccess('');
@@ -212,10 +234,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       if (!session?.access_token) throw new Error('Please sign in again before buying coins.');
       const response = await fetch('/api/paypal/create-order', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ packageId: product.id })
       });
       const payload = await response.json().catch(() => ({}));
@@ -269,10 +288,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
           const orderId = data?.orderID || paypalOrderId;
           const response = await fetch('/api/paypal/capture-order', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`
-            },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
             body: JSON.stringify({ orderId })
           });
           const payload = await response.json().catch(() => ({}));
@@ -320,19 +336,17 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         {success && <div className="walletSuccess">{success}</div>}
 
         <h3>Buy Coins</h3>
-        {loading || (isIOS && storeLoading) ? <p className="walletMuted">Loading store…</p> : nativeStorePlatform === 'android' ? (
-          <div className="publishBillingNotice">Google Play Billing will be enabled in the Android release.</div>
-        ) : (
+        {loading || ((isIOS || isAndroid) && storeLoading) ? <p className="walletMuted">Loading store…</p> : (
           <div className="walletGrid">
             {coinProducts.map(product => {
-              const storeProduct = isIOS ? appleProductMap.get(product.apple_product_id) : null;
-              const displayPrice = isIOS ? (storeProduct?.priceString || 'Unavailable') : webPrice(product.price_cents);
-              const unavailable = isIOS && !storeProduct;
+              const nativeProduct = (isIOS || isAndroid) ? storeProductMap.get(productStoreId(product)) : null;
+              const displayPrice = (isIOS || isAndroid) ? (nativeProduct?.priceString || 'Unavailable') : webPrice(product.price_cents);
+              const unavailable = (isIOS || isAndroid) && !nativeProduct;
               return (
                 <button key={product.id} disabled={Boolean(checkoutId) || unavailable} onClick={() => buyCoins(product)}>
                   <Coins size={22} />
                   <strong>{product.coins_granted} coins</strong>
-                  <span>{checkoutId === product.id ? (isIOS ? 'Purchasing…' : 'Opening PayPal…') : displayPrice}</span>
+                  <span>{checkoutId === product.id ? ((isIOS || isAndroid) ? 'Purchasing…' : 'Opening PayPal…') : displayPrice}</span>
                 </button>
               );
             })}
