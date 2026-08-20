@@ -9,6 +9,47 @@ function tryPlay(video) {
   playback?.catch?.(() => {});
 }
 
+const guestSplitCss = `
+.liveRoomV4 .liveStageV4:has(.liveGuestVideo) .liveMainVideo {
+  position:absolute!important;
+  left:0!important;
+  right:0!important;
+  top:0!important;
+  width:100%!important;
+  height:50%!important;
+  object-fit:cover!important;
+  border-radius:0!important;
+}
+.liveRoomV4 .liveStageV4:has(.liveGuestVideo) .liveGuestVideo {
+  position:absolute!important;
+  left:0!important;
+  right:0!important;
+  top:50%!important;
+  bottom:0!important;
+  width:100%!important;
+  height:50%!important;
+  max-width:none!important;
+  max-height:none!important;
+  object-fit:cover!important;
+  border:0!important;
+  border-radius:0!important;
+  z-index:4!important;
+}
+.liveRoomV4.liveRoom-horizontal .liveStageV4:has(.liveGuestVideo) .liveMainVideo {
+  left:0!important;
+  top:0!important;
+  width:50%!important;
+  height:100%!important;
+}
+.liveRoomV4.liveRoom-horizontal .liveStageV4:has(.liveGuestVideo) .liveGuestVideo {
+  left:50%!important;
+  right:0!important;
+  top:0!important;
+  width:50%!important;
+  height:100%!important;
+}
+`;
+
 export default function LiveCameraStartupEnhancer() {
   useEffect(() => {
     let disposed = false;
@@ -35,7 +76,6 @@ export default function LiveCameraStartupEnhancer() {
         const cameraButton = room?.querySelector('.liveHostControlsV4 > button:nth-child(2)');
         if (!cameraButton || cameraButton.disabled) return;
 
-        // The existing camera toggle reliably refreshes a stalled native/WebView track.
         cameraButton.click();
         later(() => {
           cameraButton.click();
@@ -61,5 +101,5 @@ export default function LiveCameraStartupEnhancer() {
     };
   }, []);
 
-  return null;
+  return <style>{guestSplitCss}</style>;
 }
