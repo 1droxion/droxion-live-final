@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bell, Home, MessageCircle, Plus, Search, Trophy, User } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperience';
-import LiveInteractionEnhancer from './LiveInteractionEnhancer';
+import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
 import LiveProfile from './LiveProfile';
 import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
@@ -96,7 +96,7 @@ export default function LiveFirstApp() {
       <ProfileAvatarEnhancer />
       <PublishReadyEnhancer />
       <ProfileAccountActionsEnhancer />
-      <LiveInteractionEnhancer />
+      <LiveHomePreviewEnhancer currentUserId={user?.id} enabled={tab === 'live' && !immersiveLive} />
 
       {!immersiveLive && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
         <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
