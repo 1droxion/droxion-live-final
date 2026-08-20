@@ -10,6 +10,10 @@ function tryPlay(video) {
 }
 
 const guestSplitCss = `
+.liveRoomV4 .liveLocalPreview.mirrored,
+.liveRoomV4 .liveGuestSelfVideo.mirrored {
+  transform:none!important;
+}
 .liveRoomV4 .liveStageV4:has(.liveGuestVideo) .liveMainVideo {
   position:absolute!important;
   left:0!important;
