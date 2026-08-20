@@ -3,6 +3,7 @@ import { Bell, Home, MessageCircle, Plus, Search, Trophy, User } from 'lucide-re
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperience';
 import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
+import LiveCameraStartupEnhancer from './LiveCameraStartupEnhancer';
 import LiveProfile from './LiveProfile';
 import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
@@ -96,6 +97,7 @@ export default function LiveFirstApp() {
       <ProfileAvatarEnhancer />
       <PublishReadyEnhancer />
       <ProfileAccountActionsEnhancer />
+      <LiveCameraStartupEnhancer />
       <LiveHomePreviewEnhancer currentUserId={user?.id} enabled={tab === 'live' && !immersiveLive} />
 
       {!immersiveLive && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
