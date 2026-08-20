@@ -4,7 +4,6 @@ import { supabase } from "./supabaseClient";
 
 function Signup() {
   const navigate = useNavigate();
-
   const [name, setName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState("");
@@ -13,9 +12,7 @@ function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmed21, setConfirmed21] = useState(false);
-
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const getMaximumBirthDate = () => {
@@ -26,56 +23,34 @@ function Signup() {
 
   const is21OrOlder = (birthDate) => {
     if (!birthDate) return false;
-
     const birth = new Date(`${birthDate}T00:00:00`);
     const today = new Date();
-
     let age = today.getFullYear() - birth.getFullYear();
     const monthDifference = today.getMonth() - birth.getMonth();
-
-    if (
-      monthDifference < 0 ||
-      (monthDifference === 0 && today.getDate() < birth.getDate())
-    ) {
-      age--;
-    }
-
+    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birth.getDate())) age--;
     return age >= 21;
   };
 
   const handleSignup = async (e) => {
     e.preventDefault();
-
     setError("");
-    setMessage("");
 
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanCountry = country.trim();
 
-    if (
-      !cleanName ||
-      !dateOfBirth ||
-      !gender ||
-      !cleanCountry ||
-      !language ||
-      !cleanEmail ||
-      !password
-    ) {
+    if (!cleanName || !dateOfBirth || !gender || !cleanCountry || !language || !cleanEmail || !password) {
       setError("Please complete all required fields.");
       return;
     }
-
     if (!is21OrOlder(dateOfBirth)) {
       setError("Droxion is only available to people age 21 or older.");
       return;
     }
-
     if (!confirmed21) {
       setError("Please confirm that you are 21 years of age or older.");
       return;
     }
-
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
@@ -83,35 +58,26 @@ function Signup() {
 
     try {
       setLoading(true);
-
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password,
-        options: {
-          data: {
-            full_name: cleanName,
-            date_of_birth: dateOfBirth,
-            gender,
-            country: cleanCountry,
-            language,
-          },
+      const { data: created, error: createError } = await supabase.functions.invoke("signup-auto-confirm", {
+        body: {
+          email: cleanEmail,
+          password,
+          full_name: cleanName,
+          date_of_birth: dateOfBirth,
+          gender,
+          country: cleanCountry,
+          language,
+          confirmed21: true,
         },
       });
 
-      if (signupError) {
-        throw signupError;
-      }
+      if (createError) throw createError;
+      if (!created?.ok) throw new Error(created?.error || "Could not create account.");
 
-      if (data?.session) {
-        navigate("/", { replace: true });
-        return;
-      }
+      const { error: loginError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+      if (loginError) throw loginError;
 
-      setMessage(
-        "Account created. Check your email to confirm your account, then sign in."
-      );
-
-      setPassword("");
+      navigate("/", { replace: true });
     } catch (err) {
       setError(err?.message || "Signup failed. Please try again.");
     } finally {
@@ -123,226 +89,55 @@ function Signup() {
     <div className="min-h-screen bg-[#07070b] text-white flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-lg bg-[#111118] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="text-center mb-7">
-          <div className="text-3xl font-black tracking-tight">
-            DROXION
-          </div>
-
-          <div className="mt-2 text-purple-400 font-semibold">
-            Meet the world. Live.
-          </div>
-
-          <p className="text-sm text-gray-400 mt-2">
-            Create your 21+ Droxion account
-          </p>
+          <div className="text-3xl font-black tracking-tight">DROXION</div>
+          <div className="mt-2 text-purple-400 font-semibold">Meet the world. Live.</div>
+          <p className="text-sm text-gray-400 mt-2">Create your 21+ Droxion account</p>
         </div>
 
-        {error && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"
-          >
-            {error}
-          </div>
-        )}
-
-        {message && (
-          <div
-            role="status"
-            className="mb-5 rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-300"
-          >
-            {message}
-
-            <div className="mt-3">
-              <Link
-                to="/login"
-                className="font-semibold underline"
-              >
-                Go to Login
-              </Link>
-            </div>
-          </div>
-        )}
+        {error && <div role="alert" className="mb-5 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
 
         <form onSubmit={handleSignup}>
-          <label
-            htmlFor="name"
-            className="block mb-2 text-sm font-medium"
-          >
-            Full Name
-          </label>
+          <label htmlFor="name" className="block mb-2 text-sm font-medium">Full Name</label>
+          <input id="name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
 
-          <input
-            id="name"
-            type="text"
-            autoComplete="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
-            className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          />
+          <label htmlFor="dob" className="block mb-2 text-sm font-medium">Date of Birth</label>
+          <input id="dob" type="date" min="1900-01-01" max={getMaximumBirthDate()} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} className="w-full p-3 mb-2 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
+          <p className="text-xs text-gray-500 mb-4">You must be 21 or older to use Droxion.</p>
 
-          <label
-            htmlFor="dob"
-            className="block mb-2 text-sm font-medium"
-          >
-            Date of Birth
-          </label>
-
-          <input
-            id="dob"
-            type="date"
-            min="1900-01-01"
-            max={getMaximumBirthDate()}
-            value={dateOfBirth}
-            onChange={(e) => setDateOfBirth(e.target.value)}
-            className="w-full p-3 mb-2 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          />
-
-          <p className="text-xs text-gray-500 mb-4">
-            You must be 21 or older to use Droxion.
-          </p>
-
-          <label
-            htmlFor="gender"
-            className="block mb-2 text-sm font-medium"
-          >
-            Gender
-          </label>
-
-          <select
-            id="gender"
-            value={gender}
-            onChange={(e) => setGender(e.target.value)}
-            className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          >
+          <label htmlFor="gender" className="block mb-2 text-sm font-medium">Gender</label>
+          <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required>
             <option value="">Select gender</option>
             <option value="man">Man</option>
             <option value="woman">Woman</option>
             <option value="nonbinary">Non-binary</option>
-            <option value="prefer_not_to_say">
-              Prefer not to say
-            </option>
+            <option value="prefer_not_to_say">Prefer not to say</option>
           </select>
 
-          <label
-            htmlFor="country"
-            className="block mb-2 text-sm font-medium"
-          >
-            Country
-          </label>
+          <label htmlFor="country" className="block mb-2 text-sm font-medium">Country</label>
+          <input id="country" type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="United States, India, Canada..." className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
 
-          <input
-            id="country"
-            type="text"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            placeholder="United States, India, Canada..."
-            className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          />
-
-          <label
-            htmlFor="language"
-            className="block mb-2 text-sm font-medium"
-          >
-            Main Language
-          </label>
-
-          <select
-            id="language"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          >
-            <option value="English">English</option>
-            <option value="Hindi">Hindi</option>
-            <option value="Spanish">Spanish</option>
-            <option value="Portuguese">Portuguese</option>
-            <option value="French">French</option>
-            <option value="Arabic">Arabic</option>
-            <option value="German">German</option>
-            <option value="Japanese">Japanese</option>
-            <option value="Korean">Korean</option>
-            <option value="Other">Other</option>
+          <label htmlFor="language" className="block mb-2 text-sm font-medium">Main Language</label>
+          <select id="language" value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required>
+            <option value="English">English</option><option value="Hindi">Hindi</option><option value="Spanish">Spanish</option><option value="Portuguese">Portuguese</option><option value="French">French</option><option value="Arabic">Arabic</option><option value="German">German</option><option value="Japanese">Japanese</option><option value="Korean">Korean</option><option value="Other">Other</option>
           </select>
 
-          <label
-            htmlFor="email"
-            className="block mb-2 text-sm font-medium"
-          >
-            Email
-          </label>
+          <label htmlFor="email" className="block mb-2 text-sm font-medium">Email</label>
+          <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
 
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          />
-
-          <label
-            htmlFor="password"
-            className="block mb-2 text-sm font-medium"
-          >
-            Password
-          </label>
-
-          <input
-            id="password"
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Minimum 8 characters"
-            className="w-full p-3 mb-5 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500"
-            required
-          />
+          <label htmlFor="password" className="block mb-2 text-sm font-medium">Password</label>
+          <input id="password" type="password" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 8 characters" className="w-full p-3 mb-5 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
 
           <label className="flex items-start gap-3 mb-6 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={confirmed21}
-              onChange={(e) => setConfirmed21(e.target.checked)}
-              className="mt-1"
-              required
-            />
-
-            <span className="text-sm text-gray-300">
-              I confirm that I am 21 years of age or older and agree to follow Droxion's community rules.
-            </span>
+            <input type="checkbox" checked={confirmed21} onChange={(e) => setConfirmed21(e.target.checked)} className="mt-1" required />
+            <span className="text-sm text-gray-300">I confirm that I am 21 years of age or older and agree to follow Droxion's community rules.</span>
           </label>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-purple-600 hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60 text-white py-3 px-4 rounded-xl font-bold transition"
-          >
-            {loading ? "Creating account..." : "Create Droxion Account"}
-          </button>
+          <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60 text-white py-3 px-4 rounded-xl font-bold transition">{loading ? "Creating account..." : "Create Droxion Account"}</button>
         </form>
 
-        <div className="text-sm mt-6 text-center text-gray-400">
-          Already have an account?{" "}
-          <Link
-            to="/login"
-            className="text-purple-400 hover:text-purple-300 font-semibold"
-          >
-            Login
-          </Link>
-        </div>
-
-        <div className="text-xs text-center text-gray-600 mt-5">
-          Droxion is an adults-only 21+ social discovery platform.
-        </div>
+        <div className="text-sm mt-6 text-center text-gray-400">Already have an account? <Link to="/login" className="text-purple-400 hover:text-purple-300 font-semibold">Login</Link></div>
+        <div className="text-sm mt-3 text-center"><Link to="/forgot-password" className="text-purple-400 hover:text-purple-300 font-semibold">Reset password</Link></div>
+        <div className="text-xs text-center text-gray-600 mt-5">Droxion is an adults-only 21+ social discovery platform.</div>
       </div>
     </div>
   );
