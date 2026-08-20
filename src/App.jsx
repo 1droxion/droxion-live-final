@@ -4,6 +4,8 @@ import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
+import ForgotPassword from "./ForgotPassword.jsx";
+import ResetPassword from "./ResetPassword.jsx";
 import LegalPage from "./LegalPage.jsx";
 
 export default function App() {
@@ -15,6 +17,8 @@ export default function App() {
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/privacy" element={<LegalPage />} />
         <Route path="/terms" element={<LegalPage />} />
         <Route path="/community-guidelines" element={<LegalPage />} />
