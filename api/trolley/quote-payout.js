@@ -1,10 +1,4 @@
-import {
-  callRpc,
-  extractBatchPayment,
-  extractLocalQuote,
-  getSupabaseUser,
-  trolleyRequest
-} from './lib.js';
+import { callRpc, extractBatchPayment, extractLocalQuote, getSupabaseUser, trolleyRequest } from '../../server/trolley-lib.js';
 
 async function failReservedRequest(requestId, reason) {
   if (!requestId) return;
@@ -30,18 +24,15 @@ export default async function handler(req, res) {
     const authorization = req.headers.authorization || '';
     const accessToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     await getSupabaseUser(accessToken);
-
     const body = typeof req.body === 'object' && req.body ? req.body : {};
     const creatorCoins = Math.floor(Number(body.creatorCoins || 0));
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) throw new Error('Server payout configuration is incomplete.');
 
-    const begin = await fetch(`${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL}/rest/v1/rpc/droxion_begin_payout_request_v3`, {
+    const begin = await fetch(`${supabaseUrl}/rest/v1/rpc/droxion_begin_payout_request_v3`, {
       method: 'POST',
-      headers: {
-        apikey: process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=representation'
-      },
+      headers: { apikey: anonKey, Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify({ p_method: 'bank', p_creator_coins: creatorCoins, p_paypal_email: null })
     });
     const payoutRequest = await begin.json().catch(() => ({}));
@@ -52,41 +43,26 @@ export default async function handler(req, res) {
     }
 
     requestId = payoutRequest.request_id;
-    const recipientId = payoutRequest.provider_recipient_id || null;
-    // v3 intentionally does not expose provider recipient IDs to the client. Read it server-side from the reserved request.
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-    if (!serviceKey || !supabaseUrl) throw new Error('Server payout configuration is incomplete.');
-
+    if (!serviceKey) throw new Error('Server payout configuration is incomplete.');
     const requestLookup = await fetch(`${supabaseUrl}/rest/v1/droxion_payout_requests?select=id,user_id,provider_recipient_id,destination_currency,destination_country,amount_cents&id=eq.${encodeURIComponent(requestId)}`, {
       headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }
     });
     const requestRows = await requestLookup.json().catch(() => []);
-    if (!requestLookup.ok || !Array.isArray(requestRows) || !requestRows[0]?.provider_recipient_id) {
-      throw new Error('Verified bank payout destination was not found.');
-    }
+    if (!requestLookup.ok || !Array.isArray(requestRows) || !requestRows[0]?.provider_recipient_id) throw new Error('Verified bank payout destination was not found.');
     const row = requestRows[0];
     const amountUsd = (Number(row.amount_cents || 0) / 100).toFixed(2);
 
     const batchPayload = await trolleyRequest('/v1/batches', {
       method: 'POST',
-      body: {
-        currency: 'USD',
-        description: `Droxion creator payout ${requestId}`,
-        tags: ['droxion', requestId]
-      }
+      body: { currency: 'USD', description: `Droxion creator payout ${requestId}`, tags: ['droxion', requestId] }
     });
     const batchId = batchPayload?.batch?.id;
     if (!batchId) throw new Error('Payout provider did not create a payout batch.');
 
     const paymentPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(batchId)}/payments`, {
       method: 'POST',
-      body: {
-        recipient: { id: row.provider_recipient_id },
-        amount: amountUsd,
-        currency: 'USD',
-        tags: ['droxion', requestId]
-      }
+      body: { recipient: { id: row.provider_recipient_id }, amount: amountUsd, currency: 'USD', tags: ['droxion', requestId] }
     });
     const paymentId = paymentPayload?.payment?.id;
     if (!paymentId) throw new Error('Payout provider did not create a payout payment.');
@@ -96,7 +72,6 @@ export default async function handler(req, res) {
     const payment = extractBatchPayment(summaryPayload) || paymentPayload?.payment || null;
     const quote = extractLocalQuote(payment, row.destination_currency || '');
     const quoteExpiresAt = quotePayload?.batch?.quoteExpiredAt || summaryPayload?.batch?.quoteExpiredAt || null;
-
     if (!quote?.destinationCurrency) throw new Error('Payout provider did not return a destination currency quote.');
 
     await callRpc(null, 'droxion_mark_payout_quoted', {
@@ -111,10 +86,7 @@ export default async function handler(req, res) {
     });
 
     res.status(200).json({
-      ok: true,
-      requestId,
-      sourceAmount: Number(amountUsd),
-      sourceCurrency: 'USD',
+      ok: true, requestId, sourceAmount: Number(amountUsd), sourceCurrency: 'USD',
       destinationAmount: Number.isFinite(quote.destinationAmount) ? quote.destinationAmount : null,
       destinationCurrency: quote.destinationCurrency,
       fxRate: Number.isFinite(quote.fxRate) && quote.fxRate > 0 ? quote.fxRate : null,
