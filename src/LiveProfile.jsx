@@ -38,8 +38,16 @@ export default function LiveProfile({ coins = 0, onOpenWallet }) {
   const [cameraState, setCameraState] = useState('Not tested');
   const [payoutMethod, setPayoutMethod] = useState('paypal');
   const [payoutForm, setPayoutForm] = useState({ amount: '', paypalEmail: '' });
+  const [bankSetupUrl, setBankSetupUrl] = useState('');
+  const [payoutQuote, setPayoutQuote] = useState(null);
 
   useEffect(() => { loadAll(); }, []);
+
+  async function authToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Please sign in again.');
+    return session.access_token;
+  }
 
   async function loadAll() {
     try {
@@ -147,6 +155,91 @@ export default function LiveProfile({ coins = 0, onOpenWallet }) {
     return data?.message || data?.error || 'Could not create withdrawal request.';
   }
 
+  async function startBankSetup() {
+    if (saving) return;
+    setSaving(true); setNotice('');
+    try {
+      const token = await authToken();
+      const response = await fetch(`${DROXION_API_ORIGIN}/api/trolley/widget-url`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.widgetUrl) throw new Error(payload?.error || 'Could not start secure bank setup.');
+      setBankSetupUrl(payload.widgetUrl);
+      setView('bank-setup');
+    } catch (error) {
+      setNotice(error?.message || 'Could not start secure bank setup.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshBankStatus() {
+    setSaving(true); setNotice('');
+    try {
+      const token = await authToken();
+      const response = await fetch(`${DROXION_API_ORIGIN}/api/trolley/status`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Could not refresh bank payout status.');
+      await loadAll();
+      if (payload?.ready) {
+        setNotice(`Bank payout ready: ${payload.country} · ${payload.currency}.`);
+        setView('withdraw');
+      } else {
+        setNotice('Bank setup is saved, but verification is not complete yet.');
+      }
+    } catch (error) {
+      setNotice(error?.message || 'Could not refresh bank payout status.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function cancelBankQuote() {
+    const requestId = payoutQuote?.requestId;
+    if (!requestId) { setPayoutQuote(null); return; }
+    setSaving(true); setNotice('');
+    try {
+      const { data, error } = await supabase.rpc('droxion_cancel_quoted_payout', { p_request_id: requestId });
+      if (error) throw error;
+      if (!data?.cancelled) throw new Error('This payout can no longer be cancelled.');
+      setPayoutQuote(null);
+      await loadAll();
+      setNotice('Bank payout quote cancelled. Your balance was restored.');
+    } catch (error) {
+      setNotice(error?.message || 'Could not cancel payout quote.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmBankPayout() {
+    if (!payoutQuote?.requestId || saving) return;
+    setSaving(true); setNotice('');
+    try {
+      const token = await authToken();
+      const response = await fetch(`${DROXION_API_ORIGIN}/api/trolley/confirm-payout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ requestId: payoutQuote.requestId })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Could not start bank payout.');
+      setPayoutQuote(null);
+      setPayoutForm(current => ({ ...current, amount: '' }));
+      await loadAll();
+      setNotice(`Bank payout submitted in ${payload.destinationCurrency || payoutCurrency}.`);
+    } catch (error) {
+      setNotice(error?.message || 'Could not start bank payout.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function submitWithdrawal() {
     if (saving) return;
     const dollars = Number(payoutForm.amount);
@@ -154,47 +247,41 @@ export default function LiveProfile({ coins = 0, onOpenWallet }) {
     const cents = Math.round(dollars * 100);
     if (cents < minimumPayout) return setNotice(`Minimum withdrawal is $${(minimumPayout / 100).toFixed(2)}.`);
     if (cents > availableCents) return setNotice('Withdrawal amount is higher than your available creator balance.');
-    if (payoutMethod === 'bank' && !bankReady) return setNotice('Secure bank payout setup is required first.');
+    if (payoutMethod === 'bank' && !bankReady) return startBankSetup();
 
     setSaving(true); setNotice('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Please sign in again before withdrawing.');
+      const token = await authToken();
 
       if (payoutMethod === 'paypal') {
         const response = await fetch(`${DROXION_API_ORIGIN}/api/paypal/creator-payout`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            paypalEmail: payoutForm.paypalEmail.trim(),
-            creatorCoins: cents
-          })
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ paypalEmail: payoutForm.paypalEmail.trim(), creatorCoins: cents })
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload?.ok) {
           setNotice(payoutFailureMessage(payload?.reason, payload));
           return;
         }
+        setPayoutForm(current => ({ ...current, amount: '' }));
+        await loadAll();
         setNotice(`PayPal withdrawal submitted. Status: ${String(payload.status || 'PENDING').toLowerCase()}.`);
       } else {
-        const { data, error } = await supabase.rpc('droxion_begin_payout_request_v3', {
-          p_method: 'bank',
-          p_creator_coins: cents,
-          p_paypal_email: null
+        const response = await fetch(`${DROXION_API_ORIGIN}/api/trolley/quote-payout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ creatorCoins: cents })
         });
-        if (error) throw error;
-        if (!data?.allowed) {
-          setNotice(payoutFailureMessage(data?.reason, data));
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.ok) {
+          setNotice(payoutFailureMessage(payload?.reason, payload));
           return;
         }
-        setNotice(`Bank withdrawal reserved for ${data.destination}. Final local-currency quote will be confirmed by the payout provider.`);
+        setPayoutQuote(payload);
+        await loadAll();
+        setNotice('Review the local-currency payout quote before confirming.');
       }
-
-      setPayoutForm(current => ({ ...current, amount: '' }));
-      await loadAll();
     } catch (error) {
       setNotice(error?.message || 'Could not create withdrawal request.');
     } finally {
@@ -211,25 +298,20 @@ export default function LiveProfile({ coins = 0, onOpenWallet }) {
     if (deleting) return;
     if (!window.confirm('Delete your Droxion account permanently? This cannot be undone.')) return;
     if (!window.confirm('Are you sure? Your profile, LIVE data, messages and account access will be deleted.')) return;
-
-    setDeleting(true);
-    setNotice('');
+    setDeleting(true); setNotice('');
     const { error } = await supabase.functions.invoke('delete-my-account', { body: {} });
-    if (error) {
-      setDeleting(false);
-      setNotice(error.message || 'Could not delete account.');
-      return;
-    }
-
+    if (error) { setDeleting(false); setNotice(error.message || 'Could not delete account.'); return; }
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     window.location.assign('/login');
   }
 
-  function Back({ title }) { return <div className="lpSubHead"><button onClick={() => { setView('main'); setNotice(''); }}><ArrowLeft size={19} /></button><h2>{title}</h2></div>; }
+  function Back({ title, target = 'main' }) { return <div className="lpSubHead"><button onClick={() => { setView(target); setNotice(''); }}><ArrowLeft size={19} /></button><h2>{title}</h2></div>; }
 
   if (loading) return <section className="lpPage"><div className="lpLoading">Loading your profile…</div></section>;
   if (!user) return <section className="lpPage lpSignedOut"><UserRound size={38} /><h2>Sign in to your Droxion profile</h2><a href="/login">Sign in</a></section>;
   if (!profile) return <section className="lpPage"><div className="lpLoading">Loading your profile…</div></section>;
+
+  if (view === 'bank-setup') return <section className="lpPage"><Back title="Secure Bank Setup" target="withdraw" /><div className="lpCreatorCard"><div className="lpCreatorTop"><ShieldCheck size={19} /><strong>Provider-secured setup</strong></div><p className="lpSettingText">Your bank and identity details are entered directly with the payout provider. Droxion only keeps safe payout IDs, country, currency and masked bank details.</p></div>{bankSetupUrl ? <iframe title="Secure bank payout setup" src={bankSetupUrl} style={{ width: '100%', minHeight: '680px', border: 0, borderRadius: '18px', background: '#fff' }} /> : <div className="lpEmpty">Unable to load bank setup.</div>}<button className="lpSave" disabled={saving} onClick={refreshBankStatus}>{saving ? 'Checking…' : 'I Finished Setup — Check Status'}</button>{notice && <div className="lpNotice">{notice}</div>}</section>;
 
   if (view === 'edit') return <section className="lpPage"><Back title="Edit Profile" /><div className="lpEditor"><label>Display name<input value={profile.display_name || ''} onChange={e => setProfile(p => ({ ...p, display_name: e.target.value }))} /></label><label>Username<input value={profile.username || ''} onChange={e => setProfile(p => ({ ...p, username: e.target.value }))} /></label><label>Bio<textarea value={profile.bio || ''} onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))} /></label><div className="lpTwoCol"><label>Country<input value={profile.country || ''} onChange={e => setProfile(p => ({ ...p, country: e.target.value }))} /></label><label>Language<input value={profile.language || ''} onChange={e => setProfile(p => ({ ...p, language: e.target.value }))} /></label></div><label>Interests<input value={interests.join(', ')} onChange={e => setProfile(p => ({ ...p, interests: e.target.value.split(',').map(x => x.trim()).filter(Boolean).slice(0, 12) }))} /></label><button className="lpSave" disabled={saving} onClick={saveProfile}>{saving ? 'Saving…' : 'Save Profile'}</button>{notice && <div className="lpNotice">{notice}</div>}<section className="profileEditAccountActions" aria-label="Account actions"><div className="profileEditAccountHead"><strong>Account</strong><span>Sign out or permanently remove your Droxion account.</span></div><button type="button" className="profileEditLogout" onClick={logout}><span className="profileEditActionIcon" aria-hidden="true"><LogOut size={19} /></span><span><strong>Log Out</strong><small>Sign out of this device</small></span><span className="profileEditChevron" aria-hidden="true">›</span></button><button type="button" className={`profileEditDelete${deleting ? ' isDeleting' : ''}`} onClick={deleteAccount} disabled={deleting}><span className="profileEditActionIcon" aria-hidden="true"><Trash2 size={19} /></span><span><strong>{deleting ? 'Deleting Account…' : 'Delete Account'}</strong><small>Permanently delete your Droxion account and data</small></span><span className="profileEditChevron" aria-hidden="true">›</span></button></section></div></section>;
 
@@ -241,7 +323,7 @@ export default function LiveProfile({ coins = 0, onOpenWallet }) {
 
   if (view === 'support') return <section className="lpPage"><Back title="Help & Support" /><div className="lpEditor"><label>Subject<input value={support.subject} onChange={e => setSupport(s => ({ ...s, subject: e.target.value }))} placeholder="What do you need help with?" /></label><label>Message<textarea value={support.message} onChange={e => setSupport(s => ({ ...s, message: e.target.value }))} placeholder="Tell us what happened…" /></label><button className="lpSave" onClick={sendSupport}>Send Support Request</button>{notice && <div className="lpNotice">{notice}</div>}</div></section>;
 
-  if (view === 'withdraw') return <section className="lpPage"><Back title="Withdraw Earnings" /><div className="lpCreatorCard"><div className="lpCreatorTop"><Banknote size={19} /><strong>Creator balance</strong></div><div className="lpPayoutBalance"><strong>${(availableCents / 100).toFixed(2)}</strong><span>Available to withdraw</span></div><small className="lpPayoutHelp">Minimum withdrawal: ${(minimumPayout / 100).toFixed(2)} · Payouts use your verified withdrawal destination.</small></div><div className="lpEditor"><div className="lpSegment"><button className={payoutMethod === 'paypal' ? 'active' : ''} onClick={() => { setPayoutMethod('paypal'); setNotice(''); }}>PayPal</button><button className={payoutMethod === 'bank' ? 'active' : ''} onClick={() => { setPayoutMethod('bank'); setNotice(''); }}>Bank Transfer</button></div><label>Amount (USD balance)<input inputMode="decimal" value={payoutForm.amount} onChange={e => setPayoutForm(f => ({ ...f, amount: e.target.value }))} placeholder="25.00" /></label>{payoutMethod === 'paypal' ? <label>PayPal email<input type="email" value={payoutForm.paypalEmail} onChange={e => setPayoutForm(f => ({ ...f, paypalEmail: e.target.value }))} placeholder="you@example.com" /></label> : <div className="lpStatusBox">{bankReady ? <><strong>{payoutCountry} · {payoutCurrency}</strong><small>{payoutProfile?.bank_name ? `${payoutProfile.bank_name}${payoutProfile.account_last4 ? ` · •••• ${payoutProfile.account_last4}` : ''}` : 'Secure bank payout destination verified.'}</small><small>Your payout provider converts the USD creator balance to your verified local payout currency before sending.</small></> : <><strong>Secure bank setup required</strong><small>Droxion will not collect or store your raw bank account number in the app.</small><small>Bank payouts activate after your payout country, identity and bank destination are verified by our payout provider.</small></>}</div>}<button className="lpSave" disabled={saving || availableCents < minimumPayout || (payoutMethod === 'bank' && !bankReady)} onClick={submitWithdrawal}>{saving ? 'Submitting…' : payoutMethod === 'bank' && !bankReady ? 'Bank Setup Required' : 'Request Withdrawal'}</button>{notice && <div className="lpNotice">{notice}</div>}</div><div className="lpPayoutHistory"><h3>Recent withdrawals</h3>{payouts.length === 0 ? <div className="lpEmpty">No withdrawal requests yet.</div> : payouts.map(row => <div className="lpPayoutRow" key={row.id}><div><strong>${(Number(row.amount_cents || 0) / 100).toFixed(2)}</strong><span>{row.provider === 'trolley' ? `Bank${row.destination_country ? ` · ${row.destination_country}` : ''}${row.destination_currency ? ` · ${row.destination_currency}` : ''}` : `PayPal${row.paypal_email ? ` · ${row.paypal_email}` : ''}`}</span>{row.provider === 'trolley' && Number(row.destination_amount || 0) > 0 && row.destination_currency && <small>Estimated destination: {Number(row.destination_amount).toFixed(2)} {row.destination_currency}</small>}</div><b className={`lpPayoutStatus ${row.status}`}>{row.status}</b></div>)}</div></section>;
+  if (view === 'withdraw') return <section className="lpPage"><Back title="Withdraw Earnings" /><div className="lpCreatorCard"><div className="lpCreatorTop"><Banknote size={19} /><strong>Creator balance</strong></div><div className="lpPayoutBalance"><strong>${(availableCents / 100).toFixed(2)}</strong><span>Available to withdraw</span></div><small className="lpPayoutHelp">Minimum withdrawal: ${(minimumPayout / 100).toFixed(2)} · Payouts use your verified withdrawal destination.</small></div><div className="lpEditor"><div className="lpSegment"><button className={payoutMethod === 'paypal' ? 'active' : ''} onClick={() => { setPayoutMethod('paypal'); setPayoutQuote(null); setNotice(''); }}>PayPal</button><button className={payoutMethod === 'bank' ? 'active' : ''} onClick={() => { setPayoutMethod('bank'); setPayoutQuote(null); setNotice(''); }}>Bank Transfer</button></div><label>Amount (USD balance)<input inputMode="decimal" value={payoutForm.amount} onChange={e => { setPayoutForm(f => ({ ...f, amount: e.target.value })); setPayoutQuote(null); }} placeholder="25.00" /></label>{payoutMethod === 'paypal' ? <label>PayPal email<input type="email" value={payoutForm.paypalEmail} onChange={e => setPayoutForm(f => ({ ...f, paypalEmail: e.target.value }))} placeholder="you@example.com" /></label> : <div className="lpStatusBox">{bankReady ? <><strong>{payoutCountry} · {payoutCurrency}</strong><small>{payoutProfile?.bank_name ? `${payoutProfile.bank_name}${payoutProfile.account_last4 ? ` · •••• ${payoutProfile.account_last4}` : ''}` : 'Secure bank payout destination verified.'}</small><small>The provider uses your verified payout country and converts the USD creator balance to the supported local payout currency.</small><button type="button" className="lpSave" disabled={saving} onClick={startBankSetup}>Update Bank Details</button></> : <><strong>Secure bank setup required</strong><small>Droxion does not collect or store your raw bank account number.</small><small>Complete provider verification to activate a supported bank route and local currency.</small><button type="button" className="lpSave" disabled={saving} onClick={startBankSetup}>{saving ? 'Opening…' : 'Set Up Bank Payout'}</button></>}</div>}{payoutQuote && payoutMethod === 'bank' && <div className="lpCreatorCard"><div className="lpCreatorTop"><Landmark size={19} /><strong>Review payout quote</strong></div><div className="lpCreatorNumbers"><div><strong>${Number(payoutQuote.sourceAmount || 0).toFixed(2)}</strong><span>From creator balance</span></div><div><strong>{payoutQuote.destinationAmount == null ? 'Provider quote' : Number(payoutQuote.destinationAmount).toFixed(2)} {payoutQuote.destinationCurrency || payoutCurrency}</strong><span>Estimated local payout</span></div></div>{payoutQuote.fxRate ? <small className="lpPayoutHelp">FX rate: {Number(payoutQuote.fxRate).toFixed(6)}</small> : null}{payoutQuote.providerFee != null ? <small className="lpPayoutHelp">Estimated provider fee: {Number(payoutQuote.providerFee).toFixed(2)} {payoutQuote.destinationCurrency || payoutCurrency}</small> : null}<div className="lpSegment"><button disabled={saving} onClick={cancelBankQuote}>Cancel</button><button className="active" disabled={saving} onClick={confirmBankPayout}>{saving ? 'Processing…' : 'Confirm Payout'}</button></div></div>}<button className="lpSave" disabled={saving || availableCents < minimumPayout || Boolean(payoutQuote)} onClick={submitWithdrawal}>{saving ? 'Submitting…' : payoutMethod === 'bank' && !bankReady ? 'Set Up Bank Payout' : payoutMethod === 'bank' ? 'Get Local Currency Quote' : 'Request Withdrawal'}</button>{notice && <div className="lpNotice">{notice}</div>}</div><div className="lpPayoutHistory"><h3>Recent withdrawals</h3>{payouts.length === 0 ? <div className="lpEmpty">No withdrawal requests yet.</div> : payouts.map(row => <div className="lpPayoutRow" key={row.id}><div><strong>${(Number(row.amount_cents || 0) / 100).toFixed(2)}</strong><span>{row.provider === 'trolley' ? `Bank${row.destination_country ? ` · ${row.destination_country}` : ''}${row.destination_currency ? ` · ${row.destination_currency}` : ''}` : `PayPal${row.paypal_email ? ` · ${row.paypal_email}` : ''}`}</span>{row.provider === 'trolley' && Number(row.destination_amount || 0) > 0 && row.destination_currency && <small>Destination: {Number(row.destination_amount).toFixed(2)} {row.destination_currency}</small>}</div><b className={`lpPayoutStatus ${row.status}`}>{row.status}</b></div>)}</div></section>;
 
   return <section className="lpPage"><div className="lpHero"><div className="lpAvatarWrap">{profile.avatar_url ? <img src={profile.avatar_url} alt="Profile" /> : <div className="lpAvatarFallback">{(profile.display_name || 'D')[0]?.toUpperCase()}</div>}{creator?.status === 'approved' && <span className="lpVerified"><BadgeCheck size={18} /></span>}</div><h1>{profile.display_name || profile.username || 'Droxion Creator'}</h1><p>{profile.country || 'Global'} · {profile.language || 'English'}{age ? ` · ${age}` : ' · 21+'}</p>{profile.bio && <div className="lpBio">{profile.bio}</div>}{interests.length > 0 && <div className="lpChips">{interests.slice(0, 5).map(item => <span key={item}>{item}</span>)}</div>}</div><div className="lpStats"><button onClick={() => loadNetwork('followers')}><strong>{followers}</strong><span>Followers</span></button><button onClick={() => loadNetwork('following')}><strong>{following}</strong><span>Following</span></button><div><strong>{creator?.status ? creator.status.toUpperCase() : 'VIEWER'}</strong><span>Creator</span></div></div><button className="lpWallet" type="button" onClick={onOpenWallet}><span className="lpIcon"><Coins size={20} /></span><span><strong>{coins} Droxion Coins</strong><small>Buy coins and manage your wallet</small></span><ChevronRight size={20} /></button><div className="lpCreatorCard"><div className="lpCreatorTop"><Sparkles size={19} /><strong>Creator Center</strong></div><div className="lpCreatorNumbers"><div><strong>${(earnings / 100).toFixed(2)}</strong><span>Lifetime earnings</span></div><div><strong>${(availableCents / 100).toFixed(2)}</strong><span>Available balance</span></div></div></div><div className="lpMenu"><span className="publishDeleteAccount profileAccountActionHidden" aria-hidden="true" /><button onClick={() => setView('withdraw')}><span className="lpIcon"><Landmark size={20} /></span><span><strong>Withdraw Earnings</strong><small>PayPal or secure local bank payout</small></span><ChevronRight size={20} /></button><button onClick={() => setView('edit')}><span className="lpIcon"><Edit3 size={20} /></span><span><strong>Edit Profile</strong><small>Name, bio, country, language and interests</small></span><ChevronRight size={20} /></button><button onClick={() => setView('live-settings')}><span className="lpIcon"><Camera size={20} /></span><span><strong>LIVE Settings</strong><small>Test camera, microphone and permissions</small></span><ChevronRight size={20} /></button><button onClick={() => loadNetwork('followers')}><span className="lpIcon"><Users size={20} /></span><span><strong>Followers & Following</strong><small>See your Droxion network</small></span><ChevronRight size={20} /></button><button onClick={() => setView('privacy')}><span className="lpIcon"><ShieldCheck size={20} /></span><span><strong>Safety & Privacy</strong><small>Discovery and interaction permissions</small></span><ChevronRight size={20} /></button><button onClick={() => setView('support')}><span className="lpIcon"><HelpCircle size={20} /></span><span><strong>Help & Support</strong><small>Send a support request</small></span><ChevronRight size={20} /></button><button className="lpLogout" onClick={logout}><span className="lpIcon"><LogOut size={20} /></span><span><strong>Log Out</strong><small>Sign out of this device</small></span><ChevronRight size={20} /></button></div></section>;
 }
