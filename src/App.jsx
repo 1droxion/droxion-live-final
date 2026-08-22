@@ -7,6 +7,7 @@ import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
 import ResetPassword from "./ResetPassword.jsx";
 import LegalPage from "./LegalPage.jsx";
+import DeleteAccount from "./DeleteAccount.jsx";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/terms" element={<LegalPage />} />
         <Route path="/community-guidelines" element={<LegalPage />} />
         <Route path="/support" element={<LegalPage />} />
+        <Route path="/delete-account" element={<DeleteAccount />} />
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="/random" element={<Navigate to="/" replace />} />
         <Route path="/direct-call" element={<Navigate to="/" replace />} />
