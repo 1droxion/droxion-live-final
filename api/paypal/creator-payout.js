@@ -12,15 +12,16 @@ import {
 
 async function beginPayout(accessToken, paypalEmail, creatorCoins) {
   const { supabaseUrl } = getSupabaseConfig();
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/droxion_begin_payout_request`, {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/droxion_begin_payout_request_v3`, {
     method: 'POST',
     headers: {
       ...getSupabaseHeaders(accessToken, false),
       Prefer: 'return=representation'
     },
     body: JSON.stringify({
-      p_paypal_email: paypalEmail,
-      p_creator_coins: creatorCoins
+      p_method: 'paypal',
+      p_creator_coins: creatorCoins,
+      p_paypal_email: paypalEmail
     })
   });
 
@@ -73,7 +74,7 @@ export default async function handler(req, res) {
         items: [{
           recipient_type: 'EMAIL',
           amount: { value: amount, currency: 'USD' },
-          receiver: payoutRequest.paypal_email,
+          receiver: paypalEmail,
           note: 'Droxion creator earnings',
           sender_item_id: requestId
         }]
