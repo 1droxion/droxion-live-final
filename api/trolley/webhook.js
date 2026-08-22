@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { callRpc, getSupabaseConfig, getSupabaseHeaders } from './lib.js';
+import { callRpc, getSupabaseConfig, getSupabaseHeaders } from '../../server/trolley-lib.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -74,7 +74,6 @@ export default async function handler(req, res) {
     const payment = payload?.body?.payment || payload?.payment || null;
     const paymentId = String(payment?.id || '').trim();
     if (!paymentId) {
-      // Trolley validates subscriptions with an empty JSON body.
       res.status(200).json({ ok: true });
       return;
     }
@@ -87,12 +86,7 @@ export default async function handler(req, res) {
 
     const status = String(payment?.status || action || '').toLowerCase();
     if (['processed', 'completed', 'paid'].includes(status)) {
-      await callRpc(null, 'droxion_finalize_payout', {
-        p_request_id: request.id,
-        p_success: true,
-        p_provider_item_id: paymentId,
-        p_failure_reason: null
-      });
+      await callRpc(null, 'droxion_finalize_payout', { p_request_id: request.id, p_success: true, p_provider_item_id: paymentId, p_failure_reason: null });
     } else if (['failed', 'rejected', 'cancelled', 'canceled'].includes(status)) {
       await callRpc(null, 'droxion_finalize_payout', {
         p_request_id: request.id,
