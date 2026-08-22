@@ -1,4 +1,4 @@
-import { callRpc, getSupabaseUser, trolleyRequest } from './lib.js';
+import { callRpc, getSupabaseUser, trolleyRequest } from '../../server/trolley-lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -41,10 +41,7 @@ export default async function handler(req, res) {
     }
 
     const processPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(payout.provider_batch_id)}/start-processing`, { method: 'POST' });
-    await callRpc(null, 'droxion_mark_payout_processing', {
-      p_request_id: requestId,
-      p_provider_batch_id: payout.provider_batch_id
-    });
+    await callRpc(null, 'droxion_mark_payout_processing', { p_request_id: requestId, p_provider_batch_id: payout.provider_batch_id });
 
     res.status(200).json({
       ok: true,
