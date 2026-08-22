@@ -1,4 +1,139 @@
 workflows:
+  android-capacitor:
+    name: Droxion Android Play Bundle
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      android_signing:
+        - droxion_android
+      vars:
+        APP_NAME: Droxion Live
+        PACKAGE_NAME: com.droxion.live
+        ANDROID_VERSION_NAME: "1.1"
+        VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
+        VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
+        CM_CLONE_DEPTH: "1"
+        GIT_LFS_SKIP_SMUDGE: "1"
+        HUSKY: "0"
+        CI: "true"
+      node: 22
+      java: 21
+
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+
+    scripts:
+      - name: Install web and Android dependencies
+        script: |
+          set -e
+          npm config set audit false
+          npm config set fund false
+          npm config set progress false
+          npm install --no-audit --no-fund
+          npm install --no-save --package-lock=false --no-audit --no-fund \
+            @capacitor/core@8.5.0 \
+            @capacitor/cli@8.5.0 \
+            @capacitor/android@8.5.0 \
+            @capgo/native-purchases@8.6.6
+
+      - name: Build Droxion web bundle
+        script: |
+          set -e
+          npm run build
+
+      - name: Create or sync native Android project
+        script: |
+          set -e
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      - name: Configure Android release
+        script: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          build = Path('android/app/build.gradle')
+          text = build.read_text()
+          version_code = str(max(1, int(os.environ.get('BUILD_NUMBER', '1'))))
+          version_name = os.environ.get('ANDROID_VERSION_NAME', '1.1')
+
+          text = re.sub(r'versionCode\s*=?\s*\d+', f'versionCode = {version_code}', text, count=1)
+          text = re.sub(r'versionName\s*=?\s*"[^"]+"', f'versionName = "{version_name}"', text, count=1)
+
+          if 'CM_KEYSTORE_PATH' not in text:
+              marker = '    buildTypes {'
+              signing = '''    signingConfigs {
+                  release {
+                      storeFile = file(System.getenv("CM_KEYSTORE_PATH"))
+                      storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+                      keyAlias = System.getenv("CM_KEY_ALIAS")
+                      keyPassword = System.getenv("CM_KEY_PASSWORD")
+                  }
+              }
+
+          '''
+              if marker not in text:
+                  raise SystemExit('Could not find Android buildTypes block.')
+              text = text.replace(marker, signing + marker, 1)
+
+          release_marker = '    buildTypes {\n        release {'
+          if release_marker in text and 'signingConfig = signingConfigs.release' not in text:
+              text = text.replace(release_marker, release_marker + '\n            signingConfig = signingConfigs.release', 1)
+
+          build.write_text(text)
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          xml = manifest.read_text()
+          permissions = [
+              'android.permission.CAMERA',
+              'android.permission.RECORD_AUDIO',
+              'android.permission.MODIFY_AUDIO_SETTINGS',
+          ]
+          lines = []
+          for permission in permissions:
+              if permission not in xml:
+                  lines.append(f'    <uses-permission android:name="{permission}" />')
+          if lines:
+              app_marker = '    <application'
+              if app_marker not in xml:
+                  raise SystemExit('Could not find Android application tag.')
+              xml = xml.replace(app_marker, '\n'.join(lines) + '\n\n' + app_marker, 1)
+              manifest.write_text(xml)
+
+          print(f'Android versionName={version_name} versionCode={version_code}')
+          PY
+
+      - name: Verify Android 16 target
+        script: |
+          set -e
+          grep -E "compileSdkVersion|targetSdkVersion" android/variables.gradle || true
+          grep -q "compileSdkVersion = 36" android/variables.gradle
+          grep -q "targetSdkVersion = 36" android/variables.gradle
+
+      - name: Build signed Android App Bundle
+        script: |
+          set -e
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease --stacktrace
+          echo "Generated Android artifacts:"
+          find app/build/outputs -type f -name '*.aab' -print
+          test -n "$(find app/build/outputs -name '*.aab' -print -quit)"
+
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+      - android/app/build/outputs/**/mapping.txt
+
   ios-capacitor:
     name: Droxion iOS TestFlight
     max_build_duration: 60
