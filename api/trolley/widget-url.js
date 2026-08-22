@@ -1,4 +1,4 @@
-import { buildTrolleyWidgetUrl, getSupabaseUser } from './lib.js';
+import { buildTrolleyWidgetUrl, getSupabaseUser } from '../../server/trolley-lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -15,12 +15,7 @@ export default async function handler(req, res) {
       res.status(400).json({ error: 'A verified account email is required for bank payout setup.' });
       return;
     }
-
-    const widgetUrl = buildTrolleyWidgetUrl({
-      email: user.email,
-      referenceId: user.id
-    });
-
+    const widgetUrl = buildTrolleyWidgetUrl({ email: user.email, referenceId: user.id });
     res.status(200).json({ ok: true, widgetUrl });
   } catch (error) {
     const message = error?.message || 'Could not start secure bank payout setup.';
