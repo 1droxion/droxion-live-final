@@ -35,6 +35,7 @@ export default async function handler(req, res) {
       return;
     }
 
+    const environment = /sandbox/i.test(String(baseUrl || '')) ? 'sandbox' : 'production';
     const amount = (Number(packageProduct.price_cents) / 100).toFixed(2);
     const orderPayload = {
       intent: 'CAPTURE',
@@ -70,6 +71,7 @@ export default async function handler(req, res) {
       currency: 'USD',
       coins: Number(packageProduct.coins_granted),
       fulfilled: false,
+      environment,
       created_at: new Date().toISOString()
     };
 
