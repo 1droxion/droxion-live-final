@@ -8,7 +8,7 @@ import {
   getSupabaseUser,
   normalizeError,
   readJsonBody
-} from './lib.js';
+} from '../../server/paypal-lib.js';
 
 async function beginPayout(accessToken, paypalEmail, creatorCoins) {
   const { supabaseUrl } = getSupabaseConfig();
