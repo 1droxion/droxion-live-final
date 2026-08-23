@@ -154,7 +154,7 @@ workflows:
         APP_NAME: Droxion Live
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
-        IOS_MARKETING_VERSION: "1.1"
+        IOS_MARKETING_VERSION: "1.2"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
         CM_CLONE_DEPTH: "1"
