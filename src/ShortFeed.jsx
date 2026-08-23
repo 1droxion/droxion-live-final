@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, MessageCircle, Share2, Radio, UserPlus, Volume2, VolumeX, X } from 'lucide-react';
+import { Download, Heart, MessageCircle, MoreVertical, Radio, Share2, Trash2, UserPlus, Volume2, VolumeX, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './short-feed.css';
 
@@ -28,6 +28,8 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   const [drawerRows, setDrawerRows] = useState([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
+  const [actionClip, setActionClip] = useState(null);
+  const [deletingClipId, setDeletingClipId] = useState('');
   const videoRefs = useRef(new Map());
   const viewed = useRef(new Set());
   const lastTap = useRef({ clipId: '', at: 0 });
@@ -40,7 +42,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       setLoading(true);
       const { data: clipRows, error } = await supabase
         .from('droxion_live_clips')
-        .select('id,creator_id,session_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,highlight_score')
+        .select('id,creator_id,session_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,highlight_score,storage_path')
         .eq('status', 'ready')
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('highlight_score', { ascending: false })
@@ -150,6 +152,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   }
 
   async function loadLikes(clip) {
+    setActionClip(null);
     setDrawer({ type: 'likes', clip });
     setDrawerRows([]);
     setDrawerLoading(true);
@@ -166,6 +169,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   }
 
   async function loadComments(clip) {
+    setActionClip(null);
     setDrawer({ type: 'comments', clip });
     setDrawerRows([]);
     setDrawerLoading(true);
@@ -193,6 +197,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   }
 
   async function shareClip(clip) {
+    setActionClip(null);
     const profile = profiles[clip.creator_id] || {};
     const shareData = {
       title: `${profile.display_name || 'Droxion creator'} · LIVE Highlight`,
@@ -209,6 +214,67 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
     } catch (error) {
       if (error?.name !== 'AbortError') setNotice('Could not share this highlight.');
     }
+  }
+
+  async function downloadClip(clip) {
+    setActionClip(null);
+    try {
+      const response = await fetch(clip.video_url);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const extension = String(blob.type || '').includes('webm') ? 'webm' : 'mp4';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `droxion-live-highlight-${clip.id}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setNotice('Highlight download started.');
+    } catch {
+      window.open(clip.video_url, '_blank', 'noopener,noreferrer');
+      setNotice('Opened the highlight so you can save it.');
+    }
+  }
+
+  async function deleteOwnClip(clip) {
+    if (!clip?.id || clip.creator_id !== currentUserId || deletingClipId) return;
+    const confirmed = window.confirm('Delete this LIVE highlight permanently? This cannot be undone.');
+    if (!confirmed) return;
+
+    setDeletingClipId(clip.id);
+    setActionClip(null);
+    const { data: prepared, error: prepareError } = await supabase.rpc('droxion_prepare_clip_delete', { p_clip_id: clip.id });
+    if (prepareError) {
+      setNotice(prepareError.message || 'Could not delete this highlight.');
+      setDeletingClipId('');
+      return;
+    }
+
+    const storagePath = prepared?.storage_path || clip.storage_path;
+    if (storagePath) {
+      const { error: storageError } = await supabase.storage.from('droxion-live-clips').remove([storagePath]);
+      if (storageError) {
+        await supabase.rpc('droxion_set_clip_visibility', { p_clip_id: clip.id, p_hidden: false });
+        setNotice('Could not remove the video file. Please try again.');
+        setDeletingClipId('');
+        return;
+      }
+    }
+
+    const { error: finalizeError } = await supabase.rpc('droxion_finalize_clip_delete', { p_clip_id: clip.id });
+    if (finalizeError) {
+      setNotice('Video file was removed, but cleanup is still pending.');
+      setClips(current => current.filter(item => item.id !== clip.id));
+      setDeletingClipId('');
+      return;
+    }
+
+    viewed.current.delete(clip.id);
+    setClips(current => current.filter(item => item.id !== clip.id));
+    setNotice('Highlight deleted.');
+    setDeletingClipId('');
   }
 
   function handleVideoTap(clip) {
@@ -240,6 +306,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
         const live = liveCreators[clip.creator_id];
         const isLiked = liked.has(clip.id);
         const isFollowing = following.has(clip.creator_id);
+        const isOwner = clip.creator_id === currentUserId;
         return (
           <article className="sfSlide" key={clip.id}>
             <video
@@ -256,13 +323,19 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
               onPointerUp={() => handleVideoTap(clip)}
             />
             <div className="sfShade" />
-            <div className="sfTopLine"><span>LIVE HIGHLIGHT</span>{live && <button type="button" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={14} /> LIVE NOW</button>}</div>
+            <div className="sfTopLine">
+              <span>LIVE HIGHLIGHT</span>
+              <div className="sfTopActions">
+                {live && <button type="button" className="sfLiveNow" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={14} /> LIVE NOW</button>}
+                <button type="button" className="sfMoreButton" onClick={() => setActionClip(clip)} aria-label="Highlight options"><MoreVertical size={20} /></button>
+              </div>
+            </div>
 
             <div className="sfCreatorBlock">
               <div className="sfCreatorRow">
                 {avatar(profile, 'sfCreatorAvatar')}
                 <div><strong>{profile.display_name || profile.username || 'Droxion Creator'}</strong><span>{profile.username ? `@${profile.username}` : 'Droxion creator'}</span></div>
-                {clip.creator_id !== currentUserId && <button className={isFollowing ? 'following' : ''} type="button" onClick={() => toggleFollow(clip.creator_id)}>{isFollowing ? 'Following' : 'Follow'}</button>}
+                {!isOwner && <button className={isFollowing ? 'following' : ''} type="button" onClick={() => toggleFollow(clip.creator_id)}>{isFollowing ? 'Following' : 'Follow'}</button>}
               </div>
               <p>{clip.caption || 'A highlight from LIVE on Droxion.'}</p>
               {live && <button className="sfWatchLive" type="button" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={15} /> Watch LIVE</button>}
@@ -282,6 +355,16 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       })}
 
       {notice && <div className="sfNotice">{notice}</div>}
+
+      {actionClip && <div className="sfActionBackdrop" onClick={() => setActionClip(null)}>
+        <div className="sfActionSheet" onClick={event => event.stopPropagation()}>
+          <div className="sfActionHandle" />
+          <button type="button" onClick={() => shareClip(actionClip)}><Share2 size={20} /><span><strong>Share</strong><small>Send this Droxion highlight</small></span></button>
+          <button type="button" onClick={() => downloadClip(actionClip)}><Download size={20} /><span><strong>Download video</strong><small>Save a copy to your device</small></span></button>
+          {actionClip.creator_id === currentUserId && <button type="button" className="danger" disabled={deletingClipId === actionClip.id} onClick={() => deleteOwnClip(actionClip)}><Trash2 size={20} /><span><strong>Delete video</strong><small>Permanently remove your highlight</small></span></button>}
+          <button type="button" className="cancel" onClick={() => setActionClip(null)}>Cancel</button>
+        </div>
+      </div>}
 
       {drawer && <div className="sfDrawerBackdrop" onClick={() => setDrawer(null)}>
         <div className="sfDrawer" onClick={event => event.stopPropagation()}>
