@@ -7,7 +7,7 @@ import {
   readJsonBody,
   updateTransactionRecord,
   verifyWebhookSignature
-} from './lib.js';
+} from '../../server/paypal-lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -63,8 +63,6 @@ export default async function handler(req, res) {
       return;
     }
 
-    // A webhook can arrive before the normal capture endpoint has recorded the
-    // capture ID, so fall back to the PayPal order ID to recover the pending row.
     let transaction = await findTransactionByCaptureId(null, captureId);
     if (!transaction) {
       transaction = await findTransactionByOrderId(null, orderId, null);
