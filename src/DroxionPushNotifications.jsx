@@ -5,43 +5,53 @@ import { supabase } from './supabaseClient';
 
 const ONESIGNAL_APP_ID = 'd04a1adc-eb95-486a-994a-993e41e0c178';
 
-let initialized = false;
+let initPromise = null;
+
+function ensureOneSignal() {
+  if (!initPromise) {
+    initPromise = OneSignal.initialize(ONESIGNAL_APP_ID).catch(error => {
+      initPromise = null;
+      throw error;
+    });
+  }
+  return initPromise;
+}
 
 export default function DroxionPushNotifications() {
   useEffect(() => {
-    if (!Capacitor.isNativePlatform?.() || initialized) return;
-    initialized = true;
+    if (!Capacitor.isNativePlatform?.()) return;
 
-    try {
-      OneSignal.initialize(ONESIGNAL_APP_ID);
-      OneSignal.Notifications.requestPermission(false).catch(error => {
-        console.warn('Push permission request failed', error);
-      });
-    } catch (error) {
-      console.warn('OneSignal initialization failed', error);
-    }
+    (async () => {
+      try {
+        await ensureOneSignal();
+        await OneSignal.Notifications.requestPermission(false);
+      } catch (error) {
+        console.warn('OneSignal initialization or permission failed', error);
+      }
+    })();
   }, []);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform?.()) return;
     let alive = true;
 
-    async function syncIdentity() {
+    async function setIdentity(userId) {
       try {
-        const { data } = await supabase.auth.getUser();
+        await ensureOneSignal();
         if (!alive) return;
-        if (data?.user?.id) await OneSignal.login(data.user.id);
+        if (userId) await OneSignal.login(userId);
         else await OneSignal.logout();
       } catch (error) {
         console.warn('Could not sync OneSignal identity', error);
       }
     }
 
-    syncIdentity();
+    supabase.auth.getUser().then(({ data }) => {
+      if (alive) setIdentity(data?.user?.id || '');
+    }).catch(() => {});
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!alive) return;
-      if (session?.user?.id) OneSignal.login(session.user.id).catch(() => {});
-      else OneSignal.logout().catch(() => {});
+      if (alive) setIdentity(session?.user?.id || '');
     });
 
     return () => {
