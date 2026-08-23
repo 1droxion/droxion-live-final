@@ -2,5 +2,8 @@
   "appId": "com.droxion.live",
   "appName": "Droxion Live",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "ios": {
+    "handleApplicationNotifications": false
+  }
 }
