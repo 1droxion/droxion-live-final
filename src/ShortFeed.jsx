@@ -42,7 +42,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       setLoading(true);
       const { data: clipRows, error } = await supabase
         .from('droxion_live_clips')
-        .select('id,creator_id,session_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,highlight_score,storage_path')
+        .select('id,creator_id,session_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,highlight_score,storage_path,camera_facing')
         .eq('status', 'ready')
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('highlight_score', { ascending: false })
@@ -312,6 +312,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
             <video
               ref={node => { if (node) videoRefs.current.set(clip.id, node); else videoRefs.current.delete(clip.id); }}
               data-clip-id={clip.id}
+              data-camera-facing={clip.camera_facing || 'user'}
               className="sfVideo"
               src={clip.video_url}
               poster={clip.thumbnail_url || undefined}
