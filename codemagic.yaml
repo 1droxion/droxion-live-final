@@ -249,7 +249,9 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_NAME}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_NAME}" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion uses your camera when you go LIVE or join a LIVE conversation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion uses your camera when you go LIVE or join a LIVE conversation." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$PLIST"
 
       - name: Install CocoaPods
         script: |
