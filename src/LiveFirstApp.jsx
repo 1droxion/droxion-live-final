@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import LiveExperience from './LiveExperience';
+import LiveExperience from './LiveExperienceScale';
 import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
 import LiveCameraStartupEnhancer from './LiveCameraStartupEnhancer';
 import LiveProfile from './LiveProfile';
