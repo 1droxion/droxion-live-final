@@ -3,7 +3,7 @@ import {
   getSupabaseHeaders,
   getSupabaseUser,
   readJsonBody
-} from '../paypal/lib.js';
+} from '../../server/paypal-lib.js';
 
 function cleanText(value, fallback, max = 120) {
   const text = String(value || '').trim();
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
     const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${apiKey}`,
+        Authorization: `Key ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
