@@ -1,9 +1,8 @@
 import { supabase } from '../supabaseClient';
 
-const TIMESLICE_MS = 5000;
-const CLIP_SECONDS = 30;
-const CLIP_CHUNKS = CLIP_SECONDS * 1000 / TIMESLICE_MS;
+const SEGMENT_MS = 30_000;
 const MIN_CLIP_SECONDS = 15;
+const MAX_SEGMENTS = 60; // ~30 minutes retained on device.
 
 function pickMimeType() {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -17,68 +16,44 @@ function pickMimeType() {
 }
 
 function extensionFor(type) {
-  return type.includes('mp4') ? 'mp4' : 'webm';
+  return String(type || '').includes('mp4') ? 'mp4' : 'webm';
 }
 
-function buildCandidates(chunks) {
-  if (!chunks.length) return [];
-  const windowSize = Math.min(CLIP_CHUNKS, chunks.length);
-  const candidates = [];
-  for (let start = 0; start <= chunks.length - windowSize; start += 1) {
-    const slice = chunks.slice(start, start + windowSize);
-    const score = slice.reduce((sum, item) => sum + Number(item.score || 0), 0);
-    candidates.push({ start, end: start + windowSize - 1, score, slice });
+function makeRecorder(stream, preferredMimeType) {
+  try {
+    return preferredMimeType
+      ? new MediaRecorder(stream, { mimeType: preferredMimeType, videoBitsPerSecond: 1_500_000 })
+      : new MediaRecorder(stream, { videoBitsPerSecond: 1_500_000 });
+  } catch {
+    try { return new MediaRecorder(stream); } catch { return null; }
   }
-  if (!candidates.length) candidates.push({ start: 0, end: chunks.length - 1, score: 0, slice: chunks });
-  candidates.sort((a, b) => b.score - a.score || a.start - b.start);
-
-  const picked = [];
-  for (const candidate of candidates) {
-    if (picked.length >= 2) break;
-    const overlaps = picked.some(item => !(candidate.end < item.start - 1 || candidate.start > item.end + 1));
-    if (!overlaps) picked.push(candidate);
-  }
-  if (picked.length < 2 && chunks.length >= Math.ceil(MIN_CLIP_SECONDS * 1000 / TIMESLICE_MS) * 2) {
-    const half = Math.floor(chunks.length / 2);
-    const fallback = [
-      { start: 0, end: Math.min(windowSize - 1, half - 1), slice: chunks.slice(0, Math.min(windowSize, half)), score: 0 },
-      { start: half, end: chunks.length - 1, slice: chunks.slice(half, Math.min(chunks.length, half + windowSize)), score: 0 }
-    ];
-    fallback.forEach(candidate => {
-      if (picked.length < 2 && candidate.slice.length >= 3) picked.push(candidate);
-    });
-  }
-  return picked.slice(0, 2);
 }
 
-async function uploadCandidate({ creatorId, sessionId, index, candidate, mimeType, title }) {
-  const durationSeconds = Math.max(MIN_CLIP_SECONDS, Math.min(45, candidate.slice.length * TIMESLICE_MS / 1000));
-  if (candidate.slice.length < Math.ceil(MIN_CLIP_SECONDS * 1000 / TIMESLICE_MS)) return null;
-  const blob = new Blob(candidate.slice.map(item => item.blob), { type: mimeType || 'video/webm' });
-  if (!blob.size) return null;
-
-  const ext = extensionFor(mimeType || 'video/webm');
+async function uploadSegment({ creatorId, sessionId, index, segment, title }) {
+  if (!segment?.blob?.size || segment.durationSeconds < MIN_CLIP_SECONDS) return null;
+  const mimeType = segment.mimeType || segment.blob.type || 'video/webm';
+  const ext = extensionFor(mimeType);
   const path = `${creatorId}/${sessionId}/auto-${index + 1}-${Date.now()}.${ext}`;
-  const { error: uploadError } = await supabase.storage.from('droxion-live-clips').upload(path, blob, {
-    contentType: mimeType || 'video/webm',
+
+  const { error: uploadError } = await supabase.storage.from('droxion-live-clips').upload(path, segment.blob, {
+    contentType: mimeType,
     cacheControl: '31536000',
     upsert: false
   });
   if (uploadError) throw uploadError;
 
-  const sourceStartMs = candidate.start * TIMESLICE_MS;
-  const sourceEndMs = sourceStartMs + durationSeconds * 1000;
   const { data, error } = await supabase.rpc('droxion_publish_live_clip', {
     p_session_id: sessionId,
     p_storage_path: path,
     p_caption: title ? `From LIVE · ${title}` : 'From LIVE on Droxion',
-    p_duration_seconds: Math.round(durationSeconds),
-    p_highlight_score: Number(candidate.score || 0),
-    p_source_start_ms: sourceStartMs,
-    p_source_end_ms: sourceEndMs
+    p_duration_seconds: Math.round(segment.durationSeconds),
+    p_highlight_score: Number(segment.score || 0),
+    p_source_start_ms: Math.max(0, Math.round(segment.sourceStartMs || 0)),
+    p_source_end_ms: Math.max(0, Math.round(segment.sourceEndMs || 0))
   });
+
   if (error) {
-    await supabase.storage.from('droxion-live-clips').remove([path]).catch(() => {});
+    try { await supabase.storage.from('droxion-live-clips').remove([path]); } catch {}
     throw error;
   }
   return data;
@@ -86,52 +61,121 @@ async function uploadCandidate({ creatorId, sessionId, index, candidate, mimeTyp
 
 export function createLiveHighlightRecorder({ creatorId, sessionId, stream, title = '' }) {
   if (!creatorId || !sessionId || !stream || typeof MediaRecorder === 'undefined') return null;
-  const mimeType = pickMimeType();
-  let recorder;
-  try {
-    recorder = mimeType ? new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_500_000 }) : new MediaRecorder(stream);
-  } catch {
-    try { recorder = new MediaRecorder(stream); } catch { return null; }
+
+  const preferredMimeType = pickMimeType();
+  const liveStartedAt = Date.now();
+  const segments = [];
+  let currentStream = stream;
+  let currentRecorder = null;
+  let currentChunks = [];
+  let currentScore = 0;
+  let currentStartedAt = 0;
+  let rotateTimer = null;
+  let stopped = false;
+  let rotating = false;
+
+  function saveCurrentSegment() {
+    if (!currentChunks.length || !currentStartedAt) return;
+    const endedAt = Date.now();
+    const durationSeconds = Math.max(0, (endedAt - currentStartedAt) / 1000);
+    const mimeType = currentRecorder?.mimeType || preferredMimeType || currentChunks[0]?.type || 'video/webm';
+    const blob = new Blob(currentChunks, { type: mimeType });
+    if (blob.size && durationSeconds >= MIN_CLIP_SECONDS) {
+      segments.push({
+        blob,
+        mimeType,
+        durationSeconds: Math.min(45, durationSeconds),
+        score: currentScore,
+        sourceStartMs: currentStartedAt - liveStartedAt,
+        sourceEndMs: endedAt - liveStartedAt
+      });
+      if (segments.length > MAX_SEGMENTS) segments.splice(0, segments.length - MAX_SEGMENTS);
+    }
+    currentChunks = [];
+    currentScore = 0;
+    currentStartedAt = 0;
   }
 
-  const chunks = [];
-  let pendingScore = 0;
-  let startedAt = Date.now();
-  let stopped = false;
+  function startSegment() {
+    if (stopped || !currentStream?.active) return false;
+    const recorder = makeRecorder(currentStream, preferredMimeType);
+    if (!recorder) return false;
+    currentRecorder = recorder;
+    currentChunks = [];
+    currentScore = 0;
+    currentStartedAt = Date.now();
 
-  recorder.ondataavailable = event => {
-    if (!event.data?.size) return;
-    chunks.push({ blob: event.data, score: pendingScore, at: Date.now() });
-    pendingScore = 0;
-    // Keep at most the last 30 minutes in memory on the client.
-    const maxChunks = 30 * 60 * 1000 / TIMESLICE_MS;
-    if (chunks.length > maxChunks) chunks.splice(0, chunks.length - maxChunks);
-  };
+    recorder.ondataavailable = event => {
+      if (event.data?.size) currentChunks.push(event.data);
+    };
+    recorder.onerror = event => {
+      console.warn('Droxion highlight recorder error', event?.error || event);
+    };
+    recorder.start();
+    rotateTimer = window.setTimeout(() => rotateSegment(), SEGMENT_MS);
+    return true;
+  }
 
-  recorder.start(TIMESLICE_MS);
+  async function stopCurrentSegment({ save = true } = {}) {
+    if (rotateTimer) window.clearTimeout(rotateTimer);
+    rotateTimer = null;
+    const recorder = currentRecorder;
+    if (!recorder) return;
+
+    await new Promise(resolve => {
+      const finish = () => resolve();
+      recorder.addEventListener('stop', finish, { once: true });
+      try { recorder.stop(); } catch { resolve(); }
+      window.setTimeout(resolve, 1200);
+    });
+    if (save) saveCurrentSegment();
+    else {
+      currentChunks = [];
+      currentScore = 0;
+      currentStartedAt = 0;
+    }
+    currentRecorder = null;
+  }
+
+  async function rotateSegment() {
+    if (stopped || rotating) return;
+    rotating = true;
+    try {
+      await stopCurrentSegment({ save: true });
+      if (!stopped) startSegment();
+    } finally {
+      rotating = false;
+    }
+  }
+
+  startSegment();
 
   return {
     markMoment(weight = 1) {
-      pendingScore += Math.max(0, Number(weight || 0));
+      currentScore += Math.max(0, Number(weight || 0));
     },
+
+    async replaceStream(nextStream) {
+      if (stopped || !nextStream) return;
+      currentStream = nextStream;
+      await stopCurrentSegment({ save: true });
+      if (!stopped) startSegment();
+    },
+
     async stopAndPublish() {
       if (stopped) return [];
       stopped = true;
-      await new Promise(resolve => {
-        const finish = () => resolve();
-        recorder.addEventListener('stop', finish, { once: true });
-        try { recorder.requestData(); } catch {}
-        try { recorder.stop(); } catch { resolve(); }
-        window.setTimeout(resolve, 1500);
-      });
+      await stopCurrentSegment({ save: true });
 
-      const elapsedSeconds = (Date.now() - startedAt) / 1000;
-      if (elapsedSeconds < MIN_CLIP_SECONDS || chunks.length < 3) return [];
-      const candidates = buildCandidates(chunks);
+      const candidates = [...segments]
+        .filter(segment => segment.durationSeconds >= MIN_CLIP_SECONDS && segment.blob?.size)
+        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.sourceStartMs - b.sourceStartMs)
+        .slice(0, 2);
+
       const results = [];
       for (let index = 0; index < candidates.length; index += 1) {
         try {
-          const result = await uploadCandidate({ creatorId, sessionId, index, candidate: candidates[index], mimeType: recorder.mimeType || mimeType, title });
+          const result = await uploadSegment({ creatorId, sessionId, index, segment: candidates[index], title });
           if (result) results.push(result);
         } catch (error) {
           console.warn('Droxion highlight upload failed', error);
