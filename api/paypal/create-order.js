@@ -6,7 +6,7 @@ import {
   getSupabaseUser,
   normalizeError,
   readJsonBody
-} from './lib.js';
+} from '../../server/paypal-lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
