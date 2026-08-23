@@ -24,13 +24,16 @@ export async function connectLiveKitRoom({
   onTrackUnsubscribed,
   onDisconnected,
   onParticipantConnected,
-  onParticipantDisconnected
+  onParticipantDisconnected,
+  onReconnecting,
+  onReconnected
 }) {
   const auth = await getToken(sessionId, role);
   const room = new Room({
     adaptiveStream: true,
     dynacast: true,
-    disconnectOnPageLeave: true
+    disconnectOnPageLeave: true,
+    stopLocalTrackOnUnpublish: false
   });
 
   if (onTrackSubscribed) room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
@@ -38,21 +41,30 @@ export async function connectLiveKitRoom({
   if (onDisconnected) room.on(RoomEvent.Disconnected, onDisconnected);
   if (onParticipantConnected) room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
   if (onParticipantDisconnected) room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
+  if (onReconnecting) room.on(RoomEvent.Reconnecting, onReconnecting);
+  if (onReconnected) room.on(RoomEvent.Reconnected, onReconnected);
 
-  await room.connect(auth.url, auth.token, { autoSubscribe: role !== 'host' });
+  // Hosts must subscribe too so they can see an accepted guest.
+  await room.connect(auth.url, auth.token, { autoSubscribe: true });
   return { room, auth };
 }
 
-export async function publishHostMedia(room, mediaStream) {
+export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
 
+  const publications = [];
   for (const track of mediaStream.getTracks()) {
-    await room.localParticipant.publishTrack(track, {
+    const publication = await room.localParticipant.publishTrack(track, {
       source: track.kind === 'video' ? Track.Source.Camera : Track.Source.Microphone,
-      simulcast: track.kind === 'video'
+      simulcast: track.kind === 'video',
+      videoEncoding: track.kind === 'video' ? { maxBitrate: 2_500_000, maxFramerate: 30 } : undefined
     });
+    publications.push(publication);
   }
+  return publications;
 }
+
+export const publishHostMedia = publishLocalMedia;
 
 export function attachRemoteTrack(track, element) {
   if (!track || !element) return;
@@ -63,6 +75,34 @@ export function detachRemoteTrack(track, element) {
   if (!track) return;
   if (element) track.detach(element);
   else track.detach();
+}
+
+export async function replacePublishedVideo(room, mediaStreamTrack) {
+  if (!room || !mediaStreamTrack) return;
+  const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
+  const localTrack = publication?.track;
+  if (localTrack?.replaceTrack) {
+    await localTrack.replaceTrack(mediaStreamTrack);
+    return;
+  }
+  if (localTrack) await room.localParticipant.unpublishTrack(localTrack);
+  await room.localParticipant.publishTrack(mediaStreamTrack, {
+    source: Track.Source.Camera,
+    simulcast: true,
+    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+  });
+}
+
+export function setPublishedAudioMuted(room, muted) {
+  const publication = room?.localParticipant?.getTrackPublication(Track.Source.Microphone);
+  if (!publication) return;
+  if (muted) publication.mute(); else publication.unmute();
+}
+
+export function setPublishedVideoMuted(room, muted) {
+  const publication = room?.localParticipant?.getTrackPublication(Track.Source.Camera);
+  if (!publication) return;
+  if (muted) publication.mute(); else publication.unmute();
 }
 
 export async function disconnectLiveKitRoom(room) {
