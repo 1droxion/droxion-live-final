@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
+import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
@@ -12,6 +13,7 @@ import DeleteAccount from "./DeleteAccount.jsx";
 export default function App() {
   return (
     <>
+      <DroxionPushNotifications />
       <GlobalEnhancements />
       <CreatorV11Enhancer />
       <Routes>
