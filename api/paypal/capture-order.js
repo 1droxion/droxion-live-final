@@ -7,7 +7,7 @@ import {
   normalizeError,
   readJsonBody,
   updateTransactionRecord
-} from './lib.js';
+} from '../../server/paypal-lib.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
