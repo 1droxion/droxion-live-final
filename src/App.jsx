@@ -3,6 +3,7 @@ import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
+import DroxionLivePushBridge from "./DroxionLivePushBridge.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
@@ -14,6 +15,7 @@ export default function App() {
   return (
     <>
       <DroxionPushNotifications />
+      <DroxionLivePushBridge />
       <GlobalEnhancements />
       <CreatorV11Enhancer />
       <Routes>
