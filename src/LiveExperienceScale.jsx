@@ -7,6 +7,7 @@ import {
   connectLiveKitRoom,
   disconnectLiveKitRoom,
   publishLocalMedia,
+  recoverLiveKitAfterForeground,
   replacePublishedVideo,
   setPublishedAudioMuted,
   setPublishedVideoMuted
@@ -64,6 +65,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const sendingChat = useRef(false);
   const touchStartY = useRef(null);
   const previousViewerCount = useRef(0);
+  const lifecycleRecoveryRef = useRef(null);
 
   const sessionId = activeRoom?.session_id || (isLive ? ownSessionId : '');
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
@@ -205,6 +207,74 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     stopCamera();
     highlightRecorderRef.current?.stopAndPublish?.().catch(() => {});
   }, [disconnectTransport, stopCamera]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let disposed = false;
+    let wasBackgrounded = document.visibilityState === 'hidden';
+
+    const markBackgrounded = () => {
+      wasBackgrounded = true;
+    };
+
+    const recoverForeground = () => {
+      if (disposed || document.visibilityState === 'hidden' || !wasBackgrounded) return;
+      wasBackgrounded = false;
+      if (lifecycleRecoveryRef.current) return;
+
+      lifecycleRecoveryRef.current = (async () => {
+        const room = lkRoomRef.current;
+        const role = lkRoleRef.current;
+        if (!room || !role) return;
+
+        setNotice('Restoring LIVE…');
+        let mediaStream = streamRef.current;
+        if (role === 'host' || role === 'guest') {
+          const videoTrack = mediaStream?.getVideoTracks?.()[0];
+          const audioTrack = mediaStream?.getAudioTracks?.()[0];
+          if (videoTrack?.readyState !== 'live' || audioTrack?.readyState !== 'live') {
+            mediaStream?.getTracks?.().forEach(track => track.stop());
+            streamRef.current = null;
+            mediaStream = await ensureCamera(roomOrientation, facingMode);
+          }
+
+          mediaStream?.getVideoTracks?.().forEach(track => { track.enabled = cameraOn; });
+          mediaStream?.getAudioTracks?.().forEach(track => { track.enabled = micOn; });
+        }
+
+        await recoverLiveKitAfterForeground(room, mediaStream);
+        if (role === 'host' || role === 'guest') {
+          setPublishedVideoMuted(room, !cameraOn);
+          setPublishedAudioMuted(room, !micOn);
+          attachLocal();
+        }
+        if (!disposed) setNotice('');
+      })()
+        .catch(error => {
+          if (!disposed) setNotice(error?.message || 'Could not restore LIVE after returning to the app.');
+        })
+        .finally(() => {
+          lifecycleRecoveryRef.current = null;
+        });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') markBackgrounded();
+      else recoverForeground();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', markBackgrounded);
+    window.addEventListener('pageshow', recoverForeground);
+    window.addEventListener('focus', recoverForeground);
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', markBackgrounded);
+      window.removeEventListener('pageshow', recoverForeground);
+      window.removeEventListener('focus', recoverForeground);
+    };
+  }, [sessionId, roomOrientation, facingMode, cameraOn, micOn, ensureCamera, attachLocal]);
 
   useEffect(() => {
     if (!currentUserId) return;

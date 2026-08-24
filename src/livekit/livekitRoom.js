@@ -279,6 +279,59 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reaso
   entry.handlers?.onDisconnected?.(lastError || reason);
 }
 
+export async function recoverLiveKitAfterForeground(room, mediaStream) {
+  if (!room) return;
+  cancelPendingDisconnect(room);
+  closingRooms.delete(room);
+
+  const key = roomKeys.get(room);
+  const entry = key ? activeConnections.get(key) : null;
+  const connectionState = String(room.state || room.connectionState || '').toLowerCase();
+
+  if (connectionState === 'disconnected') {
+    if (!entry) throw new Error('LIVE connection is no longer available.');
+    await recoverUnexpectedDisconnect({
+      room,
+      sessionId: key.split(':')[0],
+      role: key.split(':').slice(1).join(':') || 'viewer',
+      entry,
+      reason: new Error('LIVE connection was interrupted while the app was backgrounded.')
+    });
+  } else {
+    forceRemoteSubscriptions(room, entry?.handlers);
+    setTimeout(() => forceRemoteSubscriptions(room, entry?.handlers), 150);
+    setTimeout(() => forceRemoteSubscriptions(room, entry?.handlers), 600);
+  }
+
+  const state = managedStateByRoom.get(room);
+  if (!state || !mediaStream) return;
+
+  const repairTrack = async (localTrack, publication, options, stage) => {
+    const mediaTrack = localTrack?.mediaStreamTrack;
+    if (!localTrack || publication?.isMuted || (mediaTrack?.readyState === 'live' && !mediaTrack.muted)) return;
+    try {
+      await localTrack.restartTrack?.(options);
+    } catch (error) {
+      await logClientError(stage, error, {
+        trackId: mediaTrack?.id || '',
+        readyState: mediaTrack?.readyState || '',
+        muted: Boolean(mediaTrack?.muted)
+      });
+      throw error;
+    }
+  };
+
+  await repairTrack(state.videoTrack, state.videoPublication, state.videoCaptureOptions, 'foreground-camera-restart');
+  await repairTrack(state.audioTrack, state.audioPublication, undefined, 'foreground-microphone-restart');
+
+  const localTracks = [state.videoTrack, state.audioTrack].filter(Boolean);
+  replaceStreamTracks(mediaStream, localTracks);
+  publishedMediaByRoom.set(room, mediaStream);
+  const videoTrack = state.videoTrack?.mediaStreamTrack;
+  if (videoTrack?.readyState === 'live') announceCameraTrack(videoTrack);
+  nudgeLocalPreview(mediaStream);
+}
+
 async function publishManagedTrackWithRetry(room, track, publishOptions = {}, stage = 'publish') {
   let lastError = null;
   for (const delay of PUBLISH_RETRY_DELAYS_MS) {
