@@ -3,6 +3,14 @@ import { supabase } from '../supabaseClient';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
+const DISCONNECT_GRACE_MS = 750;
+
+// React/iOS can mount the LIVE transport twice within a few milliseconds while
+// LIVE state settles. Reusing the in-flight/connected room prevents two
+// LiveKit participants with the same identity from kicking each other out.
+const activeConnections = new Map();
+const roomKeys = new WeakMap();
+const pendingDisconnects = new WeakMap();
 
 async function getToken(sessionId, role) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -18,6 +26,24 @@ async function getToken(sessionId, role) {
   return data;
 }
 
+function connectionKey(sessionId, role) {
+  return `${String(sessionId || '').trim()}:${String(role || 'viewer').trim().toLowerCase()}`;
+}
+
+function cancelPendingDisconnect(room) {
+  const timer = pendingDisconnects.get(room);
+  if (timer) {
+    clearTimeout(timer);
+    pendingDisconnects.delete(room);
+  }
+}
+
+function removeConnection(room) {
+  const key = roomKeys.get(room);
+  if (key && activeConnections.get(key)?.room === room) activeConnections.delete(key);
+  roomKeys.delete(room);
+}
+
 export async function connectLiveKitRoom({
   sessionId,
   role = 'viewer',
@@ -29,25 +55,57 @@ export async function connectLiveKitRoom({
   onReconnecting,
   onReconnected
 }) {
-  const auth = await getToken(sessionId, role);
-  const room = new Room({
-    adaptiveStream: true,
-    dynacast: true,
-    disconnectOnPageLeave: true,
-    stopLocalTrackOnUnpublish: false
-  });
+  const key = connectionKey(sessionId, role);
+  const existing = activeConnections.get(key);
 
-  if (onTrackSubscribed) room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
-  if (onTrackUnsubscribed) room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
-  if (onDisconnected) room.on(RoomEvent.Disconnected, onDisconnected);
-  if (onParticipantConnected) room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-  if (onParticipantDisconnected) room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-  if (onReconnecting) room.on(RoomEvent.Reconnecting, onReconnecting);
-  if (onReconnected) room.on(RoomEvent.Reconnected, onReconnected);
+  if (existing?.room) {
+    cancelPendingDisconnect(existing.room);
+    await existing.ready;
+    return { room: existing.room, auth: existing.auth };
+  }
 
-  // Hosts must subscribe too so they can see an accepted guest.
-  await room.connect(auth.url, auth.token, { autoSubscribe: true });
-  return { room, auth };
+  const entry = { room: null, auth: null, ready: null };
+  activeConnections.set(key, entry);
+
+  entry.ready = (async () => {
+    try {
+      const auth = await getToken(sessionId, role);
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        disconnectOnPageLeave: true,
+        stopLocalTrackOnUnpublish: false
+      });
+
+      entry.room = room;
+      entry.auth = auth;
+      roomKeys.set(room, key);
+
+      if (onTrackSubscribed) room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
+      if (onTrackUnsubscribed) room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
+      if (onParticipantConnected) room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+      if (onParticipantDisconnected) room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
+      if (onReconnecting) room.on(RoomEvent.Reconnecting, onReconnecting);
+      if (onReconnected) room.on(RoomEvent.Reconnected, onReconnected);
+
+      room.on(RoomEvent.Disconnected, reason => {
+        const intentionallyClosing = pendingDisconnects.has(room);
+        removeConnection(room);
+        if (!intentionallyClosing && onDisconnected) onDisconnected(reason);
+      });
+
+      // Hosts must subscribe too so they can see an accepted guest.
+      await room.connect(auth.url, auth.token, { autoSubscribe: true });
+      return room;
+    } catch (error) {
+      if (activeConnections.get(key) === entry) activeConnections.delete(key);
+      if (entry.room) roomKeys.delete(entry.room);
+      throw error;
+    }
+  })();
+
+  const room = await entry.ready;
+  return { room, auth: entry.auth };
 }
 
 export async function publishLocalMedia(room, mediaStream) {
@@ -55,8 +113,28 @@ export async function publishLocalMedia(room, mediaStream) {
 
   const publications = [];
   for (const track of mediaStream.getTracks()) {
+    const source = track.kind === 'video' ? Track.Source.Camera : Track.Source.Microphone;
+    const existing = room.localParticipant.getTrackPublication(source);
+    const localTrack = existing?.track;
+
+    // Idempotent publishing is important when the LIVE React effect quickly
+    // reuses the same room during startup/reconciliation.
+    if (localTrack) {
+      const currentMediaTrack = localTrack.mediaStreamTrack;
+      if (currentMediaTrack?.id === track.id) {
+        publications.push(existing);
+        continue;
+      }
+      if (localTrack.replaceTrack) {
+        await localTrack.replaceTrack(track);
+        publications.push(existing);
+        continue;
+      }
+      await room.localParticipant.unpublishTrack(localTrack);
+    }
+
     const publication = await room.localParticipant.publishTrack(track, {
-      source: track.kind === 'video' ? Track.Source.Camera : Track.Source.Microphone,
+      source,
       simulcast: track.kind === 'video',
       videoEncoding: track.kind === 'video' ? { maxBitrate: 2_500_000, maxFramerate: 30 } : undefined
     });
@@ -118,9 +196,21 @@ export function setPublishedVideoMuted(room, muted) {
 
 export async function disconnectLiveKitRoom(room) {
   if (!room) return;
-  try {
-    await room.disconnect();
-  } catch {
-    // Best-effort cleanup; Supabase heartbeat remains the source of LIVE state.
-  }
+  if (pendingDisconnects.has(room)) return;
+
+  // A short grace period lets an immediate React effect restart reclaim the
+  // existing connection instead of disconnecting and creating a second token.
+  await new Promise(resolve => {
+    const timer = setTimeout(async () => {
+      pendingDisconnects.delete(room);
+      removeConnection(room);
+      try {
+        await room.disconnect();
+      } catch {
+        // Best-effort cleanup; Supabase heartbeat remains the source of LIVE state.
+      }
+      resolve();
+    }, DISCONNECT_GRACE_MS);
+    pendingDisconnects.set(room, timer);
+  });
 }
