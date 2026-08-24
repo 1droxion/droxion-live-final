@@ -79,6 +79,7 @@ export default function CreatorV11Enhancer() {
   useEffect(() => {
     let liveTimer = null;
     let liveBusy = false;
+    let lastLiveRefreshAt = 0;
 
     function enhanceProfile() {
       const page = document.querySelector('.lpPage');
@@ -94,14 +95,18 @@ export default function CreatorV11Enhancer() {
       creatorCard.appendChild(entry);
     }
 
-    async function refreshLiveEarnings() {
+    async function refreshLiveEarnings(force = false) {
       const room = document.querySelector('.liveRoomV4');
       if (!room) {
         if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+        lastLiveRefreshAt = 0;
         return;
       }
+      const now = Date.now();
+      if (!force && now - lastLiveRefreshAt < 4500) return;
       if (liveBusy) return;
       liveBusy = true;
+      lastLiveRefreshAt = now;
       try {
         const { data: context } = await supabase.rpc('droxion_current_live_context');
         if (!context?.active || context?.is_host !== true) {
@@ -138,7 +143,7 @@ export default function CreatorV11Enhancer() {
         liveBusy = false;
       }
 
-      if (!liveTimer) liveTimer = setInterval(refreshLiveEarnings, 5000);
+      if (!liveTimer) liveTimer = setInterval(() => refreshLiveEarnings(true), 5000);
     }
 
     const run = () => {
