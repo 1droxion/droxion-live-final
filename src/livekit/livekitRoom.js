@@ -641,7 +641,9 @@ export function setPublishedVideoMuted(room, muted) {
 export async function disconnectLiveKitRoom(room) {
   if (!room) return;
   const alreadyPending = pendingDisconnects.get(room);
-  if (alreadyPending) return alreadyPending.promise;
+  // Do not block a React effect on the grace timer. A new effect for the same
+  // session/role can immediately reuse this room and cancel the pending close.
+  if (alreadyPending) return;
 
   let resolvePending;
   const promise = new Promise(resolve => { resolvePending = resolve; });
@@ -663,5 +665,7 @@ export async function disconnectLiveKitRoom(room) {
   }, DISCONNECT_GRACE_MS);
 
   pendingDisconnects.set(room, { timer, promise, resolve: resolvePending });
-  return promise;
+  // Resolve the caller immediately. Actual disconnect remains delayed so a
+  // same-room React remount/status refresh can cancel it through reuse.
+  return;
 }
