@@ -21,6 +21,7 @@ function currentFacing(track, video) {
   const settings = track?.getSettings?.() || {};
   if (settings.facingMode) return normalizeFacing(settings.facingMode);
   if (track?.label) return normalizeFacing(track.label);
+  if (video?.dataset?.droxionFacing) return normalizeFacing(video.dataset.droxionFacing);
   return video?.classList?.contains('mirrored') ? 'user' : 'environment';
 }
 
@@ -115,6 +116,7 @@ export default function LiveCameraStartupEnhancer() {
   useEffect(() => {
     let disposed = false;
     let switching = false;
+    let watchdogBusy = false;
     const timers = new Set();
 
     const later = (fn, delay) => {
@@ -123,6 +125,45 @@ export default function LiveCameraStartupEnhancer() {
         if (!disposed) fn();
       }, delay);
       timers.add(id);
+    };
+
+    const replaceCameraTrack = async ({ video, stream, previousTrack, facing, horizontal, preserveEnabled = true }) => {
+      if (!video || !stream || !navigator.mediaDevices?.getUserMedia) return false;
+      let fresh = null;
+      try {
+        fresh = await acquireCamera(facing, horizontal);
+        const nextTrack = fresh.getVideoTracks()[0];
+        if (!nextTrack) throw new Error('No camera available.');
+        nextTrack.enabled = preserveEnabled;
+
+        if (previousTrack) {
+          try { previousTrack.enabled = false; } catch {}
+          try { previousTrack.stop(); } catch {}
+          try { stream.removeTrack(previousTrack); } catch {}
+        }
+
+        stream.getVideoTracks().forEach(track => {
+          if (track !== nextTrack) {
+            try { track.stop(); } catch {}
+            try { stream.removeTrack(track); } catch {}
+          }
+        });
+        stream.addTrack(nextTrack);
+        fresh.getTracks().forEach(track => { if (track !== nextTrack) track.stop(); });
+
+        video.classList.toggle('mirrored', facing === 'user');
+        video.dataset.droxionFacing = facing;
+        forceAttach(video, stream);
+
+        try { await window.__droxionReplacePublishedCamera?.(nextTrack); }
+        catch (error) { console.warn('Droxion LIVE camera publication recovery queued', error); }
+
+        return true;
+      } catch (error) {
+        try { fresh?.getTracks?.().forEach(track => track.stop()); } catch {}
+        console.warn('Droxion LIVE camera reacquire failed', error);
+        return false;
+      }
     };
 
     const recover = video => {
@@ -164,59 +205,30 @@ export default function LiveCameraStartupEnhancer() {
       const nextFacing = previousFacing === 'user' ? 'environment' : 'user';
       const horizontal = room?.classList?.contains('liveRoom-horizontal');
       const oldEnabled = oldVideoTrack.enabled;
-      let replacementStream = null;
-      let replacementTrack = null;
 
       try {
-        // iOS/WKWebView cannot reliably hold front and back cameras together.
-        // Release the old lens first, but keep the original MediaStream object
-        // so microphone state, recorder state and React refs remain stable.
+        // Release the active iPhone lens before opening the other physical lens.
         oldVideoTrack.enabled = false;
         oldVideoTrack.stop();
         stream.removeTrack(oldVideoTrack);
 
-        replacementStream = await acquireCamera(nextFacing, horizontal);
-        replacementTrack = replacementStream.getVideoTracks()[0];
-        if (!replacementTrack) throw new Error('No camera available.');
-        replacementTrack.enabled = true;
-        stream.addTrack(replacementTrack);
-        replacementStream.getTracks().forEach(track => {
-          if (track !== replacementTrack) track.stop();
+        const switched = await replaceCameraTrack({
+          video,
+          stream,
+          previousTrack: null,
+          facing: nextFacing,
+          horizontal,
+          preserveEnabled: oldEnabled
         });
-
-        // Restore the local preview before waiting on the network publisher.
-        // A slow LiveKit track replacement must never leave the creator black.
-        video.classList.toggle('mirrored', nextFacing === 'user');
-        video.dataset.droxionFacing = nextFacing;
-        forceAttach(video, stream);
-
-        try {
-          await window.__droxionReplacePublishedCamera?.(replacementTrack);
-        } catch (error) {
-          console.warn('Droxion LIVE camera transport switch will retry on publish', error);
-        }
-      } catch (error) {
-        try {
-          replacementStream?.getTracks?.().forEach(track => track.stop());
-        } catch {}
-
-        // Recover the previous lens so a failed flip never leaves a black LIVE.
-        try {
-          const recoveryStream = await acquireCamera(previousFacing, horizontal);
-          const recoveryTrack = recoveryStream.getVideoTracks()[0];
-          if (recoveryTrack) {
-            recoveryTrack.enabled = oldEnabled;
-            stream.addTrack(recoveryTrack);
-            recoveryStream.getTracks().forEach(track => {
-              if (track !== recoveryTrack) track.stop();
-            });
-            video.classList.toggle('mirrored', previousFacing === 'user');
-            video.dataset.droxionFacing = previousFacing;
-            forceAttach(video, stream);
-            try { await window.__droxionReplacePublishedCamera?.(recoveryTrack); } catch {}
-          }
-        } catch (recoveryError) {
-          console.warn('Droxion LIVE camera recovery failed', recoveryError || error);
+        if (!switched) {
+          await replaceCameraTrack({
+            video,
+            stream,
+            previousTrack: null,
+            facing: previousFacing,
+            horizontal,
+            preserveEnabled: oldEnabled
+          });
         }
       } finally {
         switching = false;
@@ -241,8 +253,48 @@ export default function LiveCameraStartupEnhancer() {
         if (track) {
           const facing = currentFacing(track, video);
           video.classList.toggle('mirrored', facing === 'user');
+          video.dataset.droxionFacing = facing;
         }
       });
+    };
+
+    const watchdog = async () => {
+      if (disposed || switching || watchdogBusy || !navigator.mediaDevices?.getUserMedia) return;
+      const video = document.querySelector('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo');
+      if (!video?.isConnected) return;
+      const room = video.closest('.liveRoomV4');
+      const stream = video.srcObject;
+      if (!stream) return;
+
+      const track = stream.getVideoTracks?.().find(item => item.readyState !== 'ended');
+      const visuallyHealthy = video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2;
+      if (track && visuallyHealthy) {
+        tryPlay(video);
+        return;
+      }
+
+      if (track && !visuallyHealthy) {
+        forceAttach(video, stream);
+        await new Promise(resolve => window.setTimeout(resolve, 350));
+        if (video.videoWidth > 0 && video.videoHeight > 0) return;
+      }
+
+      watchdogBusy = true;
+      try {
+        const facing = currentFacing(track, video);
+        const horizontal = room?.classList?.contains('liveRoom-horizontal');
+        const enabled = track?.enabled !== false;
+        await replaceCameraTrack({
+          video,
+          stream,
+          previousTrack: track,
+          facing,
+          horizontal,
+          preserveEnabled: enabled
+        });
+      } finally {
+        watchdogBusy = false;
+      }
     };
 
     document.addEventListener('click', captureFlip, true);
@@ -250,12 +302,14 @@ export default function LiveCameraStartupEnhancer() {
     scan();
     const observer = new MutationObserver(scan);
     observer.observe(document.body, { childList: true, subtree: true });
+    const watchdogTimer = window.setInterval(() => { watchdog().catch(() => {}); }, 1500);
 
     return () => {
       disposed = true;
       document.removeEventListener('click', captureFlip, true);
       window.removeEventListener(CAMERA_REPLACED_EVENT, syncFacingClass);
       observer.disconnect();
+      window.clearInterval(watchdogTimer);
       timers.forEach(id => window.clearTimeout(id));
       timers.clear();
     };
