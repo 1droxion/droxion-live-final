@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
 const DISCONNECT_GRACE_MS = 750;
+const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
 
 // React/iOS can mount the LIVE transport twice within a few milliseconds while
 // LIVE state settles. Reusing the in-flight/connected room prevents two
@@ -11,6 +12,8 @@ const DISCONNECT_GRACE_MS = 750;
 const activeConnections = new Map();
 const roomKeys = new WeakMap();
 const pendingDisconnects = new WeakMap();
+const publishedMediaByRoom = new WeakMap();
+const recoveringRooms = new WeakSet();
 
 async function getToken(sessionId, role) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -42,6 +45,44 @@ function removeConnection(room) {
   const key = roomKeys.get(room);
   if (key && activeConnections.get(key)?.room === room) activeConnections.delete(key);
   roomKeys.delete(room);
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, onReconnecting, onReconnected, onDisconnected, reason }) {
+  if (!room || recoveringRooms.has(room) || pendingDisconnects.has(room)) return;
+  recoveringRooms.add(room);
+  onReconnecting?.();
+
+  let lastError = null;
+  for (const delay of RECONNECT_DELAYS_MS) {
+    if (pendingDisconnects.has(room)) {
+      recoveringRooms.delete(room);
+      return;
+    }
+
+    await wait(delay);
+    try {
+      const auth = await getToken(sessionId, role);
+      entry.auth = auth;
+      await room.connect(auth.url, auth.token, { autoSubscribe: true });
+
+      const savedMedia = publishedMediaByRoom.get(room);
+      if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
+
+      recoveringRooms.delete(room);
+      onReconnected?.();
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  recoveringRooms.delete(room);
+  removeConnection(room);
+  onDisconnected?.(lastError || reason);
 }
 
 export async function connectLiveKitRoom({
@@ -94,8 +135,23 @@ export async function connectLiveKitRoom({
 
       room.on(RoomEvent.Disconnected, reason => {
         const intentionallyClosing = pendingDisconnects.has(room);
-        removeConnection(room);
-        if (!intentionallyClosing && onDisconnected) onDisconnected(reason);
+        if (intentionallyClosing) {
+          removeConnection(room);
+          return;
+        }
+
+        // A dropped mobile network/WebSocket should not immediately become a
+        // scary permanent error. Recover in-place with a fresh token first.
+        recoverUnexpectedDisconnect({
+          room,
+          sessionId,
+          role,
+          entry,
+          onReconnecting,
+          onReconnected,
+          onDisconnected,
+          reason
+        }).catch(() => onDisconnected?.(reason));
       });
 
       // Hosts must subscribe too so they can see an accepted guest.
@@ -114,9 +170,11 @@ export async function connectLiveKitRoom({
 
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
+  publishedMediaByRoom.set(room, mediaStream);
 
   const publications = [];
   for (const track of mediaStream.getTracks()) {
+    if (track.readyState === 'ended') continue;
     const source = track.kind === 'video' ? Track.Source.Camera : Track.Source.Microphone;
     const existing = room.localParticipant.getTrackPublication(source);
     const localTrack = existing?.track;
@@ -175,6 +233,12 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
     });
   }
 
+  const savedMedia = publishedMediaByRoom.get(room);
+  if (savedMedia) {
+    const audioTracks = savedMedia.getAudioTracks().filter(track => track.readyState !== 'ended');
+    publishedMediaByRoom.set(room, new MediaStream([mediaStreamTrack, ...audioTracks]));
+  }
+
   // Keep the automatic highlight recorder on the same physical camera as the LIVE.
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
@@ -209,6 +273,7 @@ export async function disconnectLiveKitRoom(room) {
   const promise = new Promise(resolve => { resolvePending = resolve; });
   const timer = setTimeout(async () => {
     pendingDisconnects.delete(room);
+    publishedMediaByRoom.delete(room);
     removeConnection(room);
     try {
       await room.disconnect();
