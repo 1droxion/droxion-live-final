@@ -5,6 +5,7 @@ const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
 const DISCONNECT_GRACE_MS = 750;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
+const PUBLISH_RETRY_DELAYS_MS = [0, 140, 420];
 
 const activeConnections = new Map();
 const roomKeys = new WeakMap();
@@ -77,11 +78,21 @@ function replaySubscribedTracks(room, handlers) {
 
 function cancelPendingDisconnect(room) {
   const pending = pendingDisconnects.get(room);
-  if (!pending) return;
+  if (!pending) return false;
   clearTimeout(pending.timer);
   pendingDisconnects.delete(room);
   closingRooms.delete(room);
   pending.resolve?.();
+  return true;
+}
+
+function protectReusedRoom(room) {
+  // React can tear down an older LIVE effect a microtask after a newer effect
+  // has reclaimed the same in-flight LiveKit room. Cancel that stale teardown
+  // again on the next task so it cannot disconnect the active publisher/viewer.
+  cancelPendingDisconnect(room);
+  if (typeof queueMicrotask === 'function') queueMicrotask(() => cancelPendingDisconnect(room));
+  setTimeout(() => cancelPendingDisconnect(room), 0);
 }
 
 function removeConnection(room) {
@@ -131,29 +142,69 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reaso
   entry.handlers?.onDisconnected?.(lastError || reason);
 }
 
+async function publishRawTrackWithRetry(room, mediaStreamTrack, publishOptions) {
+  let lastError = null;
+  for (const delay of PUBLISH_RETRY_DELAYS_MS) {
+    if (delay) await wait(delay);
+    if (!mediaStreamTrack || mediaStreamTrack.readyState === 'ended') {
+      throw new Error('The camera or microphone stopped before LIVE could publish it.');
+    }
+
+    // A stale React cleanup may have queued a disconnect for this exact room.
+    // Publishing is proof that the room is actively owned, so reclaim it first.
+    cancelPendingDisconnect(room);
+    closingRooms.delete(room);
+
+    try {
+      const publication = await room.localParticipant.publishTrack(mediaStreamTrack, publishOptions);
+      cancelPendingDisconnect(room);
+      return publication;
+    } catch (error) {
+      lastError = error;
+      // The iOS WebView can expose a transient null LocalTrack while a reused
+      // room is finishing negotiation. Retrying the still-live raw track makes
+      // LiveKit create a clean LocalTrack wrapper on the stable connection.
+      if (mediaStreamTrack.readyState === 'ended') break;
+    }
+  }
+
+  console.warn('Droxion LIVE media publish failed after retry', lastError);
+  throw new Error(mediaStreamTrack?.kind === 'video'
+    ? 'LIVE camera could not start. Restoring video…'
+    : 'LIVE microphone could not start.');
+}
+
 async function replacePublicationTrack(room, source, mediaStreamTrack, publishOptions = {}) {
   if (!room || !mediaStreamTrack || mediaStreamTrack.readyState === 'ended') {
     throw new Error('The local media track is not available.');
   }
 
+  cancelPendingDisconnect(room);
+  closingRooms.delete(room);
+
   const publication = room.localParticipant.getTrackPublication(source);
   const localTrack = publication?.track;
-  if (localTrack?.mediaStreamTrack?.id === mediaStreamTrack.id) return publication;
+  const existingMediaTrack = localTrack?.mediaStreamTrack;
+  if (existingMediaTrack?.id && existingMediaTrack.id === mediaStreamTrack.id) return publication;
 
-  if (localTrack?.replaceTrack) {
+  // Only call replaceTrack when LiveKit still owns a healthy underlying track.
+  // Calling it after a room-reuse teardown on iOS can hit a null internal track.
+  if (localTrack?.replaceTrack && existingMediaTrack && existingMediaTrack.readyState !== 'ended') {
     try {
       await localTrack.replaceTrack(mediaStreamTrack);
+      cancelPendingDisconnect(room);
       return publication;
     } catch {
-      // Safari/iOS can leave an ended camera sender behind after switching.
+      // Fall back to a clean publication below.
     }
   }
 
   if (localTrack) {
     try { await room.localParticipant.unpublishTrack(localTrack); } catch {}
+    await wait(40);
   }
 
-  return room.localParticipant.publishTrack(mediaStreamTrack, {
+  return publishRawTrackWithRetry(room, mediaStreamTrack, {
     source,
     ...publishOptions
   });
@@ -186,7 +237,7 @@ export async function connectLiveKitRoom({
     existing.handlers = handlers;
     if (existing.room) cancelPendingDisconnect(existing.room);
     const room = await existing.ready;
-    cancelPendingDisconnect(room);
+    protectReusedRoom(room);
     replaySubscribedTracks(room, handlers);
     return { room, auth: existing.auth };
   }
@@ -245,23 +296,30 @@ export async function connectLiveKitRoom({
 
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
+
+  cancelPendingDisconnect(room);
+  closingRooms.delete(room);
   publishedMediaByRoom.set(room, mediaStream);
-  if (mediaStream.getVideoTracks().some(track => track.readyState !== 'ended')) latestPublisherRoom = room;
+
+  const videoTrack = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
+  const audioTrack = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+  if (videoTrack) latestPublisherRoom = room;
 
   const publications = [];
-  for (const track of mediaStream.getTracks()) {
-    if (track.readyState === 'ended') continue;
-    const source = track.kind === 'video' ? Track.Source.Camera : Track.Source.Microphone;
-    const publication = await replacePublicationTrack(room, source, track, {
-      simulcast: track.kind === 'video',
-      videoEncoding: track.kind === 'video' ? { maxBitrate: 2_500_000, maxFramerate: 30 } : undefined
-    });
-    publications.push(publication);
+  // Publish camera first. On iOS this makes the visual path deterministic and
+  // avoids an audio negotiation racing the first camera publication.
+  if (videoTrack) {
+    publications.push(await replacePublicationTrack(room, Track.Source.Camera, videoTrack, {
+      simulcast: true,
+      videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+    }));
+  }
+  if (audioTrack) {
+    publications.push(await replacePublicationTrack(room, Track.Source.Microphone, audioTrack));
   }
 
   if (pendingPublisherVideoTrack?.readyState !== 'ended') {
-    const streamVideo = mediaStream.getVideoTracks()[0];
-    if (!streamVideo || streamVideo.id !== pendingPublisherVideoTrack.id) {
+    if (!videoTrack || videoTrack.id !== pendingPublisherVideoTrack.id) {
       await replacePublicationTrack(room, Track.Source.Camera, pendingPublisherVideoTrack, {
         simulcast: true,
         videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
@@ -269,6 +327,7 @@ export async function publishLocalMedia(room, mediaStream) {
     }
   }
   pendingPublisherVideoTrack = null;
+  cancelPendingDisconnect(room);
   return publications;
 }
 
@@ -298,6 +357,8 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
     return;
   }
 
+  cancelPendingDisconnect(room);
+  closingRooms.delete(room);
   await replacePublicationTrack(room, Track.Source.Camera, mediaStreamTrack, {
     simulcast: true,
     videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
