@@ -2,6 +2,7 @@ import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../supabaseClient';
 
 const TOKEN_FUNCTION = 'livekit-token';
+const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
 
 async function getToken(sessionId, role) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -83,14 +84,24 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
   const localTrack = publication?.track;
   if (localTrack?.replaceTrack) {
     await localTrack.replaceTrack(mediaStreamTrack);
-    return;
+  } else {
+    if (localTrack) await room.localParticipant.unpublishTrack(localTrack);
+    await room.localParticipant.publishTrack(mediaStreamTrack, {
+      source: Track.Source.Camera,
+      simulcast: true,
+      videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+    });
   }
-  if (localTrack) await room.localParticipant.unpublishTrack(localTrack);
-  await room.localParticipant.publishTrack(mediaStreamTrack, {
-    source: Track.Source.Camera,
-    simulcast: true,
-    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-  });
+
+  // Keep the automatic highlight recorder on the same physical camera as the LIVE.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
+      detail: {
+        track: mediaStreamTrack,
+        facingMode: mediaStreamTrack.getSettings?.()?.facingMode || ''
+      }
+    }));
+  }
 }
 
 export function setPublishedAudioMuted(room, muted) {
