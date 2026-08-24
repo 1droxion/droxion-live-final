@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
+import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperienceScale';
 import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
@@ -123,7 +123,7 @@ export default function LiveFirstApp() {
         {tab === 'live' && searchOpen && <label className="lfSearchOverlay"><Search size={17} /><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search creators or LIVE streams" /><button type="button" onClick={() => { setSearchQuery(''); setSearchOpen(false); }}>×</button></label>}
       </header>}
 
-      {chatOpen && !immersiveLive && <header className="lfTopbar"><button className="lfBrand" type="button" onClick={() => setChatOpen(false)} aria-label="Back to Droxion"><span><strong>DROXION</strong><small>INBOX</small></span></button><div className="lfSectionLabel">Messages</div></header>}
+      {chatOpen && !immersiveLive && <header className="lfTopbar"><button className="lfBrand" type="button" onClick={() => setChatOpen(false)} aria-label="Back to Droxion Home"><ArrowLeft size={22} /><span><strong>DROXION</strong><small>INBOX</small></span></button><div className="lfSectionLabel">Messages</div></header>}
 
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{chatOpen ? <DroxionChat /> : content}</div>
 
