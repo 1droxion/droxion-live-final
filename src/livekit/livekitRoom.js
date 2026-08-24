@@ -31,11 +31,11 @@ function connectionKey(sessionId, role) {
 }
 
 function cancelPendingDisconnect(room) {
-  const timer = pendingDisconnects.get(room);
-  if (timer) {
-    clearTimeout(timer);
-    pendingDisconnects.delete(room);
-  }
+  const pending = pendingDisconnects.get(room);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingDisconnects.delete(room);
+  pending.resolve?.();
 }
 
 function removeConnection(room) {
@@ -58,10 +58,14 @@ export async function connectLiveKitRoom({
   const key = connectionKey(sessionId, role);
   const existing = activeConnections.get(key);
 
-  if (existing?.room) {
-    cancelPendingDisconnect(existing.room);
-    await existing.ready;
-    return { room: existing.room, auth: existing.auth };
+  // Reuse both an already-connected room and a connection that is still in
+  // flight. This is the important iOS/React race: the second mount can arrive
+  // before the first token request has even finished.
+  if (existing) {
+    if (existing.room) cancelPendingDisconnect(existing.room);
+    const room = await existing.ready;
+    cancelPendingDisconnect(room);
+    return { room, auth: existing.auth };
   }
 
   const entry = { room: null, auth: null, ready: null };
@@ -196,21 +200,25 @@ export function setPublishedVideoMuted(room, muted) {
 
 export async function disconnectLiveKitRoom(room) {
   if (!room) return;
-  if (pendingDisconnects.has(room)) return;
+  const alreadyPending = pendingDisconnects.get(room);
+  if (alreadyPending) return alreadyPending.promise;
 
   // A short grace period lets an immediate React effect restart reclaim the
   // existing connection instead of disconnecting and creating a second token.
-  await new Promise(resolve => {
-    const timer = setTimeout(async () => {
-      pendingDisconnects.delete(room);
-      removeConnection(room);
-      try {
-        await room.disconnect();
-      } catch {
-        // Best-effort cleanup; Supabase heartbeat remains the source of LIVE state.
-      }
-      resolve();
-    }, DISCONNECT_GRACE_MS);
-    pendingDisconnects.set(room, timer);
-  });
+  let resolvePending;
+  const promise = new Promise(resolve => { resolvePending = resolve; });
+  const timer = setTimeout(async () => {
+    pendingDisconnects.delete(room);
+    removeConnection(room);
+    try {
+      await room.disconnect();
+    } catch {
+      // Best-effort cleanup; Supabase heartbeat remains the source of LIVE state.
+    } finally {
+      resolvePending();
+    }
+  }, DISCONNECT_GRACE_MS);
+
+  pendingDisconnects.set(room, { timer, promise, resolve: resolvePending });
+  return promise;
 }
