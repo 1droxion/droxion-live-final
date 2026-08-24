@@ -9,6 +9,50 @@ function tryPlay(video) {
   playback?.catch?.(() => {});
 }
 
+function normalizeFacing(value) {
+  const text = String(value || '').toLowerCase();
+  if (text.includes('environment') || text.includes('rear') || text.includes('back')) return 'environment';
+  return 'user';
+}
+
+function currentFacing(track, video) {
+  const settings = track?.getSettings?.() || {};
+  if (settings.facingMode) return normalizeFacing(settings.facingMode);
+  if (track?.label) return normalizeFacing(track.label);
+  return video?.classList?.contains('mirrored') ? 'user' : 'environment';
+}
+
+function videoConstraints(nextFacing, horizontal) {
+  const dimensions = horizontal
+    ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+    : { width: { ideal: 720 }, height: { ideal: 1280 } };
+  return {
+    facingMode: { exact: nextFacing },
+    ...dimensions,
+    frameRate: { ideal: 30, max: 30 }
+  };
+}
+
+async function acquireCamera(nextFacing, horizontal) {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: videoConstraints(nextFacing, horizontal),
+      audio: false
+    });
+  } catch {
+    return navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: nextFacing },
+        ...(horizontal
+          ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { width: { ideal: 720 }, height: { ideal: 1280 } }),
+        frameRate: { ideal: 30, max: 30 }
+      },
+      audio: false
+    });
+  }
+}
+
 const guestSplitCss = `
 .liveRoomV4 .liveLocalPreview.mirrored,
 .liveRoomV4 .liveGuestSelfVideo.mirrored {
@@ -57,6 +101,7 @@ const guestSplitCss = `
 export default function LiveCameraStartupEnhancer() {
   useEffect(() => {
     let disposed = false;
+    let switching = false;
     const timers = new Set();
 
     const later = (fn, delay) => {
@@ -71,8 +116,7 @@ export default function LiveCameraStartupEnhancer() {
       if (!video || video.dataset.cameraStartupRecovery === 'done') return;
       video.dataset.cameraStartupRecovery = 'done';
 
-      const playAttempts = [0, 80, 220, 500, 900];
-      playAttempts.forEach(delay => later(() => tryPlay(video), delay));
+      [0, 80, 220, 500, 900].forEach(delay => later(() => tryPlay(video), delay));
 
       later(() => {
         if (!video.isConnected || video.videoWidth > 0 || video.readyState >= 2) return;
@@ -89,16 +133,91 @@ export default function LiveCameraStartupEnhancer() {
       }, 1250);
     };
 
+    const robustFlip = async button => {
+      if (switching || !navigator.mediaDevices?.getUserMedia) return;
+      const room = button.closest('.liveRoomV4');
+      const video = room?.querySelector('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo');
+      const stream = video?.srcObject;
+      const oldVideoTrack = stream?.getVideoTracks?.()[0];
+      if (!video || !stream || !oldVideoTrack) return;
+
+      switching = true;
+      button.disabled = true;
+      const previousFacing = currentFacing(oldVideoTrack, video);
+      const nextFacing = previousFacing === 'user' ? 'environment' : 'user';
+      const horizontal = room?.classList?.contains('liveRoom-horizontal');
+      const oldEnabled = oldVideoTrack.enabled;
+
+      try {
+        // iOS is much more reliable switching physical cameras after the old
+        // capture track has released the hardware first. Keep the same
+        // MediaStream object so React refs and mic controls stay valid.
+        oldVideoTrack.enabled = false;
+        oldVideoTrack.stop();
+        stream.removeTrack(oldVideoTrack);
+        if (video.srcObject !== stream) video.srcObject = stream;
+
+        let fresh;
+        try {
+          fresh = await acquireCamera(nextFacing, horizontal);
+        } catch (error) {
+          // If the requested camera cannot start, immediately restore the
+          // previous camera instead of leaving a black LIVE preview.
+          fresh = await acquireCamera(previousFacing, horizontal);
+          throw Object.assign(error || new Error('Could not switch camera.'), { recoveryStream: fresh });
+        }
+
+        const newTrack = fresh.getVideoTracks()[0];
+        if (!newTrack) throw new Error('No camera available.');
+        newTrack.enabled = true;
+        stream.addTrack(newTrack);
+        fresh.getTracks().forEach(track => { if (track !== newTrack) track.stop(); });
+
+        await window.__droxionReplacePublishedCamera?.(newTrack);
+        video.srcObject = stream;
+        tryPlay(video);
+        later(() => tryPlay(video), 80);
+        later(() => tryPlay(video), 250);
+      } catch (error) {
+        const recoveryStream = error?.recoveryStream;
+        const recoveryTrack = recoveryStream?.getVideoTracks?.()[0];
+        if (recoveryTrack) {
+          recoveryTrack.enabled = oldEnabled;
+          stream.addTrack(recoveryTrack);
+          recoveryStream.getTracks().forEach(track => { if (track !== recoveryTrack) track.stop(); });
+          try {
+            await window.__droxionReplacePublishedCamera?.(recoveryTrack);
+          } catch {}
+          video.srcObject = stream;
+          tryPlay(video);
+        }
+      } finally {
+        switching = false;
+        button.disabled = false;
+      }
+    };
+
+    const captureFlip = event => {
+      const button = event.target?.closest?.('.liveHostControlsV4 > button:nth-child(3)');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      robustFlip(button);
+    };
+
     const scan = () => {
       document.querySelectorAll('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo').forEach(recover);
     };
 
+    document.addEventListener('click', captureFlip, true);
     scan();
     const observer = new MutationObserver(scan);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       disposed = true;
+      document.removeEventListener('click', captureFlip, true);
       observer.disconnect();
       timers.forEach(id => window.clearTimeout(id));
       timers.clear();
