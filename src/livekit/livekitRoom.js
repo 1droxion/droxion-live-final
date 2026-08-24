@@ -157,6 +157,23 @@ function replaceStreamTracks(targetStream, localTracks) {
   });
 }
 
+function nudgeLocalPreview(stream) {
+  if (typeof document === 'undefined' || !stream) return;
+  const videos = document.querySelectorAll('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo');
+  videos.forEach(video => {
+    try {
+      if (video.srcObject !== stream) video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      const play = () => video.play?.().catch?.(() => {});
+      play();
+      setTimeout(play, 80);
+      setTimeout(play, 240);
+    } catch {}
+  });
+}
+
 function announceCameraTrack(mediaStreamTrack) {
   if (typeof window === 'undefined' || !mediaStreamTrack) return;
   window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
@@ -340,6 +357,7 @@ export async function publishLocalMedia(room, mediaStream) {
     replaceStreamTracks(mediaStream, [existingState.videoTrack, existingState.audioTrack].filter(Boolean));
     latestPublisherRoom = room;
     announceCameraTrack(existingVideoMedia);
+    nudgeLocalPreview(mediaStream);
     return [existingState.videoPublication, existingState.audioPublication].filter(Boolean);
   }
 
@@ -350,6 +368,12 @@ export async function publishLocalMedia(room, mediaStream) {
   const facingMode = facingFromTrack(browserVideo);
   const resolution = dimensionsFromTrack(browserVideo);
   const wantsAudio = Boolean(browserAudio);
+  const videoCaptureOptions = { facingMode, resolution };
+  const videoPublishOptions = {
+    source: Track.Source.Camera,
+    simulcast: true,
+    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+  };
 
   mediaStream.getTracks().forEach(track => {
     try { track.stop(); } catch {}
@@ -358,7 +382,7 @@ export async function publishLocalMedia(room, mediaStream) {
   let localTracks;
   try {
     localTracks = await createLocalTracks({
-      video: { facingMode, resolution },
+      video: videoCaptureOptions,
       audio: wantsAudio ? {
         echoCancellation: true,
         noiseSuppression: true,
@@ -381,19 +405,18 @@ export async function publishLocalMedia(room, mediaStream) {
     videoTrack: localVideoTrack,
     audioTrack: localAudioTrack || null,
     videoPublication: null,
-    audioPublication: null
+    audioPublication: null,
+    videoCaptureOptions,
+    videoPublishOptions
   };
   managedStateByRoom.set(room, state);
   replaceStreamTracks(mediaStream, [localVideoTrack, localAudioTrack].filter(Boolean));
   latestPublisherRoom = room;
   announceCameraTrack(localVideoTrack.mediaStreamTrack);
+  nudgeLocalPreview(mediaStream);
 
   try {
-    state.videoPublication = await publishManagedTrackWithRetry(room, localVideoTrack, {
-      source: Track.Source.Camera,
-      simulcast: true,
-      videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-    }, 'publish-camera');
+    state.videoPublication = await publishManagedTrackWithRetry(room, localVideoTrack, videoPublishOptions, 'publish-camera');
   } catch (error) {
     await logClientError('publish-camera:final', error, {
       trackId: localVideoTrack.mediaStreamTrack?.id || '',
@@ -472,9 +495,14 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
   pendingPublisherVideoTrack = null;
 
   const activeTrack = state.videoTrack.mediaStreamTrack || mediaStreamTrack;
+  state.videoCaptureOptions = {
+    facingMode: facingFromTrack(activeTrack),
+    resolution: dimensionsFromTrack(activeTrack)
+  };
   const savedMedia = publishedMediaByRoom.get(room);
   if (savedMedia && activeTrack?.readyState !== 'ended') {
     replaceStreamTracks(savedMedia, [state.videoTrack, state.audioTrack].filter(Boolean));
+    nudgeLocalPreview(savedMedia);
   }
   announceCameraTrack(activeTrack);
 }
@@ -495,14 +523,54 @@ export function setPublishedAudioMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
   const publication = state?.audioPublication;
   if (!publication?.track) return;
-  try { if (muted) publication.mute(); else publication.unmute(); } catch {}
+  Promise.resolve(muted ? publication.mute() : publication.unmute())
+    .catch(error => logClientError('toggle-microphone', error, { muted }));
 }
 
 export function setPublishedVideoMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
   const publication = state?.videoPublication;
-  if (!publication?.track) return;
-  try { if (muted) publication.mute(); else publication.unmute(); } catch {}
+  const savedMedia = room ? publishedMediaByRoom.get(room) : null;
+  if (!state?.videoTrack || !publication?.track) return;
+
+  (async () => {
+    try {
+      cancelPendingDisconnect(room);
+      closingRooms.delete(room);
+
+      if (muted) {
+        await publication.mute();
+        return;
+      }
+
+      // LiveKit may reacquire the physical camera while unmuting. Wait for that
+      // operation to finish, then put the SDK's current MediaStreamTrack back
+      // into the same MediaStream used by the local preview/recorder.
+      await publication.unmute();
+      let activeTrack = state.videoTrack?.mediaStreamTrack;
+      if (!activeTrack || activeTrack.readyState !== 'live') {
+        await state.videoTrack.restartTrack?.(state.videoCaptureOptions);
+        activeTrack = state.videoTrack?.mediaStreamTrack;
+      }
+
+      if (!activeTrack || activeTrack.readyState !== 'live') {
+        throw new Error('Camera did not restart after being turned on.');
+      }
+
+      activeTrack.enabled = true;
+      if (savedMedia) {
+        replaceStreamTracks(savedMedia, [state.videoTrack, state.audioTrack].filter(Boolean));
+        nudgeLocalPreview(savedMedia);
+      }
+      announceCameraTrack(activeTrack);
+    } catch (error) {
+      await logClientError('toggle-camera', error, {
+        muted,
+        trackId: state.videoTrack?.mediaStreamTrack?.id || '',
+        readyState: state.videoTrack?.mediaStreamTrack?.readyState || ''
+      });
+    }
+  })();
 }
 
 export async function disconnectLiveKitRoom(room) {
