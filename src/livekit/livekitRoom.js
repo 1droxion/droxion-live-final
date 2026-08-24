@@ -1,11 +1,17 @@
-import { Room, RoomEvent, Track, createLocalTracks } from 'livekit-client';
+import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../supabaseClient';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
-const DISCONNECT_GRACE_MS = 750;
+const DISCONNECT_GRACE_MS = 900;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
 const PUBLISH_RETRY_DELAYS_MS = [0, 180, 520];
+const CLIENT_INSTANCE_ID = (() => {
+  try {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+  } catch {}
+  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 24);
+})();
 
 const activeConnections = new Map();
 const roomKeys = new WeakMap();
@@ -33,7 +39,7 @@ async function getToken(sessionId, role) {
   if (!session?.access_token) throw new Error('Sign in before joining LIVE.');
 
   const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
-    body: { sessionId, role },
+    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
     headers: { Authorization: `Bearer ${session.access_token}` }
   });
 
@@ -66,8 +72,60 @@ function makeHandlers({
   };
 }
 
+function parseParticipantMetadata(participant) {
+  try {
+    const metadata = participant?.metadata ? JSON.parse(participant.metadata) : {};
+    return metadata && typeof metadata === 'object' ? metadata : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizedParticipant(participant) {
+  if (!participant) return participant;
+  const metadata = parseParticipantMetadata(participant);
+  const rawIdentity = String(participant.identity || '');
+  const userId = String(metadata.droxionUserId || rawIdentity.split('::')[0] || rawIdentity);
+  if (!userId || userId === rawIdentity) return participant;
+  return {
+    identity: userId,
+    rawIdentity,
+    metadata: participant.metadata,
+    name: participant.name,
+    sid: participant.sid
+  };
+}
+
+function subscribePublication(publication) {
+  try {
+    if (publication && typeof publication.setSubscribed === 'function' && !publication.isSubscribed) {
+      publication.setSubscribed(true);
+    }
+  } catch {}
+}
+
 function replaySubscribedTracks(room, handlers) {
   if (!room || !handlers?.onTrackSubscribed) return;
+  try {
+    const participants = room.remoteParticipants?.values
+      ? Array.from(room.remoteParticipants.values())
+      : [];
+    participants.forEach(participant => {
+      const appParticipant = normalizedParticipant(participant);
+      const publications = participant.getTrackPublications?.()
+        || (participant.trackPublications?.values
+          ? Array.from(participant.trackPublications.values())
+          : []);
+      publications.forEach(publication => {
+        subscribePublication(publication);
+        if (publication?.track) handlers.onTrackSubscribed(publication.track, publication, appParticipant);
+      });
+    });
+  } catch {}
+}
+
+function forceRemoteSubscriptions(room, handlers) {
+  if (!room) return;
   try {
     const participants = room.remoteParticipants?.values
       ? Array.from(room.remoteParticipants.values())
@@ -77,11 +135,10 @@ function replaySubscribedTracks(room, handlers) {
         || (participant.trackPublications?.values
           ? Array.from(participant.trackPublications.values())
           : []);
-      publications.forEach(publication => {
-        if (publication?.track) handlers.onTrackSubscribed(publication.track, publication, participant);
-      });
+      publications.forEach(subscribePublication);
     });
   } catch {}
+  replaySubscribedTracks(room, handlers);
 }
 
 function cancelPendingDisconnect(room) {
@@ -165,11 +222,12 @@ function nudgeLocalPreview(stream) {
       if (video.srcObject !== stream) video.srcObject = stream;
       video.muted = true;
       video.playsInline = true;
+      video.autoplay = true;
       video.setAttribute('playsinline', '');
       const play = () => video.play?.().catch?.(() => {});
       play();
-      setTimeout(play, 80);
-      setTimeout(play, 240);
+      setTimeout(play, 60);
+      setTimeout(play, 180);
     } catch {}
   });
 }
@@ -204,7 +262,7 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reaso
 
       const savedMedia = publishedMediaByRoom.get(room);
       if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
-      replaySubscribedTracks(room, entry.handlers);
+      forceRemoteSubscriptions(room, entry.handlers);
 
       recoveringRooms.delete(room);
       entry.handlers?.onReconnected?.();
@@ -221,34 +279,34 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reaso
   entry.handlers?.onDisconnected?.(lastError || reason);
 }
 
-async function publishManagedTrackWithRetry(room, localTrack, publishOptions = {}, stage = 'publish') {
+async function publishManagedTrackWithRetry(room, track, publishOptions = {}, stage = 'publish') {
   let lastError = null;
   for (const delay of PUBLISH_RETRY_DELAYS_MS) {
     if (delay) await wait(delay);
-    const mediaTrack = localTrack?.mediaStreamTrack;
+    const mediaTrack = track?.mediaStreamTrack || track;
     if (!mediaTrack || mediaTrack.readyState === 'ended') {
       const error = new Error('LIVE media track ended before publishing.');
-      await logClientError(`${stage}:track-ended`, error, { kind: localTrack?.kind || '' });
+      await logClientError(`${stage}:track-ended`, error, { kind: track?.kind || mediaTrack?.kind || '' });
       throw error;
     }
 
     cancelPendingDisconnect(room);
     closingRooms.delete(room);
     try {
-      const publication = await room.localParticipant.publishTrack(localTrack, publishOptions);
+      const publication = await room.localParticipant.publishTrack(track, publishOptions);
       cancelPendingDisconnect(room);
       return publication;
     } catch (error) {
       lastError = error;
       await logClientError(stage, error, {
-        kind: localTrack?.kind || '',
+        kind: track?.kind || mediaTrack?.kind || '',
         trackId: mediaTrack?.id || '',
         readyState: mediaTrack?.readyState || ''
       });
     }
   }
 
-  throw new Error(localTrack?.kind === Track.Kind.Video
+  throw new Error((track?.kind || track?.mediaStreamTrack?.kind) === Track.Kind.Video
     ? 'LIVE camera could not publish.'
     : 'LIVE microphone could not publish.');
 }
@@ -281,7 +339,8 @@ export async function connectLiveKitRoom({
     if (existing.room) cancelPendingDisconnect(existing.room);
     const room = await existing.ready;
     protectReusedRoom(room);
-    replaySubscribedTracks(room, handlers);
+    forceRemoteSubscriptions(room, handlers);
+    setTimeout(() => forceRemoteSubscriptions(room, handlers), 120);
     return { room, auth: existing.auth };
   }
 
@@ -302,13 +361,36 @@ export async function connectLiveKitRoom({
       entry.auth = auth;
       roomKeys.set(room, key);
 
-      room.on(RoomEvent.TrackSubscribed, (...args) => entry.handlers?.onTrackSubscribed?.(...args));
-      room.on(RoomEvent.TrackUnsubscribed, (...args) => entry.handlers?.onTrackUnsubscribed?.(...args));
-      room.on(RoomEvent.ParticipantConnected, (...args) => entry.handlers?.onParticipantConnected?.(...args));
-      room.on(RoomEvent.ParticipantDisconnected, (...args) => entry.handlers?.onParticipantDisconnected?.(...args));
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        entry.handlers?.onTrackSubscribed?.(track, publication, normalizedParticipant(participant));
+      });
+      room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        entry.handlers?.onTrackUnsubscribed?.(track, publication, normalizedParticipant(participant));
+      });
+      room.on(RoomEvent.TrackPublished, (publication, participant) => {
+        subscribePublication(publication);
+        setTimeout(() => replaySubscribedTracks(room, entry.handlers), 30);
+        entry.handlers?.onParticipantConnected?.(normalizedParticipant(participant));
+      });
+      room.on(RoomEvent.TrackSubscriptionFailed, (trackSid, participant) => {
+        logClientError('remote-track-subscription-failed', new Error('Remote LIVE track subscription failed.'), {
+          sessionId,
+          role,
+          trackSid: String(trackSid || ''),
+          participant: String(normalizedParticipant(participant)?.identity || '')
+        });
+      });
+      room.on(RoomEvent.ParticipantConnected, participant => {
+        entry.handlers?.onParticipantConnected?.(normalizedParticipant(participant));
+        setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 40);
+      });
+      room.on(RoomEvent.ParticipantDisconnected, participant => {
+        entry.handlers?.onParticipantDisconnected?.(normalizedParticipant(participant));
+      });
       room.on(RoomEvent.Reconnecting, (...args) => entry.handlers?.onReconnecting?.(...args));
       room.on(RoomEvent.Reconnected, (...args) => {
-        replaySubscribedTracks(room, entry.handlers);
+        forceRemoteSubscriptions(room, entry.handlers);
+        setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
         entry.handlers?.onReconnected?.(...args);
       });
 
@@ -331,7 +413,10 @@ export async function connectLiveKitRoom({
         await logClientError('connect', error, { sessionId, role });
         throw error;
       }
-      replaySubscribedTracks(room, entry.handlers);
+
+      forceRemoteSubscriptions(room, entry.handlers);
+      setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
+      setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 500);
       return room;
     } catch (error) {
       if (activeConnections.get(key) === entry) activeConnections.delete(key);
@@ -365,79 +450,61 @@ export async function publishLocalMedia(room, mediaStream) {
   const browserAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
   if (!browserVideo) throw new Error('LIVE camera track is missing.');
 
-  const facingMode = facingFromTrack(browserVideo);
-  const resolution = dimensionsFromTrack(browserVideo);
-  const wantsAudio = Boolean(browserAudio);
-  const videoCaptureOptions = { facingMode, resolution };
+  const videoCaptureOptions = {
+    facingMode: facingFromTrack(browserVideo),
+    resolution: dimensionsFromTrack(browserVideo)
+  };
   const videoPublishOptions = {
     source: Track.Source.Camera,
     simulcast: true,
     videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
   };
 
-  mediaStream.getTracks().forEach(track => {
-    try { track.stop(); } catch {}
-  });
-
-  let localTracks;
-  try {
-    localTracks = await createLocalTracks({
-      video: videoCaptureOptions,
-      audio: wantsAudio ? {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      } : false
-    });
-  } catch (error) {
-    await logClientError('create-local-tracks', error, { facingMode, wantsAudio });
-    throw new Error('LIVE camera could not start. Please try again.');
-  }
-
-  const localVideoTrack = localTracks.find(track => track.kind === Track.Kind.Video);
-  const localAudioTrack = localTracks.find(track => track.kind === Track.Kind.Audio);
-  if (!localVideoTrack?.mediaStreamTrack) {
-    localTracks.forEach(track => { try { track.stop?.(); } catch {} });
-    throw new Error('LIVE camera could not start.');
-  }
-
   const state = {
-    videoTrack: localVideoTrack,
-    audioTrack: localAudioTrack || null,
+    videoTrack: null,
+    audioTrack: null,
     videoPublication: null,
     audioPublication: null,
     videoCaptureOptions,
     videoPublishOptions
   };
   managedStateByRoom.set(room, state);
-  replaceStreamTracks(mediaStream, [localVideoTrack, localAudioTrack].filter(Boolean));
-  latestPublisherRoom = room;
-  announceCameraTrack(localVideoTrack.mediaStreamTrack);
-  nudgeLocalPreview(mediaStream);
 
   try {
-    state.videoPublication = await publishManagedTrackWithRetry(room, localVideoTrack, videoPublishOptions, 'publish-camera');
+    state.videoPublication = await publishManagedTrackWithRetry(room, browserVideo, videoPublishOptions, 'publish-camera');
+    state.videoTrack = state.videoPublication?.track || null;
+    if (!state.videoTrack?.mediaStreamTrack) throw new Error('LIVE camera publication is missing its track.');
   } catch (error) {
+    managedStateByRoom.delete(room);
     await logClientError('publish-camera:final', error, {
-      trackId: localVideoTrack.mediaStreamTrack?.id || '',
-      readyState: localVideoTrack.mediaStreamTrack?.readyState || ''
+      trackId: browserVideo.id || '',
+      readyState: browserVideo.readyState || ''
     });
     throw error;
   }
 
-  if (localAudioTrack?.mediaStreamTrack?.readyState === 'live') {
+  if (browserAudio?.readyState === 'live') {
     try {
-      state.audioPublication = await publishManagedTrackWithRetry(room, localAudioTrack, {
+      state.audioPublication = await publishManagedTrackWithRetry(room, browserAudio, {
         source: Track.Source.Microphone
       }, 'publish-microphone');
+      state.audioTrack = state.audioPublication?.track || null;
     } catch (error) {
       await logClientError('publish-microphone:ignored', error, {});
     }
   }
 
+  // Keep the exact camera MediaStream that was already visible in the preview.
+  // Do not stop and reopen the camera during publish. This removes the one-second
+  // black/orientation jump when a vertical LIVE starts.
+  replaceStreamTracks(mediaStream, [state.videoTrack, state.audioTrack].filter(Boolean));
+  latestPublisherRoom = room;
+  announceCameraTrack(state.videoTrack.mediaStreamTrack);
+  nudgeLocalPreview(mediaStream);
+
   if (pendingPublisherVideoTrack
       && pendingPublisherVideoTrack.readyState !== 'ended'
-      && pendingPublisherVideoTrack.id !== localVideoTrack.mediaStreamTrack.id) {
+      && pendingPublisherVideoTrack.id !== state.videoTrack.mediaStreamTrack.id) {
     try { await replacePublishedVideo(room, pendingPublisherVideoTrack); }
     catch (error) { await logClientError('pending-camera-replace', error, {}); }
   }
@@ -450,13 +517,14 @@ export const publishHostMedia = publishLocalMedia;
 
 export function attachRemoteTrack(track, element) {
   if (!track || !element) return;
-  track.attach(element);
-  if (element.tagName === 'VIDEO') {
-    element.playsInline = true;
-    element.setAttribute('playsinline', '');
-    const playback = element.play?.();
-    playback?.catch?.(() => {});
-  }
+  try { track.attach(element); } catch {}
+  element.autoplay = true;
+  element.playsInline = true;
+  element.setAttribute('playsinline', '');
+  const playback = element.play?.();
+  playback?.catch?.(() => {
+    setTimeout(() => element.play?.().catch?.(() => {}), 120);
+  });
 }
 
 export function detachRemoteTrack(track, element) {
@@ -482,7 +550,7 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
   }
 
   try {
-    await state.videoTrack.replaceTrack(mediaStreamTrack, false);
+    await state.videoTrack.replaceTrack(mediaStreamTrack, true);
   } catch (error) {
     await logClientError('replace-camera-track', error, {
       incomingTrackId: mediaStreamTrack?.id || '',
@@ -543,9 +611,6 @@ export function setPublishedVideoMuted(room, muted) {
         return;
       }
 
-      // LiveKit may reacquire the physical camera while unmuting. Wait for that
-      // operation to finish, then put the SDK's current MediaStreamTrack back
-      // into the same MediaStream used by the local preview/recorder.
       await publication.unmute();
       let activeTrack = state.videoTrack?.mediaStreamTrack;
       if (!activeTrack || activeTrack.readyState !== 'live') {
