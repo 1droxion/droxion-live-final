@@ -1,0 +1,50 @@
+name: Droxion Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-build:
+    name: Web build and release checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Verify required release files
+        run: |
+          set -e
+          test -f capacitor.config.json
+          test -f codemagic.yaml
+          test -f AGENTS.md
+          test -d dist
+          test -n "$(find dist -maxdepth 2 -type f -print -quit)"
+
+      - name: Guard against obvious tracked secrets
+        shell: bash
+        run: |
+          set -e
+          if git grep -nE '(BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|APP_STORE_CONNECT_PRIVATE_KEY[[:space:]]*[:=][[:space:]]*[^$])' -- ':!package-lock.json'; then
+            echo 'Potential private credential found in tracked files.'
+            exit 1
+          fi
