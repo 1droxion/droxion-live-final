@@ -11,7 +11,9 @@ const roomKeys = new WeakMap();
 const pendingDisconnects = new WeakMap();
 const publishedMediaByRoom = new WeakMap();
 const recoveringRooms = new WeakSet();
+const closingRooms = new WeakSet();
 let latestPublisherRoom = null;
+let pendingPublisherVideoTrack = null;
 
 async function getToken(sessionId, role) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -22,7 +24,7 @@ async function getToken(sessionId, role) {
     headers: { Authorization: `Bearer ${session.access_token}` }
   });
 
-  if (error) throw new Error(error.message || 'Could not authorize LIVE connection.');
+  if (error) throw new Error(data?.error || error.message || 'Could not authorize LIVE connection.');
   if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
   return data;
 }
@@ -51,11 +53,34 @@ function makeHandlers({
   };
 }
 
+function replaySubscribedTracks(room, handlers) {
+  if (!room || !handlers?.onTrackSubscribed) return;
+  try {
+    const participants = room.remoteParticipants?.values
+      ? Array.from(room.remoteParticipants.values())
+      : [];
+    participants.forEach(participant => {
+      const publications = participant.getTrackPublications?.()
+        || (participant.trackPublications?.values
+          ? Array.from(participant.trackPublications.values())
+          : []);
+      publications.forEach(publication => {
+        if (publication?.track) {
+          handlers.onTrackSubscribed(publication.track, publication, participant);
+        }
+      });
+    });
+  } catch {
+    // Event delivery remains the primary path; replay is a safety net for room reuse.
+  }
+}
+
 function cancelPendingDisconnect(room) {
   const pending = pendingDisconnects.get(room);
   if (!pending) return;
   clearTimeout(pending.timer);
   pendingDisconnects.delete(room);
+  closingRooms.delete(room);
   pending.resolve?.();
 }
 
@@ -71,13 +96,13 @@ function wait(ms) {
 }
 
 async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason }) {
-  if (!room || recoveringRooms.has(room) || pendingDisconnects.has(room)) return;
+  if (!room || closingRooms.has(room) || recoveringRooms.has(room) || pendingDisconnects.has(room)) return;
   recoveringRooms.add(room);
   entry.handlers?.onReconnecting?.();
 
   let lastError = null;
   for (const delay of RECONNECT_DELAYS_MS) {
-    if (pendingDisconnects.has(room)) {
+    if (closingRooms.has(room) || pendingDisconnects.has(room)) {
       recoveringRooms.delete(room);
       return;
     }
@@ -90,12 +115,14 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reaso
 
       const savedMedia = publishedMediaByRoom.get(room);
       if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
+      replaySubscribedTracks(room, entry.handlers);
 
       recoveringRooms.delete(room);
       entry.handlers?.onReconnected?.();
       return;
     } catch (error) {
       lastError = error;
+      if (/ended|not active|not found/i.test(String(error?.message || ''))) break;
     }
   }
 
@@ -160,6 +187,7 @@ export async function connectLiveKitRoom({
     if (existing.room) cancelPendingDisconnect(existing.room);
     const room = await existing.ready;
     cancelPendingDisconnect(room);
+    replaySubscribedTracks(room, handlers);
     return { room, auth: existing.auth };
   }
 
@@ -185,10 +213,13 @@ export async function connectLiveKitRoom({
       room.on(RoomEvent.ParticipantConnected, (...args) => entry.handlers?.onParticipantConnected?.(...args));
       room.on(RoomEvent.ParticipantDisconnected, (...args) => entry.handlers?.onParticipantDisconnected?.(...args));
       room.on(RoomEvent.Reconnecting, (...args) => entry.handlers?.onReconnecting?.(...args));
-      room.on(RoomEvent.Reconnected, (...args) => entry.handlers?.onReconnected?.(...args));
+      room.on(RoomEvent.Reconnected, (...args) => {
+        replaySubscribedTracks(room, entry.handlers);
+        entry.handlers?.onReconnected?.(...args);
+      });
 
       room.on(RoomEvent.Disconnected, reason => {
-        const intentionallyClosing = pendingDisconnects.has(room);
+        const intentionallyClosing = closingRooms.has(room) || pendingDisconnects.has(room);
         if (intentionallyClosing) {
           removeConnection(room);
           return;
@@ -199,6 +230,7 @@ export async function connectLiveKitRoom({
       });
 
       await room.connect(auth.url, auth.token, { autoSubscribe: true });
+      replaySubscribedTracks(room, entry.handlers);
       return room;
     } catch (error) {
       if (activeConnections.get(key) === entry) activeConnections.delete(key);
@@ -226,6 +258,17 @@ export async function publishLocalMedia(room, mediaStream) {
     });
     publications.push(publication);
   }
+
+  if (pendingPublisherVideoTrack?.readyState !== 'ended') {
+    const streamVideo = mediaStream.getVideoTracks()[0];
+    if (!streamVideo || streamVideo.id !== pendingPublisherVideoTrack.id) {
+      await replacePublicationTrack(room, Track.Source.Camera, pendingPublisherVideoTrack, {
+        simulcast: true,
+        videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+      });
+    }
+  }
+  pendingPublisherVideoTrack = null;
   return publications;
 }
 
@@ -234,6 +277,12 @@ export const publishHostMedia = publishLocalMedia;
 export function attachRemoteTrack(track, element) {
   if (!track || !element) return;
   track.attach(element);
+  if (element.tagName === 'VIDEO') {
+    element.playsInline = true;
+    element.setAttribute('playsinline', '');
+    const playback = element.play?.();
+    playback?.catch?.(() => {});
+  }
 }
 
 export function detachRemoteTrack(track, element) {
@@ -243,13 +292,18 @@ export function detachRemoteTrack(track, element) {
 }
 
 export async function replacePublishedVideo(room, mediaStreamTrack) {
-  if (!room || !mediaStreamTrack) return;
+  if (!mediaStreamTrack || mediaStreamTrack.readyState === 'ended') return;
+  if (!room) {
+    pendingPublisherVideoTrack = mediaStreamTrack;
+    return;
+  }
 
   await replacePublicationTrack(room, Track.Source.Camera, mediaStreamTrack, {
     simulcast: true,
     videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
   });
   latestPublisherRoom = room;
+  pendingPublisherVideoTrack = null;
 
   const savedMedia = publishedMediaByRoom.get(room);
   if (savedMedia) {
@@ -269,7 +323,17 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
 
 if (typeof window !== 'undefined') {
   window.__droxionReplacePublishedCamera = async mediaStreamTrack => {
-    if (!latestPublisherRoom) throw new Error('LIVE video transport is not ready yet.');
+    if (!mediaStreamTrack || mediaStreamTrack.readyState === 'ended') return;
+    if (!latestPublisherRoom) {
+      pendingPublisherVideoTrack = mediaStreamTrack;
+      window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
+        detail: {
+          track: mediaStreamTrack,
+          facingMode: mediaStreamTrack.getSettings?.()?.facingMode || ''
+        }
+      }));
+      return;
+    }
     return replacePublishedVideo(latestPublisherRoom, mediaStreamTrack);
   };
 }
@@ -293,8 +357,9 @@ export async function disconnectLiveKitRoom(room) {
 
   let resolvePending;
   const promise = new Promise(resolve => { resolvePending = resolve; });
+  closingRooms.add(room);
+
   const timer = setTimeout(async () => {
-    pendingDisconnects.delete(room);
     publishedMediaByRoom.delete(room);
     removeConnection(room);
     try {
@@ -302,6 +367,8 @@ export async function disconnectLiveKitRoom(room) {
     } catch {
       // Best-effort cleanup; Supabase heartbeat remains the source of LIVE state.
     } finally {
+      pendingDisconnects.delete(room);
+      closingRooms.delete(room);
       resolvePending();
     }
   }, DISCONNECT_GRACE_MS);
