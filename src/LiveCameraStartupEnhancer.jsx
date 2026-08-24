@@ -116,20 +116,23 @@ export default function LiveCameraStartupEnhancer() {
       if (!video || video.dataset.cameraStartupRecovery === 'done') return;
       video.dataset.cameraStartupRecovery = 'done';
 
-      [0, 80, 220, 500, 900].forEach(delay => later(() => tryPlay(video), delay));
+      // iOS/WKWebView may need several playback attempts while camera capture
+      // warms up. Never toggle the user's camera automatically: doing so can
+      // race a physical camera switch and leave the preview black.
+      [0, 80, 220, 500, 900, 1500].forEach(delay => later(() => tryPlay(video), delay));
 
       later(() => {
         if (!video.isConnected || video.videoWidth > 0 || video.readyState >= 2) return;
-        const room = video.closest('.liveRoomV4');
-        const cameraButton = room?.querySelector('.liveHostControlsV4 > button:nth-child(2)');
-        if (!cameraButton || cameraButton.disabled) return;
-
-        cameraButton.click();
-        later(() => {
-          cameraButton.click();
-          later(() => tryPlay(video), 100);
-          later(() => tryPlay(video), 350);
-        }, 180);
+        const stream = video.srcObject;
+        if (!stream || stream.active === false) return;
+        try {
+          video.srcObject = null;
+          requestAnimationFrame(() => {
+            if (!video.isConnected || disposed) return;
+            video.srcObject = stream;
+            tryPlay(video);
+          });
+        } catch {}
       }, 1250);
     };
 
@@ -149,9 +152,8 @@ export default function LiveCameraStartupEnhancer() {
       const oldEnabled = oldVideoTrack.enabled;
 
       try {
-        // iOS is much more reliable switching physical cameras after the old
-        // capture track has released the hardware first. Keep the same
-        // MediaStream object so React refs and mic controls stay valid.
+        // Release the physical camera before asking iOS for the other lens.
+        // Keep the same MediaStream object so mic state and React refs survive.
         oldVideoTrack.enabled = false;
         oldVideoTrack.stop();
         stream.removeTrack(oldVideoTrack);
@@ -161,8 +163,6 @@ export default function LiveCameraStartupEnhancer() {
         try {
           fresh = await acquireCamera(nextFacing, horizontal);
         } catch (error) {
-          // If the requested camera cannot start, immediately restore the
-          // previous camera instead of leaving a black LIVE preview.
           fresh = await acquireCamera(previousFacing, horizontal);
           throw Object.assign(error || new Error('Could not switch camera.'), { recoveryStream: fresh });
         }
@@ -185,9 +185,7 @@ export default function LiveCameraStartupEnhancer() {
           recoveryTrack.enabled = oldEnabled;
           stream.addTrack(recoveryTrack);
           recoveryStream.getTracks().forEach(track => { if (track !== recoveryTrack) track.stop(); });
-          try {
-            await window.__droxionReplacePublishedCamera?.(recoveryTrack);
-          } catch {}
+          try { await window.__droxionReplacePublishedCamera?.(recoveryTrack); } catch {}
           video.srcObject = stream;
           tryPlay(video);
         }
