@@ -33,6 +33,26 @@ function connectionKey(sessionId, role) {
   return `${String(sessionId || '').trim()}:${String(role || 'viewer').trim().toLowerCase()}`;
 }
 
+function makeHandlers({
+  onTrackSubscribed,
+  onTrackUnsubscribed,
+  onDisconnected,
+  onParticipantConnected,
+  onParticipantDisconnected,
+  onReconnecting,
+  onReconnected
+}) {
+  return {
+    onTrackSubscribed,
+    onTrackUnsubscribed,
+    onDisconnected,
+    onParticipantConnected,
+    onParticipantDisconnected,
+    onReconnecting,
+    onReconnected
+  };
+}
+
 function cancelPendingDisconnect(room) {
   const pending = pendingDisconnects.get(room);
   if (!pending) return;
@@ -51,10 +71,10 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, onReconnecting, onReconnected, onDisconnected, reason }) {
+async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason }) {
   if (!room || recoveringRooms.has(room) || pendingDisconnects.has(room)) return;
   recoveringRooms.add(room);
-  onReconnecting?.();
+  entry.handlers?.onReconnecting?.();
 
   let lastError = null;
   for (const delay of RECONNECT_DELAYS_MS) {
@@ -73,7 +93,7 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, onRec
       if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
 
       recoveringRooms.delete(room);
-      onReconnected?.();
+      entry.handlers?.onReconnected?.();
       return;
     } catch (error) {
       lastError = error;
@@ -82,7 +102,36 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, onRec
 
   recoveringRooms.delete(room);
   removeConnection(room);
-  onDisconnected?.(lastError || reason);
+  entry.handlers?.onDisconnected?.(lastError || reason);
+}
+
+async function replacePublicationTrack(room, source, mediaStreamTrack, publishOptions = {}) {
+  if (!room || !mediaStreamTrack || mediaStreamTrack.readyState === 'ended') {
+    throw new Error('The local media track is not available.');
+  }
+
+  const publication = room.localParticipant.getTrackPublication(source);
+  const localTrack = publication?.track;
+  if (localTrack?.mediaStreamTrack?.id === mediaStreamTrack.id) return publication;
+
+  if (localTrack?.replaceTrack) {
+    try {
+      await localTrack.replaceTrack(mediaStreamTrack);
+      return publication;
+    } catch {
+      // Safari/iOS can leave an ended camera sender behind after switching
+      // physical cameras. Fall through to a clean unpublish + publish.
+    }
+  }
+
+  if (localTrack) {
+    try { await room.localParticipant.unpublishTrack(localTrack); } catch {}
+  }
+
+  return room.localParticipant.publishTrack(mediaStreamTrack, {
+    source,
+    ...publishOptions
+  });
 }
 
 export async function connectLiveKitRoom({
@@ -97,19 +146,28 @@ export async function connectLiveKitRoom({
   onReconnected
 }) {
   const key = connectionKey(sessionId, role);
+  const handlers = makeHandlers({
+    onTrackSubscribed,
+    onTrackUnsubscribed,
+    onDisconnected,
+    onParticipantConnected,
+    onParticipantDisconnected,
+    onReconnecting,
+    onReconnected
+  });
   const existing = activeConnections.get(key);
 
-  // Reuse both an already-connected room and a connection that is still in
-  // flight. This is the important iOS/React race: the second mount can arrive
-  // before the first token request has even finished.
+  // Keep the callbacks fresh when React immediately reuses the same room.
+  // Without this, a reclaimed room continues calling a cancelled/stale effect.
   if (existing) {
+    existing.handlers = handlers;
     if (existing.room) cancelPendingDisconnect(existing.room);
     const room = await existing.ready;
     cancelPendingDisconnect(room);
     return { room, auth: existing.auth };
   }
 
-  const entry = { room: null, auth: null, ready: null };
+  const entry = { room: null, auth: null, ready: null, handlers };
   activeConnections.set(key, entry);
 
   entry.ready = (async () => {
@@ -126,12 +184,12 @@ export async function connectLiveKitRoom({
       entry.auth = auth;
       roomKeys.set(room, key);
 
-      if (onTrackSubscribed) room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
-      if (onTrackUnsubscribed) room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
-      if (onParticipantConnected) room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-      if (onParticipantDisconnected) room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-      if (onReconnecting) room.on(RoomEvent.Reconnecting, onReconnecting);
-      if (onReconnected) room.on(RoomEvent.Reconnected, onReconnected);
+      room.on(RoomEvent.TrackSubscribed, (...args) => entry.handlers?.onTrackSubscribed?.(...args));
+      room.on(RoomEvent.TrackUnsubscribed, (...args) => entry.handlers?.onTrackUnsubscribed?.(...args));
+      room.on(RoomEvent.ParticipantConnected, (...args) => entry.handlers?.onParticipantConnected?.(...args));
+      room.on(RoomEvent.ParticipantDisconnected, (...args) => entry.handlers?.onParticipantDisconnected?.(...args));
+      room.on(RoomEvent.Reconnecting, (...args) => entry.handlers?.onReconnecting?.(...args));
+      room.on(RoomEvent.Reconnected, (...args) => entry.handlers?.onReconnected?.(...args));
 
       room.on(RoomEvent.Disconnected, reason => {
         const intentionallyClosing = pendingDisconnects.has(room);
@@ -140,18 +198,9 @@ export async function connectLiveKitRoom({
           return;
         }
 
-        // A dropped mobile network/WebSocket should not immediately become a
-        // scary permanent error. Recover in-place with a fresh token first.
-        recoverUnexpectedDisconnect({
-          room,
-          sessionId,
-          role,
-          entry,
-          onReconnecting,
-          onReconnected,
-          onDisconnected,
-          reason
-        }).catch(() => onDisconnected?.(reason));
+        // A dropped mobile network/WebSocket should recover silently first.
+        recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason })
+          .catch(() => entry.handlers?.onDisconnected?.(reason));
       });
 
       // Hosts must subscribe too so they can see an accepted guest.
@@ -176,27 +225,7 @@ export async function publishLocalMedia(room, mediaStream) {
   for (const track of mediaStream.getTracks()) {
     if (track.readyState === 'ended') continue;
     const source = track.kind === 'video' ? Track.Source.Camera : Track.Source.Microphone;
-    const existing = room.localParticipant.getTrackPublication(source);
-    const localTrack = existing?.track;
-
-    // Idempotent publishing is important when the LIVE React effect quickly
-    // reuses the same room during startup/reconciliation.
-    if (localTrack) {
-      const currentMediaTrack = localTrack.mediaStreamTrack;
-      if (currentMediaTrack?.id === track.id) {
-        publications.push(existing);
-        continue;
-      }
-      if (localTrack.replaceTrack) {
-        await localTrack.replaceTrack(track);
-        publications.push(existing);
-        continue;
-      }
-      await room.localParticipant.unpublishTrack(localTrack);
-    }
-
-    const publication = await room.localParticipant.publishTrack(track, {
-      source,
+    const publication = await replacePublicationTrack(room, source, track, {
       simulcast: track.kind === 'video',
       videoEncoding: track.kind === 'video' ? { maxBitrate: 2_500_000, maxFramerate: 30 } : undefined
     });
@@ -220,18 +249,11 @@ export function detachRemoteTrack(track, element) {
 
 export async function replacePublishedVideo(room, mediaStreamTrack) {
   if (!room || !mediaStreamTrack) return;
-  const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
-  const localTrack = publication?.track;
-  if (localTrack?.replaceTrack) {
-    await localTrack.replaceTrack(mediaStreamTrack);
-  } else {
-    if (localTrack) await room.localParticipant.unpublishTrack(localTrack);
-    await room.localParticipant.publishTrack(mediaStreamTrack, {
-      source: Track.Source.Camera,
-      simulcast: true,
-      videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-    });
-  }
+
+  await replacePublicationTrack(room, Track.Source.Camera, mediaStreamTrack, {
+    simulcast: true,
+    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+  });
 
   const savedMedia = publishedMediaByRoom.get(room);
   if (savedMedia) {
