@@ -87,9 +87,6 @@ function cancelPendingDisconnect(room) {
 }
 
 function protectReusedRoom(room) {
-  // React can tear down an older LIVE effect a microtask after a newer effect
-  // has reclaimed the same in-flight LiveKit room. Cancel that stale teardown
-  // again on the next task so it cannot disconnect the active publisher/viewer.
   cancelPendingDisconnect(room);
   if (typeof queueMicrotask === 'function') queueMicrotask(() => cancelPendingDisconnect(room));
   setTimeout(() => cancelPendingDisconnect(room), 0);
@@ -150,8 +147,6 @@ async function publishRawTrackWithRetry(room, mediaStreamTrack, publishOptions) 
       throw new Error('The camera or microphone stopped before LIVE could publish it.');
     }
 
-    // A stale React cleanup may have queued a disconnect for this exact room.
-    // Publishing is proof that the room is actively owned, so reclaim it first.
     cancelPendingDisconnect(room);
     closingRooms.delete(room);
 
@@ -161,14 +156,11 @@ async function publishRawTrackWithRetry(room, mediaStreamTrack, publishOptions) 
       return publication;
     } catch (error) {
       lastError = error;
-      // The iOS WebView can expose a transient null LocalTrack while a reused
-      // room is finishing negotiation. Retrying the still-live raw track makes
-      // LiveKit create a clean LocalTrack wrapper on the stable connection.
       if (mediaStreamTrack.readyState === 'ended') break;
     }
   }
 
-  console.warn('Droxion LIVE media publish failed after retry', lastError);
+  console.warn('Droxion LIVE media publish failed after retry', mediaStreamTrack?.kind, lastError);
   throw new Error(mediaStreamTrack?.kind === 'video'
     ? 'LIVE camera could not start. Restoring video…'
     : 'LIVE microphone could not start.');
@@ -187,8 +179,6 @@ async function replacePublicationTrack(room, source, mediaStreamTrack, publishOp
   const existingMediaTrack = localTrack?.mediaStreamTrack;
   if (existingMediaTrack?.id && existingMediaTrack.id === mediaStreamTrack.id) return publication;
 
-  // Only call replaceTrack when LiveKit still owns a healthy underlying track.
-  // Calling it after a room-reuse teardown on iOS can hit a null internal track.
   if (localTrack?.replaceTrack && existingMediaTrack && existingMediaTrack.readyState !== 'ended') {
     try {
       await localTrack.replaceTrack(mediaStreamTrack);
@@ -201,13 +191,40 @@ async function replacePublicationTrack(room, source, mediaStreamTrack, publishOp
 
   if (localTrack) {
     try { await room.localParticipant.unpublishTrack(localTrack); } catch {}
-    await wait(40);
+    await wait(60);
   }
 
   return publishRawTrackWithRetry(room, mediaStreamTrack, {
     source,
     ...publishOptions
   });
+}
+
+async function publishMicrophoneSafely(room, audioTrack) {
+  if (!audioTrack || audioTrack.readyState === 'ended') return null;
+  try {
+    return await replacePublicationTrack(room, Track.Source.Microphone, audioTrack);
+  } catch (firstError) {
+    console.warn('Droxion LIVE microphone track publish retrying with LiveKit capture', firstError);
+    await wait(600);
+
+    const existing = room?.localParticipant?.getTrackPublication?.(Track.Source.Microphone);
+    if (existing?.track) return existing;
+
+    try {
+      // Let LiveKit own the fallback microphone track. This is deliberately
+      // isolated from camera publishing so a microphone SDK issue can never
+      // turn a healthy LIVE video into an error state.
+      return await room.localParticipant.setMicrophoneEnabled(true, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      });
+    } catch (fallbackError) {
+      console.warn('Droxion LIVE microphone fallback failed', fallbackError);
+      return null;
+    }
+  }
 }
 
 export async function connectLiveKitRoom({
@@ -303,23 +320,29 @@ export async function publishLocalMedia(room, mediaStream) {
 
   const videoTrack = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
   const audioTrack = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
-  if (videoTrack) latestPublisherRoom = room;
+  if (!videoTrack) throw new Error('LIVE camera track is missing.');
+  latestPublisherRoom = room;
 
   const publications = [];
-  // Publish camera first. On iOS this makes the visual path deterministic and
-  // avoids an audio negotiation racing the first camera publication.
-  if (videoTrack) {
-    publications.push(await replacePublicationTrack(room, Track.Source.Camera, videoTrack, {
-      simulcast: true,
-      videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-    }));
-  }
+
+  // Camera is the critical LIVE path. Finish it fully before touching audio.
+  // This prevents LiveKit camera/audio negotiations from racing each other on
+  // Safari/WKWebView and makes a microphone problem unable to blank the video.
+  const videoPublication = await replacePublicationTrack(room, Track.Source.Camera, videoTrack, {
+    simulcast: true,
+    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
+  });
+  if (videoPublication) publications.push(videoPublication);
+
+  await wait(280);
+
   if (audioTrack) {
-    publications.push(await replacePublicationTrack(room, Track.Source.Microphone, audioTrack));
+    const audioPublication = await publishMicrophoneSafely(room, audioTrack);
+    if (audioPublication) publications.push(audioPublication);
   }
 
   if (pendingPublisherVideoTrack?.readyState !== 'ended') {
-    if (!videoTrack || videoTrack.id !== pendingPublisherVideoTrack.id) {
+    if (videoTrack.id !== pendingPublisherVideoTrack.id) {
       await replacePublicationTrack(room, Track.Source.Camera, pendingPublisherVideoTrack, {
         simulcast: true,
         videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
@@ -401,14 +424,14 @@ if (typeof window !== 'undefined') {
 
 export function setPublishedAudioMuted(room, muted) {
   const publication = room?.localParticipant?.getTrackPublication(Track.Source.Microphone);
-  if (!publication) return;
-  if (muted) publication.mute(); else publication.unmute();
+  if (!publication?.track) return;
+  try { if (muted) publication.mute(); else publication.unmute(); } catch {}
 }
 
 export function setPublishedVideoMuted(room, muted) {
   const publication = room?.localParticipant?.getTrackPublication(Track.Source.Camera);
-  if (!publication) return;
-  if (muted) publication.mute(); else publication.unmute();
+  if (!publication?.track) return;
+  try { if (muted) publication.mute(); else publication.unmute(); } catch {}
 }
 
 export async function disconnectLiveKitRoom(room) {
