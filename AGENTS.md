@@ -14,10 +14,11 @@ Keep Droxion LIVE reliable first. A user must be able to start a LIVE on one pho
 
 ## Release policy
 - `main` is the source of truth for approved engineering changes.
-- iOS release builds are prepared through Codemagic and App Store Connect/TestFlight.
-- The `release/ios` branch is the release trigger branch. Advance it only after the quality gate passes and the chosen `main` commit is ready for TestFlight.
-- TestFlight upload may be automatic.
+- iOS release builds are prepared through the existing Codemagic integration and App Store Connect/TestFlight pipeline defined in `codemagic.yaml`.
+- Do not assume a separate release branch is required unless the repository or Codemagic configuration explicitly adds one later.
+- TestFlight upload may be automatic after a successful signed iOS build.
 - Final App Store production release remains a human approval step for the founder.
+- When checking release status, use available evidence from GitHub/Codemagic/App Store Connect/TestFlight or connected email; do not infer that a build is absent only because GitHub has no artifact.
 
 ## Apple rejection / review loop
 When an App Store Connect or App Review message is received:
