@@ -1,16 +1,17 @@
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent, Track, createLocalTracks } from 'livekit-client';
 import { supabase } from '../supabaseClient';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
 const DISCONNECT_GRACE_MS = 750;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
-const PUBLISH_RETRY_DELAYS_MS = [0, 140, 420];
+const PUBLISH_RETRY_DELAYS_MS = [0, 160, 480];
 
 const activeConnections = new Map();
 const roomKeys = new WeakMap();
 const pendingDisconnects = new WeakMap();
 const publishedMediaByRoom = new WeakMap();
+const managedTracksByRoom = new WeakMap();
 const recoveringRooms = new WeakSet();
 const closingRooms = new WeakSet();
 let latestPublisherRoom = null;
@@ -66,14 +67,10 @@ function replaySubscribedTracks(room, handlers) {
           ? Array.from(participant.trackPublications.values())
           : []);
       publications.forEach(publication => {
-        if (publication?.track) {
-          handlers.onTrackSubscribed(publication.track, publication, participant);
-        }
+        if (publication?.track) handlers.onTrackSubscribed(publication.track, publication, participant);
       });
     });
-  } catch {
-    // Event delivery remains the primary path; replay is a safety net for room reuse.
-  }
+  } catch {}
 }
 
 function cancelPendingDisconnect(room) {
@@ -92,6 +89,14 @@ function protectReusedRoom(room) {
   setTimeout(() => cancelPendingDisconnect(room), 0);
 }
 
+function stopManagedTracks(room) {
+  const tracks = managedTracksByRoom.get(room) || [];
+  tracks.forEach(track => {
+    try { track.stop?.(); } catch {}
+  });
+  managedTracksByRoom.delete(room);
+}
+
 function removeConnection(room) {
   const key = roomKeys.get(room);
   if (key && activeConnections.get(key)?.room === room) activeConnections.delete(key);
@@ -101,6 +106,46 @@ function removeConnection(room) {
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function facingFromTrack(track) {
+  const settings = track?.getSettings?.() || {};
+  const text = String(settings.facingMode || track?.label || '').toLowerCase();
+  return text.includes('environment') || text.includes('rear') || text.includes('back')
+    ? 'environment'
+    : 'user';
+}
+
+function dimensionsFromTrack(track) {
+  const settings = track?.getSettings?.() || {};
+  const width = Number(settings.width || 0);
+  const height = Number(settings.height || 0);
+  const portrait = height >= width;
+  return portrait
+    ? { width: 720, height: 1280, frameRate: 30 }
+    : { width: 1280, height: 720, frameRate: 30 };
+}
+
+function replaceStreamTracks(targetStream, tracks) {
+  if (!targetStream) return;
+  targetStream.getTracks().forEach(track => {
+    try { targetStream.removeTrack(track); } catch {}
+    try { track.stop(); } catch {}
+  });
+  tracks.forEach(localTrack => {
+    const mediaTrack = localTrack?.mediaStreamTrack;
+    if (mediaTrack && mediaTrack.readyState !== 'ended') targetStream.addTrack(mediaTrack);
+  });
+}
+
+function announceCameraTrack(mediaStreamTrack) {
+  if (typeof window === 'undefined' || !mediaStreamTrack) return;
+  window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
+    detail: {
+      track: mediaStreamTrack,
+      facingMode: mediaStreamTrack.getSettings?.()?.facingMode || facingFromTrack(mediaStreamTrack)
+    }
+  }));
 }
 
 async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason }) {
@@ -139,31 +184,27 @@ async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reaso
   entry.handlers?.onDisconnected?.(lastError || reason);
 }
 
-async function publishRawTrackWithRetry(room, mediaStreamTrack, publishOptions) {
+async function publishManagedTrackWithRetry(room, localTrack, publishOptions = {}) {
   let lastError = null;
   for (const delay of PUBLISH_RETRY_DELAYS_MS) {
     if (delay) await wait(delay);
-    if (!mediaStreamTrack || mediaStreamTrack.readyState === 'ended') {
-      throw new Error('The camera or microphone stopped before LIVE could publish it.');
-    }
+    const mediaTrack = localTrack?.mediaStreamTrack;
+    if (!mediaTrack || mediaTrack.readyState === 'ended') throw new Error('LIVE media track ended before publishing.');
 
     cancelPendingDisconnect(room);
     closingRooms.delete(room);
-
     try {
-      const publication = await room.localParticipant.publishTrack(mediaStreamTrack, publishOptions);
+      const publication = await room.localParticipant.publishTrack(localTrack, publishOptions);
       cancelPendingDisconnect(room);
       return publication;
     } catch (error) {
       lastError = error;
-      if (mediaStreamTrack.readyState === 'ended') break;
     }
   }
-
-  console.warn('Droxion LIVE media publish failed after retry', mediaStreamTrack?.kind, lastError);
-  throw new Error(mediaStreamTrack?.kind === 'video'
-    ? 'LIVE camera could not start. Restoring video…'
-    : 'LIVE microphone could not start.');
+  console.warn('Droxion LIVE managed track publish failed', localTrack?.kind, lastError);
+  throw new Error(localTrack?.kind === Track.Kind.Video
+    ? 'LIVE camera could not publish.'
+    : 'LIVE microphone could not publish.');
 }
 
 async function replacePublicationTrack(room, source, mediaStreamTrack, publishOptions = {}) {
@@ -179,52 +220,32 @@ async function replacePublicationTrack(room, source, mediaStreamTrack, publishOp
   const existingMediaTrack = localTrack?.mediaStreamTrack;
   if (existingMediaTrack?.id && existingMediaTrack.id === mediaStreamTrack.id) return publication;
 
-  if (localTrack?.replaceTrack && existingMediaTrack && existingMediaTrack.readyState !== 'ended') {
+  if (localTrack?.replaceTrack) {
     try {
-      await localTrack.replaceTrack(mediaStreamTrack);
+      await localTrack.replaceTrack(mediaStreamTrack, false);
       cancelPendingDisconnect(room);
       return publication;
-    } catch {
-      // Fall back to a clean publication below.
+    } catch (error) {
+      console.warn('Droxion LIVE replaceTrack fallback', error);
     }
   }
 
-  if (localTrack) {
-    try { await room.localParticipant.unpublishTrack(localTrack); } catch {}
-    await wait(60);
-  }
-
-  return publishRawTrackWithRetry(room, mediaStreamTrack, {
-    source,
-    ...publishOptions
+  // If no publication exists (for example during a very early camera flip),
+  // create one SDK-managed track instead of passing a raw browser track into
+  // publishTrack. This avoids the null LocalTrack wrapper crash seen in Safari.
+  const facingMode = facingFromTrack(mediaStreamTrack);
+  const localTracks = await createLocalTracks({
+    audio: false,
+    video: { facingMode, resolution: dimensionsFromTrack(mediaStreamTrack) }
   });
-}
+  const localVideoTrack = localTracks.find(track => track.kind === Track.Kind.Video);
+  if (!localVideoTrack) throw new Error('LIVE camera could not be created.');
 
-async function publishMicrophoneSafely(room, audioTrack) {
-  if (!audioTrack || audioTrack.readyState === 'ended') return null;
-  try {
-    return await replacePublicationTrack(room, Track.Source.Microphone, audioTrack);
-  } catch (firstError) {
-    console.warn('Droxion LIVE microphone track publish retrying with LiveKit capture', firstError);
-    await wait(600);
-
-    const existing = room?.localParticipant?.getTrackPublication?.(Track.Source.Microphone);
-    if (existing?.track) return existing;
-
-    try {
-      // Let LiveKit own the fallback microphone track. This is deliberately
-      // isolated from camera publishing so a microphone SDK issue can never
-      // turn a healthy LIVE video into an error state.
-      return await room.localParticipant.setMicrophoneEnabled(true, {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      });
-    } catch (fallbackError) {
-      console.warn('Droxion LIVE microphone fallback failed', fallbackError);
-      return null;
-    }
-  }
+  try { mediaStreamTrack.stop(); } catch {}
+  const managed = managedTracksByRoom.get(room) || [];
+  managed.push(localVideoTrack);
+  managedTracksByRoom.set(room, managed);
+  return publishManagedTrackWithRetry(room, localVideoTrack, { source, ...publishOptions });
 }
 
 export async function connectLiveKitRoom({
@@ -292,7 +313,6 @@ export async function connectLiveKitRoom({
           removeConnection(room);
           return;
         }
-
         recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason })
           .catch(() => entry.handlers?.onDisconnected?.(reason));
       });
@@ -318,36 +338,80 @@ export async function publishLocalMedia(room, mediaStream) {
   closingRooms.delete(room);
   publishedMediaByRoom.set(room, mediaStream);
 
-  const videoTrack = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
-  const audioTrack = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
-  if (!videoTrack) throw new Error('LIVE camera track is missing.');
+  const existingVideoPublication = room.localParticipant.getTrackPublication(Track.Source.Camera);
+  if (existingVideoPublication?.track?.mediaStreamTrack?.readyState === 'live') {
+    const existingAudioPublication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+    const localTracks = [existingVideoPublication.track, existingAudioPublication?.track].filter(Boolean);
+    replaceStreamTracks(mediaStream, localTracks);
+    latestPublisherRoom = room;
+    announceCameraTrack(existingVideoPublication.track.mediaStreamTrack);
+    return [existingVideoPublication, existingAudioPublication].filter(Boolean);
+  }
+
+  const browserVideo = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
+  const browserAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+  if (!browserVideo) throw new Error('LIVE camera track is missing.');
+
+  const facingMode = facingFromTrack(browserVideo);
+  const resolution = dimensionsFromTrack(browserVideo);
+  const wantsAudio = Boolean(browserAudio);
+
+  // Release the browser-owned capture before asking LiveKit to acquire devices.
+  // iOS cannot reliably keep two captures of the same camera alive.
+  mediaStream.getTracks().forEach(track => {
+    try { track.stop(); } catch {}
+  });
+
+  let localTracks;
+  try {
+    localTracks = await createLocalTracks({
+      video: { facingMode, resolution },
+      audio: wantsAudio ? {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      } : false
+    });
+  } catch (error) {
+    console.warn('Droxion LIVE SDK media acquisition failed', error);
+    throw new Error('LIVE camera could not start. Please try again.');
+  }
+
+  const localVideoTrack = localTracks.find(track => track.kind === Track.Kind.Video);
+  const localAudioTrack = localTracks.find(track => track.kind === Track.Kind.Audio);
+  if (!localVideoTrack?.mediaStreamTrack) {
+    localTracks.forEach(track => { try { track.stop?.(); } catch {} });
+    throw new Error('LIVE camera could not start.');
+  }
+
+  managedTracksByRoom.set(room, localTracks);
+  replaceStreamTracks(mediaStream, localTracks);
   latestPublisherRoom = room;
+  announceCameraTrack(localVideoTrack.mediaStreamTrack);
 
   const publications = [];
-
-  // Camera is the critical LIVE path. Finish it fully before touching audio.
-  // This prevents LiveKit camera/audio negotiations from racing each other on
-  // Safari/WKWebView and makes a microphone problem unable to blank the video.
-  const videoPublication = await replacePublicationTrack(room, Track.Source.Camera, videoTrack, {
+  const videoPublication = await publishManagedTrackWithRetry(room, localVideoTrack, {
+    source: Track.Source.Camera,
     simulcast: true,
     videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
   });
-  if (videoPublication) publications.push(videoPublication);
+  publications.push(videoPublication);
 
-  await wait(280);
-
-  if (audioTrack) {
-    const audioPublication = await publishMicrophoneSafely(room, audioTrack);
-    if (audioPublication) publications.push(audioPublication);
+  if (localAudioTrack?.mediaStreamTrack?.readyState === 'live') {
+    try {
+      const audioPublication = await publishManagedTrackWithRetry(room, localAudioTrack, {
+        source: Track.Source.Microphone
+      });
+      if (audioPublication) publications.push(audioPublication);
+    } catch (error) {
+      // Never fail a working LIVE video because microphone publishing failed.
+      console.warn('Droxion LIVE microphone publish skipped', error);
+    }
   }
 
-  if (pendingPublisherVideoTrack?.readyState !== 'ended') {
-    if (videoTrack.id !== pendingPublisherVideoTrack.id) {
-      await replacePublicationTrack(room, Track.Source.Camera, pendingPublisherVideoTrack, {
-        simulcast: true,
-        videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
-      });
-    }
+  if (pendingPublisherVideoTrack?.readyState !== 'ended'
+      && pendingPublisherVideoTrack.id !== localVideoTrack.mediaStreamTrack.id) {
+    try { await replacePublishedVideo(room, pendingPublisherVideoTrack); } catch {}
   }
   pendingPublisherVideoTrack = null;
   cancelPendingDisconnect(room);
@@ -390,19 +454,13 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
   pendingPublisherVideoTrack = null;
 
   const savedMedia = publishedMediaByRoom.get(room);
-  if (savedMedia) {
+  const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
+  const activeTrack = publication?.track?.mediaStreamTrack || mediaStreamTrack;
+  if (savedMedia && activeTrack?.readyState !== 'ended') {
     const audioTracks = savedMedia.getAudioTracks().filter(track => track.readyState !== 'ended');
-    publishedMediaByRoom.set(room, new MediaStream([mediaStreamTrack, ...audioTracks]));
+    replaceStreamTracks(savedMedia, [{ mediaStreamTrack: activeTrack }, ...audioTracks.map(track => ({ mediaStreamTrack: track }))]);
   }
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
-      detail: {
-        track: mediaStreamTrack,
-        facingMode: mediaStreamTrack.getSettings?.()?.facingMode || ''
-      }
-    }));
-  }
+  announceCameraTrack(activeTrack);
 }
 
 if (typeof window !== 'undefined') {
@@ -410,12 +468,7 @@ if (typeof window !== 'undefined') {
     if (!mediaStreamTrack || mediaStreamTrack.readyState === 'ended') return;
     if (!latestPublisherRoom) {
       pendingPublisherVideoTrack = mediaStreamTrack;
-      window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
-        detail: {
-          track: mediaStreamTrack,
-          facingMode: mediaStreamTrack.getSettings?.()?.facingMode || ''
-        }
-      }));
+      announceCameraTrack(mediaStreamTrack);
       return;
     }
     return replacePublishedVideo(latestPublisherRoom, mediaStreamTrack);
@@ -445,12 +498,12 @@ export async function disconnectLiveKitRoom(room) {
 
   const timer = setTimeout(async () => {
     publishedMediaByRoom.delete(room);
-    removeConnection(room);
     try {
       await room.disconnect();
-    } catch {
-      // Best-effort cleanup; Supabase heartbeat remains the source of LIVE state.
-    } finally {
+    } catch {}
+    finally {
+      stopManagedTracks(room);
+      removeConnection(room);
       pendingDisconnects.delete(room);
       closingRooms.delete(room);
       resolvePending();
