@@ -15,6 +15,14 @@ function avatar(profile, className = '') {
   return <span className={`${className} sfAvatarFallback`} aria-hidden="true" />;
 }
 
+function safePlay(video) {
+  if (!video) return;
+  try {
+    const result = video.play?.();
+    if (result?.catch) result.catch(() => {});
+  } catch {}
+}
+
 export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   const [clips, setClips] = useState([]);
   const [profiles, setProfiles] = useState({});
@@ -105,8 +113,8 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       entries.forEach(entry => {
         const video = entry.target;
         const clipId = video.dataset.clipId;
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.72) {
-          video.play?.().catch(() => {});
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.62) {
+          safePlay(video);
           if (clipId && !viewed.current.has(clipId)) {
             viewed.current.add(clipId);
             supabase.rpc('droxion_record_clip_view', { p_clip_id: clipId }).then(({ data }) => {
@@ -114,15 +122,37 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
               setClips(current => current.map(item => item.id === clipId ? { ...item, views_count: Number(data) } : item));
             });
           }
-        } else {
+        } else if (entry.intersectionRatio < 0.3) {
           video.pause?.();
         }
       });
-    }, { threshold: [0, 0.72, 1] });
+    }, { threshold: [0, 0.3, 0.62, 0.85, 1] });
 
     videoRefs.current.forEach(video => observer.observe(video));
-    return () => observer.disconnect();
+    const retry = window.setInterval(() => {
+      videoRefs.current.forEach(video => {
+        const rect = video.getBoundingClientRect();
+        const visible = Math.max(0, Math.min(window.innerHeight, rect.bottom) - Math.max(0, rect.top));
+        const ratio = rect.height ? visible / rect.height : 0;
+        if (ratio >= 0.62 && (video.paused || video.ended)) {
+          try { if (video.ended) video.currentTime = 0; } catch {}
+          safePlay(video);
+        }
+      });
+    }, 700);
+
+    return () => {
+      observer.disconnect();
+      window.clearInterval(retry);
+    };
   }, [clips.length]);
+
+  useEffect(() => {
+    videoRefs.current.forEach(video => {
+      video.muted = muted;
+      if (!video.paused || muted) safePlay(video);
+    });
+  }, [muted]);
 
   async function toggleLike(clipId) {
     if (!currentUserId) { setNotice('Sign in to like highlights.'); return; }
@@ -288,6 +318,16 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
     lastTap.current = { clipId: clip.id, at: now };
   }
 
+  function toggleSound(clipId) {
+    const nextMuted = !muted;
+    setMuted(nextMuted);
+    const video = videoRefs.current.get(clipId);
+    if (video) {
+      video.muted = nextMuted;
+      safePlay(video);
+    }
+  }
+
   if (loading) return <section className="sfPage sfEmpty"><div className="sfLoader" /><strong>Loading highlights…</strong></section>;
 
   if (!clips.length) return (
@@ -316,11 +356,15 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
               className="sfVideo"
               src={clip.video_url}
               poster={clip.thumbnail_url || undefined}
-              autoPlay={false}
+              autoPlay
               playsInline
               muted={muted}
               loop
-              preload="metadata"
+              preload="auto"
+              onCanPlay={event => safePlay(event.currentTarget)}
+              onEnded={event => { try { event.currentTarget.currentTime = 0; } catch {}; safePlay(event.currentTarget); }}
+              onStalled={event => window.setTimeout(() => safePlay(event.currentTarget), 250)}
+              onWaiting={event => window.setTimeout(() => safePlay(event.currentTarget), 180)}
               onPointerUp={() => handleVideoTap(clip)}
             />
             <div className="sfShade" />
@@ -347,7 +391,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
               <button type="button" onClick={() => loadLikes(clip)} aria-label="See who liked this highlight"><span className="sfTinyLabel">Liked by</span></button>
               <button type="button" onClick={() => loadComments(clip)}><MessageCircle size={27} /><span>{compactNumber(clip.comments_count)}</span></button>
               <button type="button" onClick={() => shareClip(clip)}><Share2 size={27} /><span>{compactNumber(clip.shares_count)}</span></button>
-              <button type="button" onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={25} /> : <Volume2 size={25} />}<span>{muted ? 'Sound' : 'Mute'}</span></button>
+              <button type="button" onClick={() => toggleSound(clip.id)}>{muted ? <VolumeX size={25} /> : <Volume2 size={25} />}<span>{muted ? 'Sound' : 'Mute'}</span></button>
             </div>
 
             <div className="sfViewCount">{compactNumber(clip.views_count)} views</div>
@@ -376,8 +420,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
             {!drawerLoading && drawerRows.map(row => <div className="sfPersonRow" key={drawer.type === 'likes' ? row.user_id : row.id}>
               {avatar(row.profile, 'sfListAvatar')}
               <div><strong>{row.profile?.display_name || row.profile?.username || 'Droxion user'}</strong>{drawer.type === 'comments' && <p>{row.body}</p>}</div>
-              {drawer.type === 'likes' && row.user_id !== currentUserId && <UserPlus size={17} />}
-            </div>)}
+              {drawer.type === 'likes' && row.user_id !== currentUserId && <UserPlus size={17} />}</div>)}
           </div>
           {drawer.type === 'comments' && <div className="sfCommentComposer"><input value={commentDraft} onChange={event => setCommentDraft(event.target.value)} maxLength={500} placeholder="Add a comment…" onKeyDown={event => { if (event.key === 'Enter') sendComment(); }} /><button type="button" disabled={!commentDraft.trim()} onClick={sendComment}>Post</button></div>}
         </div>
