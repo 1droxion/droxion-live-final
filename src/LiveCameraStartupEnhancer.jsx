@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 
+const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
+
 function tryPlay(video) {
   if (!video) return;
   video.muted = true;
@@ -22,12 +24,12 @@ function currentFacing(track, video) {
   return video?.classList?.contains('mirrored') ? 'user' : 'environment';
 }
 
-function videoConstraints(nextFacing, horizontal) {
+function videoConstraints(nextFacing, horizontal, exact = true) {
   const dimensions = horizontal
     ? { width: { ideal: 1280 }, height: { ideal: 720 } }
     : { width: { ideal: 720 }, height: { ideal: 1280 } };
   return {
-    facingMode: { exact: nextFacing },
+    facingMode: exact ? { exact: nextFacing } : { ideal: nextFacing },
     ...dimensions,
     frameRate: { ideal: 30, max: 30 }
   };
@@ -36,28 +38,39 @@ function videoConstraints(nextFacing, horizontal) {
 async function acquireCamera(nextFacing, horizontal) {
   try {
     return await navigator.mediaDevices.getUserMedia({
-      video: videoConstraints(nextFacing, horizontal),
+      video: videoConstraints(nextFacing, horizontal, true),
       audio: false
     });
   } catch {
-    return navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: nextFacing },
-        ...(horizontal
-          ? { width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { width: { ideal: 720 }, height: { ideal: 1280 } }),
-        frameRate: { ideal: 30, max: 30 }
-      },
-      audio: false
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints(nextFacing, horizontal, false),
+        audio: false
+      });
+    } catch {
+      return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+  }
+}
+
+function forceAttach(video, stream) {
+  if (!video || !stream) return;
+  try {
+    video.srcObject = null;
+    requestAnimationFrame(() => {
+      if (!video.isConnected) return;
+      video.srcObject = stream;
+      tryPlay(video);
+      window.setTimeout(() => tryPlay(video), 80);
+      window.setTimeout(() => tryPlay(video), 260);
     });
+  } catch {
+    video.srcObject = stream;
+    tryPlay(video);
   }
 }
 
 const guestSplitCss = `
-.liveRoomV4 .liveLocalPreview.mirrored,
-.liveRoomV4 .liveGuestSelfVideo.mirrored {
-  transform:none!important;
-}
 .liveRoomV4 .liveStageV4:has(.liveGuestVideo) .liveMainVideo {
   position:absolute!important;
   left:0!important;
@@ -116,24 +129,24 @@ export default function LiveCameraStartupEnhancer() {
       if (!video || video.dataset.cameraStartupRecovery === 'done') return;
       video.dataset.cameraStartupRecovery = 'done';
 
-      // iOS/WKWebView may need several playback attempts while camera capture
-      // warms up. Never toggle the user's camera automatically: doing so can
-      // race a physical camera switch and leave the preview black.
       [0, 80, 220, 500, 900, 1500].forEach(delay => later(() => tryPlay(video), delay));
 
       later(() => {
         if (!video.isConnected || video.videoWidth > 0 || video.readyState >= 2) return;
         const stream = video.srcObject;
-        if (!stream || stream.active === false) return;
-        try {
-          video.srcObject = null;
-          requestAnimationFrame(() => {
-            if (!video.isConnected || disposed) return;
-            video.srcObject = stream;
-            tryPlay(video);
-          });
-        } catch {}
+        const liveTrack = stream?.getVideoTracks?.().find(track => track.readyState !== 'ended');
+        if (!stream || !liveTrack || stream.active === false) return;
+        forceAttach(video, stream);
       }, 1250);
+    };
+
+    const syncFacingClass = event => {
+      const facing = normalizeFacing(event?.detail?.facingMode || event?.detail?.track?.getSettings?.()?.facingMode || event?.detail?.track?.label);
+      document.querySelectorAll('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo').forEach(video => {
+        video.classList.toggle('mirrored', facing === 'user');
+        video.dataset.droxionFacing = facing;
+        tryPlay(video);
+      });
     };
 
     const robustFlip = async button => {
@@ -141,57 +154,74 @@ export default function LiveCameraStartupEnhancer() {
       const room = button.closest('.liveRoomV4');
       const video = room?.querySelector('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo');
       const stream = video?.srcObject;
-      const oldVideoTrack = stream?.getVideoTracks?.()[0];
+      const oldVideoTrack = stream?.getVideoTracks?.().find(track => track.readyState !== 'ended');
       if (!video || !stream || !oldVideoTrack) return;
 
       switching = true;
       button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
       const previousFacing = currentFacing(oldVideoTrack, video);
       const nextFacing = previousFacing === 'user' ? 'environment' : 'user';
       const horizontal = room?.classList?.contains('liveRoom-horizontal');
       const oldEnabled = oldVideoTrack.enabled;
+      let replacementStream = null;
+      let replacementTrack = null;
 
       try {
-        // Release the physical camera before asking iOS for the other lens.
-        // Keep the same MediaStream object so mic state and React refs survive.
+        // iOS/WKWebView cannot reliably hold front and back cameras together.
+        // Release the old lens first, but keep the original MediaStream object
+        // so microphone state, recorder state and React refs remain stable.
         oldVideoTrack.enabled = false;
         oldVideoTrack.stop();
         stream.removeTrack(oldVideoTrack);
-        if (video.srcObject !== stream) video.srcObject = stream;
 
-        let fresh;
+        replacementStream = await acquireCamera(nextFacing, horizontal);
+        replacementTrack = replacementStream.getVideoTracks()[0];
+        if (!replacementTrack) throw new Error('No camera available.');
+        replacementTrack.enabled = true;
+        stream.addTrack(replacementTrack);
+        replacementStream.getTracks().forEach(track => {
+          if (track !== replacementTrack) track.stop();
+        });
+
+        // Restore the local preview before waiting on the network publisher.
+        // A slow LiveKit track replacement must never leave the creator black.
+        video.classList.toggle('mirrored', nextFacing === 'user');
+        video.dataset.droxionFacing = nextFacing;
+        forceAttach(video, stream);
+
         try {
-          fresh = await acquireCamera(nextFacing, horizontal);
+          await window.__droxionReplacePublishedCamera?.(replacementTrack);
         } catch (error) {
-          fresh = await acquireCamera(previousFacing, horizontal);
-          throw Object.assign(error || new Error('Could not switch camera.'), { recoveryStream: fresh });
+          console.warn('Droxion LIVE camera transport switch will retry on publish', error);
         }
-
-        const newTrack = fresh.getVideoTracks()[0];
-        if (!newTrack) throw new Error('No camera available.');
-        newTrack.enabled = true;
-        stream.addTrack(newTrack);
-        fresh.getTracks().forEach(track => { if (track !== newTrack) track.stop(); });
-
-        await window.__droxionReplacePublishedCamera?.(newTrack);
-        video.srcObject = stream;
-        tryPlay(video);
-        later(() => tryPlay(video), 80);
-        later(() => tryPlay(video), 250);
       } catch (error) {
-        const recoveryStream = error?.recoveryStream;
-        const recoveryTrack = recoveryStream?.getVideoTracks?.()[0];
-        if (recoveryTrack) {
-          recoveryTrack.enabled = oldEnabled;
-          stream.addTrack(recoveryTrack);
-          recoveryStream.getTracks().forEach(track => { if (track !== recoveryTrack) track.stop(); });
-          try { await window.__droxionReplacePublishedCamera?.(recoveryTrack); } catch {}
-          video.srcObject = stream;
-          tryPlay(video);
+        try {
+          replacementStream?.getTracks?.().forEach(track => track.stop());
+        } catch {}
+
+        // Recover the previous lens so a failed flip never leaves a black LIVE.
+        try {
+          const recoveryStream = await acquireCamera(previousFacing, horizontal);
+          const recoveryTrack = recoveryStream.getVideoTracks()[0];
+          if (recoveryTrack) {
+            recoveryTrack.enabled = oldEnabled;
+            stream.addTrack(recoveryTrack);
+            recoveryStream.getTracks().forEach(track => {
+              if (track !== recoveryTrack) track.stop();
+            });
+            video.classList.toggle('mirrored', previousFacing === 'user');
+            video.dataset.droxionFacing = previousFacing;
+            forceAttach(video, stream);
+            try { await window.__droxionReplacePublishedCamera?.(recoveryTrack); } catch {}
+          }
+        } catch (recoveryError) {
+          console.warn('Droxion LIVE camera recovery failed', recoveryError || error);
         }
       } finally {
         switching = false;
         button.disabled = false;
+        button.removeAttribute('aria-busy');
       }
     };
 
@@ -205,10 +235,18 @@ export default function LiveCameraStartupEnhancer() {
     };
 
     const scan = () => {
-      document.querySelectorAll('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo').forEach(recover);
+      document.querySelectorAll('video.liveMainVideo.liveLocalPreview, video.liveGuestSelfVideo').forEach(video => {
+        recover(video);
+        const track = video.srcObject?.getVideoTracks?.().find(item => item.readyState !== 'ended');
+        if (track) {
+          const facing = currentFacing(track, video);
+          video.classList.toggle('mirrored', facing === 'user');
+        }
+      });
     };
 
     document.addEventListener('click', captureFlip, true);
+    window.addEventListener(CAMERA_REPLACED_EVENT, syncFacingClass);
     scan();
     const observer = new MutationObserver(scan);
     observer.observe(document.body, { childList: true, subtree: true });
@@ -216,6 +254,7 @@ export default function LiveCameraStartupEnhancer() {
     return () => {
       disposed = true;
       document.removeEventListener('click', captureFlip, true);
+      window.removeEventListener(CAMERA_REPLACED_EVENT, syncFacingClass);
       observer.disconnect();
       timers.forEach(id => window.clearTimeout(id));
       timers.clear();
