@@ -520,12 +520,26 @@ async function publishLocalMediaOnce(room, mediaStream) {
   const currentVideoPublication = room.localParticipant.getTrackPublication?.(Track.Source.Camera);
   const currentVideoTrack = currentVideoPublication?.track;
   const currentVideoMedia = currentVideoTrack?.mediaStreamTrack;
-  if (currentVideoMedia?.readyState === 'live') {
-    const currentAudioPublication = room.localParticipant.getTrackPublication?.(Track.Source.Microphone);
+  if (existingState && currentVideoMedia?.readyState === 'live') {
+    let currentAudioPublication = room.localParticipant.getTrackPublication?.(Track.Source.Microphone);
+    let currentAudioTrack = currentAudioPublication?.track;
+    const expectedAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+
     existingState.videoPublication = currentVideoPublication;
     existingState.videoTrack = currentVideoTrack;
+    if (expectedAudio && currentAudioTrack?.mediaStreamTrack?.readyState !== 'live') {
+      const audioCandidate = existingState.audioTrack?.mediaStreamTrack?.readyState === 'live'
+        ? existingState.audioTrack
+        : expectedAudio;
+      currentAudioPublication = await publishManagedTrackWithRetry(room, audioCandidate, {
+        source: Track.Source.Microphone
+      }, 'republish-microphone');
+      currentAudioTrack = currentAudioPublication?.track;
+      if (existingState.audioMuted) await currentAudioPublication.mute();
+    }
+
     existingState.audioPublication = currentAudioPublication || null;
-    existingState.audioTrack = currentAudioPublication?.track || null;
+    existingState.audioTrack = currentAudioTrack || null;
     replaceStreamTracks(mediaStream, [existingState.videoTrack, existingState.audioTrack].filter(Boolean));
     latestPublisherRoom = room;
     announceCameraTrack(currentVideoMedia);

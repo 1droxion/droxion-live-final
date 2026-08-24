@@ -119,7 +119,8 @@ function subscribeLiveEventStream(sessionId, stream) {
     stream.reconcile.chat = true;
     stream.reconcile.gifts = true;
     stream.channel = null;
-    Promise.resolve(client.removeChannel(channel)).catch(() => {});
+    try { Promise.resolve(client.removeChannel(channel)).catch(() => {}); }
+    catch {}
     scheduleLiveEventReconnect(sessionId, stream);
   });
 }
