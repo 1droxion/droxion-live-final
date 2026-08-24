@@ -14,6 +14,7 @@ import {
   unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
+import { applyMediaEnabledState } from './livekit/reliabilityState';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
 
@@ -105,7 +106,11 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     }
   }, []);
 
-  const ensureCamera = useCallback(async (orientation = 'vertical', requestedFacing = facingMode) => {
+  const ensureCamera = useCallback(async (
+    orientation = 'vertical',
+    requestedFacing = facingMode,
+    recoveryState = null
+  ) => {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera is not supported on this device.');
     if (streamRef.current?.active) { attachLocal(); return streamRef.current; }
     const portrait = orientation !== 'horizontal';
@@ -119,10 +124,15 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); }
       catch { throw firstError; }
     }
+    const cameraEnabled = recoveryState?.cameraOn ?? true;
+    const microphoneEnabled = recoveryState?.micOn ?? true;
+    applyMediaEnabledState(stream, { cameraOn: cameraEnabled, micOn: microphoneEnabled });
     streamRef.current = stream;
     setFacingMode(requestedFacing);
-    setMicOn(true);
-    setCameraOn(true);
+    if (!recoveryState) {
+      setMicOn(true);
+      setCameraOn(true);
+    }
     requestAnimationFrame(() => { attachLocal(); window.setTimeout(attachLocal, 150); });
     return stream;
   }, [attachLocal, facingMode]);
@@ -236,6 +246,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         const room = lkRoomRef.current;
         const role = lkRoleRef.current;
         if (!room || !role) return;
+        const mediaStateBeforeBackground = { cameraOn, micOn };
 
         setNotice('Restoring LIVE…');
         let mediaStream = streamRef.current;
@@ -245,19 +256,21 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           if (videoTrack?.readyState !== 'live' || audioTrack?.readyState !== 'live') {
             mediaStream?.getTracks?.().forEach(track => track.stop());
             streamRef.current = null;
-            mediaStream = await ensureCamera(roomOrientation, facingMode);
+            mediaStream = await ensureCamera(roomOrientation, facingMode, mediaStateBeforeBackground);
           }
 
-          mediaStream?.getVideoTracks?.().forEach(track => { track.enabled = cameraOn; });
-          mediaStream?.getAudioTracks?.().forEach(track => { track.enabled = micOn; });
+          applyMediaEnabledState(mediaStream, mediaStateBeforeBackground);
         }
 
         await recoverLiveKitAfterForeground(room, mediaStream);
         const unlocked = await unlockRemoteAudio(room);
         if (!disposed) setAudioBlocked(!unlocked);
         if (role === 'host' || role === 'guest') {
-          setPublishedVideoMuted(room, !cameraOn);
-          setPublishedAudioMuted(room, !micOn);
+          await Promise.all([
+            setPublishedVideoMuted(room, !mediaStateBeforeBackground.cameraOn),
+            setPublishedAudioMuted(room, !mediaStateBeforeBackground.micOn)
+          ]);
+          applyMediaEnabledState(streamRef.current, mediaStateBeforeBackground);
           attachLocal();
         }
         if (!disposed) setNotice('');
@@ -707,14 +720,16 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   function toggleMic() {
     const next = !micOn;
     streamRef.current?.getAudioTracks().forEach(track => { track.enabled = next; });
-    setPublishedAudioMuted(lkRoomRef.current, !next);
+    setPublishedAudioMuted(lkRoomRef.current, !next)
+      .catch(error => setNotice(error?.message || 'Could not update the LIVE microphone.'));
     setMicOn(next);
   }
 
   function toggleCamera() {
     const next = !cameraOn;
     streamRef.current?.getVideoTracks().forEach(track => { track.enabled = next; });
-    setPublishedVideoMuted(lkRoomRef.current, !next);
+    setPublishedVideoMuted(lkRoomRef.current, !next)
+      .catch(error => setNotice(error?.message || 'Could not update the LIVE camera.'));
     setCameraOn(next);
     if (next) requestAnimationFrame(attachLocal);
   }

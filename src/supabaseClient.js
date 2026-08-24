@@ -1,4 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import {
+  canCompleteLiveReadReconciliation,
+  captureLiveReadSubscriptionState,
+} from "./livekit/reliabilityState";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -149,9 +153,9 @@ function getLiveEventStream(sessionId) {
 }
 
 function authoritativeLiveRead(stream, queue, fn, args, options) {
-  const generation = stream.generation;
+  const subscriptionState = captureLiveReadSubscriptionState(stream, queue);
   return Promise.resolve(originalRpc(fn, args, options)).then(response => {
-    if (!response?.error && stream.generation === generation && stream.ready) {
+    if (!response?.error && canCompleteLiveReadReconciliation(stream, subscriptionState)) {
       stream.reconcile[queue] = false;
     }
     return response;

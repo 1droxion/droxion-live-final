@@ -1,5 +1,6 @@
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../supabaseClient';
+import { retryLiveReconnect } from './reliabilityState';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
@@ -20,7 +21,7 @@ const roomKeys = new WeakMap();
 const pendingDisconnects = new WeakMap();
 const publishedMediaByRoom = new WeakMap();
 const managedStateByRoom = new WeakMap();
-const recoveringRooms = new WeakSet();
+const recoveryPromisesByRoom = new WeakMap();
 const closingRooms = new WeakSet();
 const audioUnlocksByRoom = new WeakMap();
 const mediaPublishPromisesByRoom = new WeakMap();
@@ -249,40 +250,46 @@ function announceCameraTrack(mediaStreamTrack) {
 }
 
 async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason }) {
-  if (!room || closingRooms.has(room) || recoveringRooms.has(room) || pendingDisconnects.has(room)) return;
-  recoveringRooms.add(room);
-  entry.handlers?.onReconnecting?.();
+  if (!room || closingRooms.has(room) || pendingDisconnects.has(room)) return;
+  const pendingRecovery = recoveryPromisesByRoom.get(room);
+  if (pendingRecovery) return pendingRecovery;
 
-  let lastError = null;
-  for (const delay of RECONNECT_DELAYS_MS) {
-    if (closingRooms.has(room) || pendingDisconnects.has(room)) {
-      recoveringRooms.delete(room);
-      return;
-    }
-
-    await wait(delay);
+  const recovery = (async () => {
+    entry.handlers?.onReconnecting?.();
     try {
-      const auth = await getToken(sessionId, role);
-      entry.auth = auth;
-      await room.connect(auth.url, auth.token, { autoSubscribe: true });
+      const result = await retryLiveReconnect({
+        delays: RECONNECT_DELAYS_MS,
+        wait,
+        shouldAbort: () => closingRooms.has(room) || pendingDisconnects.has(room),
+        attempt: async () => {
+          const auth = await getToken(sessionId, role);
+          entry.auth = auth;
+          await room.connect(auth.url, auth.token, { autoSubscribe: true });
 
-      const savedMedia = publishedMediaByRoom.get(room);
-      if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
-      forceRemoteSubscriptions(room, entry.handlers);
-
-      recoveringRooms.delete(room);
+          const savedMedia = publishedMediaByRoom.get(room);
+          if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
+          forceRemoteSubscriptions(room, entry.handlers);
+        },
+        onFailure: error => logClientError('reconnect', error, { sessionId, role }),
+        shouldStop: error => /ended|not active|not found/i.test(String(error?.message || ''))
+      });
+      if (result.aborted) return;
       entry.handlers?.onReconnected?.();
       return;
     } catch (error) {
-      lastError = error;
-      await logClientError('reconnect', error, { sessionId, role });
-      if (/ended|not active|not found/i.test(String(error?.message || ''))) break;
+      const failure = error || reason || new Error('LIVE reconnect failed.');
+      removeConnection(room);
+      entry.handlers?.onDisconnected?.(failure);
+      throw failure;
     }
-  }
+  })();
 
-  recoveringRooms.delete(room);
-  removeConnection(room);
-  entry.handlers?.onDisconnected?.(lastError || reason);
+  recoveryPromisesByRoom.set(room, recovery);
+  try {
+    return await recovery;
+  } finally {
+    if (recoveryPromisesByRoom.get(room) === recovery) recoveryPromisesByRoom.delete(room);
+  }
 }
 
 export async function recoverLiveKitAfterForeground(room, mediaStream) {
@@ -312,11 +319,15 @@ export async function recoverLiveKitAfterForeground(room, mediaStream) {
   const state = managedStateByRoom.get(room);
   if (!state || !mediaStream) return;
 
-  const repairTrack = async (localTrack, publication, options, stage) => {
+  const repairTrack = async (localTrack, publication, replacementTrack, options, stage) => {
     const mediaTrack = localTrack?.mediaStreamTrack;
-    if (!localTrack || publication?.isMuted || (mediaTrack?.readyState === 'live' && !mediaTrack.muted)) return;
+    if (!localTrack || (mediaTrack?.readyState === 'live' && (publication?.isMuted || !mediaTrack.muted))) return;
     try {
-      await localTrack.restartTrack?.(options);
+      if (replacementTrack?.readyState === 'live' && replacementTrack !== mediaTrack) {
+        await localTrack.replaceTrack?.(replacementTrack, true);
+      } else if (!publication?.isMuted) {
+        await localTrack.restartTrack?.(options);
+      }
     } catch (error) {
       await logClientError(stage, error, {
         trackId: mediaTrack?.id || '',
@@ -327,8 +338,10 @@ export async function recoverLiveKitAfterForeground(room, mediaStream) {
     }
   };
 
-  await repairTrack(state.videoTrack, state.videoPublication, state.videoCaptureOptions, 'foreground-camera-restart');
-  await repairTrack(state.audioTrack, state.audioPublication, undefined, 'foreground-microphone-restart');
+  const replacementVideo = mediaStream.getVideoTracks?.().find(track => track.readyState === 'live');
+  const replacementAudio = mediaStream.getAudioTracks?.().find(track => track.readyState === 'live');
+  await repairTrack(state.videoTrack, state.videoPublication, replacementVideo, state.videoCaptureOptions, 'foreground-camera-restart');
+  await repairTrack(state.audioTrack, state.audioPublication, replacementAudio, undefined, 'foreground-microphone-restart');
 
   const localTracks = [state.videoTrack, state.audioTrack].filter(Boolean);
   replaceStreamTracks(mediaStream, localTracks);
@@ -474,7 +487,6 @@ export async function connectLiveKitRoom({
         recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason })
           .catch(error => {
             logClientError('reconnect:unhandled', error, { sessionId, role });
-            entry.handlers?.onDisconnected?.(reason);
           });
       });
 
@@ -757,24 +769,27 @@ if (typeof window !== 'undefined') {
   };
 }
 
-export function setPublishedAudioMuted(room, muted) {
+export async function setPublishedAudioMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
   if (state) state.audioMuted = muted;
   const publication = state?.audioPublication;
   if (!publication?.track) return;
-  Promise.resolve(muted ? publication.mute() : publication.unmute())
-    .catch(error => logClientError('toggle-microphone', error, { muted }));
+  try {
+    await (muted ? publication.mute() : publication.unmute());
+  } catch (error) {
+    await logClientError('toggle-microphone', error, { muted });
+    throw error;
+  }
 }
 
-export function setPublishedVideoMuted(room, muted) {
+export async function setPublishedVideoMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
   const publication = state?.videoPublication;
   const savedMedia = room ? publishedMediaByRoom.get(room) : null;
   if (state) state.videoMuted = muted;
   if (!state?.videoTrack || !publication?.track) return;
 
-  (async () => {
-    try {
+  try {
       cancelPendingDisconnect(room);
       closingRooms.delete(room);
 
@@ -800,14 +815,14 @@ export function setPublishedVideoMuted(room, muted) {
         nudgeLocalPreview(savedMedia);
       }
       announceCameraTrack(activeTrack);
-    } catch (error) {
-      await logClientError('toggle-camera', error, {
-        muted,
-        trackId: state.videoTrack?.mediaStreamTrack?.id || '',
-        readyState: state.videoTrack?.mediaStreamTrack?.readyState || ''
-      });
-    }
-  })();
+  } catch (error) {
+    await logClientError('toggle-camera', error, {
+      muted,
+      trackId: state.videoTrack?.mediaStreamTrack?.id || '',
+      readyState: state.videoTrack?.mediaStreamTrack?.readyState || ''
+    });
+    throw error;
+  }
 }
 
 export async function disconnectLiveKitRoom(room) {
