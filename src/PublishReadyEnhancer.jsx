@@ -36,6 +36,7 @@ export default function PublishReadyEnhancer() {
     let timerInterval = null;
     let timerStartedAt = null;
     let contextBusy = false;
+    let lastContextRefreshAt = 0;
     const hiddenComments = new Set();
 
     function addDeleteAccount() {
@@ -229,17 +230,22 @@ export default function PublishReadyEnhancer() {
       });
     }
 
-    async function refreshLiveContext() {
-      if (contextBusy) return;
+    async function refreshLiveContext(force = false) {
       const room = document.querySelector('.liveRoomV4');
       if (!room) {
         timerStartedAt = null;
+        lastContextRefreshAt = 0;
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         return;
       }
+      addLiveCommentModeration(room);
+
+      const now = Date.now();
+      if (!force && now - lastContextRefreshAt < 2200) return;
+      if (contextBusy) return;
       contextBusy = true;
+      lastContextRefreshAt = now;
       try {
-        addLiveCommentModeration(room);
         const { data } = await supabase.rpc('droxion_current_live_context');
         if (!data?.active) return;
         timerStartedAt = data.started_at ? new Date(data.started_at).getTime() : Date.now();
@@ -317,17 +323,24 @@ export default function PublishReadyEnhancer() {
       room.appendChild(backdrop);
     }
 
-    const run = () => {
+    const enhanceDom = () => {
       addDeleteAccount();
       addHomeSearch();
       addNativePaymentGuard();
-      refreshLiveContext();
+      const room = document.querySelector('.liveRoomV4');
+      if (room) addLiveCommentModeration(room);
     };
 
-    run();
-    const observer = new MutationObserver(run);
+    const pollBackend = () => {
+      enhanceDom();
+      refreshLiveContext(true);
+    };
+
+    enhanceDom();
+    refreshLiveContext(true);
+    const observer = new MutationObserver(enhanceDom);
     observer.observe(document.body, { childList: true, subtree: true });
-    const poll = setInterval(run, 2500);
+    const poll = setInterval(pollBackend, 2500);
 
     return () => {
       observer.disconnect();
