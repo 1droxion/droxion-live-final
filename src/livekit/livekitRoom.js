@@ -412,7 +412,8 @@ export async function publishLocalMedia(room, mediaStream) {
     }
   }
 
-  if (pendingPublisherVideoTrack?.readyState !== 'ended'
+  if (pendingPublisherVideoTrack
+      && pendingPublisherVideoTrack.readyState !== 'ended'
       && pendingPublisherVideoTrack.id !== localVideoTrack.mediaStreamTrack.id) {
     try { await replacePublishedVideo(room, pendingPublisherVideoTrack); }
     catch (error) { await logClientError('pending-camera-replace', error, {}); }
