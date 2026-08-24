@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
+import LiveReliabilityEnhancer from "./LiveReliabilityEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
 import DroxionLivePushBridge from "./DroxionLivePushBridge.jsx";
 import Login from "./Login.jsx";
@@ -18,6 +19,7 @@ export default function App() {
       <DroxionLivePushBridge />
       <GlobalEnhancements />
       <CreatorV11Enhancer />
+      <LiveReliabilityEnhancer />
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/login" element={<Login />} />
