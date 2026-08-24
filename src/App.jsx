@@ -3,6 +3,7 @@ import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import LiveJoinDeclineEnhancer from "./LiveJoinDeclineEnhancer.jsx";
+import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
 import DroxionLivePushBridge from "./DroxionLivePushBridge.jsx";
 import Login from "./Login.jsx";
@@ -20,6 +21,7 @@ export default function App() {
       <GlobalEnhancements />
       <CreatorV11Enhancer />
       <LiveJoinDeclineEnhancer />
+      <ShortNativeActionsEnhancer />
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/login" element={<Login />} />
