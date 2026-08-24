@@ -28,7 +28,7 @@ function rewindIfFinished(video) {
   if (!video) return;
   try {
     const duration = Number(video.duration);
-    if (video.ended || (Number.isFinite(duration) && duration > 0 && video.currentTime >= duration - 0.12)) {
+    if (video.ended || (Number.isFinite(duration) && duration > 0 && video.currentTime >= duration - 0.18)) {
       video.currentTime = 0;
     }
   } catch {}
@@ -47,10 +47,11 @@ function requestPlay(video, { gesture = false } = {}) {
       result.then(() => {
         video.dataset.droxionPlaybackBlocked = '0';
       }).catch(() => {
-        // iOS can reject a programmatic resume for an unmuted video.
-        // A tap/scroll gesture will retry synchronously through the handlers below.
         video.dataset.droxionPlaybackBlocked = '1';
-        if (gesture && video.muted) {
+        // On iOS an unmuted clip can require a real user gesture. The capture
+        // phase gesture handler calls this synchronously; a second microtask
+        // retry helps WKWebView after scroll snapping completes.
+        if (gesture) {
           window.setTimeout(() => {
             try { video.play?.(); } catch {}
           }, 0);
@@ -81,29 +82,38 @@ export default function ShortFeedPlaybackEnhancer() {
       requestPlay(video);
     };
 
-    const recover = (video, { hard = false } = {}) => {
+    const recover = (video, { hard = false, gesture = false } = {}) => {
       if (!video || document.hidden || visibleRatio(video) < 0.5) return;
       rewindIfFinished(video);
 
       if (hard && video.muted) {
-        // Only reload muted autoplay media. Reloading an unmuted video can make
-        // WebKit require another user gesture, which looks like the clip froze.
         try {
           const time = Number(video.currentTime || 0);
           video.load?.();
           const restore = () => {
             try {
-              if (time > 0 && Number.isFinite(video.duration) && time < video.duration - 0.2) video.currentTime = time;
+              if (time > 0 && Number.isFinite(video.duration) && time < video.duration - 0.25) video.currentTime = time;
             } catch {}
-            requestPlay(video);
+            requestPlay(video, { gesture });
           };
           video.addEventListener('canplay', restore, { once: true });
-          window.setTimeout(() => requestPlay(video), 500);
+          window.setTimeout(() => requestPlay(video, { gesture }), 450);
           return;
         } catch {}
       }
 
-      requestPlay(video);
+      // For unmuted playback do not reload the media element because WebKit
+      // can treat the reload as a brand-new autoplay request. Seek a tiny
+      // amount instead and resume the existing playback session.
+      if (hard && !video.muted) {
+        try {
+          const duration = Number(video.duration);
+          if (Number.isFinite(duration) && duration > 0 && video.currentTime < duration - 0.4) {
+            video.currentTime = Math.min(duration - 0.25, Number(video.currentTime || 0) + 0.04);
+          }
+        } catch {}
+      }
+      requestPlay(video, { gesture });
     };
 
     const attach = video => {
@@ -124,25 +134,41 @@ export default function ShortFeedPlaybackEnhancer() {
         progress.set(video, { time: Number(video.currentTime || 0), misses: 0 });
         if (visibleRatio(video) >= 0.5) requestPlay(video);
       };
-      const onWaiting = () => window.setTimeout(() => recover(video), 250);
-      const onStalled = () => window.setTimeout(() => recover(video, { hard: true }), 450);
+      const onTimeUpdate = () => {
+        // Some iOS WKWebView builds fire ended and leave the video paused even
+        // with loop=true. Seek just before ended so the same playback session
+        // loops without needing a second autoplay permission.
+        try {
+          const duration = Number(video.duration);
+          if (!Number.isFinite(duration) || duration <= 0) return;
+          if (duration - Number(video.currentTime || 0) <= 0.28 && visibleRatio(video) >= 0.5) {
+            video.currentTime = 0;
+            requestPlay(video);
+          }
+        } catch {}
+      };
+      const onWaiting = () => window.setTimeout(() => recover(video), 220);
+      const onStalled = () => window.setTimeout(() => recover(video, { hard: true }), 400);
+      const onSuspend = () => {
+        if (visibleRatio(video) >= 0.72 && !video.ended) window.setTimeout(() => requestPlay(video), 120);
+      };
       const onError = () => {
         video.dataset.droxionPlaybackError = String(video.error?.code || '1');
-        window.setTimeout(() => recover(video, { hard: true }), 500);
+        window.setTimeout(() => recover(video, { hard: true }), 450);
       };
       const onPause = () => {
-        // Do not fight intentional off-screen pauses. If the visible clip pauses
-        // by itself, retry it. This fixes WebKit clips that start and then stop.
-        if (!document.hidden && visibleRatio(video) >= 0.72) {
-          window.setTimeout(() => requestPlay(video), 80);
+        if (!document.hidden && visibleRatio(video) >= 0.72 && !video.ended) {
+          window.setTimeout(() => requestPlay(video), 70);
         }
       };
 
       video.addEventListener('ended', onEnded);
       video.addEventListener('canplay', onCanPlay);
       video.addEventListener('loadeddata', onLoadedData);
+      video.addEventListener('timeupdate', onTimeUpdate);
       video.addEventListener('waiting', onWaiting);
       video.addEventListener('stalled', onStalled);
+      video.addEventListener('suspend', onSuspend);
       video.addEventListener('error', onError);
       video.addEventListener('pause', onPause);
 
@@ -150,8 +176,10 @@ export default function ShortFeedPlaybackEnhancer() {
         video.removeEventListener('ended', onEnded);
         video.removeEventListener('canplay', onCanPlay);
         video.removeEventListener('loadeddata', onLoadedData);
+        video.removeEventListener('timeupdate', onTimeUpdate);
         video.removeEventListener('waiting', onWaiting);
         video.removeEventListener('stalled', onStalled);
+        video.removeEventListener('suspend', onSuspend);
         video.removeEventListener('error', onError);
         video.removeEventListener('pause', onPause);
       });
@@ -185,14 +213,11 @@ export default function ShortFeedPlaybackEnhancer() {
     });
     mutationObserver.observe(document.body, { childList: true, subtree: true });
 
-    // iOS Low Power Mode and WKWebView autoplay policies can require a real
-    // user gesture. Any tap or completed scroll in the Feed gets a synchronous
-    // play attempt so the visible short cannot remain frozen.
     const onFeedGesture = event => {
       if (!event.target?.closest?.(FEED_SELECTOR)) return;
       const video = mostVisibleVideo();
       if (!video) return;
-      requestPlay(video, { gesture: true });
+      recover(video, { gesture: true });
     };
 
     const onVisibility = () => {
@@ -201,18 +226,16 @@ export default function ShortFeedPlaybackEnhancer() {
           try { video.pause?.(); } catch {}
         });
       } else {
-        window.setTimeout(() => makeActive(mostVisibleVideo()), 50);
+        window.setTimeout(() => makeActive(mostVisibleVideo()), 40);
       }
     };
 
-    // Watch currentTime instead of trusting only play/pause events. If WebKit
-    // says the clip is playing but its media clock stops advancing, recover it.
     watchdog = window.setInterval(() => {
       const video = mostVisibleVideo();
       if (!video || document.hidden) return;
       const now = Number(video.currentTime || 0);
       const previous = progress.get(video) || { time: now, misses: 0 };
-      const advanced = now > previous.time + 0.04;
+      const advanced = now > previous.time + 0.035;
       const shouldAdvance = !video.paused && !video.ended && video.readyState >= 2;
       const misses = shouldAdvance && !advanced ? previous.misses + 1 : 0;
       progress.set(video, { time: now, misses });
@@ -222,7 +245,7 @@ export default function ShortFeedPlaybackEnhancer() {
         progress.set(video, { time: now, misses: 0 });
         recover(video, { hard: true });
       }
-    }, 900);
+    }, 700);
 
     document.addEventListener('pointerup', onFeedGesture, true);
     document.addEventListener('touchend', onFeedGesture, true);
