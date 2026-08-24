@@ -6,14 +6,12 @@ const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
 const DISCONNECT_GRACE_MS = 750;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
 
-// React/iOS can mount the LIVE transport twice within a few milliseconds while
-// LIVE state settles. Reusing the in-flight/connected room prevents two
-// LiveKit participants with the same identity from kicking each other out.
 const activeConnections = new Map();
 const roomKeys = new WeakMap();
 const pendingDisconnects = new WeakMap();
 const publishedMediaByRoom = new WeakMap();
 const recoveringRooms = new WeakSet();
+let latestPublisherRoom = null;
 
 async function getToken(sessionId, role) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -64,6 +62,7 @@ function cancelPendingDisconnect(room) {
 function removeConnection(room) {
   const key = roomKeys.get(room);
   if (key && activeConnections.get(key)?.room === room) activeConnections.delete(key);
+  if (latestPublisherRoom === room) latestPublisherRoom = null;
   roomKeys.delete(room);
 }
 
@@ -119,8 +118,7 @@ async function replacePublicationTrack(room, source, mediaStreamTrack, publishOp
       await localTrack.replaceTrack(mediaStreamTrack);
       return publication;
     } catch {
-      // Safari/iOS can leave an ended camera sender behind after switching
-      // physical cameras. Fall through to a clean unpublish + publish.
+      // Safari/iOS can leave an ended camera sender behind after switching.
     }
   }
 
@@ -157,8 +155,6 @@ export async function connectLiveKitRoom({
   });
   const existing = activeConnections.get(key);
 
-  // Keep the callbacks fresh when React immediately reuses the same room.
-  // Without this, a reclaimed room continues calling a cancelled/stale effect.
   if (existing) {
     existing.handlers = handlers;
     if (existing.room) cancelPendingDisconnect(existing.room);
@@ -198,12 +194,10 @@ export async function connectLiveKitRoom({
           return;
         }
 
-        // A dropped mobile network/WebSocket should recover silently first.
         recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason })
           .catch(() => entry.handlers?.onDisconnected?.(reason));
       });
 
-      // Hosts must subscribe too so they can see an accepted guest.
       await room.connect(auth.url, auth.token, { autoSubscribe: true });
       return room;
     } catch (error) {
@@ -220,6 +214,7 @@ export async function connectLiveKitRoom({
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
   publishedMediaByRoom.set(room, mediaStream);
+  if (mediaStream.getVideoTracks().some(track => track.readyState !== 'ended')) latestPublisherRoom = room;
 
   const publications = [];
   for (const track of mediaStream.getTracks()) {
@@ -254,6 +249,7 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
     simulcast: true,
     videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 }
   });
+  latestPublisherRoom = room;
 
   const savedMedia = publishedMediaByRoom.get(room);
   if (savedMedia) {
@@ -261,7 +257,6 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
     publishedMediaByRoom.set(room, new MediaStream([mediaStreamTrack, ...audioTracks]));
   }
 
-  // Keep the automatic highlight recorder on the same physical camera as the LIVE.
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(CAMERA_REPLACED_EVENT, {
       detail: {
@@ -270,6 +265,13 @@ export async function replacePublishedVideo(room, mediaStreamTrack) {
       }
     }));
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.__droxionReplacePublishedCamera = async mediaStreamTrack => {
+    if (!latestPublisherRoom) throw new Error('LIVE video transport is not ready yet.');
+    return replacePublishedVideo(latestPublisherRoom, mediaStreamTrack);
+  };
 }
 
 export function setPublishedAudioMuted(room, muted) {
@@ -289,8 +291,6 @@ export async function disconnectLiveKitRoom(room) {
   const alreadyPending = pendingDisconnects.get(room);
   if (alreadyPending) return alreadyPending.promise;
 
-  // A short grace period lets an immediate React effect restart reclaim the
-  // existing connection instead of disconnecting and creating a second token.
   let resolvePending;
   const promise = new Promise(resolve => { resolvePending = resolve; });
   const timer = setTimeout(async () => {
