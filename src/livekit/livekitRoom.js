@@ -23,6 +23,7 @@ const managedStateByRoom = new WeakMap();
 const recoveringRooms = new WeakSet();
 const closingRooms = new WeakSet();
 const audioUnlocksByRoom = new WeakMap();
+const mediaPublishPromisesByRoom = new WeakMap();
 let latestPublisherRoom = null;
 let pendingPublisherVideoTrack = null;
 
@@ -452,9 +453,16 @@ export async function connectLiveKitRoom({
         entry.handlers?.onAudioPlaybackChanged?.(room.canPlaybackAudio !== false);
       });
       room.on(RoomEvent.Reconnected, (...args) => {
-        forceRemoteSubscriptions(room, entry.handlers);
-        setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
-        entry.handlers?.onReconnected?.(...args);
+        (async () => {
+          const savedMedia = publishedMediaByRoom.get(room);
+          if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
+          forceRemoteSubscriptions(room, entry.handlers);
+          setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
+          entry.handlers?.onReconnected?.(...args);
+        })().catch(error => {
+          logClientError('reconnect-republish', error, { sessionId, role });
+          entry.handlers?.onDisconnected?.(error);
+        });
       });
 
       room.on(RoomEvent.Disconnected, reason => {
@@ -494,23 +502,55 @@ export async function connectLiveKitRoom({
 
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
+  const pending = mediaPublishPromisesByRoom.get(room);
+  if (pending) return pending;
 
+  const publish = publishLocalMediaOnce(room, mediaStream)
+    .finally(() => mediaPublishPromisesByRoom.delete(room));
+  mediaPublishPromisesByRoom.set(room, publish);
+  return publish;
+}
+
+async function publishLocalMediaOnce(room, mediaStream) {
   cancelPendingDisconnect(room);
   closingRooms.delete(room);
   publishedMediaByRoom.set(room, mediaStream);
 
   const existingState = managedStateByRoom.get(room);
-  const existingVideoMedia = existingState?.videoTrack?.mediaStreamTrack;
-  if (existingVideoMedia?.readyState === 'live') {
+  const currentVideoPublication = room.localParticipant.getTrackPublication?.(Track.Source.Camera);
+  const currentVideoTrack = currentVideoPublication?.track;
+  const currentVideoMedia = currentVideoTrack?.mediaStreamTrack;
+  if (currentVideoMedia?.readyState === 'live') {
+    const currentAudioPublication = room.localParticipant.getTrackPublication?.(Track.Source.Microphone);
+    existingState.videoPublication = currentVideoPublication;
+    existingState.videoTrack = currentVideoTrack;
+    existingState.audioPublication = currentAudioPublication || null;
+    existingState.audioTrack = currentAudioPublication?.track || null;
     replaceStreamTracks(mediaStream, [existingState.videoTrack, existingState.audioTrack].filter(Boolean));
     latestPublisherRoom = room;
-    announceCameraTrack(existingVideoMedia);
+    announceCameraTrack(currentVideoMedia);
     nudgeLocalPreview(mediaStream);
     return [existingState.videoPublication, existingState.audioPublication].filter(Boolean);
   }
 
-  const browserVideo = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
-  const browserAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+  let browserVideo = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
+  let browserAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+  if (!browserVideo && existingState?.videoTrack && !existingState.videoPublication?.isMuted) {
+    try {
+      await existingState.videoTrack.restartTrack?.(existingState.videoCaptureOptions);
+      browserVideo = existingState.videoTrack.mediaStreamTrack;
+    } catch (error) {
+      await logClientError('republish-camera-restart', error, {});
+    }
+  }
+  if (!browserAudio && existingState?.audioTrack && !existingState.audioPublication?.isMuted) {
+    try {
+      await existingState.audioTrack.restartTrack?.();
+      browserAudio = existingState.audioTrack.mediaStreamTrack;
+    } catch (error) {
+      await logClientError('republish-microphone-restart', error, {});
+    }
+  }
   if (!browserVideo) throw new Error('LIVE camera track is missing.');
 
   const videoCaptureOptions = {
@@ -524,19 +564,23 @@ export async function publishLocalMedia(room, mediaStream) {
   };
 
   const state = {
-    videoTrack: null,
-    audioTrack: null,
+    videoTrack: existingState?.videoTrack || null,
+    audioTrack: existingState?.audioTrack || null,
     videoPublication: null,
     audioPublication: null,
+    videoMuted: Boolean(existingState?.videoMuted || existingState?.videoPublication?.isMuted),
+    audioMuted: Boolean(existingState?.audioMuted || existingState?.audioPublication?.isMuted),
     videoCaptureOptions,
     videoPublishOptions
   };
   managedStateByRoom.set(room, state);
 
   try {
-    state.videoPublication = await publishManagedTrackWithRetry(room, browserVideo, videoPublishOptions, 'publish-camera');
+    const videoCandidate = state.videoTrack?.mediaStreamTrack?.readyState === 'live' ? state.videoTrack : browserVideo;
+    state.videoPublication = await publishManagedTrackWithRetry(room, videoCandidate, videoPublishOptions, 'publish-camera');
     state.videoTrack = state.videoPublication?.track || null;
     if (!state.videoTrack?.mediaStreamTrack) throw new Error('LIVE camera publication is missing its track.');
+    if (state.videoMuted) await state.videoPublication.mute();
   } catch (error) {
     managedStateByRoom.delete(room);
     await logClientError('publish-camera:final', error, {
@@ -548,12 +592,15 @@ export async function publishLocalMedia(room, mediaStream) {
 
   if (browserAudio?.readyState === 'live') {
     try {
-      state.audioPublication = await publishManagedTrackWithRetry(room, browserAudio, {
+      const audioCandidate = state.audioTrack?.mediaStreamTrack?.readyState === 'live' ? state.audioTrack : browserAudio;
+      state.audioPublication = await publishManagedTrackWithRetry(room, audioCandidate, {
         source: Track.Source.Microphone
       }, 'publish-microphone');
       state.audioTrack = state.audioPublication?.track || null;
+      if (state.audioMuted) await state.audioPublication.mute();
     } catch (error) {
-      await logClientError('publish-microphone:ignored', error, {});
+      await logClientError('publish-microphone:final', error, {});
+      throw new Error('LIVE microphone could not republish.');
     }
   }
 
@@ -698,6 +745,7 @@ if (typeof window !== 'undefined') {
 
 export function setPublishedAudioMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
+  if (state) state.audioMuted = muted;
   const publication = state?.audioPublication;
   if (!publication?.track) return;
   Promise.resolve(muted ? publication.mute() : publication.unmute())
@@ -708,6 +756,7 @@ export function setPublishedVideoMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
   const publication = state?.videoPublication;
   const savedMedia = room ? publishedMediaByRoom.get(room) : null;
+  if (state) state.videoMuted = muted;
   if (!state?.videoTrack || !publication?.track) return;
 
   (async () => {
