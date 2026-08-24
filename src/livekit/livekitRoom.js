@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
+const AUDIO_BLOCKED_EVENT = 'droxion:live-audio-blocked';
+const AUDIO_RECOVERED_EVENT = 'droxion:live-audio-recovered';
 const DISCONNECT_GRACE_MS = 900;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
 const PUBLISH_RETRY_DELAYS_MS = [0, 180, 520];
@@ -20,6 +22,7 @@ const publishedMediaByRoom = new WeakMap();
 const managedStateByRoom = new WeakMap();
 const recoveringRooms = new WeakSet();
 const closingRooms = new WeakSet();
+const audioUnlocksByRoom = new WeakMap();
 let latestPublisherRoom = null;
 let pendingPublisherVideoTrack = null;
 
@@ -59,7 +62,8 @@ function makeHandlers({
   onParticipantConnected,
   onParticipantDisconnected,
   onReconnecting,
-  onReconnected
+  onReconnected,
+  onAudioPlaybackChanged
 }) {
   return {
     onTrackSubscribed,
@@ -68,7 +72,8 @@ function makeHandlers({
     onParticipantConnected,
     onParticipantDisconnected,
     onReconnecting,
-    onReconnected
+    onReconnected,
+    onAudioPlaybackChanged
   };
 }
 
@@ -373,7 +378,8 @@ export async function connectLiveKitRoom({
   onParticipantConnected,
   onParticipantDisconnected,
   onReconnecting,
-  onReconnected
+  onReconnected,
+  onAudioPlaybackChanged
 }) {
   const key = connectionKey(sessionId, role);
   const handlers = makeHandlers({
@@ -383,7 +389,8 @@ export async function connectLiveKitRoom({
     onParticipantConnected,
     onParticipantDisconnected,
     onReconnecting,
-    onReconnected
+    onReconnected,
+    onAudioPlaybackChanged
   });
   const existing = activeConnections.get(key);
 
@@ -441,6 +448,9 @@ export async function connectLiveKitRoom({
         entry.handlers?.onParticipantDisconnected?.(normalizedParticipant(participant));
       });
       room.on(RoomEvent.Reconnecting, (...args) => entry.handlers?.onReconnecting?.(...args));
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        entry.handlers?.onAudioPlaybackChanged?.(room.canPlaybackAudio !== false);
+      });
       room.on(RoomEvent.Reconnected, (...args) => {
         forceRemoteSubscriptions(room, entry.handlers);
         setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
@@ -568,15 +578,61 @@ export async function publishLocalMedia(room, mediaStream) {
 
 export const publishHostMedia = publishLocalMedia;
 
+function dispatchAudioPlaybackEvent(type, error) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(type, {
+    detail: { message: String(error?.message || error || '') }
+  }));
+}
+
+export async function unlockRemoteAudio(room) {
+  if (!room) return false;
+  const pending = audioUnlocksByRoom.get(room);
+  if (pending) return pending;
+
+  const attempt = (async () => {
+    try {
+      await room.startAudio?.();
+      const elements = typeof document === 'undefined'
+        ? []
+        : Array.from(document.querySelectorAll('.liveRoomV4 audio')).filter(element => element.srcObject || element.src);
+      const playback = await Promise.allSettled(elements.map(element => element.play()));
+      const failure = playback.find(result => result.status === 'rejected');
+      if (room.canPlaybackAudio === false || failure) {
+        throw failure?.reason || new Error('Remote audio playback is blocked.');
+      }
+      dispatchAudioPlaybackEvent(AUDIO_RECOVERED_EVENT);
+      return true;
+    } catch (error) {
+      await logClientError('remote-audio-unlock', error, {});
+      dispatchAudioPlaybackEvent(AUDIO_BLOCKED_EVENT, error);
+      return false;
+    } finally {
+      audioUnlocksByRoom.delete(room);
+    }
+  })();
+
+  audioUnlocksByRoom.set(room, attempt);
+  return attempt;
+}
+
 export function attachRemoteTrack(track, element) {
   if (!track || !element) return;
   try { track.attach(element); } catch {}
   element.autoplay = true;
   element.playsInline = true;
   element.setAttribute('playsinline', '');
+  const isAudio = String(element.tagName || '').toLowerCase() === 'audio';
   const playback = element.play?.();
-  playback?.catch?.(() => {
-    setTimeout(() => element.play?.().catch?.(() => {}), 120);
+  playback?.then?.(() => {
+    if (isAudio) dispatchAudioPlaybackEvent(AUDIO_RECOVERED_EVENT);
+  }).catch?.(error => {
+    if (isAudio) dispatchAudioPlaybackEvent(AUDIO_BLOCKED_EVENT, error);
+    setTimeout(() => {
+      element.play?.()
+        .then?.(() => { if (isAudio) dispatchAudioPlaybackEvent(AUDIO_RECOVERED_EVENT); })
+        .catch?.(retryError => { if (isAudio) dispatchAudioPlaybackEvent(AUDIO_BLOCKED_EVENT, retryError); });
+    }, 120);
   });
 }
 

@@ -10,7 +10,8 @@ import {
   recoverLiveKitAfterForeground,
   replacePublishedVideo,
   setPublishedAudioMuted,
-  setPublishedVideoMuted
+  setPublishedVideoMuted,
+  unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
 import './live-experience-v3.css';
@@ -45,6 +46,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const [beautyMode, setBeautyMode] = useState('off');
   const [hostVideoReady, setHostVideoReady] = useState(false);
   const [guestVideoReady, setGuestVideoReady] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [followingHost, setFollowingHost] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
@@ -188,12 +190,20 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           onTrackUnsubscribed: track => { try { track.detach(); } catch {} },
           onDisconnected: () => { if (!cancelled) setNotice('LIVE connection disconnected. Reconnecting when available…'); },
           onReconnecting: () => { if (!cancelled) setNotice('Reconnecting LIVE…'); },
-          onReconnected: () => { if (!cancelled) setNotice(''); }
+          onReconnected: () => {
+            if (!cancelled) setNotice('');
+            unlockRemoteAudio(lkRoomRef.current).then(unlocked => {
+              if (!cancelled) setAudioBlocked(!unlocked);
+            });
+          },
+          onAudioPlaybackChanged: canPlay => { if (!cancelled) setAudioBlocked(!canPlay); }
         });
         if (cancelled) { await disconnectLiveKitRoom(room); return; }
         lkRoomRef.current = room;
         lkRoleRef.current = role;
         if ((role === 'host' || role === 'guest') && streamRef.current) await publishLocalMedia(room, streamRef.current);
+        const unlocked = await unlockRemoteAudio(room);
+        if (!cancelled) setAudioBlocked(!unlocked);
       } catch (error) {
         if (!cancelled) setNotice(error?.message || 'Could not connect to LIVE video.');
       }
@@ -243,6 +253,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         }
 
         await recoverLiveKitAfterForeground(room, mediaStream);
+        const unlocked = await unlockRemoteAudio(room);
+        if (!disposed) setAudioBlocked(!unlocked);
         if (role === 'host' || role === 'guest') {
           setPublishedVideoMuted(room, !cameraOn);
           setPublishedAudioMuted(room, !micOn);
@@ -275,6 +287,32 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       window.removeEventListener('focus', recoverForeground);
     };
   }, [sessionId, roomOrientation, facingMode, cameraOn, micOn, ensureCamera, attachLocal]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setAudioBlocked(false);
+      return;
+    }
+
+    const markBlocked = () => setAudioBlocked(true);
+    const markRecovered = () => setAudioBlocked(false);
+    const retryFromGesture = () => {
+      const room = lkRoomRef.current;
+      if (!room) return;
+      unlockRemoteAudio(room).then(unlocked => setAudioBlocked(!unlocked));
+    };
+
+    window.addEventListener('droxion:live-audio-blocked', markBlocked);
+    window.addEventListener('droxion:live-audio-recovered', markRecovered);
+    window.addEventListener('pointerdown', retryFromGesture, true);
+    window.addEventListener('touchend', retryFromGesture, true);
+    return () => {
+      window.removeEventListener('droxion:live-audio-blocked', markBlocked);
+      window.removeEventListener('droxion:live-audio-recovered', markRecovered);
+      window.removeEventListener('pointerdown', retryFromGesture, true);
+      window.removeEventListener('touchend', retryFromGesture, true);
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -734,6 +772,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           {guestMode && <video ref={localVideoRef} autoPlay playsInline muted className={`liveGuestVideo liveGuestSelfVideo beauty-${beautyMode} ${facingMode === 'user' ? 'mirrored' : ''}`} />}
           {showRemoteGuest && <video ref={remoteGuestVideo} autoPlay playsInline muted className="liveGuestVideo" />}
           <audio ref={remoteGuestAudio} autoPlay playsInline />
+          {audioBlocked && <button type="button" className="liveAudioRecovery" onClick={() => unlockRemoteAudio(lkRoomRef.current).then(unlocked => setAudioBlocked(!unlocked))}>Enable audio</button>}
 
           <div className="liveTopOverlay liveTopV4">
             <button className="liveBackButton" aria-label={isHostRoom ? 'End live' : 'Exit live'} onClick={isHostRoom ? endLive : leaveRoom}><ArrowLeft size={21} /><span>{isHostRoom ? 'End' : 'Exit'}</span></button>
