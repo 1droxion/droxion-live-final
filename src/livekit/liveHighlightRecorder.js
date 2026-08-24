@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 
 const SEGMENT_MS = 30_000;
+const DATA_SLICE_MS = 1_000;
 const MIN_CLIP_SECONDS = 15;
 const MAX_SEGMENTS = 60; // ~30 minutes retained on device.
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
@@ -142,7 +143,9 @@ export function createLiveHighlightRecorder({ creatorId, sessionId, stream, titl
     recorder.onerror = event => {
       console.warn('Droxion highlight recorder error', event?.error || event);
     };
-    recorder.start();
+    // Frequent chunks are much safer on iOS/WKWebView than waiting for one
+    // large final data event when the user exits a LIVE.
+    recorder.start(DATA_SLICE_MS);
     rotateTimer = window.setTimeout(() => enqueueRotate(), SEGMENT_MS);
     return true;
   }
@@ -154,10 +157,23 @@ export function createLiveHighlightRecorder({ creatorId, sessionId, stream, titl
     if (!recorder) return;
 
     await new Promise(resolve => {
-      const finish = () => resolve();
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        resolve();
+      };
       recorder.addEventListener('stop', finish, { once: true });
-      try { recorder.stop(); } catch { resolve(); }
-      window.setTimeout(resolve, 1500);
+      try {
+        if (recorder.state === 'recording' && typeof recorder.requestData === 'function') recorder.requestData();
+      } catch {}
+      try {
+        if (recorder.state !== 'inactive') recorder.stop();
+        else finish();
+      } catch {
+        finish();
+      }
+      window.setTimeout(finish, 1800);
     });
     if (save) saveCurrentSegment();
     else {
@@ -203,6 +219,26 @@ export function createLiveHighlightRecorder({ creatorId, sessionId, stream, titl
     replaceStream(nextStream, nextFacing).catch(error => console.warn('Droxion highlight camera switch failed', error));
   };
 
+  async function finalizeAndPublish() {
+    await enqueue(async () => { await stopCurrentSegment({ save: true }); });
+
+    const candidates = [...segments]
+      .filter(segment => segment.durationSeconds >= MIN_CLIP_SECONDS && segment.blob?.size)
+      .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.sourceStartMs - b.sourceStartMs)
+      .slice(0, 2);
+
+    const results = [];
+    for (let index = 0; index < candidates.length; index += 1) {
+      try {
+        const result = await uploadSegment({ creatorId, sessionId, index, segment: candidates[index], title });
+        if (result) results.push(result);
+      } catch (error) {
+        console.warn('Droxion highlight upload failed', error);
+      }
+    }
+    return results;
+  }
+
   if (typeof window !== 'undefined') window.addEventListener(CAMERA_REPLACED_EVENT, handleCameraReplaced);
   startSegment();
 
@@ -217,23 +253,12 @@ export function createLiveHighlightRecorder({ creatorId, sessionId, stream, titl
       if (stopped) return [];
       stopped = true;
       if (typeof window !== 'undefined') window.removeEventListener(CAMERA_REPLACED_EVENT, handleCameraReplaced);
-      await enqueue(async () => { await stopCurrentSegment({ save: true }); });
 
-      const candidates = [...segments]
-        .filter(segment => segment.durationSeconds >= MIN_CLIP_SECONDS && segment.blob?.size)
-        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.sourceStartMs - b.sourceStartMs)
-        .slice(0, 2);
-
-      const results = [];
-      for (let index = 0; index < candidates.length; index += 1) {
-        try {
-          const result = await uploadSegment({ creatorId, sessionId, index, segment: candidates[index], title });
-          if (result) results.push(result);
-        } catch (error) {
-          console.warn('Droxion highlight upload failed', error);
-        }
-      }
-      return results;
+      // Do not hold the creator on the LIVE screen while clips upload. The
+      // recorder is flushed immediately and finalization/upload continues in
+      // the background while the creator returns to Home/Feed.
+      finalizeAndPublish().catch(error => console.warn('Droxion background highlight finalization failed', error));
+      return [];
     }
   };
 }
