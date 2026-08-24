@@ -3,7 +3,7 @@ import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from '
 import { supabase } from './supabaseClient';
 import LiveExperience from './LiveExperienceScale';
 import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
-import LiveCameraStartupEnhancer from './LiveCameraStartupEnhancer';
+import LiveClientDiagnostics from './LiveClientDiagnostics';
 import LiveProfile from './LiveProfile';
 import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
@@ -107,10 +107,10 @@ export default function LiveFirstApp() {
 
   return (
     <main className={`lfShell ${tab === 'feed' ? 'lfFeedTab' : ''} ${chatOpen ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
+      <LiveClientDiagnostics />
       <ProfileAvatarEnhancer />
       <PublishReadyEnhancer />
       <ProfileAccountActionsEnhancer />
-      <LiveCameraStartupEnhancer />
       <LiveHomePreviewEnhancer currentUserId={user?.id} enabled={tab === 'live' && !immersiveLive && !chatOpen} />
 
       {!immersiveLive && !chatOpen && tab !== 'feed' && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
