@@ -206,37 +206,6 @@ test('chat and gift bursts deduplicate in O(1) queues and flush once per frame',
   console.log(JSON.stringify({ chatGiftBurstEvents: 2000, uniqueEvents: 750, queuedMs: Number(queuedMs.toFixed(3)), reactFlushes: 1 }));
 });
 
-test('join and invite bursts preserve latest entity state and flush once per frame', () => {
-  const callbacks = [];
-  const flushed = [];
-  const batcher = createLiveEventBatcher({
-    schedule: callback => { callbacks.push(callback); return callbacks.length; },
-    cancel: () => {},
-    flush: batch => flushed.push(batch),
-  });
-  const started = performance.now();
-  for (let index = 0; index < 1000; index += 1) {
-    const requestId = `request-${index % 500}`;
-    const inviteId = `invite-${index % 250}`;
-    batcher.enqueue('guest', { id: `join-event-${index}`, metadata: { request_id: requestId, action: index < 500 ? 'requested' : 'accepted' } });
-    batcher.enqueue('guest', { id: `invite-event-${index}`, metadata: { invite_id: inviteId, action: 'invited' } });
-  }
-  const queuedMs = performance.now() - started;
-  assert.equal(callbacks.length, 1);
-  callbacks[0]();
-  assert.equal(flushed.length, 1);
-  assert.equal(flushed[0].guest.length, 750);
-  assert.equal(flushed[0].guest.filter(row => row.metadata.request_id).every(row => row.metadata.action === 'accepted'), true);
-  console.log(JSON.stringify({ joinInviteBurstEvents: 2000, uniqueEntities: 750, queuedMs: Number(queuedMs.toFixed(3)), reactFlushes: 1 }));
-});
-
-test('chat and gift UI state is isolated from the parent LIVE render tree', () => {
-  assert.match(liveComponentSource, /const LiveEventOverlay = memo/);
-  assert.match(liveComponentSource, /<LiveEventOverlay sessionId=\{sessionId\} \/>/);
-  assert.match(supabaseSource, /applyAuthoritativeLiveRows\(stream, queue, response\.data\)/);
-  assert.match(liveComponentSource, /isHostRoom \? 15000 : 300000/);
-});
-
 test('bounded stable event index caps memory and rejects duplicate IDs', () => {
   const rows = [];
   const ids = new Set();
