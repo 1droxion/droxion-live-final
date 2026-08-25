@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
-import { supabase } from './supabaseClient';
+import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveExperience from './LiveExperienceScale';
 import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
@@ -81,56 +81,36 @@ export default function LiveFirstApp() {
   useEffect(() => {
     if (!user?.id || tab !== 'live' || immersiveLive || chatOpen) return undefined;
     let refreshTimer = null;
-    let restoreTimer = null;
 
-    const forceFreshLiveHome = () => {
-      const cachedRpc = supabase.rpc;
-      let consumed = false;
-      const freshRpc = (fn, args, options) => {
-        if (fn === 'droxion_live_feed' && !consumed) {
-          consumed = true;
-          if (supabase.rpc === freshRpc) supabase.rpc = cachedRpc;
-          return supabase.rest.rpc(fn, args, options);
-        }
-        return cachedRpc(fn, args, options);
-      };
-
-      supabase.rpc = freshRpc;
-      setLiveHomeVersion(version => version + 1);
-      window.clearTimeout(restoreTimer);
-      restoreTimer = window.setTimeout(() => {
-        if (supabase.rpc === freshRpc) supabase.rpc = cachedRpc;
-      }, 2500);
-    };
-
-    const scheduleRefresh = payload => {
-      if (payload?.new?.actor_id && payload.new.actor_id === user.id) return;
+    const refreshHome = () => {
       window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(forceFreshLiveHome, 120 + Math.floor(Math.random() * 380));
+      refreshTimer = window.setTimeout(() => {
+        invalidateLiveFeedCache();
+        setLiveHomeVersion(version => version + 1);
+      }, 120 + Math.floor(Math.random() * 280));
     };
 
-    const channel = supabase
+    const lifecycle = supabase
       .channel(`droxion-home-live-lifecycle:${user.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_started' }, scheduleRefresh)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_ended' }, scheduleRefresh)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_started' }, refreshHome)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_ended' }, refreshHome)
       .subscribe();
 
-    const refreshVisibleHome = () => {
-      if (document.visibilityState !== 'hidden') scheduleRefresh();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== 'hidden') refreshHome();
     };
-    window.addEventListener('pageshow', refreshVisibleHome);
-    window.addEventListener('focus', refreshVisibleHome);
-    window.addEventListener('online', refreshVisibleHome);
-    document.addEventListener('visibilitychange', refreshVisibleHome);
+    window.addEventListener('pageshow', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
 
     return () => {
       window.clearTimeout(refreshTimer);
-      window.clearTimeout(restoreTimer);
-      window.removeEventListener('pageshow', refreshVisibleHome);
-      window.removeEventListener('focus', refreshVisibleHome);
-      window.removeEventListener('online', refreshVisibleHome);
-      document.removeEventListener('visibilitychange', refreshVisibleHome);
-      try { Promise.resolve(supabase.removeChannel(channel)).catch(() => {}); } catch {}
+      window.removeEventListener('pageshow', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      try { Promise.resolve(supabase.removeChannel(lifecycle)).catch(() => {}); } catch {}
     };
   }, [user?.id, tab, immersiveLive, chatOpen]);
 
