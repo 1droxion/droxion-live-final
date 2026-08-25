@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import './legal-page.css';
 
-const updated = 'August 12, 2026';
+const updated = 'August 25, 2026';
 
 const pages = {
   '/privacy': {
@@ -43,11 +43,24 @@ const pages = {
       ['Enforcement', 'Droxion may remove access to LIVE, restrict accounts, preserve relevant safety records, suspend users or permanently terminate accounts depending on severity and repeat behavior.']
     ]
   },
+  '/child-safety': {
+    title: 'Child Safety Standards',
+    intro: 'Droxion Live is an adults-only 21+ service and has zero tolerance for child sexual abuse and exploitation (CSEA), child sexual abuse material (CSAM), grooming, sexualization of minors, trafficking, sextortion, or any other conduct that exploits or endangers a child.',
+    sections: [
+      ['Adults only — 21+', 'Droxion is intended only for people age 21 or older. Minors are not permitted to create or use Droxion accounts. Users must not impersonate a minor, help a minor access the service, or use Droxion to seek contact with minors.'],
+      ['Zero tolerance for CSEA and CSAM', 'Droxion prohibits creating, uploading, streaming, requesting, sharing, linking to, promoting or facilitating child sexual abuse material or sexual exploitation of children. Grooming, sexual solicitation of minors, trafficking, sextortion, sexualized role-play involving minors, and attempts to normalize or coordinate such conduct are prohibited.'],
+      ['In-app reporting and blocking', 'During a LIVE, users can open the LIVE Safety menu to report harmful content or behavior, including an Underage concern or Sexual content report, and can block the creator. Users can also report users from LIVE chat safety options. Reports are recorded for moderation review.'],
+      ['Review and enforcement', 'Droxion reviews safety reports and may end or restrict LIVE access, remove or limit content, restrict features, suspend or permanently terminate accounts, block interactions, and preserve relevant safety records when necessary for investigation, enforcement or legal compliance.'],
+      ['Reporting to authorities', 'Droxion complies with applicable child-safety laws and lawful requests. When Droxion becomes aware of apparent child sexual abuse material or child sexual exploitation, it will take appropriate action consistent with applicable law, including preserving relevant information and making reports to appropriate regional or national authorities or designated reporting organizations when legally required.'],
+      ['Safety contact', 'Child-safety concerns may also be sent to patelsuchitbhai@gmail.com. This contact is designated to receive and respond to child-safety and CSAM/CSEA compliance concerns for Droxion. For an immediate threat to a child or any person, contact the appropriate local emergency or law-enforcement service.'],
+      ['Ongoing standards', 'Droxion may update these standards as the service, applicable law, and platform requirements evolve. These standards apply across LIVE broadcasts, chat, profiles, guest appearances and other user interactions.']
+    ]
+  },
   '/support': {
     title: 'Droxion Support',
     intro: 'For account, LIVE, safety, wallet or creator-support issues, signed-in users can open Me → Help & Support and send a support request directly to Droxion.',
     sections: [
-      ['Safety issues', 'If you encounter harmful behavior during a LIVE, use the LIVE safety menu to Report or Block the creator. For immediate danger, contact the appropriate local emergency service.'],
+      ['Safety issues', 'If you encounter harmful behavior during a LIVE, use the LIVE safety menu to Report or Block the creator. For child-safety standards and reporting information, see the Child Safety Standards page. For immediate danger, contact the appropriate local emergency service.'],
       ['Account access', 'Use the sign-in and account recovery options available in Droxion. If you can access your account, Me → Help & Support is the fastest way to send account-specific details.'],
       ['Account deletion', 'Signed-in users can permanently request account deletion from Me/Profile using Delete Account.'],
       ['App review access', 'Droxion is a LIVE social service. Camera and microphone features require permission and two test accounts may be useful for testing host/viewer interactions.']
@@ -66,7 +79,7 @@ export default function LegalPage() {
         <div className="legalUpdated">Effective {updated}</div>
         <p className="legalIntro">{page.intro}</p>
         {page.sections.map(([title, body]) => <section key={title}><h2>{title}</h2><p>{body}</p></section>)}
-        <div className="legalLinks"><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/community-guidelines">Community Guidelines</Link><Link to="/support">Support</Link></div>
+        <div className="legalLinks"><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/community-guidelines">Community Guidelines</Link><Link to="/child-safety">Child Safety</Link><Link to="/support">Support</Link></div>
       </article>
     </main>
   );
