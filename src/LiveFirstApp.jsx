@@ -37,6 +37,7 @@ export default function LiveFirstApp() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
+  const [liveHomeVersion, setLiveHomeVersion] = useState(0);
 
   async function refreshWallet(authUser = user) {
     if (!authUser?.id) { setCoins(0); return; }
@@ -77,6 +78,62 @@ export default function LiveFirstApp() {
     return () => { window.clearInterval(retry); events.forEach(eventName => document.removeEventListener(eventName, unlockLiveAudio)); };
   }, [immersiveLive]);
 
+  useEffect(() => {
+    if (!user?.id || tab !== 'live' || immersiveLive || chatOpen) return undefined;
+    let refreshTimer = null;
+    let restoreTimer = null;
+
+    const forceFreshLiveHome = () => {
+      const cachedRpc = supabase.rpc;
+      let consumed = false;
+      const freshRpc = (fn, args, options) => {
+        if (fn === 'droxion_live_feed' && !consumed) {
+          consumed = true;
+          if (supabase.rpc === freshRpc) supabase.rpc = cachedRpc;
+          return supabase.rest.rpc(fn, args, options);
+        }
+        return cachedRpc(fn, args, options);
+      };
+
+      supabase.rpc = freshRpc;
+      setLiveHomeVersion(version => version + 1);
+      window.clearTimeout(restoreTimer);
+      restoreTimer = window.setTimeout(() => {
+        if (supabase.rpc === freshRpc) supabase.rpc = cachedRpc;
+      }, 2500);
+    };
+
+    const scheduleRefresh = payload => {
+      if (payload?.new?.actor_id && payload.new.actor_id === user.id) return;
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(forceFreshLiveHome, 120 + Math.floor(Math.random() * 380));
+    };
+
+    const channel = supabase
+      .channel(`droxion-home-live-lifecycle:${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_started' }, scheduleRefresh)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_ended' }, scheduleRefresh)
+      .subscribe();
+
+    const refreshVisibleHome = () => {
+      if (document.visibilityState !== 'hidden') scheduleRefresh();
+    };
+    window.addEventListener('pageshow', refreshVisibleHome);
+    window.addEventListener('focus', refreshVisibleHome);
+    window.addEventListener('online', refreshVisibleHome);
+    document.addEventListener('visibilitychange', refreshVisibleHome);
+
+    return () => {
+      window.clearTimeout(refreshTimer);
+      window.clearTimeout(restoreTimer);
+      window.removeEventListener('pageshow', refreshVisibleHome);
+      window.removeEventListener('focus', refreshVisibleHome);
+      window.removeEventListener('online', refreshVisibleHome);
+      document.removeEventListener('visibilitychange', refreshVisibleHome);
+      try { Promise.resolve(supabase.removeChannel(channel)).catch(() => {}); } catch {}
+    };
+  }, [user?.id, tab, immersiveLive, chatOpen]);
+
   function chooseTab(nextTab) {
     setImmersiveLive(false);
     setSearchOpen(false);
@@ -100,7 +157,7 @@ export default function LiveFirstApp() {
     window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
   }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience key={liveHomeVersion} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
