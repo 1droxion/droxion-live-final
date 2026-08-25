@@ -3,16 +3,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   actionableJoinRequests,
+  appendBoundedStableLiveEvent,
   applyMediaEnabledState,
   canDecorateLiveRoom,
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
   createLiveDeliveryProbe,
+  createLiveEventBatcher,
   hasLiveGuest,
   liveChatRowFromWrite,
   liveGiftReconciliationCursor,
   liveFeedWindow,
   liveGuestEventTargetsUser,
+  livePendingRecoveryDelay,
   liveQueueNeedsAuthoritativeRead,
   liveSafetyReconcileDelay,
   markLiveQueueForReconciliation,
@@ -176,7 +179,63 @@ test('delivery diagnostics measure send and realtime callback through React comm
   assert.equal(result.sendToRenderMs, 84);
   assert.equal(result.callbackToRenderMs, 4);
   assert.equal(probe.snapshot().length, 1);
+  assert.equal(probe.markLifecycle('catchup_complete', { sessionId: 'room-1' }).sessionId, 'room-1');
+  assert.equal(probe.lifecycleSnapshot()[0].phase, 'catchup_complete');
   assert.match(liveComponentSource, /__droxionLiveDeliveryDiagnostics/);
+});
+
+test('chat and gift bursts deduplicate in O(1) queues and flush once per frame', () => {
+  const callbacks = [];
+  const flushed = [];
+  const batcher = createLiveEventBatcher({
+    schedule: callback => { callbacks.push(callback); return callbacks.length; },
+    cancel: () => {},
+    flush: batch => flushed.push(batch),
+  });
+  const started = performance.now();
+  for (let index = 0; index < 1000; index += 1) {
+    batcher.enqueue('chat', { id: index % 500, body: `message-${index}` });
+    batcher.enqueue('gift', { id: `gift-${index % 250}` });
+  }
+  const queuedMs = performance.now() - started;
+  assert.equal(callbacks.length, 1);
+  callbacks[0]();
+  assert.equal(flushed.length, 1);
+  assert.equal(flushed[0].chat.length, 500);
+  assert.equal(flushed[0].gift.length, 250);
+  console.log(JSON.stringify({ chatGiftBurstEvents: 2000, uniqueEvents: 750, queuedMs: Number(queuedMs.toFixed(3)), reactFlushes: 1 }));
+});
+
+test('bounded stable event index caps memory and rejects duplicate IDs', () => {
+  const rows = [];
+  const ids = new Set();
+  for (let id = 0; id < 1000; id += 1) appendBoundedStableLiveEvent(rows, ids, { id }, 200);
+  assert.equal(rows.length, 200);
+  assert.equal(ids.size, 200);
+  assert.equal(appendBoundedStableLiveEvent(rows, ids, { id: 999 }, 200), false);
+  assert.equal(rows[0].id, 800);
+});
+
+test('pending guest recovery starts near one second and backs off while idle users stop', () => {
+  assert.equal(livePendingRecoveryDelay(0, { random: () => 0.5 }), 1000);
+  assert.equal(livePendingRecoveryDelay(1, { random: () => 0.5 }), 2000);
+  assert.equal(livePendingRecoveryDelay(8, { random: () => 0.5 }), 30000);
+  assert.match(liveComponentSource, /authoritativeLiveRpc\('droxion_live_join_requests'/);
+  assert.match(liveComponentSource, /authoritativeLiveRpc\('droxion_my_live_join_request'/);
+  assert.match(liveComponentSource, /authoritativeLiveRpc\('droxion_my_live_invite'/);
+  assert.doesNotMatch(liveComponentSource, /window\.setTimeout\(poll, 30000\)/);
+});
+
+test('guest realtime recovery does not refetch the full viewer list', () => {
+  assert.match(liveComponentSource, /droxion_live_room_viewers[\s\S]*\.slice\(0, 100\)/);
+  assert.doesNotMatch(liveComponentSource, /activeRoom\?\.user_id, guestStateRevision/);
+  assert.match(supabaseSource, /export function authoritativeLiveRpc/);
+});
+
+test('guest event payloads apply safe invite and removal state before recovery reads', () => {
+  assert.match(liveComponentSource, /action === 'invited'[\s\S]*setInvite\(\{/);
+  assert.match(liveComponentSource, /\['removed', 'blocked'\]\.includes\(action\)[\s\S]*setGuestMode\(false\)/);
+  assert.match(liveComponentSource, /setGuestStateRevision\(value => value \+ 1\)/);
 });
 
 test('Android preparation prunes legacy demo videos after its final web build', () => {

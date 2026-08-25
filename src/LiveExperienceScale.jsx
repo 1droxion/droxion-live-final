@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Ban, Camera, CameraOff, Gift, LogOut, Maximize2, Mic, MicOff, MoreHorizontal, Radio, RefreshCw, Send, Smartphone, Sparkles, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { invalidateLiveGuestState, recoverLiveEventStream, releaseLiveEventStream, requestLiveAuthoritativeReconcile, subscribeLiveEvents, supabase } from './supabaseClient';
+import { authoritativeLiveRpc, invalidateLiveGuestState, recoverLiveEventStream, releaseLiveEventStream, requestLiveAuthoritativeReconcile, subscribeLiveEvents, supabase } from './supabaseClient';
 import {
   attachRemoteTrack,
   connectLiveKitRoom,
@@ -14,7 +14,7 @@ import {
   unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
-import { actionableJoinRequests, applyMediaEnabledState, createLiveDeliveryProbe, hasLiveGuest, liveChatRowFromWrite, liveFeedWindow, liveGiftReconciliationCursor, liveGuestEventTargetsUser, mergeStableLiveEvents, shouldEnterGuestMode } from './livekit/reliabilityState';
+import { actionableJoinRequests, applyMediaEnabledState, createLiveDeliveryProbe, createLiveEventBatcher, hasLiveGuest, liveChatRowFromWrite, liveFeedWindow, liveGiftReconciliationCursor, liveGuestEventTargetsUser, livePendingRecoveryDelay, mergeStableLiveEvents, shouldEnterGuestMode } from './livekit/reliabilityState';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
 
@@ -22,7 +22,10 @@ const LIVE_FEED_PAGE_SIZE = 12;
 const liveDeliveryProbe = createLiveDeliveryProbe();
 
 if (typeof window !== 'undefined') {
-  window.__droxionLiveDeliveryDiagnostics = { snapshot: () => liveDeliveryProbe.snapshot() };
+  window.__droxionLiveDeliveryDiagnostics = {
+    snapshot: () => liveDeliveryProbe.snapshot(),
+    lifecycle: () => liveDeliveryProbe.lifecycleSnapshot()
+  };
 }
 
 function personAvatar(person, size = 42) {
@@ -90,6 +93,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const homePullStartY = useRef(null);
   const liveFeedSentinelRef = useRef(null);
   const voluntarilyExitedRequestRef = useRef('');
+  const pendingChatCommitsRef = useRef([]);
+  const pendingGiftCommitsRef = useRef([]);
 
   const sessionId = activeRoom?.session_id || (isLive ? ownSessionId : '');
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
@@ -344,42 +349,96 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   useEffect(() => {
     if (!sessionId) return;
-    return subscribeLiveEvents(sessionId, event => {
+    const batcher = createLiveEventBatcher({
+      flush: batch => {
+        if (batch.chat.length) {
+          setMessages(current => mergeStableLiveEvents(current, batch.chat, 200));
+          pendingChatCommitsRef.current.push(...batch.chat);
+          lastChatId.current = Math.max(lastChatId.current, ...batch.chat.map(row => Number(row.id || 0)));
+          if (isHostRoom) highlightRecorderRef.current?.markMoment?.(Math.min(5, batch.chat.length));
+        }
+        if (batch.gift.length) {
+          setGiftEvents(current => mergeStableLiveEvents(current, batch.gift, 30));
+          pendingGiftCommitsRef.current.push(...batch.gift);
+          const fresh = batch.gift.filter(row => {
+            const id = String(row.id ?? '');
+            if (!id || seenGiftIds.current.has(id)) return false;
+            seenGiftIds.current.add(id);
+            return true;
+          });
+          lastGiftAt.current = batch.gift.reduce((latest, row) => String(row.created_at || '') > String(latest || '') ? row.created_at : latest, lastGiftAt.current);
+          if (isHostRoom && fresh.length) highlightRecorderRef.current?.markMoment?.(Math.min(20, fresh.reduce((sum, row) => sum + 4 + Math.log10(Math.max(1, Number(row.cost_coins || 1))), 0)));
+        }
+      }
+    });
+    const unsubscribe = subscribeLiveEvents(sessionId, event => {
       if (event.type === 'chat' && event.row) {
         liveDeliveryProbe.mark({ eventType: 'chat', eventId: event.row.id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
-        setMessages(current => mergeStableLiveEvents(current, [event.row], 200));
+        batcher.enqueue('chat', event.row);
         liveDeliveryProbe.mark({ eventType: 'chat', eventId: event.row.id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
-        lastChatId.current = Math.max(lastChatId.current, Number(event.row.id || 0));
-        if (isHostRoom) highlightRecorderRef.current?.markMoment?.(1);
         return;
       }
 
       if (event.type === 'gift' && event.row) {
         const id = String(event.row.id ?? '');
-        const isNew = Boolean(id && !seenGiftIds.current.has(id));
         liveDeliveryProbe.mark({ eventType: 'gift', eventId: id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
-        setGiftEvents(current => mergeStableLiveEvents(current, [event.row], 30));
-        if (id) seenGiftIds.current.add(id);
+        batcher.enqueue('gift', event.row);
         liveDeliveryProbe.mark({ eventType: 'gift', eventId: id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
-        if (String(event.row.created_at || '') > String(lastGiftAt.current || '')) lastGiftAt.current = event.row.created_at;
-        if (isHostRoom && isNew) highlightRecorderRef.current?.markMoment?.(4 + Math.log10(Math.max(1, Number(event.row.cost_coins || 1))));
+        return;
+      }
+
+      if (event.type === 'recovery') {
+        liveDeliveryProbe.markLifecycle(event.phase, { sessionId, source: event.source, timestamp: event.timestamp });
         return;
       }
 
       if (event.type === 'guest_state' && (isHostRoom || liveGuestEventTargetsUser(event.row, currentUserId))) {
+        const metadata = event.row?.metadata || {};
+        const action = metadata.action || event.row?.action || '';
+        const requestId = metadata.request_id || event.row?.request_id;
+        const inviteId = metadata.invite_id || event.row?.invite_id;
+        if (isHostRoom && action === 'requested' && requestId) {
+          setJoinRequests(current => {
+            const requests = new Map(current.map(row => [String(row.request_id), row]));
+            requests.set(String(requestId), {
+              request_id: requestId,
+              user_id: event.row.actor_id,
+              display_name: event.row.display_name || 'Droxion user',
+              status: 'requested'
+            });
+            return actionableJoinRequests(Array.from(requests.values()).slice(-100));
+          });
+        } else if (isHostRoom && requestId && ['accepted', 'declined', 'expired'].includes(action)) {
+          setJoinRequests(current => current.filter(row => String(row.request_id) !== String(requestId)));
+        } else if (!isHostRoom && action === 'invited' && inviteId) {
+          setInvite({
+            invite_id: inviteId,
+            session_id: sessionId,
+            host_id: event.row.actor_id,
+            host_name: event.row.display_name || 'Droxion user'
+          });
+        } else if (!isHostRoom && requestId && ['accepted', 'declined', 'removed', 'expired'].includes(action)) {
+          setMyJoinRequest(current => ({ ...current, request_id: requestId, session_id: sessionId, status: action }));
+        }
+        if (!isHostRoom && ['removed', 'blocked'].includes(action)) {
+          stopCamera();
+          setGuestMode(false);
+          setInvite(null);
+        }
         setGuestStateRevision(value => value + 1);
       }
     });
-  }, [sessionId, isHostRoom, currentUserId]);
+    return () => { unsubscribe(); batcher.dispose(); };
+  }, [sessionId, isHostRoom, currentUserId, stopCamera]);
 
   useEffect(() => {
-    const row = messages[messages.length - 1];
-    if (row) liveDeliveryProbe.mark({ eventType: 'chat', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
+    const rows = pendingChatCommitsRef.current.splice(0);
+    for (const row of rows) liveDeliveryProbe.mark({ eventType: 'chat', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
   }, [messages]);
 
   useEffect(() => {
-    const row = giftEvents[giftEvents.length - 1];
-    if (row) liveDeliveryProbe.mark({ eventType: 'gift', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
+    const rows = pendingGiftCommitsRef.current.splice(0);
+    for (const row of rows) liveDeliveryProbe.mark({ eventType: 'gift', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
   }, [giftEvents]);
 
   useEffect(() => () => releaseLiveEventStream(sessionId), [sessionId]);
@@ -614,7 +673,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId || isHostRoom) return;
     const beat = () => supabase.rpc('droxion_live_viewer_heartbeat', { p_session_id: sessionId });
     beat();
-    const timer = window.setInterval(beat, 15000);
+    const timer = window.setInterval(beat, 60000);
     return () => window.clearInterval(timer);
   }, [sessionId, isHostRoom]);
 
@@ -622,15 +681,9 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId) return;
     let stopped = false;
     const refresh = async () => {
-      const [{ data: status }, viewerResult] = await Promise.all([
-        supabase.rpc('droxion_live_room_status', { p_session_id: sessionId }),
-        isHostRoom
-          ? supabase.rpc('droxion_live_room_viewers', { p_session_id: sessionId })
-          : Promise.resolve({ data: [] })
-      ]);
+      const { data: status } = await supabase.rpc('droxion_live_room_status', { p_session_id: sessionId });
       if (stopped) return;
       setRoomStatus(status || null);
-      if (isHostRoom) setViewers(viewerResult.data || []);
       const count = Number(status?.viewer_count || 0);
       if (isHostRoom && count > previousViewerCount.current) highlightRecorderRef.current?.markMoment?.(2 + Math.min(4, count - previousViewerCount.current));
       previousViewerCount.current = count;
@@ -642,18 +695,37 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     refresh();
     const timer = window.setInterval(refresh, isHostRoom ? 15000 : 60000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [sessionId, isHostRoom, profiles, activeRoom?.user_id, guestStateRevision]);
+  }, [sessionId, isHostRoom, profiles, activeRoom?.user_id]);
+
+  useEffect(() => {
+    if (!sessionId || !isHostRoom) { setViewers([]); return; }
+    let stopped = false;
+    supabase.rpc('droxion_live_room_viewers', { p_session_id: sessionId }).then(({ data }) => {
+      if (!stopped) setViewers((data || []).slice(0, 100));
+    });
+    return () => { stopped = true; };
+  }, [sessionId, isHostRoom]);
+
+  useEffect(() => {
+    if (!sessionId || guestStateRevision === 0) return;
+    let stopped = false;
+    authoritativeLiveRpc('droxion_live_room_status', { p_session_id: sessionId }).then(({ data }) => {
+      if (!stopped && data) setRoomStatus(data);
+    });
+    return () => { stopped = true; };
+  }, [sessionId, guestStateRevision]);
 
   useEffect(() => {
     if (!sessionId || !isHostRoom) { setJoinRequests([]); return; }
     let stopped = false;
     let timer = null;
+    let attempt = 0;
     const poll = async () => {
-      const { data } = await supabase.rpc('droxion_live_join_requests', { p_session_id: sessionId });
+      const { data } = await authoritativeLiveRpc('droxion_live_join_requests', { p_session_id: sessionId });
       if (stopped) return;
       const requests = actionableJoinRequests(data);
       setJoinRequests(requests);
-      timer = window.setTimeout(poll, requests.length ? 5000 : 30000);
+      if (requests.length) timer = window.setTimeout(poll, livePendingRecoveryDelay(attempt++));
     };
     poll();
     return () => { stopped = true; window.clearTimeout(timer); };
@@ -663,17 +735,16 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId || isHostRoom) return;
     let stopped = false;
     let timer = null;
+    let attempt = 0;
     const poll = async () => {
-      const { data } = await supabase.rpc('droxion_my_live_join_request', { p_session_id: sessionId });
+      const { data } = await authoritativeLiveRpc('droxion_my_live_join_request', { p_session_id: sessionId });
       if (stopped) return;
       if (!data?.request_id) {
         setMyJoinRequest(null);
-        timer = window.setTimeout(poll, 30000);
         return;
       }
       setMyJoinRequest(data);
       if (data.status === 'accepted' && String(data.request_id) === voluntarilyExitedRequestRef.current) {
-        timer = window.setTimeout(poll, 30000);
         return;
       }
       if (shouldEnterGuestMode({ requestId: data.request_id, status: data.status, guestMode, voluntarilyExitedRequestId: voluntarilyExitedRequestRef.current })) {
@@ -687,7 +758,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         if (data.status === 'declined') setNotice('The host declined your join request.');
         if (data.status === 'removed') setNotice('The host removed you as guest.');
       }
-      if (!stopped) timer = window.setTimeout(poll, data.status === 'requested' ? 5000 : 30000);
+      if (!stopped && data.status === 'requested') timer = window.setTimeout(poll, livePendingRecoveryDelay(attempt++));
     };
     poll();
     return () => { stopped = true; window.clearTimeout(timer); };
@@ -697,12 +768,13 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId || isHostRoom) return;
     let stopped = false;
     let timer = null;
+    let attempt = 0;
     const poll = async () => {
-      const { data } = await supabase.rpc('droxion_my_live_invite');
+      const { data } = await authoritativeLiveRpc('droxion_my_live_invite');
       if (stopped) return;
       const nextInvite = data?.invite_id && data?.session_id === sessionId ? data : null;
       setInvite(nextInvite);
-      timer = window.setTimeout(poll, nextInvite ? 5000 : 30000);
+      if (nextInvite) timer = window.setTimeout(poll, livePendingRecoveryDelay(attempt++));
     };
     poll();
     return () => { stopped = true; window.clearTimeout(timer); };
@@ -740,6 +812,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     }
     voluntarilyExitedRequestRef.current = '';
     setMyJoinRequest({ request_id: data.request_id, status: 'requested', session_id: sessionId });
+    setGuestStateRevision(value => value + 1);
     setNotice('Join request sent to the host.');
   }
 
@@ -945,6 +1018,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         });
         if (sent) {
           liveDeliveryProbe.mark({ eventType: 'chat', eventId: sent.id, phase: 'write_success', source: 'sender', createdAt: sent.created_at });
+          pendingChatCommitsRef.current.push(sent);
           setMessages(current => mergeStableLiveEvents(current, [sent], 200));
           lastChatId.current = Math.max(lastChatId.current, Number(sent.id || 0));
         } else {
@@ -985,6 +1059,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         };
         liveDeliveryProbe.mark({ eventType: 'gift', eventId: sentGift.id, phase: 'write_success', source: 'sender', createdAt: sentGift.created_at });
         seenGiftIds.current.add(String(sentGift.id));
+        pendingGiftCommitsRef.current.push(sentGift);
         setGiftEvents(current => mergeStableLiveEvents(current, [sentGift], 30));
       } else liveDeliveryProbe.cancelSend('gift');
       const successNotice = `${data.emoji} ${data.gift_name} sent.`;

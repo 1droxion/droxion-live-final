@@ -140,6 +140,79 @@ export function mergeStableLiveEvents(current, incoming, limit = 200) {
   return Array.from(merged.values()).slice(-limit);
 }
 
+export function appendBoundedStableLiveEvent(rows, ids, row, limit = 200) {
+  const id = stableLiveEventId(row);
+  if (!id || ids.has(id)) return false;
+  ids.add(id);
+  rows.push(row);
+  while (rows.length > limit) {
+    const removed = rows.shift();
+    const removedId = stableLiveEventId(removed);
+    if (removedId) ids.delete(removedId);
+  }
+  return true;
+}
+
+export function replaceBoundedStableLiveEvents(current, incoming, ids, limit = 200) {
+  const rows = mergeStableLiveEvents(current, incoming, limit);
+  ids.clear();
+  for (const row of rows) {
+    const id = stableLiveEventId(row);
+    if (id) ids.add(id);
+  }
+  return rows;
+}
+
+export function createLiveEventBatcher({
+  schedule = callback => globalThis.requestAnimationFrame(callback),
+  cancel = handle => globalThis.cancelAnimationFrame(handle),
+  flush,
+} = {}) {
+  const pending = { chat: new Map(), gift: new Map() };
+  let scheduled = null;
+  let closed = false;
+
+  const drain = () => {
+    scheduled = null;
+    if (closed) return;
+    const batch = {
+      chat: Array.from(pending.chat.values()),
+      gift: Array.from(pending.gift.values()),
+    };
+    pending.chat.clear();
+    pending.gift.clear();
+    if (batch.chat.length || batch.gift.length) flush?.(batch);
+  };
+
+  return {
+    enqueue(type, row) {
+      if (closed || !pending[type]) return false;
+      const id = stableLiveEventId(row);
+      if (!id) return false;
+      pending[type].set(id, row);
+      if (scheduled == null) scheduled = schedule(drain);
+      return true;
+    },
+    flush: drain,
+    dispose() {
+      closed = true;
+      if (scheduled != null) cancel(scheduled);
+      scheduled = null;
+      pending.chat.clear();
+      pending.gift.clear();
+    },
+  };
+}
+
+export function livePendingRecoveryDelay(attempt, {
+  baseMs = 1000,
+  maxMs = 30000,
+  jitterRatio = 0.15,
+  random = Math.random,
+} = {}) {
+  return liveSafetyReconcileDelay(attempt, { baseMs, maxMs, jitterRatio, random });
+}
+
 export function createLiveDeliveryProbe({
   now = () => globalThis.performance?.now?.() ?? Date.now(),
   wallNow = () => Date.now(),
@@ -147,6 +220,7 @@ export function createLiveDeliveryProbe({
 } = {}) {
   const records = new Map();
   const pendingSends = new Map();
+  const lifecycle = [];
 
   const trim = () => {
     while (records.size > limit) records.delete(records.keys().next().value);
@@ -193,6 +267,16 @@ export function createLiveDeliveryProbe({
     },
     snapshot() {
       return Array.from(records.values(), record => ({ ...record, phases: { ...record.phases } }));
+    },
+    markLifecycle(phase, details = {}) {
+      if (!phase) return null;
+      const record = { phase, timestamp: wallNow(), ...details };
+      lifecycle.push(record);
+      if (lifecycle.length > limit) lifecycle.splice(0, lifecycle.length - limit);
+      return { ...record };
+    },
+    lifecycleSnapshot() {
+      return lifecycle.map(record => ({ ...record }));
     },
   };
 }

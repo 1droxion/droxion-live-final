@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import process from 'node:process';
-import { createClient } from '@supabase/supabase-js';
 
 function option(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -39,6 +38,8 @@ if (/zlnhaqzawbzagraxhmlb\.supabase\.co/i.test(url) && !productionApproved) {
   throw new Error('Production target refused. Use an isolated load environment, or separately set DROXION_LOAD_ALLOW_PRODUCTION=1 after founder approval.');
 }
 if (!url || !anonKey || !roomFile || !tokenFile) throw new Error('Load URL, anon key, room file and token file are required.');
+
+const { createClient } = await import('@supabase/supabase-js');
 
 const rooms = readLines(roomFile).slice(0, roomsTarget);
 const tokens = readLines(tokenFile);

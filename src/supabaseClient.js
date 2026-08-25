@@ -1,12 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   canCompleteLiveReadReconciliation,
+  appendBoundedStableLiveEvent,
   captureLiveReadSubscriptionState,
   liveQueueNeedsAuthoritativeRead,
   liveSafetyReconcileDelay,
   liveGiftReconciliationCursor,
   markLiveQueueForReconciliation,
-  mergeStableLiveEvents,
+  replaceBoundedStableLiveEvents,
   stableLiveEventId,
 } from "./livekit/reliabilityState";
 
@@ -84,8 +85,7 @@ function applyLiveEvent(stream, sessionId, row) {
       body: row.body || "",
       created_at: row.created_at,
     };
-    const isNew = !stream.chat.some(item => stableLiveEventId(item) === stableLiveEventId(chat));
-    stream.chat = mergeStableLiveEvents(stream.chat, [chat], 300);
+    const isNew = appendBoundedStableLiveEvent(stream.chat, stream.chatIds, chat, 300);
     if (isNew) notifyLiveEventSubscribers(stream, { type: "chat", row: chat, source: "realtime" });
   } else if (row.event_type === "gift") {
     const gift = {
@@ -97,8 +97,7 @@ function applyLiveEvent(stream, sessionId, row) {
       cost_coins: Number(row.cost_coins || 0),
       created_at: row.created_at,
     };
-    const isNew = !stream.gifts.some(item => stableLiveEventId(item) === stableLiveEventId(gift));
-    stream.gifts = mergeStableLiveEvents(stream.gifts, [gift], 100);
+    const isNew = appendBoundedStableLiveEvent(stream.gifts, stream.giftIds, gift, 100);
     if (isNew) notifyLiveEventSubscribers(stream, { type: "gift", row: gift, source: "realtime" });
   } else if (row.event_type === "guest_state") {
     invalidateGuestStateReads(sessionId);
@@ -114,7 +113,8 @@ function applyLiveEvent(stream, sessionId, row) {
 function applyAuthoritativeLiveRows(stream, queue, rows) {
   const incoming = Array.isArray(rows) ? rows : [];
   const known = new Set(stream[queue].map(stableLiveEventId).filter(Boolean));
-  stream[queue] = mergeStableLiveEvents(stream[queue], incoming, queue === "chat" ? 300 : 100);
+  const ids = queue === "chat" ? stream.chatIds : stream.giftIds;
+  stream[queue] = replaceBoundedStableLiveEvents(stream[queue], incoming, ids, queue === "chat" ? 300 : 100);
   for (const row of incoming) {
     const id = stableLiveEventId(row);
     if (!id || known.has(id)) continue;
@@ -145,6 +145,7 @@ async function catchUpLiveEventStream(sessionId, stream, generation) {
     stream.nextAuthoritativeAt[queue] = now + liveSafetyReconcileDelay(0);
     stream.safetyAttempt[queue] = 1;
   }
+  notifyLiveEventSubscribers(stream, { type: "recovery", phase: "catchup_complete", source: "authoritative", timestamp: Date.now() });
 }
 
 function scheduleLiveEventReconnect(sessionId, stream) {
@@ -179,6 +180,7 @@ function subscribeLiveEventStream(sessionId, stream) {
     if (status === "SUBSCRIBED") {
       stream.ready = true;
       stream.retryIndex = 0;
+      notifyLiveEventSubscribers(stream, { type: "recovery", phase: "realtime_subscribed", source: "realtime", timestamp: Date.now() });
       if (stream.reconcile.chat) stream.nextAuthoritativeAt.chat = 0;
       if (stream.reconcile.gifts) stream.nextAuthoritativeAt.gifts = 0;
       stream.catchUpPromise = catchUpLiveEventStream(sessionId, stream, generation).catch(() => {
@@ -208,6 +210,8 @@ function getLiveEventStream(sessionId) {
   stream = {
     chat: [],
     gifts: [],
+    chatIds: new Set(),
+    giftIds: new Set(),
     ready: false,
     channel: null,
     closed: false,
@@ -246,7 +250,8 @@ function authoritativeLiveRead(stream, queue, fn, args, options) {
       return response;
     }
 
-    stream[queue] = mergeStableLiveEvents(stream[queue], response.data, queue === "chat" ? 300 : 100);
+    const ids = queue === "chat" ? stream.chatIds : stream.giftIds;
+    stream[queue] = replaceBoundedStableLiveEvents(stream[queue], response.data, ids, queue === "chat" ? 300 : 100);
     stream.lastTouchedAt = now;
     stream.lastAuthoritativeAt[queue] = now;
     const completed = canCompleteLiveReadReconciliation(stream, subscriptionState);
@@ -404,6 +409,24 @@ export function subscribeLiveEvents(sessionId, subscriber) {
 
 export function invalidateLiveGuestState(sessionId) {
   if (sessionId) invalidateGuestStateReads(sessionId);
+}
+
+const LIVE_AUTHORITATIVE_READS = new Set([
+  "droxion_live_room_status",
+  "droxion_live_join_requests",
+  "droxion_my_live_join_request",
+  "droxion_my_live_invite",
+]);
+
+export function authoritativeLiveRpc(fn, args, options) {
+  if (!LIVE_AUTHORITATIVE_READS.has(fn)) return Promise.resolve({ data: null, error: new Error("Unsupported authoritative LIVE read.") });
+  if (args?.p_session_id) invalidateGuestStateReads(args.p_session_id);
+  else if (fn === "droxion_my_live_invite") {
+    for (const key of readCache.keys()) {
+      if (key.startsWith("droxion_my_live_invite:")) readCache.delete(key);
+    }
+  }
+  return originalRpc(fn, args, options);
 }
 
 export function releaseLiveEventStream(sessionId) {
