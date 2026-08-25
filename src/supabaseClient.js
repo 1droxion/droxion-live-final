@@ -69,6 +69,12 @@ function invalidateGuestStateReads(sessionId) {
   }
 }
 
+function invalidateLiveFeedReads() {
+  for (const key of readCache.keys()) {
+    if (key.startsWith("droxion_live_feed:")) readCache.delete(key);
+  }
+}
+
 function applyLiveEvent(stream, sessionId, row) {
   if (!row) return;
   stream.lastTouchedAt = Date.now();
@@ -103,9 +109,11 @@ function applyLiveEvent(stream, sessionId, row) {
     invalidateGuestStateReads(sessionId);
     notifyLiveEventSubscribers(stream, { type: "guest_state", row, source: "realtime" });
   } else if (row.event_type === "live_started" || row.event_type === "live_ended") {
-    for (const key of readCache.keys()) {
-      if (key.startsWith("droxion_live_feed:")) readCache.delete(key);
-      if (row.event_type === "live_ended" && key.includes(sessionId) && key.startsWith("droxion_live_room_status:")) readCache.delete(key);
+    invalidateLiveFeedReads();
+    if (row.event_type === "live_ended") {
+      for (const key of readCache.keys()) {
+        if (key.includes(sessionId) && key.startsWith("droxion_live_room_status:")) readCache.delete(key);
+      }
     }
   }
 }
@@ -359,6 +367,10 @@ client.rpc = (fn, args, options) => {
 };
 
 export const supabase = client;
+
+export function invalidateLiveFeedCache() {
+  invalidateLiveFeedReads();
+}
 
 export function requestLiveAuthoritativeReconcile(sessionId, queues = ["chat", "gifts"]) {
   const stream = liveEventStreams.get(sessionId);
