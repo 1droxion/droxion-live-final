@@ -48,22 +48,44 @@ function stableKey(fn, args) {
   catch { return `${fn}:uncacheable`; }
 }
 
+function notifyLiveEventSubscribers(stream, event) {
+  for (const subscriber of stream.subscribers) {
+    try { subscriber(event); }
+    catch (error) { console.warn("LIVE event subscriber failed", error); }
+  }
+}
+
+function invalidateGuestStateReads(sessionId) {
+  for (const key of readCache.keys()) {
+    const sessionRead = key.includes(sessionId) && (
+      key.startsWith("droxion_live_room_status:")
+      || key.startsWith("droxion_live_join_requests:")
+      || key.startsWith("droxion_my_live_join_request:")
+    );
+    if (sessionRead || key.startsWith("droxion_my_live_invite:")) readCache.delete(key);
+  }
+}
+
 function applyLiveEvent(stream, sessionId, row) {
   if (!row) return;
   stream.lastTouchedAt = Date.now();
 
   if (row.event_type === "chat") {
-    const id = Number(row.metadata?.chat_id || row.id || 0);
-    stream.chat = mergeStableLiveEvents(stream.chat, [{
+    const rawId = row.metadata?.chat_id ?? row.id;
+    const numericId = Number(rawId);
+    const id = Number.isFinite(numericId) ? numericId : String(rawId || "");
+    const chat = {
       id,
       sender_id: row.actor_id,
       display_name: row.display_name || "Droxion user",
       avatar_url: null,
       body: row.body || "",
       created_at: row.created_at,
-    }], 300);
+    };
+    stream.chat = mergeStableLiveEvents(stream.chat, [chat], 300);
+    notifyLiveEventSubscribers(stream, { type: "chat", row: chat, source: "realtime" });
   } else if (row.event_type === "gift") {
-    stream.gifts = mergeStableLiveEvents(stream.gifts, [{
+    const gift = {
       id: row.metadata?.gift_id || String(row.id),
       sender_id: row.actor_id,
       display_name: row.display_name || "Droxion user",
@@ -71,13 +93,12 @@ function applyLiveEvent(stream, sessionId, row) {
       emoji: row.emoji || "🎁",
       cost_coins: Number(row.cost_coins || 0),
       created_at: row.created_at,
-    }], 100);
+    };
+    stream.gifts = mergeStableLiveEvents(stream.gifts, [gift], 100);
+    notifyLiveEventSubscribers(stream, { type: "gift", row: gift, source: "realtime" });
   } else if (row.event_type === "guest_state") {
-    for (const key of readCache.keys()) {
-      if (key.includes(sessionId) && (key.startsWith("droxion_live_room_status:") || key.startsWith("droxion_live_join_requests:") || key.startsWith("droxion_my_live_join_request:"))) {
-        readCache.delete(key);
-      }
-    }
+    invalidateGuestStateReads(sessionId);
+    notifyLiveEventSubscribers(stream, { type: "guest_state", row, source: "realtime" });
   } else if (row.event_type === "live_started" || row.event_type === "live_ended") {
     for (const key of readCache.keys()) {
       if (key.startsWith("droxion_live_feed:")) readCache.delete(key);
@@ -154,6 +175,7 @@ function getLiveEventStream(sessionId) {
     nextAuthoritativeAt: { chat: 0, gifts: 0 },
     safetyAttempt: { chat: 0, gifts: 0 },
     authoritativeInFlight: { chat: null, gifts: null },
+    subscribers: new Set(),
   };
 
   liveEventStreams.set(sessionId, stream);
@@ -289,6 +311,21 @@ export function requestLiveAuthoritativeReconcile(sessionId, queues = ["chat", "
   const stream = liveEventStreams.get(sessionId);
   if (!stream) return;
   for (const queue of queues) markLiveQueueForReconciliation(stream, queue);
+}
+
+export function subscribeLiveEvents(sessionId, subscriber) {
+  if (!sessionId || typeof subscriber !== "function") return () => {};
+  const stream = getLiveEventStream(sessionId);
+  stream.subscribers.add(subscriber);
+  stream.lastTouchedAt = Date.now();
+  return () => {
+    stream.subscribers.delete(subscriber);
+    stream.lastTouchedAt = Date.now();
+  };
+}
+
+export function invalidateLiveGuestState(sessionId) {
+  if (sessionId) invalidateGuestStateReads(sessionId);
 }
 
 export function releaseLiveEventStream(sessionId) {

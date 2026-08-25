@@ -74,6 +74,48 @@ export function shouldEnterGuestMode({ requestId, status, guestMode, voluntarily
     && String(requestId || '') !== String(voluntarilyExitedRequestId || '');
 }
 
+export function hasLiveGuest({ guestMode, guestVideoReady }) {
+  return Boolean(guestMode || guestVideoReady);
+}
+
+export function actionableJoinRequests(rows) {
+  return (rows || []).filter(row => !row?.status || ['requested', 'pending'].includes(row.status));
+}
+
+export function liveGuestEventTargetsUser(row, userId) {
+  const expected = String(userId || '');
+  if (!expected) return false;
+  const metadata = row?.metadata || {};
+  const candidates = [
+    row?.actor_id,
+    row?.target_user_id,
+    row?.recipient_id,
+    row?.guest_id,
+    metadata.user_id,
+    metadata.target_user_id,
+    metadata.recipient_id,
+    metadata.requester_id,
+    metadata.request_user_id,
+    metadata.invitee_id,
+    metadata.guest_id,
+    metadata.participant_id,
+  ];
+  return candidates.some(value => String(value || '') === expected);
+}
+
+export function liveChatRowFromWrite(data, { body, senderId, displayName, now = () => new Date().toISOString() }) {
+  const id = data?.chat_id ?? data?.message_id ?? data?.id;
+  if (id == null || id === '') return null;
+  return {
+    id: Number.isFinite(Number(id)) ? Number(id) : id,
+    sender_id: senderId,
+    display_name: data?.display_name || displayName || 'You',
+    avatar_url: data?.avatar_url || null,
+    body,
+    created_at: data?.created_at || now(),
+  };
+}
+
 export function liveFeedWindow(rows, visibleCount) {
   return (rows || []).slice(0, Math.max(0, Number(visibleCount) || 0));
 }

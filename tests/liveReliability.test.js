@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
+  actionableJoinRequests,
   applyMediaEnabledState,
   canDecorateLiveRoom,
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
+  hasLiveGuest,
+  liveChatRowFromWrite,
   liveGiftReconciliationCursor,
   liveFeedWindow,
+  liveGuestEventTargetsUser,
   liveQueueNeedsAuthoritativeRead,
   liveSafetyReconcileDelay,
   markLiveQueueForReconciliation,
@@ -15,6 +20,10 @@ import {
   retryLiveReconnect,
   shouldEnterGuestMode,
 } from '../src/livekit/reliabilityState.js';
+
+const liveComponentSource = fs.readFileSync(new URL('../src/LiveExperienceScale.jsx', import.meta.url), 'utf8');
+const liveCssSource = fs.readFileSync(new URL('../src/live-experience-v4.css', import.meta.url), 'utf8');
+const supabaseSource = fs.readFileSync(new URL('../src/supabaseClient.js', import.meta.url), 'utf8');
 
 test('reconnect exhaustion rejects with the final failure', async () => {
   const failures = [new Error('first'), new Error('final')];
@@ -85,6 +94,50 @@ test('voluntary guest exit blocks only the stale accepted request from republish
   assert.equal(shouldEnterGuestMode({ requestId: 'new', status: 'declined', guestMode: false, voluntarilyExitedRequestId: 'old' }), false);
 });
 
+test('accepted guest switches the stage into a real 50/50 layout and removal restores full screen', () => {
+  assert.equal(hasLiveGuest({ guestMode: false, guestVideoReady: false }), false);
+  assert.equal(hasLiveGuest({ guestMode: true, guestVideoReady: false }), true);
+  assert.equal(hasLiveGuest({ guestMode: false, guestVideoReady: true }), true);
+  assert.match(liveComponentSource, /hasGuestStage \? 'liveStage-split'/);
+  assert.match(liveCssSource, /\.liveStage-split \.liveMainVideo[\s\S]*height: 50%/);
+  assert.match(liveCssSource, /liveRoom-horizontal[\s\S]*liveStage-split[\s\S]*width: 50%/);
+  assert.match(liveCssSource, /liveStage-split[\s\S]*object-fit: cover/);
+});
+
+test('host guest management is only exposed through the three-dot menu', () => {
+  assert.match(liveComponentSource, /className="liveGuestMenuButton"/);
+  assert.match(liveComponentSource, /<MoreHorizontal size=\{22\}/);
+  assert.match(liveComponentSource, /className="liveGuestMenu" role="menu"/);
+  assert.doesNotMatch(liveComponentSource, /className="liveGuestManagement"/);
+});
+
+test('join, invite, accept, decline, remove and block events target only affected guest clients', () => {
+  const viewer = 'viewer-1';
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: viewer, metadata: { action: 'requested' } }, viewer), true);
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: 'host', metadata: { requester_id: viewer, action: 'accepted' } }, viewer), true);
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: 'host', metadata: { requester_id: viewer, action: 'declined' } }, viewer), true);
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: 'host', metadata: { invitee_id: viewer, action: 'invited' } }, viewer), true);
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: 'host', metadata: { guest_id: viewer, action: 'removed' } }, viewer), true);
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: 'host', metadata: { target_user_id: viewer, action: 'blocked' } }, viewer), true);
+  assert.equal(liveGuestEventTargetsUser({ event_type: 'guest_state', actor_id: 'other', metadata: { invitee_id: 'other' } }, viewer), false);
+});
+
+test('stale requests cannot remain actionable after authoritative replacement', () => {
+  assert.deepEqual(actionableJoinRequests([
+    { request_id: '1', status: 'requested' },
+    { request_id: '2', status: 'accepted' },
+    { request_id: '3', status: 'declined' },
+    { request_id: '4', status: 'expired' },
+  ]).map(row => row.request_id), ['1']);
+});
+
+test('guest state invalidates invites and React subscribes directly instead of fast polling', () => {
+  assert.match(supabaseSource, /key\.startsWith\("droxion_my_live_invite:"\)/);
+  assert.match(supabaseSource, /notifyLiveEventSubscribers\(stream, \{ type: "guest_state"/);
+  assert.match(liveComponentSource, /subscribeLiveEvents\(sessionId/);
+  assert.doesNotMatch(liveComponentSource, /setInterval\(poll, (800|900|1200|1500|2500)\)/);
+});
+
 test('Home renders a bounded LIVE listing window', () => {
   const rows = Array.from({ length: 100 }, (_, id) => ({ id }));
   assert.equal(liveFeedWindow(rows, 12).length, 12);
@@ -118,6 +171,18 @@ test('chat and gift reconciliation replaces duplicate stable IDs without double 
   assert.deepEqual(reconciled.map(row => String(row.id)), ['41', 'gift-9', '42']);
   assert.equal(reconciled[0].display_name, 'Dhruv');
   assert.equal(reconciled[1].emoji, '🌹');
+});
+
+test('successful chat writes render immediately and realtime reconciliation does not duplicate them', () => {
+  const optimistic = liveChatRowFromWrite(
+    { allowed: true, chat_id: 84, created_at: '2026-08-24T23:00:03.000Z' },
+    { body: 'Instant', senderId: 'viewer-1', displayName: 'You' }
+  );
+  const reconciled = mergeStableLiveEvents([optimistic], [{ ...optimistic, display_name: 'Dhruv' }]);
+  assert.equal(reconciled.length, 1);
+  assert.equal(reconciled[0].display_name, 'Dhruv');
+  assert.match(supabaseSource, /notifyLiveEventSubscribers\(stream, \{ type: "chat"/);
+  assert.match(supabaseSource, /notifyLiveEventSubscribers\(stream, \{ type: "gift"/);
 });
 
 test('gift reconciliation overlaps the timestamp cursor to recover equal-time events', () => {
