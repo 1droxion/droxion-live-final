@@ -28,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Build production bundle
-        run: npm run build
+      - name: Run Droxion quality gate
+        run: npm run quality-gate
 
       - name: Verify required release files
         run: |
@@ -48,3 +48,35 @@ jobs:
             echo 'Potential private credential found in tracked files.'
             exit 1
           fi
+
+  android-build:
+    name: Android debug build validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 16 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate generated Android app
+        run: npm run android:validate

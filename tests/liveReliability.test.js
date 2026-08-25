@@ -2,12 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyMediaEnabledState,
+  canDecorateLiveRoom,
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
   liveGiftReconciliationCursor,
+  liveFeedWindow,
+  liveQueueNeedsAuthoritativeRead,
+  liveSafetyReconcileDelay,
+  markLiveQueueForReconciliation,
   mergeStableLiveEvents,
   microphoneStateMatches,
   retryLiveReconnect,
+  shouldEnterGuestMode,
 } from '../src/livekit/reliabilityState.js';
 
 test('reconnect exhaustion rejects with the final failure', async () => {
@@ -44,6 +50,45 @@ test('an RPC started after subscription activation can complete reconciliation',
   assert.equal(canCompleteLiveReadReconciliation(stream, snapshot), true);
   stream.generation += 1;
   assert.equal(canCompleteLiveReadReconciliation(stream, snapshot), false);
+});
+
+test('healthy reconciliation backs off with bounded deterministic jitter', () => {
+  assert.equal(liveSafetyReconcileDelay(0, { random: () => 0.5 }), 60000);
+  assert.equal(liveSafetyReconcileDelay(2, { random: () => 0.5 }), 240000);
+  assert.equal(liveSafetyReconcileDelay(8, { random: () => 0.5 }), 300000);
+  assert.equal(liveSafetyReconcileDelay(0, { random: () => 0 }), 48000);
+});
+
+test('reconnect, foreground and successful sends can force the next authoritative read', () => {
+  const stream = {
+    reconcile: { chat: false },
+    nextAuthoritativeAt: { chat: 999999 },
+    safetyAttempt: { chat: 5 },
+  };
+  assert.equal(liveQueueNeedsAuthoritativeRead(stream, 'chat', 100), false);
+  markLiveQueueForReconciliation(stream, 'chat', 100);
+  assert.equal(stream.reconcile.chat, true);
+  assert.equal(stream.safetyAttempt.chat, 0);
+  assert.equal(liveQueueNeedsAuthoritativeRead(stream, 'chat', 100), true);
+});
+
+test('a late LIVE context response cannot decorate a root React reused for Home', () => {
+  const root = { isConnected: true, matches: selector => selector === '.liveOnlyHome' };
+  assert.equal(canDecorateLiveRoom(root), false);
+  root.matches = selector => selector === '.liveRoomV4';
+  assert.equal(canDecorateLiveRoom(root), true);
+});
+
+test('voluntary guest exit blocks only the stale accepted request from republishing media', () => {
+  assert.equal(shouldEnterGuestMode({ requestId: 'old', status: 'accepted', guestMode: false, voluntarilyExitedRequestId: 'old' }), false);
+  assert.equal(shouldEnterGuestMode({ requestId: 'new', status: 'accepted', guestMode: false, voluntarilyExitedRequestId: 'old' }), true);
+  assert.equal(shouldEnterGuestMode({ requestId: 'new', status: 'declined', guestMode: false, voluntarilyExitedRequestId: 'old' }), false);
+});
+
+test('Home renders a bounded LIVE listing window', () => {
+  const rows = Array.from({ length: 100 }, (_, id) => ({ id }));
+  assert.equal(liveFeedWindow(rows, 12).length, 12);
+  assert.deepEqual(liveFeedWindow(rows, 24).map(row => row.id), Array.from({ length: 24 }, (_, id) => id));
 });
 
 test('foreground media intent is applied to both browser track kinds', () => {

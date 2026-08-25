@@ -2,6 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import {
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
+  liveQueueNeedsAuthoritativeRead,
+  liveSafetyReconcileDelay,
+  markLiveQueueForReconciliation,
   mergeStableLiveEvents,
 } from "./livekit/reliabilityState";
 
@@ -21,8 +24,8 @@ const originalRpc = client.rpc.bind(client);
 // - Postgres RPCs remain the authoritative write path and reconciliation path.
 // - Safe read polling is coalesced; wallet/gift/message writes are never cached.
 const LIVE_READ_TTL_MS = {
-  droxion_live_feed: 20000,
-  droxion_live_room_status: 20000,
+  droxion_live_feed: 60000,
+  droxion_live_room_status: 60000,
   droxion_live_room_viewers: 30000,
   droxion_live_join_requests: 15000,
   droxion_my_live_join_request: 15000,
@@ -35,7 +38,6 @@ const readCache = new Map();
 const heartbeatCache = new Map();
 const liveEventStreams = new Map();
 const LIVE_EVENT_RETRY_MS = [500, 1500, 3000, 5000, 10000];
-const LIVE_AUTHORITATIVE_RECONCILE_MS = 3000;
 
 function result(data) {
   return { data, error: null, count: null, status: 200, statusText: "OK" };
@@ -79,6 +81,7 @@ function applyLiveEvent(stream, sessionId, row) {
   } else if (row.event_type === "live_started" || row.event_type === "live_ended") {
     for (const key of readCache.keys()) {
       if (key.startsWith("droxion_live_feed:")) readCache.delete(key);
+      if (row.event_type === "live_ended" && key.includes(sessionId) && key.startsWith("droxion_live_room_status:")) readCache.delete(key);
     }
   }
 }
@@ -115,13 +118,15 @@ function subscribeLiveEventStream(sessionId, stream) {
     if (status === "SUBSCRIBED") {
       stream.ready = true;
       stream.retryIndex = 0;
+      if (stream.reconcile.chat) stream.nextAuthoritativeAt.chat = 0;
+      if (stream.reconcile.gifts) stream.nextAuthoritativeAt.gifts = 0;
       return;
     }
     if (!["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) return;
 
     stream.ready = false;
-    stream.reconcile.chat = true;
-    stream.reconcile.gifts = true;
+    markLiveQueueForReconciliation(stream, "chat");
+    markLiveQueueForReconciliation(stream, "gifts");
     stream.channel = null;
     try { Promise.resolve(client.removeChannel(channel)).catch(() => {}); }
     catch {}
@@ -146,6 +151,9 @@ function getLiveEventStream(sessionId) {
     reconcile: { chat: true, gifts: true },
     lastTouchedAt: Date.now(),
     lastAuthoritativeAt: { chat: 0, gifts: 0 },
+    nextAuthoritativeAt: { chat: 0, gifts: 0 },
+    safetyAttempt: { chat: 0, gifts: 0 },
+    authoritativeInFlight: { chat: null, gifts: null },
   };
 
   liveEventStreams.set(sessionId, stream);
@@ -154,30 +162,53 @@ function getLiveEventStream(sessionId) {
 }
 
 function authoritativeLiveRead(stream, queue, fn, args, options) {
+  if (stream.authoritativeInFlight[queue]) return stream.authoritativeInFlight[queue];
   const subscriptionState = captureLiveReadSubscriptionState(stream, queue);
-  return Promise.resolve(originalRpc(fn, args, options)).then(response => {
-    if (!response?.error) {
-      stream[queue] = mergeStableLiveEvents(stream[queue], response.data, queue === "chat" ? 300 : 100);
-      stream.lastTouchedAt = Date.now();
-      stream.lastAuthoritativeAt[queue] = Date.now();
-      if (canCompleteLiveReadReconciliation(stream, subscriptionState)) stream.reconcile[queue] = false;
+  const request = Promise.resolve(originalRpc(fn, args, options)).then(response => {
+    const now = Date.now();
+    if (response?.error) {
+      stream.reconcile[queue] = true;
+      stream.nextAuthoritativeAt[queue] = now + liveSafetyReconcileDelay(
+        Math.min(stream.safetyAttempt[queue], 4),
+        { baseMs: 2000, maxMs: 30000 }
+      );
+      return response;
     }
+
+    stream[queue] = mergeStableLiveEvents(stream[queue], response.data, queue === "chat" ? 300 : 100);
+    stream.lastTouchedAt = now;
+    stream.lastAuthoritativeAt[queue] = now;
+    const completed = canCompleteLiveReadReconciliation(stream, subscriptionState);
+    if (completed) stream.reconcile[queue] = false;
+    stream.nextAuthoritativeAt[queue] = now + (completed
+      ? liveSafetyReconcileDelay(stream.safetyAttempt[queue])
+      : liveSafetyReconcileDelay(stream.safetyAttempt[queue], { baseMs: 2000, maxMs: 30000 }));
+    stream.safetyAttempt[queue] = Math.min(stream.safetyAttempt[queue] + 1, 8);
     return response;
+  }).finally(() => {
+    if (stream.authoritativeInFlight[queue] === request) stream.authoritativeInFlight[queue] = null;
   });
+  stream.authoritativeInFlight[queue] = request;
+  return request;
+}
+
+function closeLiveEventStream(sessionId, stream) {
+  if (!stream || liveEventStreams.get(sessionId) !== stream) return;
+  stream.closed = true;
+  stream.ready = false;
+  stream.generation += 1;
+  if (stream.reconnectTimer) globalThis.clearTimeout(stream.reconnectTimer);
+  try {
+    if (stream.channel) Promise.resolve(client.removeChannel(stream.channel)).catch(() => {});
+  } catch {}
+  liveEventStreams.delete(sessionId);
 }
 
 function cleanupOldLiveStreams() {
   const cutoff = Date.now() - 5 * 60 * 1000;
   for (const [sessionId, stream] of liveEventStreams.entries()) {
     if (stream.lastTouchedAt >= cutoff) continue;
-    stream.closed = true;
-    stream.ready = false;
-    stream.generation += 1;
-    if (stream.reconnectTimer) globalThis.clearTimeout(stream.reconnectTimer);
-    try {
-      if (stream.channel) Promise.resolve(client.removeChannel(stream.channel)).catch(() => {});
-    } catch {}
-    liveEventStreams.delete(sessionId);
+    closeLiveEventStream(sessionId, stream);
   }
 }
 
@@ -204,7 +235,7 @@ client.rpc = (fn, args, options) => {
   if (fn === "droxion_live_chat_messages" && args?.p_session_id) {
     const stream = getLiveEventStream(args.p_session_id);
     const afterId = Number(args?.p_after_id || 0);
-    if (stream?.ready && !stream.reconcile.chat && Date.now() - stream.lastAuthoritativeAt.chat < LIVE_AUTHORITATIVE_RECONCILE_MS) {
+    if (!liveQueueNeedsAuthoritativeRead(stream, "chat")) {
       stream.lastTouchedAt = Date.now();
       return Promise.resolve(result(stream.chat.filter(row => Number(row.id || 0) > afterId).slice(0, 200)));
     }
@@ -214,7 +245,7 @@ client.rpc = (fn, args, options) => {
   if (fn === "droxion_live_gift_events" && args?.p_session_id) {
     const stream = getLiveEventStream(args.p_session_id);
     const after = args?.p_after ? Date.parse(args.p_after) : 0;
-    if (stream?.ready && !stream.reconcile.gifts && Date.now() - stream.lastAuthoritativeAt.gifts < LIVE_AUTHORITATIVE_RECONCILE_MS) {
+    if (!liveQueueNeedsAuthoritativeRead(stream, "gifts")) {
       stream.lastTouchedAt = Date.now();
       return Promise.resolve(result(stream.gifts.filter(row => !after || Date.parse(row.created_at) > after).slice(0, 100)));
     }
@@ -224,9 +255,12 @@ client.rpc = (fn, args, options) => {
   if ((fn === "droxion_send_live_chat" || fn === "droxion_send_live_gift")) {
     return Promise.resolve(originalRpc(fn, args, options)).then(response => {
       if (!response?.error && response?.data?.allowed) {
-        for (const stream of liveEventStreams.values()) {
-          stream.reconcile[fn === "droxion_send_live_chat" ? "chat" : "gifts"] = true;
-          stream.lastAuthoritativeAt[fn === "droxion_send_live_chat" ? "chat" : "gifts"] = 0;
+        const queue = fn === "droxion_send_live_chat" ? "chat" : "gifts";
+        const sessionId = args?.p_session_id;
+        if (sessionId && liveEventStreams.has(sessionId)) {
+          markLiveQueueForReconciliation(liveEventStreams.get(sessionId), queue);
+        } else {
+          for (const stream of liveEventStreams.values()) markLiveQueueForReconciliation(stream, queue);
         }
       }
       return response;
@@ -250,3 +284,13 @@ client.rpc = (fn, args, options) => {
 };
 
 export const supabase = client;
+
+export function requestLiveAuthoritativeReconcile(sessionId, queues = ["chat", "gifts"]) {
+  const stream = liveEventStreams.get(sessionId);
+  if (!stream) return;
+  for (const queue of queues) markLiveQueueForReconciliation(stream, queue);
+}
+
+export function releaseLiveEventStream(sessionId) {
+  closeLiveEventStream(sessionId, liveEventStreams.get(sessionId));
+}

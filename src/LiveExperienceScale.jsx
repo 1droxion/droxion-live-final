@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Gift, Maximize2, Mic, MicOff, Radio, RefreshCw, Send, Smartphone, Sparkles, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, Ban, Camera, CameraOff, Gift, LogOut, Maximize2, Mic, MicOff, Radio, RefreshCw, Send, Smartphone, Sparkles, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { supabase } from './supabaseClient';
+import { releaseLiveEventStream, requestLiveAuthoritativeReconcile, supabase } from './supabaseClient';
 import {
   attachRemoteTrack,
   connectLiveKitRoom,
@@ -14,9 +14,11 @@ import {
   unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
-import { applyMediaEnabledState, liveGiftReconciliationCursor, mergeStableLiveEvents } from './livekit/reliabilityState';
+import { applyMediaEnabledState, liveFeedWindow, liveGiftReconciliationCursor, mergeStableLiveEvents, shouldEnterGuestMode } from './livekit/reliabilityState';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
+
+const LIVE_FEED_PAGE_SIZE = 12;
 
 function personAvatar(person, size = 42) {
   if (person?.avatar_url) return <img src={person.avatar_url} alt={person.display_name || 'Droxion user'} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover' }} />;
@@ -53,6 +55,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const [followBusy, setFollowBusy] = useState(false);
   const [refreshingLiveFeed, setRefreshingLiveFeed] = useState(false);
   const [homePullDistance, setHomePullDistance] = useState(0);
+  const [visibleLiveCount, setVisibleLiveCount] = useState(LIVE_FEED_PAGE_SIZE);
+  const [guestActionBusy, setGuestActionBusy] = useState('');
   const [liveSetup, setLiveSetup] = useState({ title: '', tags: '', orientation: 'vertical', allowGuests: true });
 
   const localVideo = useRef(null);
@@ -75,6 +79,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const microphoneSyncRef = useRef(null);
   const noticeExpiryRef = useRef(null);
   const homePullStartY = useRef(null);
+  const liveFeedSentinelRef = useRef(null);
+  const voluntarilyExitedRequestRef = useRef('');
 
   const sessionId = activeRoom?.session_id || (isLive ? ownSessionId : '');
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
@@ -250,6 +256,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       if (lifecycleRecoveryRef.current) return;
 
       lifecycleRecoveryRef.current = (async () => {
+        requestLiveAuthoritativeReconcile(sessionId);
         const room = lkRoomRef.current;
         const role = lkRoleRef.current;
         if (!room || !role) return;
@@ -308,6 +315,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     };
   }, [sessionId, roomOrientation, facingMode, cameraOn, micOn, ensureCamera, attachLocal]);
 
+  useEffect(() => () => releaseLiveEventStream(sessionId), [sessionId]);
+
   useEffect(() => {
     if (!sessionId) {
       setAudioBlocked(false);
@@ -357,7 +366,9 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       setGifts(giftRows || []);
       await loadLive();
     })();
-    const timer = window.setInterval(loadLive, 4000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden' && !document.querySelector('.liveRoomV4')) loadLive();
+    }, 120000 + Math.floor(Math.random() * 60000));
     return () => { alive = false; window.clearInterval(timer); };
   }, [currentUserId]);
 
@@ -440,7 +451,14 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     setOwnSessionId('');
     setActiveRoom(null);
     setGuestMode(false);
+    setGuestActionBusy('');
     setJoinRequests([]);
+    setMyJoinRequest(null);
+    setInvite(null);
+    setRoomStatus(null);
+    setViewers([]);
+    setGiftDrawerOpen(false);
+    setSetupOpen(false);
     await disconnectTransport();
     stopCamera();
     setNotice('');
@@ -503,6 +521,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     setMessages([]);
     setGiftEvents([]);
     setGiftDrawerOpen(false);
+    setGuestActionBusy('');
     await disconnectTransport();
     setNotice('');
   }
@@ -536,13 +555,15 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId) return;
     let stopped = false;
     const refresh = async () => {
-      const [{ data: status }, { data: viewerRows }] = await Promise.all([
+      const [{ data: status }, viewerResult] = await Promise.all([
         supabase.rpc('droxion_live_room_status', { p_session_id: sessionId }),
-        supabase.rpc('droxion_live_room_viewers', { p_session_id: sessionId })
+        isHostRoom
+          ? supabase.rpc('droxion_live_room_viewers', { p_session_id: sessionId })
+          : Promise.resolve({ data: [] })
       ]);
       if (stopped) return;
       setRoomStatus(status || null);
-      setViewers(viewerRows || []);
+      if (isHostRoom) setViewers(viewerResult.data || []);
       const count = Number(status?.viewer_count || 0);
       if (isHostRoom && count > previousViewerCount.current) highlightRecorderRef.current?.markMoment?.(2 + Math.min(4, count - previousViewerCount.current));
       previousViewerCount.current = count;
@@ -575,7 +596,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       const { data } = await supabase.rpc('droxion_my_live_join_request', { p_session_id: sessionId });
       if (stopped || !data?.request_id) return;
       setMyJoinRequest(data);
-      if (data.status === 'accepted' && !guestMode) {
+      if (data.status === 'accepted' && String(data.request_id) === voluntarilyExitedRequestRef.current) return;
+      if (shouldEnterGuestMode({ requestId: data.request_id, status: data.status, guestMode, voluntarilyExitedRequestId: voluntarilyExitedRequestRef.current })) {
         try {
           await ensureCamera(activeRoom?.orientation || 'vertical', 'user');
           if (!stopped) { setGuestMode(true); setNotice('You joined the LIVE.'); requestAnimationFrame(attachLocal); }
@@ -624,12 +646,17 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   async function requestToJoin() {
     if (!sessionId || guestMode) return;
+    if (myJoinRequest?.status === 'declined') {
+      setNotice('The host declined this request. You cannot request again during this LIVE.');
+      return;
+    }
     const { data, error } = await supabase.rpc('droxion_request_live_guest', { p_session_id: sessionId });
     if (error || !data?.allowed) {
       const reason = data?.reason;
       setNotice(reason === 'requests_disabled' ? 'This creator is not accepting guest requests.' : reason === 'guest_already_joined' ? 'A guest is already on this LIVE.' : error?.message || 'Could not send join request.');
       return;
     }
+    voluntarilyExitedRequestRef.current = '';
     setMyJoinRequest({ request_id: data.request_id, status: 'requested', session_id: sessionId });
     setNotice('Join request sent to the host.');
   }
@@ -664,9 +691,92 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     setNotice(error?.message || (data?.allowed ? 'Guest invite sent.' : 'Could not invite this viewer.'));
   }
 
+  async function removeGuestMembership(attempts = 1) {
+    let response = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      response = await supabase.rpc('droxion_remove_live_guest', { p_session_id: sessionId });
+      if (!response.error && response.data?.allowed !== false) return response;
+      if (attempt < attempts - 1) await new Promise(resolve => window.setTimeout(resolve, 250 * (attempt + 1)));
+    }
+    return response;
+  }
+
   async function removeGuest() {
-    await supabase.rpc('droxion_remove_live_guest', { p_session_id: sessionId });
-    setNotice('Guest removed.');
+    const guestId = roomStatus?.guest_id;
+    if (!guestId || guestActionBusy) return;
+    setGuestActionBusy('remove');
+    const { data, error } = await removeGuestMembership();
+    if (error || data?.allowed === false) {
+      setNotice(error?.message || 'Could not remove this guest.');
+    } else {
+      remoteTracksRef.current.forEach((track, key) => {
+        if (!key.startsWith(`${guestId}:`)) return;
+        try { track.detach(); } catch {}
+        remoteTracksRef.current.delete(key);
+      });
+      setGuestVideoReady(false);
+      setRoomStatus(current => current ? { ...current, guest_id: null } : current);
+      setNotice('Guest removed. The LIVE is still running.');
+    }
+    setGuestActionBusy('');
+  }
+
+  async function blockGuest() {
+    const guestId = roomStatus?.guest_id;
+    const guest = viewers.find(viewer => viewer.user_id === guestId);
+    if (!guestId || guestActionBusy) return;
+    if (!window.confirm(`Block ${guest?.display_name || 'this guest'} and remove them from your LIVE?`)) return;
+    setGuestActionBusy('block');
+    const { data: blockResult, error: blockError } = await supabase.rpc('droxion_block_user', { p_blocked_user_id: guestId });
+    if (blockError || !blockResult?.allowed) {
+      setNotice(blockError?.message || 'Could not block this guest.');
+      setGuestActionBusy('');
+      return;
+    }
+    const { data: removeResult, error: removeError } = await removeGuestMembership(3);
+    if (removeError || removeResult?.allowed === false) {
+      setNotice(removeError?.message || 'User was blocked, but guest removal needs a retry.');
+    } else {
+      remoteTracksRef.current.forEach((track, key) => {
+        if (!key.startsWith(`${guestId}:`)) return;
+        try { track.detach(); } catch {}
+        remoteTracksRef.current.delete(key);
+      });
+      setGuestVideoReady(false);
+      setViewers(current => current.filter(viewer => viewer.user_id !== guestId));
+      setRoomStatus(current => current ? { ...current, guest_id: null } : current);
+      setNotice(`${guest?.display_name || 'Guest'} was blocked and removed.`);
+    }
+    setGuestActionBusy('');
+  }
+
+  async function leaveGuestStage() {
+    if (!guestMode || !sessionId || guestActionBusy) return;
+    setGuestActionBusy('leave');
+    const hostId = activeRoom?.user_id;
+    const { error: leaveError } = await supabase.rpc('droxion_leave_live', { p_session_id: sessionId });
+    if (leaveError) {
+      setNotice(leaveError.message || 'Could not leave the guest stage.');
+      setGuestActionBusy('');
+      return;
+    }
+
+    stopCamera();
+    voluntarilyExitedRequestRef.current = String(myJoinRequest?.request_id || '');
+    setGuestMode(false);
+    setMyJoinRequest(null);
+    setRoomStatus(current => current ? { ...current, guest_id: null } : current);
+    const { data: joinResult, error: joinError } = await supabase.rpc('droxion_join_live', { p_host_id: hostId });
+    if (joinError || !joinResult?.allowed) {
+      await disconnectTransport();
+      setActiveRoom(null);
+      setNotice(joinError?.message || 'You left the stage, but the LIVE is no longer available.');
+    } else {
+      setActiveRoom(current => ({ ...current, session_id: joinResult.session_id || sessionId }));
+      requestLiveAuthoritativeReconcile(joinResult.session_id || sessionId);
+      setNotice('You left the guest stage and are watching as a viewer.');
+    }
+    setGuestActionBusy('');
   }
 
   useEffect(() => {
@@ -781,12 +891,25 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!shouldRefresh) return setHomePullDistance(0);
     setRefreshingLiveFeed(true);
     setHomePullDistance(48);
-    try { await loadLive(); }
+    try { setVisibleLiveCount(LIVE_FEED_PAGE_SIZE); await loadLive(); }
     finally {
       setRefreshingLiveFeed(false);
       setHomePullDistance(0);
     }
   }
+
+  useEffect(() => {
+    const sentinel = liveFeedSentinelRef.current;
+    if (sessionId || !sentinel || visibleLiveCount >= profiles.length) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        setVisibleLiveCount(current => Math.min(profiles.length, current + LIVE_FEED_PAGE_SIZE));
+      }
+    }, { rootMargin: '500px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [sessionId, profiles.length, visibleLiveCount]);
 
   function toggleCamera() {
     const next = !cameraOn;
@@ -831,6 +954,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const host = isHostRoom ? { user_id: currentUserId, display_name: 'Your Live', ...activeRoom } : activeRoom;
     const liveIndex = profiles.findIndex(profile => profile.user_id === activeRoom?.user_id);
     const showRemoteGuest = guestVideoReady && !guestMode;
+    const activeGuest = viewers.find(viewer => viewer.user_id === roomStatus?.guest_id);
     const combinedEvents = [
       ...messages.slice(-8).map(item => ({ type: 'chat', time: item.created_at || '', key: `c-${item.id}`, ...item })),
       ...giftEvents.slice(-5).map(item => ({ type: 'gift', time: item.created_at || '', key: `g-${item.id}`, ...item }))
@@ -870,8 +994,10 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           </div>
 
           {!isHostRoom && !guestMode && activeRoom?.allow_guest_requests !== false && !roomStatus?.guest_id && (
-            <button className="liveFloatingJoin" onClick={requestToJoin} disabled={myJoinRequest?.status === 'requested'}><UserPlus size={19} /> {myJoinRequest?.status === 'requested' ? 'Requested' : 'Join LIVE'}</button>
+            <button className="liveFloatingJoin" onClick={requestToJoin} disabled={['requested', 'declined'].includes(myJoinRequest?.status)}><UserPlus size={19} /> {myJoinRequest?.status === 'requested' ? 'Requested' : myJoinRequest?.status === 'declined' ? 'Declined' : 'Join LIVE'}</button>
           )}
+
+          {isHostRoom && roomStatus?.guest_id && <div className="liveGuestManagement" aria-label="Guest stage controls"><strong>{activeGuest?.display_name || 'Guest on stage'}</strong><button type="button" disabled={Boolean(guestActionBusy)} onClick={removeGuest}><UserMinus size={17} /> {guestActionBusy === 'remove' ? 'Removing…' : 'Remove Guest'}</button><button type="button" className="danger" disabled={Boolean(guestActionBusy)} onClick={blockGuest}><Ban size={17} /> {guestActionBusy === 'block' ? 'Blocking…' : 'Block User'}</button></div>}
 
           <div className="liveComposerOverlay liveComposerV4" onTouchStart={event => event.stopPropagation()} onTouchEnd={event => event.stopPropagation()}>
             <input value={draft} onChange={event => setDraft(event.target.value)} placeholder="Say something…" maxLength={500} />
@@ -884,6 +1010,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
             <button onClick={toggleCamera}>{cameraOn ? <Camera size={19} /> : <CameraOff size={19} />}</button>
             <button onClick={flipCamera}><RefreshCw size={19} /></button>
             <button className={`beauty beauty-${beautyMode}`} onClick={cycleBeauty}><Sparkles size={18} /><span>{beautyMode === 'off' ? 'Beauty' : beautyMode === 'soft' ? 'Soft' : 'Clear'}</span></button>
+            {guestMode && <button className="leaveStage" disabled={Boolean(guestActionBusy)} onClick={leaveGuestStage}><LogOut size={18} /><span>{guestActionBusy === 'leave' ? 'Leaving…' : 'Leave Guest'}</span></button>}
             {isHostRoom && <button className="end" onClick={endLive}><X size={19} /></button>}
           </div>}
         </div>
@@ -904,9 +1031,9 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     <section className="realPage liveBrowsePage liveFeedPage liveOnlyHome" onTouchStart={handleHomePullStart} onTouchMove={handleHomePullMove} onTouchEnd={handleHomePullEnd} onTouchCancel={handleHomePullEnd}>
       <div className={`livePullRefresh ${refreshingLiveFeed ? 'refreshing' : ''}`} style={{ height: homePullDistance }} aria-live="polite"><RefreshCw size={19} />{refreshingLiveFeed && <span>Refreshing LIVE</span>}</div>
       <button type="button" className="liveGoButton liveNavGoTrigger" onClick={openGoLiveSetup} aria-hidden="true" tabIndex={-1}>Go Live</button>
-      <div className="liveOnlyHomeHead"><strong><Radio size={15} /> {profiles.length} LIVE now</strong><span>{profiles.length ? 'Watch LIVE previews. Tap one for chat, gifts and more.' : 'No one is live right now.'}</span></div>
+      <div className="liveOnlyHomeHead"><strong><Radio size={15} /> {profiles.length} LIVE now</strong><span>{profiles.length ? 'Browse creators. Video connects only after you open a LIVE.' : 'No one is live right now.'}</span></div>
       {notice && <div className="liveNotice">{notice}</div>}
-      {profiles.length === 0 ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE right now</h2><p>When creators go LIVE, they will appear here.</p></div> : <div className="liveFeedScroll liveOnlyScroll" aria-label="People live now">{profiles.map(profile => <button key={profile.user_id} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}>{profile.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} /> : <div className="liveBrowseFallback" />}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>{Array.isArray(profile.tags) && profile.tags.length > 0 && <div className="liveFeedTags">{profile.tags.slice(0, 3).map(tag => <span key={tag}>#{tag}</span>)}</div>}<em>Tap to open LIVE</em></div></button>)}</div>}
+      {profiles.length === 0 ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE right now</h2><p>When creators go LIVE, they will appear here.</p></div> : <div className="liveFeedScroll liveOnlyScroll" aria-label="People live now">{liveFeedWindow(profiles, visibleLiveCount).map(profile => <button key={profile.user_id} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}>{profile.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} loading="lazy" decoding="async" /> : <div className="liveBrowseFallback" />}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>{Array.isArray(profile.tags) && profile.tags.length > 0 && <div className="liveFeedTags">{profile.tags.slice(0, 3).map(tag => <span key={tag}>#{tag}</span>)}</div>}<em>Tap to open LIVE</em></div></button>)}{visibleLiveCount < profiles.length && <div ref={liveFeedSentinelRef} className="liveFeedSentinel" aria-hidden="true" />}</div>}
 
       {setupOpen && <div className="liveSetupOverlay" role="dialog" aria-modal="true"><div className="liveSetupSheet"><div className="liveSetupHead"><div><span>🔴 GO LIVE</span><h2>Set up your LIVE</h2></div><button onClick={() => setSetupOpen(false)}><X size={21} /></button></div><label>LIVE title<input value={liveSetup.title} maxLength={100} placeholder="What are you talking about?" onChange={event => setLiveSetup(state => ({ ...state, title: event.target.value }))} /></label><label>Tags<input value={liveSetup.tags} placeholder="music, chatting, business" onChange={event => setLiveSetup(state => ({ ...state, tags: event.target.value }))} /></label><div className="liveOrientationChoice"><button className={liveSetup.orientation === 'vertical' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'vertical' }))}><Smartphone size={22} /><strong>Vertical</strong><span>Best for phones</span></button><button className={liveSetup.orientation === 'horizontal' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'horizontal' }))}><Maximize2 size={22} /><strong>Horizontal</strong><span>Wide LIVE</span></button></div><label className="liveGuestToggle"><input type="checkbox" checked={liveSetup.allowGuests} onChange={event => setLiveSetup(state => ({ ...state, allowGuests: event.target.checked }))} /><span><strong>Allow viewers to request to join</strong><small>You approve every guest before they come on camera.</small></span></label><button className="liveStartButton" onClick={startLive}><Radio size={19} /> START LIVE</button></div></div>}
     </section>

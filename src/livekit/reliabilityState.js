@@ -41,6 +41,43 @@ export function canCompleteLiveReadReconciliation(stream, snapshot) {
   );
 }
 
+export function liveSafetyReconcileDelay(
+  attempt,
+  { baseMs = 60000, maxMs = 300000, jitterRatio = 0.2, random = Math.random } = {}
+) {
+  const exponential = Math.min(maxMs, baseMs * (2 ** Math.max(0, Number(attempt) || 0)));
+  const jitter = Math.max(0, Math.min(1, jitterRatio));
+  const factor = (1 - jitter) + (2 * jitter * Math.max(0, Math.min(1, random())));
+  return Math.round(exponential * factor);
+}
+
+export function markLiveQueueForReconciliation(stream, queue, now = Date.now()) {
+  if (!stream?.reconcile || !stream?.nextAuthoritativeAt) return stream;
+  stream.reconcile[queue] = true;
+  stream.nextAuthoritativeAt[queue] = now;
+  stream.safetyAttempt[queue] = 0;
+  return stream;
+}
+
+export function liveQueueNeedsAuthoritativeRead(stream, queue, now = Date.now()) {
+  if (!stream) return true;
+  return now >= Number(stream.nextAuthoritativeAt?.[queue] || 0);
+}
+
+export function canDecorateLiveRoom(room) {
+  return Boolean(room?.isConnected && room?.matches?.('.liveRoomV4'));
+}
+
+export function shouldEnterGuestMode({ requestId, status, guestMode, voluntarilyExitedRequestId }) {
+  return status === 'accepted'
+    && !guestMode
+    && String(requestId || '') !== String(voluntarilyExitedRequestId || '');
+}
+
+export function liveFeedWindow(rows, visibleCount) {
+  return (rows || []).slice(0, Math.max(0, Number(visibleCount) || 0));
+}
+
 export function applyMediaEnabledState(mediaStream, { cameraOn, micOn }) {
   mediaStream?.getVideoTracks?.().forEach(track => { track.enabled = Boolean(cameraOn); });
   mediaStream?.getAudioTracks?.().forEach(track => { track.enabled = Boolean(micOn); });
