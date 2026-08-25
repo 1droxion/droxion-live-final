@@ -28,6 +28,7 @@ const supabaseSource = fs.readFileSync(new URL('../src/supabaseClient.js', impor
 const cameraEnhancerSource = fs.readFileSync(new URL('../src/LiveCameraStartupEnhancer.jsx', import.meta.url), 'utf8');
 const androidPrepareSource = fs.readFileSync(new URL('../scripts/prepare-android.sh', import.meta.url), 'utf8');
 const codemagicSource = fs.readFileSync(new URL('../codemagic.yaml', import.meta.url), 'utf8');
+const qualityGateSource = fs.readFileSync(new URL('../.github/workflows/quality-gate.yml', import.meta.url), 'utf8');
 
 test('reconnect exhaustion rejects with the final failure', async () => {
   const failures = [new Error('first'), new Error('final')];
@@ -183,6 +184,8 @@ test('Android preparation prunes legacy demo videos after its final web build', 
   assert.match(androidPrepareSource, /find android\/app\/src\/main\/assets[\s\S]*20250520/);
   assert.match(codemagicSource, /unzip -Z1 "\$AAB" \| grep -qi '20250520'/);
   assert.match(codemagicSource, /Android AAB bytes/);
+  assert.match(qualityGateSource, /Build and inspect unsigned release AAB[\s\S]*bundleRelease/);
+  assert.match(qualityGateSource, /unzip -Z1 "\$AAB" \| grep -qi '20250520'/);
 });
 
 test('Home renders a bounded LIVE listing window', () => {

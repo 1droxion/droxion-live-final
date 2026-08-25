@@ -80,3 +80,19 @@ jobs:
 
       - name: Validate generated Android app
         run: npm run android:validate
+
+      - name: Build and inspect unsigned release AAB
+        run: |
+          set -e
+          (
+            cd android
+            ./gradlew bundleRelease --stacktrace
+          )
+          AAB="$(find android/app/build/outputs/bundle/release -name '*.aab' -print -quit)"
+          test -n "$AAB"
+          if unzip -Z1 "$AAB" | grep -qi '20250520'; then
+            echo 'Legacy 20250520 demo video found in Android App Bundle.' >&2
+            exit 1
+          fi
+          echo "Android AAB bytes: $(stat -c %s "$AAB")"
+          du -h "$AAB"
