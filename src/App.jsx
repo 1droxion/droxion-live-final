@@ -31,6 +31,7 @@ export default function App() {
         <Route path="/privacy" element={<LegalPage />} />
         <Route path="/terms" element={<LegalPage />} />
         <Route path="/community-guidelines" element={<LegalPage />} />
+        <Route path="/child-safety" element={<LegalPage />} />
         <Route path="/support" element={<LegalPage />} />
         <Route path="/delete-account" element={<DeleteAccount />} />
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
