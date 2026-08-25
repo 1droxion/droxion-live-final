@@ -1,6 +1,6 @@
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../supabaseClient';
-import { retryLiveReconnect } from './reliabilityState';
+import { microphoneStateMatches, retryLiveReconnect } from './reliabilityState';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
@@ -25,6 +25,7 @@ const recoveryPromisesByRoom = new WeakMap();
 const closingRooms = new WeakSet();
 const audioUnlocksByRoom = new WeakMap();
 const mediaPublishPromisesByRoom = new WeakMap();
+const microphoneSyncPromisesByRoom = new WeakMap();
 let latestPublisherRoom = null;
 let pendingPublisherVideoTrack = null;
 
@@ -383,6 +384,40 @@ async function publishManagedTrackWithRetry(room, track, publishOptions = {}, st
     : 'LIVE microphone could not publish.');
 }
 
+function getMicrophonePublications(room) {
+  const participant = room?.localParticipant;
+  if (!participant) return [];
+  const collections = [participant.audioTrackPublications, participant.trackPublications];
+  const publications = [];
+  for (const collection of collections) {
+    for (const publication of collection?.values?.() || []) {
+      const source = publication?.source || publication?.track?.source;
+      if (source === Track.Source.Microphone && !publications.includes(publication)) publications.push(publication);
+    }
+  }
+  const primary = participant.getTrackPublication?.(Track.Source.Microphone);
+  if (primary && !publications.includes(primary)) publications.push(primary);
+  return publications;
+}
+
+async function keepSingleMicrophonePublication(room, preferred) {
+  const participant = room?.localParticipant;
+  const publications = getMicrophonePublications(room);
+  const canonical = publications.includes(preferred) ? preferred : publications[0] || null;
+  for (const publication of publications) {
+    if (publication === canonical || !publication?.track) continue;
+    try {
+      await participant.unpublishTrack(publication.track, true);
+    } catch (error) {
+      await logClientError('cleanup-duplicate-microphone', error, {
+        trackSid: publication.trackSid || publication.sid || ''
+      });
+      throw new Error('Could not remove a duplicate LIVE microphone publication.');
+    }
+  }
+  return canonical;
+}
+
 export async function connectLiveKitRoom({
   sessionId,
   role = 'viewer',
@@ -550,6 +585,13 @@ async function publishLocalMediaOnce(room, mediaStream) {
       if (existingState.audioMuted) await currentAudioPublication.mute();
     }
 
+    currentAudioPublication = await keepSingleMicrophonePublication(room, currentAudioPublication);
+    currentAudioTrack = currentAudioPublication?.track || null;
+    if (currentAudioPublication?.track) {
+      await (existingState.audioMuted ? currentAudioPublication.mute() : currentAudioPublication.unmute());
+      if (currentAudioTrack?.mediaStreamTrack) currentAudioTrack.mediaStreamTrack.enabled = !existingState.audioMuted;
+    }
+
     existingState.audioPublication = currentAudioPublication || null;
     existingState.audioTrack = currentAudioTrack || null;
     replaceStreamTracks(mediaStream, [existingState.videoTrack, existingState.audioTrack].filter(Boolean));
@@ -624,6 +666,8 @@ async function publishLocalMediaOnce(room, mediaStream) {
       }, 'publish-microphone');
       state.audioTrack = state.audioPublication?.track || null;
       if (state.audioMuted) await state.audioPublication.mute();
+      state.audioPublication = await keepSingleMicrophonePublication(room, state.audioPublication);
+      state.audioTrack = state.audioPublication?.track || null;
     } catch (error) {
       await logClientError('publish-microphone:final', error, {});
       throw new Error('LIVE microphone could not republish.');
@@ -769,17 +813,66 @@ if (typeof window !== 'undefined') {
   };
 }
 
-export async function setPublishedAudioMuted(room, muted) {
-  const state = room ? managedStateByRoom.get(room) : null;
-  if (state) state.audioMuted = muted;
-  const publication = state?.audioPublication;
-  if (!publication?.track) return;
-  try {
-    await (muted ? publication.mute() : publication.unmute());
-  } catch (error) {
-    await logClientError('toggle-microphone', error, { muted });
-    throw error;
+export async function setPublishedAudioMuted(room, muted, mediaStream) {
+  const savedMedia = mediaStream || (room ? publishedMediaByRoom.get(room) : null);
+  const browserTracks = savedMedia?.getAudioTracks?.().filter(track => track.readyState !== 'ended') || [];
+  if (muted) browserTracks.forEach(track => { track.enabled = false; });
+  if (!room) {
+    if (!muted) browserTracks.forEach(track => { track.enabled = true; });
+    return { muted: Boolean(muted), publicationCount: 0 };
   }
+
+  const previous = microphoneSyncPromisesByRoom.get(room) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(async () => {
+    const pendingPublish = mediaPublishPromisesByRoom.get(room);
+    if (pendingPublish) await pendingPublish;
+    const state = managedStateByRoom.get(room);
+    if (state) state.audioMuted = Boolean(muted);
+
+    if (muted) {
+      const muteResults = await Promise.allSettled(getMicrophonePublications(room).map(publication => publication?.track ? publication.mute() : null));
+      for (const result of muteResults) {
+        if (result.status === 'rejected') await logClientError('mute-duplicate-microphone', result.reason, {});
+      }
+    }
+    let publication = await keepSingleMicrophonePublication(room, state?.audioPublication);
+    if (!publication?.track && browserTracks[0]?.readyState === 'live') {
+      publication = await publishManagedTrackWithRetry(room, browserTracks[0], {
+        source: Track.Source.Microphone
+      }, 'synchronize-microphone');
+      publication = await keepSingleMicrophonePublication(room, publication);
+    }
+
+    try {
+      if (!muted) browserTracks.forEach(track => { track.enabled = true; });
+      if (publication?.track) await (muted ? publication.mute() : publication.unmute());
+      if (muted) browserTracks.forEach(track => { track.enabled = false; });
+    } catch (error) {
+      await logClientError('toggle-microphone', error, { muted });
+      throw error;
+    }
+
+    const publications = getMicrophonePublications(room);
+    if (state) {
+      state.audioPublication = publication || null;
+      state.audioTrack = publication?.track || null;
+    }
+    if (!microphoneStateMatches({ browserTracks, publications, muted })) {
+      const error = new Error('LIVE microphone state did not synchronize.');
+      await logClientError('verify-microphone-state', error, {
+        muted,
+        browserEnabled: browserTracks.map(track => track.enabled),
+        publicationMuted: publications.map(item => item.isMuted),
+        publicationCount: publications.length
+      });
+      throw error;
+    }
+    return { muted: Boolean(muted), publicationCount: publications.length };
+  }).finally(() => {
+    if (microphoneSyncPromisesByRoom.get(room) === operation) microphoneSyncPromisesByRoom.delete(room);
+  });
+  microphoneSyncPromisesByRoom.set(room, operation);
+  return operation;
 }
 
 export async function setPublishedVideoMuted(room, muted) {

@@ -4,6 +4,9 @@ import {
   applyMediaEnabledState,
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
+  liveGiftReconciliationCursor,
+  mergeStableLiveEvents,
+  microphoneStateMatches,
   retryLiveReconnect,
 } from '../src/livekit/reliabilityState.js';
 
@@ -54,4 +57,51 @@ test('foreground media intent is applied to both browser track kinds', () => {
   applyMediaEnabledState(stream, { cameraOn: false, micOn: false });
   assert.equal(video.enabled, false);
   assert.equal(audio.enabled, false);
+});
+
+test('chat and gift reconciliation replaces duplicate stable IDs without double rendering', () => {
+  const current = [
+    { id: 41, body: 'Hi', created_at: '2026-08-24T23:00:00.000Z' },
+    { id: 'gift-9', gift_name: 'Rose', created_at: '2026-08-24T23:00:01.000Z' },
+  ];
+  const reconciled = mergeStableLiveEvents(current, [
+    { id: 41, body: 'Hi', display_name: 'Dhruv', created_at: '2026-08-24T23:00:00.000Z' },
+    { id: 'gift-9', gift_name: 'Rose', emoji: '🌹', created_at: '2026-08-24T23:00:01.000Z' },
+    { id: 42, body: 'Visible everywhere', created_at: '2026-08-24T23:00:02.000Z' },
+  ]);
+
+  assert.deepEqual(reconciled.map(row => String(row.id)), ['41', 'gift-9', '42']);
+  assert.equal(reconciled[0].display_name, 'Dhruv');
+  assert.equal(reconciled[1].emoji, '🌹');
+});
+
+test('gift reconciliation overlaps the timestamp cursor to recover equal-time events', () => {
+  assert.equal(
+    liveGiftReconciliationCursor('2026-08-24T23:00:10.000Z'),
+    '2026-08-24T23:00:05.000Z'
+  );
+});
+
+test('microphone mute is synchronized only when browser and sole publication agree', () => {
+  const browserTrack = { enabled: false, readyState: 'live' };
+  const mutedPublication = { isMuted: true, track: { mediaStreamTrack: { readyState: 'live' } } };
+  const transmittingDuplicate = { isMuted: false, track: { mediaStreamTrack: { readyState: 'live' } } };
+
+  assert.equal(microphoneStateMatches({ browserTracks: [browserTrack], publications: [mutedPublication], muted: true }), true);
+  assert.equal(microphoneStateMatches({ browserTracks: [browserTrack], publications: [mutedPublication, transmittingDuplicate], muted: true }), false);
+  assert.equal(microphoneStateMatches({ browserTracks: [{ ...browserTrack, enabled: true }], publications: [mutedPublication], muted: true }), false);
+});
+
+test('microphone unmute requires one live unmuted publication and an enabled browser track', () => {
+  const publication = { isMuted: false, track: { mediaStreamTrack: { readyState: 'live' } } };
+  assert.equal(microphoneStateMatches({
+    browserTracks: [{ enabled: true, readyState: 'live' }],
+    publications: [publication],
+    muted: false,
+  }), true);
+  assert.equal(microphoneStateMatches({
+    browserTracks: [{ enabled: true, readyState: 'live' }],
+    publications: [],
+    muted: false,
+  }), false);
 });

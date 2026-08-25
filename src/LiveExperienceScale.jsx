@@ -14,7 +14,7 @@ import {
   unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
-import { applyMediaEnabledState } from './livekit/reliabilityState';
+import { applyMediaEnabledState, liveGiftReconciliationCursor, mergeStableLiveEvents } from './livekit/reliabilityState';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
 
@@ -51,6 +51,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const [setupOpen, setSetupOpen] = useState(false);
   const [followingHost, setFollowingHost] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [refreshingLiveFeed, setRefreshingLiveFeed] = useState(false);
+  const [homePullDistance, setHomePullDistance] = useState(0);
   const [liveSetup, setLiveSetup] = useState({ title: '', tags: '', orientation: 'vertical', allowGuests: true });
 
   const localVideo = useRef(null);
@@ -65,10 +67,14 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const highlightRecorderRef = useRef(null);
   const lastChatId = useRef(0);
   const lastGiftAt = useRef(null);
+  const seenGiftIds = useRef(new Set());
   const sendingChat = useRef(false);
   const touchStartY = useRef(null);
   const previousViewerCount = useRef(0);
   const lifecycleRecoveryRef = useRef(null);
+  const microphoneSyncRef = useRef(null);
+  const noticeExpiryRef = useRef(null);
+  const homePullStartY = useRef(null);
 
   const sessionId = activeRoom?.session_id || (isLive ? ownSessionId : '');
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
@@ -77,6 +83,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   useEffect(() => { onImmersiveChange?.(immersive); }, [immersive, onImmersiveChange]);
   useEffect(() => () => onImmersiveChange?.(false), [onImmersiveChange]);
+  useEffect(() => () => window.clearTimeout(noticeExpiryRef.current), []);
 
   async function loadLive() {
     const { data, error } = await supabase.rpc('droxion_live_feed');
@@ -363,6 +370,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         setOwnSessionId('');
         await disconnectTransport();
         stopCamera();
+        setNotice('');
       }
     };
     heartbeat();
@@ -419,7 +427,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }
 
   async function endLive() {
-    const endingSessionId = ownSessionId;
     const { error } = await supabase.rpc('droxion_set_live', { p_live: false });
     if (error) return setNotice(error.message || 'Could not end LIVE.');
     setNotice('Saving LIVE highlights…');
@@ -436,7 +443,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     setJoinRequests([]);
     await disconnectTransport();
     stopCamera();
-    setNotice(endingSessionId ? 'Live ended. Highlights are ready when enough footage was recorded.' : 'Live ended.');
+    setNotice('');
     await loadLive();
   }
 
@@ -457,6 +464,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     setGuestVideoReady(false);
     lastChatId.current = 0;
     lastGiftAt.current = new Date().toISOString();
+    seenGiftIds.current.clear();
     const { data, error } = await supabase.rpc('droxion_join_live', { p_host_id: profile.user_id });
     if (error || !data?.allowed) {
       setNotice(error?.message || 'This LIVE has ended.');
@@ -483,6 +491,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }, [profiles, currentUserId, sessionId, isHostRoom, guestMode]);
 
   async function leaveRoom() {
+    setNotice('');
     if (sessionId && !isHostRoom) await supabase.rpc('droxion_leave_live', { p_session_id: sessionId });
     if (guestMode) stopCamera();
     setGuestMode(false);
@@ -495,6 +504,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     setGiftEvents([]);
     setGiftDrawerOpen(false);
     await disconnectTransport();
+    setNotice('');
   }
 
   async function switchLive(direction) {
@@ -665,7 +675,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const poll = async () => {
       const { data } = await supabase.rpc('droxion_live_chat_messages', { p_session_id: sessionId, p_after_id: lastChatId.current });
       if (stopped || !data?.length) return;
-      setMessages(current => [...current, ...data].slice(-200));
+      setMessages(current => mergeStableLiveEvents(current, data, 200));
       lastChatId.current = Math.max(lastChatId.current, ...data.map(row => Number(row.id)));
       if (isHostRoom) highlightRecorderRef.current?.markMoment?.(Math.min(5, data.length));
     };
@@ -677,14 +687,24 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   useEffect(() => {
     if (!sessionId) return;
     lastGiftAt.current = new Date().toISOString();
+    seenGiftIds.current.clear();
     setGiftEvents([]);
     let stopped = false;
     const poll = async () => {
-      const { data } = await supabase.rpc('droxion_live_gift_events', { p_session_id: sessionId, p_after: lastGiftAt.current });
+      const { data } = await supabase.rpc('droxion_live_gift_events', {
+        p_session_id: sessionId,
+        p_after: liveGiftReconciliationCursor(lastGiftAt.current)
+      });
       if (stopped || !data?.length) return;
-      setGiftEvents(current => [...current, ...data].slice(-30));
-      lastGiftAt.current = data[data.length - 1].created_at;
-      if (isHostRoom) highlightRecorderRef.current?.markMoment?.(Math.min(20, data.reduce((sum, row) => sum + 4 + Math.log10(Math.max(1, Number(row.cost_coins || 1))), 0)));
+      setGiftEvents(current => mergeStableLiveEvents(current, data, 30));
+      const fresh = data.filter(row => {
+        const id = String(row.id ?? '');
+        if (!id || seenGiftIds.current.has(id)) return false;
+        seenGiftIds.current.add(id);
+        return true;
+      });
+      lastGiftAt.current = data.reduce((latest, row) => String(row.created_at || '') > String(latest || '') ? row.created_at : latest, lastGiftAt.current);
+      if (isHostRoom && fresh.length) highlightRecorderRef.current?.markMoment?.(Math.min(20, fresh.reduce((sum, row) => sum + 4 + Math.log10(Math.max(1, Number(row.cost_coins || 1))), 0)));
     };
     const timer = window.setInterval(poll, 900);
     return () => { stopped = true; window.clearInterval(timer); };
@@ -711,18 +731,61 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       else setNotice('Gift could not be sent.');
     } else {
       onCoinsChanged?.(Number(data.coin_balance || 0));
-      setNotice(`${data.emoji} ${data.gift_name} sent.`);
+      const successNotice = `${data.emoji} ${data.gift_name} sent.`;
+      setNotice(successNotice);
+      window.clearTimeout(noticeExpiryRef.current);
+      noticeExpiryRef.current = window.setTimeout(() => {
+        setNotice(current => current === successNotice ? '' : current);
+      }, 3000);
       setGiftDrawerOpen(false);
     }
     setBusyGift('');
   }
 
-  function toggleMic() {
+  async function toggleMic() {
+    if (microphoneSyncRef.current) return;
     const next = !micOn;
-    streamRef.current?.getAudioTracks().forEach(track => { track.enabled = next; });
-    setPublishedAudioMuted(lkRoomRef.current, !next)
-      .catch(error => setNotice(error?.message || 'Could not update the LIVE microphone.'));
-    setMicOn(next);
+    if (!next) streamRef.current?.getAudioTracks().forEach(track => { track.enabled = false; });
+    const synchronize = (async () => {
+      try {
+        const actual = await setPublishedAudioMuted(lkRoomRef.current, !next, streamRef.current);
+        setMicOn(!actual.muted);
+      } catch (error) {
+        try {
+          const restored = await setPublishedAudioMuted(lkRoomRef.current, !micOn, streamRef.current);
+          setMicOn(!restored.muted);
+        } catch {}
+        setNotice(error?.message || 'Could not update the LIVE microphone.');
+      }
+    })().finally(() => { microphoneSyncRef.current = null; });
+    microphoneSyncRef.current = synchronize;
+    await synchronize;
+  }
+
+  function handleHomePullStart(event) {
+    if (refreshingLiveFeed || window.scrollY > 0) return;
+    homePullStartY.current = event.touches?.[0]?.clientY ?? null;
+  }
+
+  function handleHomePullMove(event) {
+    if (homePullStartY.current == null || window.scrollY > 0) return;
+    const distance = (event.touches?.[0]?.clientY ?? homePullStartY.current) - homePullStartY.current;
+    if (distance <= 0) return setHomePullDistance(0);
+    if (distance > 8) event.preventDefault();
+    setHomePullDistance(Math.min(96, distance * 0.55));
+  }
+
+  async function handleHomePullEnd() {
+    const shouldRefresh = homePullDistance >= 58 && !refreshingLiveFeed;
+    homePullStartY.current = null;
+    if (!shouldRefresh) return setHomePullDistance(0);
+    setRefreshingLiveFeed(true);
+    setHomePullDistance(48);
+    try { await loadLive(); }
+    finally {
+      setRefreshingLiveFeed(false);
+      setHomePullDistance(0);
+    }
   }
 
   function toggleCamera() {
@@ -817,7 +880,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           </div>
 
           {(isHostRoom || guestMode) && <div className="liveHostControlsV4">
-            <button onClick={toggleMic}>{micOn ? <Mic size={19} /> : <MicOff size={19} />}</button>
+            <button onClick={toggleMic} aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}>{micOn ? <Mic size={19} /> : <MicOff size={19} />}</button>
             <button onClick={toggleCamera}>{cameraOn ? <Camera size={19} /> : <CameraOff size={19} />}</button>
             <button onClick={flipCamera}><RefreshCw size={19} /></button>
             <button className={`beauty beauty-${beautyMode}`} onClick={cycleBeauty}><Sparkles size={18} /><span>{beautyMode === 'off' ? 'Beauty' : beautyMode === 'soft' ? 'Soft' : 'Clear'}</span></button>
@@ -838,7 +901,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }
 
   return (
-    <section className="realPage liveBrowsePage liveFeedPage liveOnlyHome">
+    <section className="realPage liveBrowsePage liveFeedPage liveOnlyHome" onTouchStart={handleHomePullStart} onTouchMove={handleHomePullMove} onTouchEnd={handleHomePullEnd} onTouchCancel={handleHomePullEnd}>
+      <div className={`livePullRefresh ${refreshingLiveFeed ? 'refreshing' : ''}`} style={{ height: homePullDistance }} aria-live="polite"><RefreshCw size={19} />{refreshingLiveFeed && <span>Refreshing LIVE</span>}</div>
       <button type="button" className="liveGoButton liveNavGoTrigger" onClick={openGoLiveSetup} aria-hidden="true" tabIndex={-1}>Go Live</button>
       <div className="liveOnlyHomeHead"><strong><Radio size={15} /> {profiles.length} LIVE now</strong><span>{profiles.length ? 'Watch LIVE previews. Tap one for chat, gifts and more.' : 'No one is live right now.'}</span></div>
       {notice && <div className="liveNotice">{notice}</div>}

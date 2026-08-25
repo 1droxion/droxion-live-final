@@ -46,3 +46,32 @@ export function applyMediaEnabledState(mediaStream, { cameraOn, micOn }) {
   mediaStream?.getAudioTracks?.().forEach(track => { track.enabled = Boolean(micOn); });
   return mediaStream;
 }
+
+export function stableLiveEventId(row) {
+  const id = row?.id ?? row?.gift_id ?? row?.chat_id;
+  return id == null || id === '' ? null : String(id);
+}
+
+export function mergeStableLiveEvents(current, incoming, limit = 200) {
+  const merged = new Map();
+  for (const row of [...(current || []), ...(incoming || [])]) {
+    const id = stableLiveEventId(row);
+    if (id) merged.set(id, row);
+  }
+  return Array.from(merged.values()).slice(-limit);
+}
+
+export function liveGiftReconciliationCursor(value, overlapMs = 5000) {
+  const timestamp = Date.parse(value || '');
+  return Number.isFinite(timestamp) ? new Date(timestamp - overlapMs).toISOString() : value;
+}
+
+export function microphoneStateMatches({ browserTracks, publications, muted }) {
+  const liveBrowserTracks = (browserTracks || []).filter(track => track?.readyState !== 'ended');
+  const livePublications = (publications || []).filter(publication => publication?.track?.mediaStreamTrack?.readyState !== 'ended');
+  const browserMatches = liveBrowserTracks.every(track => track.enabled === !muted);
+  if (muted && livePublications.length === 0) return browserMatches;
+  return browserMatches
+    && livePublications.length === 1
+    && Boolean(livePublications[0].isMuted) === Boolean(muted);
+}

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
+  mergeStableLiveEvents,
 } from "./livekit/reliabilityState";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -34,6 +35,7 @@ const readCache = new Map();
 const heartbeatCache = new Map();
 const liveEventStreams = new Map();
 const LIVE_EVENT_RETRY_MS = [500, 1500, 3000, 5000, 10000];
+const LIVE_AUTHORITATIVE_RECONCILE_MS = 3000;
 
 function result(data) {
   return { data, error: null, count: null, status: 200, statusText: "OK" };
@@ -50,17 +52,16 @@ function applyLiveEvent(stream, sessionId, row) {
 
   if (row.event_type === "chat") {
     const id = Number(row.metadata?.chat_id || row.id || 0);
-    stream.chat.push({
+    stream.chat = mergeStableLiveEvents(stream.chat, [{
       id,
       sender_id: row.actor_id,
       display_name: row.display_name || "Droxion user",
       avatar_url: null,
       body: row.body || "",
       created_at: row.created_at,
-    });
-    if (stream.chat.length > 300) stream.chat.splice(0, stream.chat.length - 300);
+    }], 300);
   } else if (row.event_type === "gift") {
-    stream.gifts.push({
+    stream.gifts = mergeStableLiveEvents(stream.gifts, [{
       id: row.metadata?.gift_id || String(row.id),
       sender_id: row.actor_id,
       display_name: row.display_name || "Droxion user",
@@ -68,8 +69,7 @@ function applyLiveEvent(stream, sessionId, row) {
       emoji: row.emoji || "🎁",
       cost_coins: Number(row.cost_coins || 0),
       created_at: row.created_at,
-    });
-    if (stream.gifts.length > 100) stream.gifts.splice(0, stream.gifts.length - 100);
+    }], 100);
   } else if (row.event_type === "guest_state") {
     for (const key of readCache.keys()) {
       if (key.includes(sessionId) && (key.startsWith("droxion_live_room_status:") || key.startsWith("droxion_live_join_requests:") || key.startsWith("droxion_my_live_join_request:"))) {
@@ -145,6 +145,7 @@ function getLiveEventStream(sessionId) {
     reconnectTimer: null,
     reconcile: { chat: true, gifts: true },
     lastTouchedAt: Date.now(),
+    lastAuthoritativeAt: { chat: 0, gifts: 0 },
   };
 
   liveEventStreams.set(sessionId, stream);
@@ -155,8 +156,11 @@ function getLiveEventStream(sessionId) {
 function authoritativeLiveRead(stream, queue, fn, args, options) {
   const subscriptionState = captureLiveReadSubscriptionState(stream, queue);
   return Promise.resolve(originalRpc(fn, args, options)).then(response => {
-    if (!response?.error && canCompleteLiveReadReconciliation(stream, subscriptionState)) {
-      stream.reconcile[queue] = false;
+    if (!response?.error) {
+      stream[queue] = mergeStableLiveEvents(stream[queue], response.data, queue === "chat" ? 300 : 100);
+      stream.lastTouchedAt = Date.now();
+      stream.lastAuthoritativeAt[queue] = Date.now();
+      if (canCompleteLiveReadReconciliation(stream, subscriptionState)) stream.reconcile[queue] = false;
     }
     return response;
   });
@@ -195,13 +199,12 @@ client.rpc = (fn, args, options) => {
     return originalRpc(fn, args, options);
   }
 
-  // Chat and gift reads switch to Realtime after one authoritative bootstrap.
-  // Existing React polling timers then read the local queue instead of hitting
-  // Postgres every 800-900ms for every viewer.
+  // Realtime is the fast path, but SUBSCRIBED is not proof that delivery remains
+  // healthy. Periodic authoritative reads reconcile silent event loss.
   if (fn === "droxion_live_chat_messages" && args?.p_session_id) {
     const stream = getLiveEventStream(args.p_session_id);
     const afterId = Number(args?.p_after_id || 0);
-    if (stream?.ready && !stream.reconcile.chat) {
+    if (stream?.ready && !stream.reconcile.chat && Date.now() - stream.lastAuthoritativeAt.chat < LIVE_AUTHORITATIVE_RECONCILE_MS) {
       stream.lastTouchedAt = Date.now();
       return Promise.resolve(result(stream.chat.filter(row => Number(row.id || 0) > afterId).slice(0, 200)));
     }
@@ -211,11 +214,23 @@ client.rpc = (fn, args, options) => {
   if (fn === "droxion_live_gift_events" && args?.p_session_id) {
     const stream = getLiveEventStream(args.p_session_id);
     const after = args?.p_after ? Date.parse(args.p_after) : 0;
-    if (stream?.ready && !stream.reconcile.gifts) {
+    if (stream?.ready && !stream.reconcile.gifts && Date.now() - stream.lastAuthoritativeAt.gifts < LIVE_AUTHORITATIVE_RECONCILE_MS) {
       stream.lastTouchedAt = Date.now();
       return Promise.resolve(result(stream.gifts.filter(row => !after || Date.parse(row.created_at) > after).slice(0, 100)));
     }
     return authoritativeLiveRead(stream, "gifts", fn, args, options);
+  }
+
+  if ((fn === "droxion_send_live_chat" || fn === "droxion_send_live_gift")) {
+    return Promise.resolve(originalRpc(fn, args, options)).then(response => {
+      if (!response?.error && response?.data?.allowed) {
+        for (const stream of liveEventStreams.values()) {
+          stream.reconcile[fn === "droxion_send_live_chat" ? "chat" : "gifts"] = true;
+          stream.lastAuthoritativeAt[fn === "droxion_send_live_chat" ? "chat" : "gifts"] = 0;
+        }
+      }
+      return response;
+    });
   }
 
   const ttl = LIVE_READ_TTL_MS[fn];
