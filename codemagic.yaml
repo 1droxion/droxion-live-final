@@ -41,10 +41,6 @@ workflows:
         script: |
           set -e
           npm run build
-          echo "Removing legacy demo videos from the Android package..."
-          find dist -maxdepth 1 -type f -name '*20250520*.mp4' -print -delete
-          echo "Android web bundle size after cleanup:"
-          du -sh dist
 
       - name: Create or sync native Android project
         script: |
@@ -72,7 +68,14 @@ workflows:
           ./gradlew bundleRelease --stacktrace
           echo "Generated Android artifacts:"
           find app/build/outputs -type f -name '*.aab' -print
-          test -n "$(find app/build/outputs -name '*.aab' -print -quit)"
+          AAB="$(find app/build/outputs -name '*.aab' -print -quit)"
+          test -n "$AAB"
+          if unzip -Z1 "$AAB" | grep -qi '20250520'; then
+            echo "Legacy 20250520 demo video found in Android App Bundle." >&2
+            exit 1
+          fi
+          echo "Android AAB bytes: $(stat -f%z "$AAB")"
+          du -h "$AAB"
 
     artifacts:
       - android/app/build/outputs/**/*.aab

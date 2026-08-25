@@ -4,8 +4,10 @@ import {
   captureLiveReadSubscriptionState,
   liveQueueNeedsAuthoritativeRead,
   liveSafetyReconcileDelay,
+  liveGiftReconciliationCursor,
   markLiveQueueForReconciliation,
   mergeStableLiveEvents,
+  stableLiveEventId,
 } from "./livekit/reliabilityState";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -82,8 +84,9 @@ function applyLiveEvent(stream, sessionId, row) {
       body: row.body || "",
       created_at: row.created_at,
     };
+    const isNew = !stream.chat.some(item => stableLiveEventId(item) === stableLiveEventId(chat));
     stream.chat = mergeStableLiveEvents(stream.chat, [chat], 300);
-    notifyLiveEventSubscribers(stream, { type: "chat", row: chat, source: "realtime" });
+    if (isNew) notifyLiveEventSubscribers(stream, { type: "chat", row: chat, source: "realtime" });
   } else if (row.event_type === "gift") {
     const gift = {
       id: row.metadata?.gift_id || String(row.id),
@@ -94,8 +97,9 @@ function applyLiveEvent(stream, sessionId, row) {
       cost_coins: Number(row.cost_coins || 0),
       created_at: row.created_at,
     };
+    const isNew = !stream.gifts.some(item => stableLiveEventId(item) === stableLiveEventId(gift));
     stream.gifts = mergeStableLiveEvents(stream.gifts, [gift], 100);
-    notifyLiveEventSubscribers(stream, { type: "gift", row: gift, source: "realtime" });
+    if (isNew) notifyLiveEventSubscribers(stream, { type: "gift", row: gift, source: "realtime" });
   } else if (row.event_type === "guest_state") {
     invalidateGuestStateReads(sessionId);
     notifyLiveEventSubscribers(stream, { type: "guest_state", row, source: "realtime" });
@@ -104,6 +108,42 @@ function applyLiveEvent(stream, sessionId, row) {
       if (key.startsWith("droxion_live_feed:")) readCache.delete(key);
       if (row.event_type === "live_ended" && key.includes(sessionId) && key.startsWith("droxion_live_room_status:")) readCache.delete(key);
     }
+  }
+}
+
+function applyAuthoritativeLiveRows(stream, queue, rows) {
+  const incoming = Array.isArray(rows) ? rows : [];
+  const known = new Set(stream[queue].map(stableLiveEventId).filter(Boolean));
+  stream[queue] = mergeStableLiveEvents(stream[queue], incoming, queue === "chat" ? 300 : 100);
+  for (const row of incoming) {
+    const id = stableLiveEventId(row);
+    if (!id || known.has(id)) continue;
+    known.add(id);
+    notifyLiveEventSubscribers(stream, { type: queue === "chat" ? "chat" : "gift", row, source: "catchup" });
+  }
+}
+
+async function catchUpLiveEventStream(sessionId, stream, generation) {
+  if (stream.closed || stream.generation !== generation || !stream.ready) return;
+  const afterChatId = stream.chat.reduce((latest, row) => Math.max(latest, Number(row.id) || 0), 0);
+  const latestGiftAt = stream.gifts.reduce(
+    (latest, row) => String(row.created_at || "") > String(latest || "") ? row.created_at : latest,
+    new Date(stream.createdAt).toISOString()
+  );
+  const [chatResponse, giftResponse] = await Promise.all([
+    originalRpc("droxion_live_chat_messages", { p_session_id: sessionId, p_after_id: afterChatId }),
+    originalRpc("droxion_live_gift_events", { p_session_id: sessionId, p_after: liveGiftReconciliationCursor(latestGiftAt) }),
+  ]);
+  if (stream.closed || stream.generation !== generation || !stream.ready) return;
+  if (!chatResponse?.error) applyAuthoritativeLiveRows(stream, "chat", chatResponse.data);
+  if (!giftResponse?.error) applyAuthoritativeLiveRows(stream, "gifts", giftResponse.data);
+  const now = Date.now();
+  for (const [queue, response] of [["chat", chatResponse], ["gifts", giftResponse]]) {
+    if (response?.error) continue;
+    stream.reconcile[queue] = false;
+    stream.lastAuthoritativeAt[queue] = now;
+    stream.nextAuthoritativeAt[queue] = now + liveSafetyReconcileDelay(0);
+    stream.safetyAttempt[queue] = 1;
   }
 }
 
@@ -141,6 +181,11 @@ function subscribeLiveEventStream(sessionId, stream) {
       stream.retryIndex = 0;
       if (stream.reconcile.chat) stream.nextAuthoritativeAt.chat = 0;
       if (stream.reconcile.gifts) stream.nextAuthoritativeAt.gifts = 0;
+      stream.catchUpPromise = catchUpLiveEventStream(sessionId, stream, generation).catch(() => {
+        if (stream.generation !== generation) return;
+        markLiveQueueForReconciliation(stream, "chat");
+        markLiveQueueForReconciliation(stream, "gifts");
+      });
       return;
     }
     if (!["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) return;
@@ -176,6 +221,10 @@ function getLiveEventStream(sessionId) {
     safetyAttempt: { chat: 0, gifts: 0 },
     authoritativeInFlight: { chat: null, gifts: null },
     subscribers: new Set(),
+    createdAt: Date.now(),
+    lastRecoveryAt: 0,
+    recoveryInFlight: null,
+    catchUpPromise: null,
   };
 
   liveEventStreams.set(sessionId, stream);
@@ -311,6 +360,35 @@ export function requestLiveAuthoritativeReconcile(sessionId, queues = ["chat", "
   const stream = liveEventStreams.get(sessionId);
   if (!stream) return;
   for (const queue of queues) markLiveQueueForReconciliation(stream, queue);
+}
+
+export function recoverLiveEventStream(sessionId, reason = "lifecycle") {
+  const stream = liveEventStreams.get(sessionId);
+  if (!stream || stream.closed) return Promise.resolve(false);
+  const now = Date.now();
+  if (stream.recoveryInFlight || now - stream.lastRecoveryAt < 1000) {
+    return stream.recoveryInFlight || Promise.resolve(false);
+  }
+  stream.lastRecoveryAt = now;
+  stream.ready = false;
+  stream.generation += 1;
+  markLiveQueueForReconciliation(stream, "chat");
+  markLiveQueueForReconciliation(stream, "gifts");
+  if (stream.reconnectTimer) {
+    globalThis.clearTimeout(stream.reconnectTimer);
+    stream.reconnectTimer = null;
+  }
+  const previousChannel = stream.channel;
+  stream.channel = null;
+  try { if (previousChannel) Promise.resolve(client.removeChannel(previousChannel)).catch(() => {}); }
+  catch {}
+  stream.recoveryInFlight = Promise.resolve().then(() => {
+    if (stream.closed || liveEventStreams.get(sessionId) !== stream) return false;
+    stream.lastRecoveryReason = reason;
+    subscribeLiveEventStream(sessionId, stream);
+    return true;
+  }).finally(() => { stream.recoveryInFlight = null; });
+  return stream.recoveryInFlight;
 }
 
 export function subscribeLiveEvents(sessionId, subscriber) {

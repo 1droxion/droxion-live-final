@@ -20,15 +20,6 @@
 .liveRoomV4 .liveStage-split .liveMainVideo { inset: 0 0 50%; }
 .liveRoomV4 .liveStage-split .liveGuestVideo { inset: 50% 0 0; z-index: 2; }
 .liveRoomV4 .liveStage-split .liveGuestVideo::before { content: none; }
-.liveRoomV4.liveRoom-horizontal .liveStage-split .liveMainVideo,
-.liveRoomV4.liveRoom-horizontal .liveStage-split .liveGuestVideo {
-  top: 0;
-  width: 50%;
-  height: 100%;
-  object-fit: cover;
-}
-.liveRoomV4.liveRoom-horizontal .liveStage-split .liveMainVideo { left: 0; right: 50%; }
-.liveRoomV4.liveRoom-horizontal .liveStage-split .liveGuestVideo { left: 50%; right: 0; }
 .liveStage-split::after {
   content: "";
   position: absolute;
@@ -40,7 +31,6 @@
   background: rgba(255,255,255,.22);
   pointer-events: none;
 }
-.liveRoom-horizontal .liveStage-split::after { top: 0; bottom: 0; left: 50%; right: auto; width: 1px; height: auto; }
 .liveGuestMenuButton {
   position: absolute;
   top: calc(50% + 12px);
@@ -57,7 +47,6 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
-.liveRoom-horizontal .liveGuestMenuButton { top: calc(env(safe-area-inset-top) + 68px); right: 12px; }
 .liveGuestMenu {
   position: absolute;
   top: calc(50% + 58px);
@@ -75,7 +64,20 @@
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
-.liveRoom-horizontal .liveGuestMenu { top: calc(env(safe-area-inset-top) + 114px); }
+@media (orientation: landscape) {
+  .liveRoomV4 .liveStage-split .liveMainVideo,
+  .liveRoomV4 .liveStage-split .liveGuestVideo {
+    top: 0;
+    width: 50%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .liveRoomV4 .liveStage-split .liveMainVideo { left: 0; right: 50%; }
+  .liveRoomV4 .liveStage-split .liveGuestVideo { left: 50%; right: 0; }
+  .liveStage-split::after { top: 0; bottom: 0; left: 50%; right: auto; width: 1px; height: auto; }
+  .liveGuestMenuButton { top: calc(env(safe-area-inset-top) + 68px); right: 12px; }
+  .liveGuestMenu { top: calc(env(safe-area-inset-top) + 114px); }
+}
 .liveGuestMenu strong { padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .liveGuestMenu button {
   min-height: 42px;

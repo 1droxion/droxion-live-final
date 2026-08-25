@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Ban, Camera, CameraOff, Gift, LogOut, Maximize2, Mic, MicOff, MoreHorizontal, Radio, RefreshCw, Send, Smartphone, Sparkles, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { releaseLiveEventStream, requestLiveAuthoritativeReconcile, subscribeLiveEvents, supabase } from './supabaseClient';
+import { invalidateLiveGuestState, recoverLiveEventStream, releaseLiveEventStream, requestLiveAuthoritativeReconcile, subscribeLiveEvents, supabase } from './supabaseClient';
 import {
   attachRemoteTrack,
   connectLiveKitRoom,
@@ -14,11 +14,16 @@ import {
   unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
-import { actionableJoinRequests, applyMediaEnabledState, hasLiveGuest, liveChatRowFromWrite, liveFeedWindow, liveGiftReconciliationCursor, liveGuestEventTargetsUser, mergeStableLiveEvents, shouldEnterGuestMode } from './livekit/reliabilityState';
+import { actionableJoinRequests, applyMediaEnabledState, createLiveDeliveryProbe, hasLiveGuest, liveChatRowFromWrite, liveFeedWindow, liveGiftReconciliationCursor, liveGuestEventTargetsUser, mergeStableLiveEvents, shouldEnterGuestMode } from './livekit/reliabilityState';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
 
 const LIVE_FEED_PAGE_SIZE = 12;
+const liveDeliveryProbe = createLiveDeliveryProbe();
+
+if (typeof window !== 'undefined') {
+  window.__droxionLiveDeliveryDiagnostics = { snapshot: () => liveDeliveryProbe.snapshot() };
+}
 
 function personAvatar(person, size = 42) {
   if (person?.avatar_url) return <img src={person.avatar_url} alt={person.display_name || 'Droxion user'} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover' }} />;
@@ -57,7 +62,9 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const [homePullDistance, setHomePullDistance] = useState(0);
   const [visibleLiveCount, setVisibleLiveCount] = useState(LIVE_FEED_PAGE_SIZE);
   const [guestActionBusy, setGuestActionBusy] = useState('');
+  const [respondingRequestIds, setRespondingRequestIds] = useState([]);
   const [guestMenuOpen, setGuestMenuOpen] = useState(false);
+  const [remoteGuestId, setRemoteGuestId] = useState('');
   const [guestStateRevision, setGuestStateRevision] = useState(0);
   const [liveSetup, setLiveSetup] = useState({ title: '', tags: '', orientation: 'vertical', allowGuests: true });
 
@@ -164,6 +171,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     remoteTracksRef.current.clear();
     setHostVideoReady(false);
     setGuestVideoReady(false);
+    setRemoteGuestId('');
     [remoteHostVideo.current, remoteGuestVideo.current, remoteHostAudio.current, remoteGuestAudio.current].forEach(node => {
       if (node) node.srcObject = null;
     });
@@ -190,6 +198,9 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         if (element) attachRemoteTrack(track, element);
         if (track.kind === Track.Kind.Video) setHostVideoReady(true);
       } else if (identity !== hostId && identity !== currentUserId) {
+        setRemoteGuestId(identity);
+        invalidateLiveGuestState(sessionId);
+        setGuestStateRevision(value => value + 1);
         const element = track.kind === Track.Kind.Video ? remoteGuestVideo.current : remoteGuestAudio.current;
         if (element) attachRemoteTrack(track, element);
         if (track.kind === Track.Kind.Video) setGuestVideoReady(true);
@@ -205,6 +216,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (participant?.identity) remoteTracksRef.current.delete(`${participant.identity}:${track?.kind}`);
     if (participant?.identity && participant.identity !== (isHostRoom ? currentUserId : activeRoom?.user_id) && track?.kind === Track.Kind.Video) {
       setGuestVideoReady(false);
+      const stillPublished = Array.from(remoteTracksRef.current.keys()).some(key => key.startsWith(`${participant.identity}:`));
+      if (!stillPublished) setRemoteGuestId('');
     }
   }
 
@@ -243,7 +256,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     })();
 
     return () => { cancelled = true; disconnectTransport(); };
-  }, [sessionId, currentUserId, isHostRoom, guestMode, activeRoom?.user_id, roomStatus?.guest_id, disconnectTransport]);
+  }, [sessionId, currentUserId, isHostRoom, guestMode, activeRoom?.user_id, disconnectTransport]);
 
   useEffect(() => () => {
     disconnectTransport();
@@ -260,13 +273,14 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       wasBackgrounded = true;
     };
 
-    const recoverForeground = () => {
-      if (disposed || document.visibilityState === 'hidden' || !wasBackgrounded) return;
+    const recoverForeground = event => {
+      if (disposed || document.visibilityState === 'hidden') return;
+      recoverLiveEventStream(sessionId, event?.type || 'foreground').catch(() => {});
+      if (!wasBackgrounded) return;
       wasBackgrounded = false;
       if (lifecycleRecoveryRef.current) return;
 
       lifecycleRecoveryRef.current = (async () => {
-        requestLiveAuthoritativeReconcile(sessionId);
         const room = lkRoomRef.current;
         const role = lkRoleRef.current;
         if (!room || !role) return;
@@ -309,19 +323,22 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') markBackgrounded();
-      else recoverForeground();
+      else recoverForeground({ type: 'visibilitychange' });
     };
+    const recoverOnline = () => recoverLiveEventStream(sessionId, 'online').catch(() => {});
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', markBackgrounded);
     window.addEventListener('pageshow', recoverForeground);
     window.addEventListener('focus', recoverForeground);
+    window.addEventListener('online', recoverOnline);
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', markBackgrounded);
       window.removeEventListener('pageshow', recoverForeground);
       window.removeEventListener('focus', recoverForeground);
+      window.removeEventListener('online', recoverOnline);
     };
   }, [sessionId, roomOrientation, facingMode, cameraOn, micOn, ensureCamera, attachLocal]);
 
@@ -329,18 +346,23 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId) return;
     return subscribeLiveEvents(sessionId, event => {
       if (event.type === 'chat' && event.row) {
+        liveDeliveryProbe.mark({ eventType: 'chat', eventId: event.row.id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
         setMessages(current => mergeStableLiveEvents(current, [event.row], 200));
+        liveDeliveryProbe.mark({ eventType: 'chat', eventId: event.row.id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
         lastChatId.current = Math.max(lastChatId.current, Number(event.row.id || 0));
         if (isHostRoom) highlightRecorderRef.current?.markMoment?.(1);
         return;
       }
 
       if (event.type === 'gift' && event.row) {
-        setGiftEvents(current => mergeStableLiveEvents(current, [event.row], 30));
         const id = String(event.row.id ?? '');
+        const isNew = Boolean(id && !seenGiftIds.current.has(id));
+        liveDeliveryProbe.mark({ eventType: 'gift', eventId: id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
+        setGiftEvents(current => mergeStableLiveEvents(current, [event.row], 30));
         if (id) seenGiftIds.current.add(id);
+        liveDeliveryProbe.mark({ eventType: 'gift', eventId: id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
         if (String(event.row.created_at || '') > String(lastGiftAt.current || '')) lastGiftAt.current = event.row.created_at;
-        if (isHostRoom) highlightRecorderRef.current?.markMoment?.(4 + Math.log10(Math.max(1, Number(event.row.cost_coins || 1))));
+        if (isHostRoom && isNew) highlightRecorderRef.current?.markMoment?.(4 + Math.log10(Math.max(1, Number(event.row.cost_coins || 1))));
         return;
       }
 
@@ -349,6 +371,16 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       }
     });
   }, [sessionId, isHostRoom, currentUserId]);
+
+  useEffect(() => {
+    const row = messages[messages.length - 1];
+    if (row) liveDeliveryProbe.mark({ eventType: 'chat', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
+  }, [messages]);
+
+  useEffect(() => {
+    const row = giftEvents[giftEvents.length - 1];
+    if (row) liveDeliveryProbe.mark({ eventType: 'gift', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
+  }, [giftEvents]);
 
   useEffect(() => () => releaseLiveEventStream(sessionId), [sessionId]);
 
@@ -712,10 +744,31 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }
 
   async function respondJoinRequest(requestId, accept) {
-    const { data, error } = await supabase.rpc('droxion_respond_live_join_request', { p_request_id: requestId, p_accept: accept });
-    if (error || !data?.allowed) setNotice(error?.message || 'This request is no longer available.');
-    else setNotice(accept ? 'Guest accepted.' : 'Guest request declined.');
-    setJoinRequests(current => current.filter(item => item.request_id !== requestId));
+    if (respondingRequestIds.includes(requestId)) return;
+    const previous = joinRequests.find(item => String(item.request_id) === String(requestId));
+    setRespondingRequestIds(current => [...current, requestId]);
+    setJoinRequests(current => current.filter(item => String(item.request_id) !== String(requestId)));
+    setNotice('');
+    invalidateLiveGuestState(sessionId);
+    setGuestStateRevision(value => value + 1);
+    try {
+      const { data, error } = await supabase.rpc('droxion_respond_live_join_request', { p_request_id: requestId, p_accept: accept });
+      invalidateLiveGuestState(sessionId);
+      const refreshed = await supabase.rpc('droxion_live_join_requests', { p_session_id: sessionId });
+      const authoritative = actionableJoinRequests(refreshed.data);
+      setJoinRequests(authoritative);
+      setGuestStateRevision(value => value + 1);
+      if (!error && data?.allowed) {
+        setNotice(accept ? 'Guest accepted.' : 'Guest request declined.');
+      } else if (refreshed.error || authoritative.some(item => String(item.request_id) === String(requestId))) {
+        if (previous && refreshed.error) setJoinRequests(current => actionableJoinRequests([...current, previous]));
+        setNotice(error?.message || refreshed.error?.message || 'Could not update this join request.');
+      } else {
+        setNotice('');
+      }
+    } finally {
+      setRespondingRequestIds(current => current.filter(id => String(id) !== String(requestId)));
+    }
   }
 
   async function respondInvite(accept) {
@@ -752,7 +805,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }
 
   async function removeGuest() {
-    const guestId = roomStatus?.guest_id;
+    const guestId = roomStatus?.guest_id || remoteGuestId;
     if (!guestId || guestActionBusy) return;
     setGuestMenuOpen(false);
     setGuestActionBusy('remove');
@@ -773,7 +826,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }
 
   async function blockGuest() {
-    const guestId = roomStatus?.guest_id;
+    const guestId = roomStatus?.guest_id || remoteGuestId;
     const guest = viewers.find(viewer => viewer.user_id === guestId);
     if (!guestId || guestActionBusy) return;
     if (!window.confirm(`Block ${guest?.display_name || 'this guest'} and remove them from your LIVE?`)) return;
@@ -877,9 +930,13 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const body = draft.trim();
     if (!body || !sessionId || sendingChat.current) return;
     sendingChat.current = true;
+    liveDeliveryProbe.startSend('chat');
     try {
       const { data, error } = await supabase.rpc('droxion_send_live_chat', { p_session_id: sessionId, p_body: body });
-      if (error || !data?.allowed) setNotice(error?.message || 'Message could not be sent.');
+      if (error || !data?.allowed) {
+        liveDeliveryProbe.cancelSend('chat');
+        setNotice(error?.message || 'Message could not be sent.');
+      }
       else {
         const sent = liveChatRowFromWrite(data, {
           body,
@@ -887,6 +944,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           displayName: 'You'
         });
         if (sent) {
+          liveDeliveryProbe.mark({ eventType: 'chat', eventId: sent.id, phase: 'write_success', source: 'sender', createdAt: sent.created_at });
           setMessages(current => mergeStableLiveEvents(current, [sent], 200));
           lastChatId.current = Math.max(lastChatId.current, Number(sent.id || 0));
         } else {
@@ -896,6 +954,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
             setMessages(current => mergeStableLiveEvents(current, rows, 200));
             lastChatId.current = Math.max(lastChatId.current, ...rows.map(row => Number(row.id || 0)));
           }
+          liveDeliveryProbe.cancelSend('chat');
         }
         setDraft('');
       }
@@ -905,9 +964,11 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   async function sendGift(profile, gift) {
     if (busyGift) return;
     setBusyGift(`${profile.user_id}:${gift.gift_code}`);
+    liveDeliveryProbe.startSend('gift');
     const { data, error } = await supabase.rpc('droxion_send_live_gift', { p_recipient_id: profile.user_id, p_gift_code: gift.gift_code });
-    if (error) setNotice(error.message || 'Gift could not be sent.');
+    if (error) { liveDeliveryProbe.cancelSend('gift'); setNotice(error.message || 'Gift could not be sent.'); }
     else if (!data?.allowed) {
+      liveDeliveryProbe.cancelSend('gift');
       if (data?.reason === 'insufficient_coins') { setNotice(`You need ${data.required_coins} coins.`); onOpenWallet?.(); }
       else setNotice('Gift could not be sent.');
     } else {
@@ -922,9 +983,10 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           cost_coins: Number(data.cost_coins || gift.cost_coins || 0),
           created_at: data.created_at || new Date().toISOString()
         };
+        liveDeliveryProbe.mark({ eventType: 'gift', eventId: sentGift.id, phase: 'write_success', source: 'sender', createdAt: sentGift.created_at });
         seenGiftIds.current.add(String(sentGift.id));
         setGiftEvents(current => mergeStableLiveEvents(current, [sentGift], 30));
-      }
+      } else liveDeliveryProbe.cancelSend('gift');
       const successNotice = `${data.emoji} ${data.gift_name} sent.`;
       setNotice(successNotice);
       window.clearTimeout(noticeExpiryRef.current);
@@ -1039,7 +1101,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const liveIndex = profiles.findIndex(profile => profile.user_id === activeRoom?.user_id);
     const showRemoteGuest = guestVideoReady && !guestMode;
     const hasGuestStage = hasLiveGuest({ guestMode, guestVideoReady });
-    const activeGuest = viewers.find(viewer => viewer.user_id === roomStatus?.guest_id);
+    const activeGuestId = roomStatus?.guest_id || remoteGuestId;
+    const activeGuest = viewers.find(viewer => viewer.user_id === activeGuestId);
     const combinedEvents = [
       ...messages.slice(-8).map(item => ({ type: 'chat', time: item.created_at || '', key: `c-${item.id}`, ...item })),
       ...giftEvents.slice(-5).map(item => ({ type: 'gift', time: item.created_at || '', key: `g-${item.id}`, ...item }))
@@ -1082,8 +1145,8 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
             <button className="liveFloatingJoin" onClick={requestToJoin} disabled={['requested', 'declined'].includes(myJoinRequest?.status)}><UserPlus size={19} /> {myJoinRequest?.status === 'requested' ? 'Requested' : myJoinRequest?.status === 'declined' ? 'Declined' : 'Join LIVE'}</button>
           )}
 
-          {isHostRoom && roomStatus?.guest_id && <button type="button" className="liveGuestMenuButton" aria-label={`Manage ${activeGuest?.display_name || 'guest'}`} aria-haspopup="menu" aria-expanded={guestMenuOpen} onClick={() => setGuestMenuOpen(open => !open)}><MoreHorizontal size={22} /></button>}
-          {isHostRoom && roomStatus?.guest_id && guestMenuOpen && <div className="liveGuestMenu" role="menu" aria-label="Guest actions"><strong>{activeGuest?.display_name || 'Guest on stage'}</strong><button type="button" role="menuitem" disabled={Boolean(guestActionBusy)} onClick={removeGuest}><UserMinus size={17} /> {guestActionBusy === 'remove' ? 'Removing…' : 'Remove Guest'}</button><button type="button" role="menuitem" className="danger" disabled={Boolean(guestActionBusy)} onClick={blockGuest}><Ban size={17} /> {guestActionBusy === 'block' ? 'Blocking…' : 'Block User'}</button></div>}
+          {isHostRoom && activeGuestId && guestVideoReady && <button type="button" className="liveGuestMenuButton" aria-label={`Manage ${activeGuest?.display_name || 'guest'}`} aria-haspopup="menu" aria-expanded={guestMenuOpen} onClick={() => setGuestMenuOpen(open => !open)}><MoreHorizontal size={22} /></button>}
+          {isHostRoom && activeGuestId && guestVideoReady && guestMenuOpen && <div className="liveGuestMenu" role="menu" aria-label="Guest actions"><strong>{activeGuest?.display_name || 'Guest on stage'}</strong><button type="button" role="menuitem" disabled={Boolean(guestActionBusy)} onClick={removeGuest}><UserMinus size={17} /> {guestActionBusy === 'remove' ? 'Removing…' : 'Remove Guest'}</button><button type="button" role="menuitem" className="danger" disabled={Boolean(guestActionBusy)} onClick={blockGuest}><Ban size={17} /> {guestActionBusy === 'block' ? 'Blocking…' : 'Block User'}</button></div>}
 
           <div className="liveComposerOverlay liveComposerV4" onTouchStart={event => event.stopPropagation()} onTouchEnd={event => event.stopPropagation()}>
             <input value={draft} onChange={event => setDraft(event.target.value)} placeholder="Say something…" maxLength={500} />
@@ -1104,7 +1167,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         {invite && <div className="liveInviteCard liveOverlayCardV4"><div><strong>{invite.host_name} invited you to join the LIVE.</strong><span>Your camera and mic will turn on.</span></div><button onClick={() => respondInvite(false)}>Decline</button><button className="accept" onClick={() => respondInvite(true)}>Join</button></div>}
         {notice && <div className={`liveNotice liveNoticeV4 ${notice === 'You are live.' ? 'liveToastSuccess' : ''}`}>{notice}</div>}
 
-        {isHostRoom && joinRequests.length > 0 && <div className="liveViewerPanel liveRequestPanel liveHostPanelV4"><div className="livePanelHead"><div><strong>Requests to join</strong><span>{joinRequests.length} waiting</span></div></div><div className="liveRequestList">{joinRequests.map(request => <div className="liveRequestPerson" key={request.request_id}>{personAvatar(request)}<strong>{request.display_name}</strong><button onClick={() => respondJoinRequest(request.request_id, false)}>Decline</button><button className="accept" onClick={() => respondJoinRequest(request.request_id, true)}>Accept</button></div>)}</div></div>}
+        {isHostRoom && joinRequests.length > 0 && <div className="liveViewerPanel liveRequestPanel liveHostPanelV4"><div className="livePanelHead"><div><strong>Requests to join</strong><span>{joinRequests.length} waiting</span></div></div><div className="liveRequestList">{joinRequests.map(request => <div className="liveRequestPerson" key={request.request_id}>{personAvatar(request)}<strong>{request.display_name}</strong><button disabled={respondingRequestIds.includes(request.request_id)} onClick={() => respondJoinRequest(request.request_id, false)}>Decline</button><button className="accept" disabled={respondingRequestIds.includes(request.request_id)} onClick={() => respondJoinRequest(request.request_id, true)}>Accept</button></div>)}</div></div>}
 
         {isHostRoom && <div className="liveViewerPanel liveHostPanelV4"><div className="livePanelHead"><div><strong>Viewers</strong><span>{viewers.length} in your LIVE</span></div></div>{viewers.length === 0 ? <div className="liveEmptySmall">Nobody is watching yet.</div> : <div className="liveViewerScroll">{viewers.map(viewer => <div className="liveViewerPerson" key={viewer.user_id}>{personAvatar(viewer)}<strong>{viewer.display_name}</strong>{!roomStatus?.guest_id && <button onClick={() => inviteViewer(viewer.user_id)}><UserPlus size={15} /> Invite</button>}</div>)}</div>}</div>}
 

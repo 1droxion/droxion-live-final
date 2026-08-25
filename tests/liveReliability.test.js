@@ -7,6 +7,7 @@ import {
   canDecorateLiveRoom,
   canCompleteLiveReadReconciliation,
   captureLiveReadSubscriptionState,
+  createLiveDeliveryProbe,
   hasLiveGuest,
   liveChatRowFromWrite,
   liveGiftReconciliationCursor,
@@ -24,6 +25,9 @@ import {
 const liveComponentSource = fs.readFileSync(new URL('../src/LiveExperienceScale.jsx', import.meta.url), 'utf8');
 const liveCssSource = fs.readFileSync(new URL('../src/live-experience-v4.css', import.meta.url), 'utf8');
 const supabaseSource = fs.readFileSync(new URL('../src/supabaseClient.js', import.meta.url), 'utf8');
+const cameraEnhancerSource = fs.readFileSync(new URL('../src/LiveCameraStartupEnhancer.jsx', import.meta.url), 'utf8');
+const androidPrepareSource = fs.readFileSync(new URL('../scripts/prepare-android.sh', import.meta.url), 'utf8');
+const codemagicSource = fs.readFileSync(new URL('../codemagic.yaml', import.meta.url), 'utf8');
 
 test('reconnect exhaustion rejects with the final failure', async () => {
   const failures = [new Error('first'), new Error('final')];
@@ -94,13 +98,17 @@ test('voluntary guest exit blocks only the stale accepted request from republish
   assert.equal(shouldEnterGuestMode({ requestId: 'new', status: 'declined', guestMode: false, voluntarilyExitedRequestId: 'old' }), false);
 });
 
-test('accepted guest switches the stage into a real 50/50 layout and removal restores full screen', () => {
+test('accepted guest uses viewport orientation for a real rotating 50/50 layout', () => {
   assert.equal(hasLiveGuest({ guestMode: false, guestVideoReady: false }), false);
   assert.equal(hasLiveGuest({ guestMode: true, guestVideoReady: false }), true);
   assert.equal(hasLiveGuest({ guestMode: false, guestVideoReady: true }), true);
   assert.match(liveComponentSource, /hasGuestStage \? 'liveStage-split'/);
   assert.match(liveCssSource, /\.liveStage-split \.liveMainVideo[\s\S]*height: 50%/);
-  assert.match(liveCssSource, /liveRoom-horizontal[\s\S]*liveStage-split[\s\S]*width: 50%/);
+  assert.match(liveCssSource, /@media \(orientation: landscape\)[\s\S]*liveStage-split[\s\S]*width: 50%/);
+  assert.doesNotMatch(liveCssSource, /liveRoom-horizontal \.liveStage-split/);
+  assert.match(cameraEnhancerSource, /@media \(orientation: landscape\)[\s\S]*liveStage-split/);
+  assert.doesNotMatch(cameraEnhancerSource, /:has\(\.liveGuestVideo\)/);
+  assert.doesNotMatch(cameraEnhancerSource, /liveRoom-horizontal[\s\S]*liveStage-split/);
   assert.match(liveCssSource, /liveStage-split[\s\S]*object-fit: cover/);
 });
 
@@ -109,6 +117,9 @@ test('host guest management is only exposed through the three-dot menu', () => {
   assert.match(liveComponentSource, /<MoreHorizontal size=\{22\}/);
   assert.match(liveComponentSource, /className="liveGuestMenu" role="menu"/);
   assert.doesNotMatch(liveComponentSource, /className="liveGuestManagement"/);
+  assert.match(liveComponentSource, /activeGuestId && guestVideoReady/);
+  assert.match(liveComponentSource, /invalidateLiveGuestState\(sessionId\)[\s\S]*setGuestStateRevision/);
+  assert.doesNotMatch(liveComponentSource, /roomStatus\?\.guest_id, disconnectTransport/);
 });
 
 test('join, invite, accept, decline, remove and block events target only affected guest clients', () => {
@@ -129,6 +140,9 @@ test('stale requests cannot remain actionable after authoritative replacement', 
     { request_id: '3', status: 'declined' },
     { request_id: '4', status: 'expired' },
   ]).map(row => row.request_id), ['1']);
+  assert.doesNotMatch(liveComponentSource, /This request is no longer available/);
+  assert.match(liveComponentSource, /setJoinRequests\(current => current\.filter[\s\S]*droxion_respond_live_join_request/);
+  assert.match(liveComponentSource, /droxion_live_join_requests[\s\S]*authoritative\.some/);
 });
 
 test('guest state invalidates invites and React subscribes directly instead of fast polling', () => {
@@ -136,6 +150,39 @@ test('guest state invalidates invites and React subscribes directly instead of f
   assert.match(supabaseSource, /notifyLiveEventSubscribers\(stream, \{ type: "guest_state"/);
   assert.match(liveComponentSource, /subscribeLiveEvents\(sessionId/);
   assert.doesNotMatch(liveComponentSource, /setInterval\(poll, (800|900|1200|1500|2500)\)/);
+});
+
+test('foreground, focus, pageshow and online restart realtime with immediate catch-up', () => {
+  assert.match(supabaseSource, /export function recoverLiveEventStream/);
+  assert.match(supabaseSource, /catchUpLiveEventStream\(sessionId, stream, generation\)/);
+  assert.match(supabaseSource, /originalRpc\("droxion_live_chat_messages"/);
+  assert.match(supabaseSource, /originalRpc\("droxion_live_gift_events"/);
+  assert.match(liveComponentSource, /recoverLiveEventStream\(sessionId, event\?\.type \|\| 'foreground'\)/);
+  assert.match(liveComponentSource, /addEventListener\('online', recoverOnline\)/);
+  assert.doesNotMatch(liveComponentSource, /setInterval\(poll, (1000|2000|3000)\)/);
+});
+
+test('delivery diagnostics measure send and realtime callback through React commit', () => {
+  let time = 100;
+  const probe = createLiveDeliveryProbe({ now: () => time, wallNow: () => 1000, limit: 2 });
+  probe.startSend('chat');
+  time = 140;
+  probe.mark({ eventType: 'chat', eventId: 9, phase: 'write_success', source: 'sender' });
+  time = 180;
+  probe.mark({ eventType: 'chat', eventId: 9, phase: 'realtime_callback', source: 'realtime' });
+  time = 184;
+  const result = probe.mark({ eventType: 'chat', eventId: 9, phase: 'render_committed' });
+  assert.equal(result.sendToRenderMs, 84);
+  assert.equal(result.callbackToRenderMs, 4);
+  assert.equal(probe.snapshot().length, 1);
+  assert.match(liveComponentSource, /__droxionLiveDeliveryDiagnostics/);
+});
+
+test('Android preparation prunes legacy demo videos after its final web build', () => {
+  assert.match(androidPrepareSource, /npm run build[\s\S]*find dist[\s\S]*20250520[\s\S]*npx cap sync android/);
+  assert.match(androidPrepareSource, /find android\/app\/src\/main\/assets[\s\S]*20250520/);
+  assert.match(codemagicSource, /unzip -Z1 "\$AAB" \| grep -qi '20250520'/);
+  assert.match(codemagicSource, /Android AAB bytes/);
 });
 
 test('Home renders a bounded LIVE listing window', () => {

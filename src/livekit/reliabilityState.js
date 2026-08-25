@@ -140,6 +140,63 @@ export function mergeStableLiveEvents(current, incoming, limit = 200) {
   return Array.from(merged.values()).slice(-limit);
 }
 
+export function createLiveDeliveryProbe({
+  now = () => globalThis.performance?.now?.() ?? Date.now(),
+  wallNow = () => Date.now(),
+  limit = 100,
+} = {}) {
+  const records = new Map();
+  const pendingSends = new Map();
+
+  const trim = () => {
+    while (records.size > limit) records.delete(records.keys().next().value);
+  };
+
+  return {
+    startSend(eventType) {
+      const startedAt = now();
+      pendingSends.set(eventType, startedAt);
+      return startedAt;
+    },
+    cancelSend(eventType) {
+      pendingSends.delete(eventType);
+    },
+    mark({ eventType, eventId, phase, source = '', createdAt = '' }) {
+      if (!eventType || eventId == null || eventId === '' || !phase) return null;
+      const key = `${eventType}:${String(eventId)}`;
+      const record = records.get(key) || {
+        eventType,
+        eventId: String(eventId),
+        source,
+        phases: {},
+      };
+      if (phase === 'write_success' && pendingSends.has(eventType)) {
+        record.phases.send_start = pendingSends.get(eventType);
+        pendingSends.delete(eventType);
+      }
+      record.phases[phase] = now();
+      record.source = source || record.source;
+      if (createdAt) {
+        const created = Date.parse(createdAt);
+        if (Number.isFinite(created)) record.eventAgeMs = Math.max(0, wallNow() - created);
+      }
+      if (record.phases.send_start != null && record.phases.render_committed != null) {
+        record.sendToRenderMs = record.phases.render_committed - record.phases.send_start;
+      }
+      if (record.phases.realtime_callback != null && record.phases.render_committed != null) {
+        record.callbackToRenderMs = record.phases.render_committed - record.phases.realtime_callback;
+      }
+      records.delete(key);
+      records.set(key, record);
+      trim();
+      return { ...record, phases: { ...record.phases } };
+    },
+    snapshot() {
+      return Array.from(records.values(), record => ({ ...record, phases: { ...record.phases } }));
+    },
+  };
+}
+
 export function liveGiftReconciliationCursor(value, overlapMs = 5000) {
   const timestamp = Date.parse(value || '');
   return Number.isFinite(timestamp) ? new Date(timestamp - overlapMs).toISOString() : value;
