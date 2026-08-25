@@ -250,8 +250,7 @@ function authoritativeLiveRead(stream, queue, fn, args, options) {
       return response;
     }
 
-    const ids = queue === "chat" ? stream.chatIds : stream.giftIds;
-    stream[queue] = replaceBoundedStableLiveEvents(stream[queue], response.data, ids, queue === "chat" ? 300 : 100);
+    applyAuthoritativeLiveRows(stream, queue, response.data);
     stream.lastTouchedAt = now;
     stream.lastAuthoritativeAt[queue] = now;
     const completed = canCompleteLiveReadReconciliation(stream, subscriptionState);
@@ -405,6 +404,21 @@ export function subscribeLiveEvents(sessionId, subscriber) {
     stream.subscribers.delete(subscriber);
     stream.lastTouchedAt = Date.now();
   };
+}
+
+export function liveEventSnapshot(sessionId) {
+  const stream = getLiveEventStream(sessionId);
+  return stream ? { chat: [...stream.chat], gift: [...stream.gifts] } : { chat: [], gift: [] };
+}
+
+export function publishLiveEvent(sessionId, type, row, source = "sender") {
+  const stream = getLiveEventStream(sessionId);
+  const queue = type === "chat" ? "chat" : type === "gift" ? "gifts" : "";
+  if (!stream || !queue || !row) return false;
+  const ids = queue === "chat" ? stream.chatIds : stream.giftIds;
+  const added = appendBoundedStableLiveEvent(stream[queue], ids, row, queue === "chat" ? 300 : 100);
+  if (added) notifyLiveEventSubscribers(stream, { type, row, source });
+  return added;
 }
 
 export function invalidateLiveGuestState(sessionId) {

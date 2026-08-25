@@ -131,6 +131,16 @@ export function stableLiveEventId(row) {
   return id == null || id === '' ? null : String(id);
 }
 
+export function stableLiveGuestEventId(row) {
+  const metadata = row?.metadata || {};
+  const id = metadata.request_id ?? row?.request_id
+    ?? metadata.invite_id ?? row?.invite_id
+    ?? metadata.guest_id ?? row?.guest_id
+    ?? metadata.target_user_id ?? row?.target_user_id
+    ?? row?.id;
+  return id == null || id === '' ? null : String(id);
+}
+
 export function mergeStableLiveEvents(current, incoming, limit = 200) {
   const merged = new Map();
   for (const row of [...(current || []), ...(incoming || [])]) {
@@ -168,7 +178,7 @@ export function createLiveEventBatcher({
   cancel = handle => globalThis.cancelAnimationFrame(handle),
   flush,
 } = {}) {
-  const pending = { chat: new Map(), gift: new Map() };
+  const pending = { chat: new Map(), gift: new Map(), guest: new Map() };
   let scheduled = null;
   let closed = false;
 
@@ -178,16 +188,18 @@ export function createLiveEventBatcher({
     const batch = {
       chat: Array.from(pending.chat.values()),
       gift: Array.from(pending.gift.values()),
+      guest: Array.from(pending.guest.values()),
     };
     pending.chat.clear();
     pending.gift.clear();
-    if (batch.chat.length || batch.gift.length) flush?.(batch);
+    pending.guest.clear();
+    if (batch.chat.length || batch.gift.length || batch.guest.length) flush?.(batch);
   };
 
   return {
     enqueue(type, row) {
       if (closed || !pending[type]) return false;
-      const id = stableLiveEventId(row);
+      const id = type === 'guest' ? stableLiveGuestEventId(row) : stableLiveEventId(row);
       if (!id) return false;
       pending[type].set(id, row);
       if (scheduled == null) scheduled = schedule(drain);
@@ -200,6 +212,7 @@ export function createLiveEventBatcher({
       scheduled = null;
       pending.chat.clear();
       pending.gift.clear();
+      pending.guest.clear();
     },
   };
 }

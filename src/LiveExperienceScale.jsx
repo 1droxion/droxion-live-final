@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Ban, Camera, CameraOff, Gift, LogOut, Maximize2, Mic, MicOff, MoreHorizontal, Radio, RefreshCw, Send, Smartphone, Sparkles, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { authoritativeLiveRpc, invalidateLiveGuestState, recoverLiveEventStream, releaseLiveEventStream, requestLiveAuthoritativeReconcile, subscribeLiveEvents, supabase } from './supabaseClient';
+import { authoritativeLiveRpc, invalidateLiveGuestState, liveEventSnapshot, publishLiveEvent, recoverLiveEventStream, releaseLiveEventStream, requestLiveAuthoritativeReconcile, subscribeLiveEvents, supabase } from './supabaseClient';
 import {
   attachRemoteTrack,
   connectLiveKitRoom,
@@ -33,12 +33,68 @@ function personAvatar(person, size = 42) {
   return <div style={{ width: size, height: size, borderRadius: '50%', background: 'radial-gradient(circle at 50% 36%,rgba(226,232,240,.72) 0 14%,transparent 15%),radial-gradient(ellipse at 50% 86%,rgba(226,232,240,.55) 0 27%,transparent 28%),linear-gradient(135deg,#252538,#15151f)' }} />;
 }
 
+const LiveEventOverlay = memo(function LiveEventOverlay({ sessionId }) {
+  const [messages, setMessages] = useState([]);
+  const [giftEvents, setGiftEvents] = useState([]);
+  const pendingChatCommitsRef = useRef([]);
+  const pendingGiftCommitsRef = useRef([]);
+
+  useEffect(() => {
+    setMessages([]);
+    setGiftEvents([]);
+    const batcher = createLiveEventBatcher({
+      flush: batch => {
+        if (batch.chat.length) {
+          pendingChatCommitsRef.current.push(...batch.chat);
+          setMessages(current => mergeStableLiveEvents(current, batch.chat, 200));
+        }
+        if (batch.gift.length) {
+          pendingGiftCommitsRef.current.push(...batch.gift);
+          setGiftEvents(current => mergeStableLiveEvents(current, batch.gift, 30));
+        }
+      }
+    });
+    const unsubscribe = subscribeLiveEvents(sessionId, event => {
+      if ((event.type === 'chat' || event.type === 'gift') && event.row) {
+        liveDeliveryProbe.mark({ eventType: event.type, eventId: event.row.id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
+        batcher.enqueue(event.type, event.row);
+        liveDeliveryProbe.mark({ eventType: event.type, eventId: event.row.id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
+      }
+    });
+    const snapshot = liveEventSnapshot(sessionId);
+    for (const row of snapshot.chat) batcher.enqueue('chat', row);
+    for (const row of snapshot.gift) batcher.enqueue('gift', row);
+    return () => { unsubscribe(); batcher.dispose(); };
+  }, [sessionId]);
+
+  useEffect(() => {
+    const rows = pendingChatCommitsRef.current.splice(0);
+    for (const row of rows) liveDeliveryProbe.mark({ eventType: 'chat', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
+  }, [messages]);
+
+  useEffect(() => {
+    const rows = pendingGiftCommitsRef.current.splice(0);
+    for (const row of rows) liveDeliveryProbe.mark({ eventType: 'gift', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
+  }, [giftEvents]);
+
+  const combinedEvents = [
+    ...messages.slice(-8).map(item => ({ type: 'chat', time: item.created_at || '', key: `c-${item.id}`, ...item })),
+    ...giftEvents.slice(-5).map(item => ({ type: 'gift', time: item.created_at || '', key: `g-${item.id}`, ...item }))
+  ].sort((a, b) => String(a.time).localeCompare(String(b.time))).slice(-8);
+
+  return <div className="liveChatOverlay liveChatV4">
+    {combinedEvents.map(event => event.type === 'gift'
+      ? <div className="liveChatLine liveGiftEvent" key={event.key}><strong>{event.display_name}</strong> sent {event.emoji} {event.gift_name}</div>
+      : <div className="liveChatLine" key={event.key}><strong>{event.display_name}</strong> {event.body}</div>)}
+    {combinedEvents.length === 0 && <div className="liveChatHint">Live chat will appear here.</div>}
+  </div>;
+});
+
 export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange }) {
   const [isLive, setIsLive] = useState(false);
   const [ownSessionId, setOwnSessionId] = useState('');
   const [profiles, setProfiles] = useState([]);
   const [gifts, setGifts] = useState([]);
-  const [giftEvents, setGiftEvents] = useState([]);
   const [giftDrawerOpen, setGiftDrawerOpen] = useState(false);
   const [busyGift, setBusyGift] = useState('');
   const [notice, setNotice] = useState('');
@@ -47,7 +103,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const [viewers, setViewers] = useState([]);
   const [joinRequests, setJoinRequests] = useState([]);
   const [myJoinRequest, setMyJoinRequest] = useState(null);
-  const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [invite, setInvite] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
@@ -93,8 +148,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const homePullStartY = useRef(null);
   const liveFeedSentinelRef = useRef(null);
   const voluntarilyExitedRequestRef = useRef('');
-  const pendingChatCommitsRef = useRef([]);
-  const pendingGiftCommitsRef = useRef([]);
 
   const sessionId = activeRoom?.session_id || (isLive ? ownSessionId : '');
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
@@ -349,17 +402,47 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   useEffect(() => {
     if (!sessionId) return;
+    const applyGuestEvent = row => {
+      const metadata = row?.metadata || {};
+      const action = metadata.action || row?.action || '';
+      const requestId = metadata.request_id || row?.request_id;
+      const inviteId = metadata.invite_id || row?.invite_id;
+      if (isHostRoom && action === 'requested' && requestId) {
+        setJoinRequests(current => {
+          const requests = new Map(current.map(request => [String(request.request_id), request]));
+          requests.set(String(requestId), {
+            request_id: requestId,
+            user_id: row.actor_id,
+            display_name: row.display_name || 'Droxion user',
+            status: 'requested'
+          });
+          return actionableJoinRequests(Array.from(requests.values()).slice(-100));
+        });
+      } else if (isHostRoom && requestId && ['accepted', 'declined', 'expired'].includes(action)) {
+        setJoinRequests(current => current.filter(request => String(request.request_id) !== String(requestId)));
+      } else if (!isHostRoom && action === 'invited' && inviteId) {
+        setInvite({
+          invite_id: inviteId,
+          session_id: sessionId,
+          host_id: row.actor_id,
+          host_name: row.display_name || 'Droxion user'
+        });
+      } else if (!isHostRoom && requestId && ['accepted', 'declined', 'removed', 'expired'].includes(action)) {
+        setMyJoinRequest(current => ({ ...current, request_id: requestId, session_id: sessionId, status: action }));
+      }
+      if (!isHostRoom && ['removed', 'blocked'].includes(action)) {
+        stopCamera();
+        setGuestMode(false);
+        setInvite(null);
+      }
+    };
     const batcher = createLiveEventBatcher({
       flush: batch => {
         if (batch.chat.length) {
-          setMessages(current => mergeStableLiveEvents(current, batch.chat, 200));
-          pendingChatCommitsRef.current.push(...batch.chat);
           lastChatId.current = Math.max(lastChatId.current, ...batch.chat.map(row => Number(row.id || 0)));
           if (isHostRoom) highlightRecorderRef.current?.markMoment?.(Math.min(5, batch.chat.length));
         }
         if (batch.gift.length) {
-          setGiftEvents(current => mergeStableLiveEvents(current, batch.gift, 30));
-          pendingGiftCommitsRef.current.push(...batch.gift);
           const fresh = batch.gift.filter(row => {
             const id = String(row.id ?? '');
             if (!id || seenGiftIds.current.has(id)) return false;
@@ -369,21 +452,20 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           lastGiftAt.current = batch.gift.reduce((latest, row) => String(row.created_at || '') > String(latest || '') ? row.created_at : latest, lastGiftAt.current);
           if (isHostRoom && fresh.length) highlightRecorderRef.current?.markMoment?.(Math.min(20, fresh.reduce((sum, row) => sum + 4 + Math.log10(Math.max(1, Number(row.cost_coins || 1))), 0)));
         }
+        if (batch.guest.length) {
+          for (const row of batch.guest) applyGuestEvent(row);
+          setGuestStateRevision(value => value + 1);
+        }
       }
     });
     const unsubscribe = subscribeLiveEvents(sessionId, event => {
       if (event.type === 'chat' && event.row) {
-        liveDeliveryProbe.mark({ eventType: 'chat', eventId: event.row.id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
         batcher.enqueue('chat', event.row);
-        liveDeliveryProbe.mark({ eventType: 'chat', eventId: event.row.id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
         return;
       }
 
       if (event.type === 'gift' && event.row) {
-        const id = String(event.row.id ?? '');
-        liveDeliveryProbe.mark({ eventType: 'gift', eventId: id, phase: 'realtime_callback', source: event.source, createdAt: event.row.created_at });
         batcher.enqueue('gift', event.row);
-        liveDeliveryProbe.mark({ eventType: 'gift', eventId: id, phase: 'state_queued', source: event.source, createdAt: event.row.created_at });
         return;
       }
 
@@ -393,53 +475,11 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       }
 
       if (event.type === 'guest_state' && (isHostRoom || liveGuestEventTargetsUser(event.row, currentUserId))) {
-        const metadata = event.row?.metadata || {};
-        const action = metadata.action || event.row?.action || '';
-        const requestId = metadata.request_id || event.row?.request_id;
-        const inviteId = metadata.invite_id || event.row?.invite_id;
-        if (isHostRoom && action === 'requested' && requestId) {
-          setJoinRequests(current => {
-            const requests = new Map(current.map(row => [String(row.request_id), row]));
-            requests.set(String(requestId), {
-              request_id: requestId,
-              user_id: event.row.actor_id,
-              display_name: event.row.display_name || 'Droxion user',
-              status: 'requested'
-            });
-            return actionableJoinRequests(Array.from(requests.values()).slice(-100));
-          });
-        } else if (isHostRoom && requestId && ['accepted', 'declined', 'expired'].includes(action)) {
-          setJoinRequests(current => current.filter(row => String(row.request_id) !== String(requestId)));
-        } else if (!isHostRoom && action === 'invited' && inviteId) {
-          setInvite({
-            invite_id: inviteId,
-            session_id: sessionId,
-            host_id: event.row.actor_id,
-            host_name: event.row.display_name || 'Droxion user'
-          });
-        } else if (!isHostRoom && requestId && ['accepted', 'declined', 'removed', 'expired'].includes(action)) {
-          setMyJoinRequest(current => ({ ...current, request_id: requestId, session_id: sessionId, status: action }));
-        }
-        if (!isHostRoom && ['removed', 'blocked'].includes(action)) {
-          stopCamera();
-          setGuestMode(false);
-          setInvite(null);
-        }
-        setGuestStateRevision(value => value + 1);
+        batcher.enqueue('guest', event.row);
       }
     });
     return () => { unsubscribe(); batcher.dispose(); };
   }, [sessionId, isHostRoom, currentUserId, stopCamera]);
-
-  useEffect(() => {
-    const rows = pendingChatCommitsRef.current.splice(0);
-    for (const row of rows) liveDeliveryProbe.mark({ eventType: 'chat', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
-  }, [messages]);
-
-  useEffect(() => {
-    const rows = pendingGiftCommitsRef.current.splice(0);
-    for (const row of rows) liveDeliveryProbe.mark({ eventType: 'gift', eventId: row.id, phase: 'render_committed', createdAt: row.created_at });
-  }, [giftEvents]);
 
   useEffect(() => () => releaseLiveEventStream(sessionId), [sessionId]);
 
@@ -693,7 +733,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       }
     };
     refresh();
-    const timer = window.setInterval(refresh, isHostRoom ? 15000 : 60000);
+    const timer = window.setInterval(refresh, isHostRoom ? 15000 : 300000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [sessionId, isHostRoom, profiles, activeRoom?.user_id]);
 
@@ -963,9 +1003,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const poll = async () => {
       const { data } = await supabase.rpc('droxion_live_chat_messages', { p_session_id: sessionId, p_after_id: lastChatId.current });
       if (stopped || !data?.length) return;
-      setMessages(current => mergeStableLiveEvents(current, data, 200));
-      lastChatId.current = Math.max(lastChatId.current, ...data.map(row => Number(row.id)));
-      if (isHostRoom) highlightRecorderRef.current?.markMoment?.(Math.min(5, data.length));
     };
     poll();
     const timer = window.setInterval(poll, 60000);
@@ -976,7 +1013,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     if (!sessionId) return;
     lastGiftAt.current = new Date().toISOString();
     seenGiftIds.current.clear();
-    setGiftEvents([]);
     let stopped = false;
     const poll = async () => {
       const { data } = await supabase.rpc('droxion_live_gift_events', {
@@ -984,15 +1020,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         p_after: liveGiftReconciliationCursor(lastGiftAt.current)
       });
       if (stopped || !data?.length) return;
-      setGiftEvents(current => mergeStableLiveEvents(current, data, 30));
-      const fresh = data.filter(row => {
-        const id = String(row.id ?? '');
-        if (!id || seenGiftIds.current.has(id)) return false;
-        seenGiftIds.current.add(id);
-        return true;
-      });
-      lastGiftAt.current = data.reduce((latest, row) => String(row.created_at || '') > String(latest || '') ? row.created_at : latest, lastGiftAt.current);
-      if (isHostRoom && fresh.length) highlightRecorderRef.current?.markMoment?.(Math.min(20, fresh.reduce((sum, row) => sum + 4 + Math.log10(Math.max(1, Number(row.cost_coins || 1))), 0)));
     };
     poll();
     const timer = window.setInterval(poll, 60000);
@@ -1018,14 +1045,12 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         });
         if (sent) {
           liveDeliveryProbe.mark({ eventType: 'chat', eventId: sent.id, phase: 'write_success', source: 'sender', createdAt: sent.created_at });
-          pendingChatCommitsRef.current.push(sent);
-          setMessages(current => mergeStableLiveEvents(current, [sent], 200));
+          publishLiveEvent(sessionId, 'chat', sent);
           lastChatId.current = Math.max(lastChatId.current, Number(sent.id || 0));
         } else {
           requestLiveAuthoritativeReconcile(sessionId, ['chat']);
           const { data: rows } = await supabase.rpc('droxion_live_chat_messages', { p_session_id: sessionId, p_after_id: lastChatId.current });
           if (rows?.length) {
-            setMessages(current => mergeStableLiveEvents(current, rows, 200));
             lastChatId.current = Math.max(lastChatId.current, ...rows.map(row => Number(row.id || 0)));
           }
           liveDeliveryProbe.cancelSend('chat');
@@ -1059,8 +1084,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
         };
         liveDeliveryProbe.mark({ eventType: 'gift', eventId: sentGift.id, phase: 'write_success', source: 'sender', createdAt: sentGift.created_at });
         seenGiftIds.current.add(String(sentGift.id));
-        pendingGiftCommitsRef.current.push(sentGift);
-        setGiftEvents(current => mergeStableLiveEvents(current, [sentGift], 30));
+        publishLiveEvent(sessionId, 'gift', sentGift);
       } else liveDeliveryProbe.cancelSend('gift');
       const successNotice = `${data.emoji} ${data.gift_name} sent.`;
       setNotice(successNotice);
@@ -1178,11 +1202,6 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const hasGuestStage = hasLiveGuest({ guestMode, guestVideoReady });
     const activeGuestId = roomStatus?.guest_id || remoteGuestId;
     const activeGuest = viewers.find(viewer => viewer.user_id === activeGuestId);
-    const combinedEvents = [
-      ...messages.slice(-8).map(item => ({ type: 'chat', time: item.created_at || '', key: `c-${item.id}`, ...item })),
-      ...giftEvents.slice(-5).map(item => ({ type: 'gift', time: item.created_at || '', key: `g-${item.id}`, ...item }))
-    ].sort((a, b) => String(a.time).localeCompare(String(b.time))).slice(-8);
-
     return (
       <section className={`liveRoomPage liveRoomV4 liveRoom-${roomOrientation}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className={`liveStage liveStageV4 liveStage-${roomOrientation} ${hasGuestStage ? 'liveStage-split' : ''}`}>
@@ -1209,12 +1228,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           {!isHostRoom && profiles.length > 1 && <div className="liveSwipeHint">{liveIndex + 1}/{profiles.length} · Swipe up for next LIVE</div>}
           <div className="liveBottomGradient" />
 
-          <div className="liveChatOverlay liveChatV4">
-            {combinedEvents.map(event => event.type === 'gift'
-              ? <div className="liveChatLine liveGiftEvent" key={event.key}><strong>{event.display_name}</strong> sent {event.emoji} {event.gift_name}</div>
-              : <div className="liveChatLine" key={event.key}><strong>{event.display_name}</strong> {event.body}</div>)}
-            {combinedEvents.length === 0 && <div className="liveChatHint">Live chat will appear here.</div>}
-          </div>
+          <LiveEventOverlay sessionId={sessionId} />
 
           {!isHostRoom && !guestMode && activeRoom?.allow_guest_requests !== false && !roomStatus?.guest_id && !guestVideoReady && (
             <button className="liveFloatingJoin" onClick={requestToJoin} disabled={['requested', 'declined'].includes(myJoinRequest?.status)}><UserPlus size={19} /> {myJoinRequest?.status === 'requested' ? 'Requested' : myJoinRequest?.status === 'declined' ? 'Declined' : 'Join LIVE'}</button>
