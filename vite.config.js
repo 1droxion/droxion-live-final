@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Production safety patch for LIVE startup. Keep the creator UI responsive even
-// when camera, database, Supabase Edge Functions, or LiveKit take longer than
-// expected. Every network step gets a bounded recovery path instead of leaving
-// the creator on an endless "Starting LIVE" state.
+// LIVE startup reliability patch. The browser has shown a repeatable failure
+// where PostgREST/Edge requests reach the server but the supabase-js promise
+// never settles. For the critical start/token/heartbeat path we therefore use
+// bounded native fetch requests with AbortController and only use the SDK for
+// the rest of the product.
 function liveStartReliabilityPatch() {
   const statusBefore = `      const [{ data: status }, { data: giftRows }] = await Promise.all([
         supabase.rpc('droxion_live_status'),
@@ -29,8 +30,6 @@ function liveStartReliabilityPatch() {
         supabase.rpc('droxion_gift_options')
       ]);
       if (!alive) return;
-      // Never let a transient/unauthorized status read erase a LIVE that is
-      // already being started with an active camera stream.
       if (!statusError && status && !(streamRef.current?.active && status?.is_live === false)) {
         setIsLive(Boolean(status?.is_live));
         setOwnSessionId(status?.is_live ? status?.session_id || '' : '');
@@ -54,8 +53,6 @@ function liveStartReliabilityPatch() {
 
   const startEntryAfter = `  async function startLive() {
     if (!currentUserId) return setNotice('Sign in before going live.');
-    // Give immediate visual feedback. The setup sheet must never remain frozen
-    // while the browser or network is doing asynchronous LIVE startup work.
     setSetupOpen(false);
     setNotice('Starting LIVE...');
     let stream;
@@ -86,45 +83,65 @@ function liveStartReliabilityPatch() {
       p_orientation: liveSetup.orientation,
       p_allow_guest_requests: liveSetup.allowGuests
     };
-    const settleLiveStartRequest = (request, timeoutMs) => Promise.race([
-      Promise.resolve(request)
-        .then(value => ({ value }))
-        .catch(caught => ({ caught })),
-      new Promise(resolve => window.setTimeout(() => resolve({ timeout: true }), timeoutMs))
-    ]);
 
-    // A PostgREST request can reach Postgres successfully while the browser
-    // never receives/resolves the response. If that happens, verify the newly
-    // created LIVE through status, then retry idempotently if needed.
-    const firstStart = await settleLiveStartRequest(supabase.rpc('droxion_start_live', startPayload), 3500);
-    let data = firstStart?.value?.data || null;
-    let error = firstStart?.value?.error || firstStart?.caught || null;
-
-    if (firstStart?.timeout) {
-      setNotice('Confirming LIVE...');
-      const statusCheck = await settleLiveStartRequest(supabase.rpc('droxion_live_status'), 2500);
-      if (statusCheck?.value?.data?.is_live) {
-        data = statusCheck.value.data;
-        error = null;
-      } else {
-        setNotice('Retrying LIVE start...');
-        const retryStart = await settleLiveStartRequest(supabase.rpc('droxion_start_live', startPayload), 3500);
-        data = retryStart?.value?.data || null;
-        error = retryStart?.value?.error || retryStart?.caught || (retryStart?.timeout ? new Error('LIVE start timed out.') : null);
+    const directLiveRpc = async (fn, payload = {}, timeoutMs = 5000) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sign in before going live.');
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(\`${'${import.meta.env.VITE_SUPABASE_URL}'}/rest/v1/rpc/\${fn}\`, {
+          method: 'POST',
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: \`Bearer \${session.access_token}\`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: JSON.stringify(payload || {}),
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        const text = await response.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+        if (!response.ok) throw new Error(body?.message || body?.error || text || \`LIVE request failed (\${response.status}).\`);
+        return body;
+      } finally {
+        window.clearTimeout(timer);
       }
+    };
+
+    let data = null;
+    let error = null;
+    try {
+      data = await directLiveRpc('droxion_start_live', startPayload, 5000);
+    } catch (startError) {
+      error = startError;
+      setNotice('Confirming LIVE...');
+      try {
+        const status = await directLiveRpc('droxion_live_status', {}, 3500);
+        if (status?.is_live) { data = status; error = null; }
+      } catch {}
     }
 
     if (!data?.is_live) {
-      const finalStatus = await settleLiveStartRequest(supabase.rpc('droxion_live_status'), 2500);
-      if (finalStatus?.value?.data?.is_live) {
-        data = finalStatus.value.data;
+      setNotice('Retrying LIVE start...');
+      try {
+        data = await directLiveRpc('droxion_start_live', startPayload, 5000);
         error = null;
+      } catch (retryError) {
+        error = retryError;
+        try {
+          const status = await directLiveRpc('droxion_live_status', {}, 3500);
+          if (status?.is_live) { data = status; error = null; }
+        } catch {}
       }
     }
 
     if (error || !data?.is_live) {
       setSetupOpen(true);
-      setNotice(error?.message || 'Could not start LIVE. Please try again.');
+      setNotice(error?.name === 'AbortError' ? 'LIVE start timed out. Please try again.' : (error?.message || 'Could not start LIVE. Please try again.'));
       stopCamera();
       return;
     }`;
@@ -171,15 +188,13 @@ function liveStartReliabilityPatch() {
       allow_guest_requests: data.allow_guest_requests !== false
     };
 
-    // Enter the local host stage before waiting for LiveKit. The creator should
-    // always see their own camera immediately after the LIVE session is created.
     setBeautyMode('off');
     setIsLive(true);
     setOwnSessionId(startedSessionId);
     setActiveRoom(room);
     setSetupOpen(false);
     setNotice('Connecting LIVE video...');
-    requestAnimationFrame(attachLocal);
+    requestAnimationFrame(() => { attachLocal(); window.setTimeout(attachLocal, 100); });
     highlightRecorderRef.current = createLiveHighlightRecorder({
       creatorId: currentUserId,
       sessionId: startedSessionId,
@@ -188,9 +203,6 @@ function liveStartReliabilityPatch() {
     });
     loadLive().catch(() => {});
 
-    // Bootstrap transport in the background. If the initial token request or
-    // LiveKit websocket stalls, connectLiveKitRoom now times out and removes the
-    // stale cache entry, allowing this loop to make a clean second attempt.
     (async () => {
       let lastBootstrapError = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -208,27 +220,13 @@ function liveStartReliabilityPatch() {
           const bootstrapRoom = connection.room;
           lkRoomRef.current = bootstrapRoom;
           lkRoleRef.current = 'host';
-
           const publishing = publishLocalMedia(bootstrapRoom, stream);
           const outcome = await Promise.race([
             publishing.then(() => 'published'),
             new Promise(resolve => window.setTimeout(() => resolve('timeout'), 5000))
           ]);
-
           setNotice('You are live.');
-          if (outcome === 'timeout') {
-            publishing.catch(async publishError => {
-              try {
-                await supabase.rpc('droxion_log_live_client_error', {
-                  p_stage: 'start-live-publish-late-failure',
-                  p_message: String(publishError?.message || publishError || 'LIVE publish failed'),
-                  p_stack: String(publishError?.stack || ''),
-                  p_context: { sessionId: startedSessionId, role: 'host' }
-                });
-              } catch {}
-              setNotice('LIVE video connection needs a retry.');
-            });
-          }
+          if (outcome === 'timeout') publishing.catch(() => setNotice('LIVE video connection needs a retry.'));
           return;
         } catch (bootstrapError) {
           lastBootstrapError = bootstrapError;
@@ -238,17 +236,63 @@ function liveStartReliabilityPatch() {
           }
         }
       }
-
-      try {
-        await supabase.rpc('droxion_log_live_client_error', {
-          p_stage: 'start-live-bootstrap',
-          p_message: String(lastBootstrapError?.message || lastBootstrapError || 'LIVE bootstrap failed'),
-          p_stack: String(lastBootstrapError?.stack || ''),
-          p_context: { sessionId: startedSessionId, role: 'host' }
-        });
-      } catch {}
       setNotice('LIVE video connection failed. ' + (lastBootstrapError?.message || 'Please retry.'));
     })();`;
+
+  const heartbeatBefore = `  useEffect(() => {
+    if (!isLive) return;
+    const heartbeat = async () => {
+      const { data } = await supabase.rpc('droxion_live_heartbeat');
+      if (data?.is_live === false) {
+        setIsLive(false);
+        setOwnSessionId('');
+        await disconnectTransport();
+        stopCamera();
+        setNotice('');
+      }
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 15000);
+    return () => window.clearInterval(timer);
+  }, [isLive, disconnectTransport, stopCamera]);`;
+
+  const heartbeatAfter = `  useEffect(() => {
+    if (!isLive) return;
+    let disposed = false;
+    const heartbeat = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 4000);
+        try {
+          const response = await fetch(\`${'${import.meta.env.VITE_SUPABASE_URL}'}/rest/v1/rpc/droxion_live_heartbeat\`, {
+            method: 'POST',
+            headers: {
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              Authorization: \`Bearer \${session.access_token}\`,
+              'Content-Type': 'application/json'
+            },
+            body: '{}',
+            cache: 'no-store',
+            signal: controller.signal
+          });
+          if (!response.ok) return;
+          const data = await response.json().catch(() => null);
+          if (!disposed && data?.is_live === false) {
+            setIsLive(false);
+            setOwnSessionId('');
+            await disconnectTransport();
+            stopCamera();
+            setNotice('');
+          }
+        } finally { window.clearTimeout(timeout); }
+      } catch {}
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 15000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [isLive, disconnectTransport, stopCamera]);`;
 
   const tokenInvokeBefore = `  const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
     body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
@@ -259,29 +303,34 @@ function liveStartReliabilityPatch() {
   if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
   return data;`;
 
-  const tokenInvokeAfter = `  const invokeToken = () => supabase.functions.invoke(TOKEN_FUNCTION, {
-    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
-    headers: { Authorization: \`Bearer \${session.access_token}\` }
-  });
-  const settleToken = request => Promise.race([
-    Promise.resolve(request)
-      .then(value => ({ value }))
-      .catch(caught => ({ caught })),
-    new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 6500))
-  ]);
+  const tokenInvokeAfter = `  const requestToken = async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6500);
+    try {
+      const response = await fetch(\`${'${import.meta.env.VITE_SUPABASE_URL}'}/functions/v1/\${TOKEN_FUNCTION}\`, {
+        method: 'POST',
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: \`Bearer \${session.access_token}\`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID }),
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || \`Could not authorize LIVE connection (\${response.status}).\`);
+      if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
+      return data;
+    } finally { clearTimeout(timer); }
+  };
 
-  let attempt = await settleToken(invokeToken());
-  if (attempt?.timeout) {
-    await logClientError('token-timeout', new Error('LIVE token request timed out.'), { sessionId, role });
-    attempt = await settleToken(invokeToken());
-  }
-
-  if (attempt?.timeout) throw new Error('LIVE video authorization timed out.');
-  if (attempt?.caught) throw attempt.caught;
-  const { data, error } = attempt?.value || {};
-  if (error) throw new Error(data?.error || error.message || 'Could not authorize LIVE connection.');
-  if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
-  return data;`;
+  try { return await requestToken(); }
+  catch (firstError) {
+    await logClientError('token-first-attempt', firstError, { sessionId, role });
+    await new Promise(resolve => setTimeout(resolve, 350));
+    return await requestToken();
+  }`;
 
   const connectBefore = `      try {
         await room.connect(auth.url, auth.token, { autoSubscribe: true });
@@ -314,27 +363,21 @@ function liveStartReliabilityPatch() {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
 
       if (normalizedId.endsWith("/src/LiveExperienceScale.jsx")) {
-        const required = [statusBefore, startEntryBefore, cameraFailureBefore, startRpcBefore, startBefore];
-        if (required.some(target => !code.includes(target))) {
-          throw new Error("Droxion LIVE startup patch target was not found.");
-        }
+        const required = [statusBefore, startEntryBefore, cameraFailureBefore, startRpcBefore, startBefore, heartbeatBefore];
+        if (required.some(target => !code.includes(target))) throw new Error("Droxion LIVE startup patch target was not found.");
         const patched = code
           .replace(statusBefore, statusAfter)
           .replace(startEntryBefore, startEntryAfter)
           .replace(cameraFailureBefore, cameraFailureAfter)
           .replace(startRpcBefore, startRpcAfter)
-          .replace(startBefore, startAfter);
+          .replace(startBefore, startAfter)
+          .replace(heartbeatBefore, heartbeatAfter);
         return { code: patched, map: null };
       }
 
       if (normalizedId.endsWith("/src/livekit/livekitRoom.js")) {
-        if (!code.includes(tokenInvokeBefore) || !code.includes(connectBefore)) {
-          throw new Error("Droxion LiveKit startup timeout patch target was not found.");
-        }
-        const patched = code
-          .replace(tokenInvokeBefore, tokenInvokeAfter)
-          .replace(connectBefore, connectAfter);
-        return { code: patched, map: null };
+        if (!code.includes(tokenInvokeBefore) || !code.includes(connectBefore)) throw new Error("Droxion LiveKit startup timeout patch target was not found.");
+        return { code: code.replace(tokenInvokeBefore, tokenInvokeAfter).replace(connectBefore, connectAfter), map: null };
       }
 
       return null;
@@ -344,7 +387,5 @@ function liveStartReliabilityPatch() {
 
 export default defineConfig({
   plugins: [liveStartReliabilityPatch(), react()],
-  build: {
-    outDir: "dist",
-  },
+  build: { outDir: "dist" },
 });
