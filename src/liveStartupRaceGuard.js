@@ -1,52 +1,65 @@
-import { supabase } from './supabaseClient';
+// Keep this workaround scoped to START LIVE only. Some clients complete the
+// PostgREST write on the server but stay blocked while the Supabase RPC wrapper
+// reads the response body. The browser owns the session ID, the v2 RPC persists
+// that exact ID, and the caller receives deterministic JSON once the server
+// accepts the request.
+if (typeof window !== 'undefined' && !window.__droxionLiveStartResponseBridge) {
+  const nativeFetch = window.fetch.bind(window);
 
-// Prevent an older droxion_live_status request from overwriting a LIVE session
-// that successfully started while that request was still in flight.
-if (!supabase.__droxionLiveStartupRaceGuard) {
-  const nativeRpc = supabase.rpc.bind(supabase);
-  let recentStartedSession = null;
-  let recentStartedAt = 0;
-  const START_GUARD_MS = 30_000;
+  window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input?.url || '');
+    const method = String(
+      init?.method || (typeof input !== 'string' ? input?.method : '') || 'GET'
+    ).toUpperCase();
 
-  supabase.rpc = async (fn, args, options) => {
-    const result = await nativeRpc(fn, args, options);
+    const isLiveStart =
+      method === 'POST' &&
+      /\/rest\/v1\/rpc\/droxion_start_live(?:\?|$)/.test(url);
 
-    if (fn === 'droxion_start_live' && !result?.error && result?.data?.is_live && result?.data?.session_id) {
-      recentStartedSession = String(result.data.session_id);
-      recentStartedAt = Date.now();
-      return result;
+    if (!isLiveStart) return nativeFetch(input, init);
+
+    const sessionId = globalThis.crypto?.randomUUID?.();
+    if (!sessionId) return nativeFetch(input, init);
+
+    let payload = {};
+    let bodyText = init?.body;
+
+    if (!bodyText && typeof input !== 'string' && input?.clone) {
+      try {
+        bodyText = await input.clone().text();
+      } catch {}
     }
 
-    if ((fn === 'droxion_set_live' && args?.p_live === false) || fn === 'droxion_end_live') {
-      recentStartedSession = null;
-      recentStartedAt = 0;
-      return result;
-    }
+    try {
+      payload = JSON.parse(String(bodyText || '{}'));
+    } catch {}
 
-    if (
-      fn === 'droxion_live_status' &&
-      !result?.error &&
-      result?.data?.is_live === false &&
-      recentStartedSession &&
-      Date.now() - recentStartedAt < START_GUARD_MS
-    ) {
-      return {
-        ...result,
-        data: {
-          ...(result.data || {}),
-          is_live: true,
-          session_id: recentStartedSession
+    const nextUrl = url.replace('/rpc/droxion_start_live', '/rpc/droxion_start_live_v2');
+    const response = await nativeFetch(nextUrl, {
+      ...init,
+      body: JSON.stringify({ ...payload, p_session_id: sessionId })
+    });
+
+    if (!response.ok) return response;
+
+    return new Response(
+      JSON.stringify({
+        is_live: true,
+        session_id: sessionId,
+        title: payload.p_title || 'Live on Droxion',
+        tags: Array.isArray(payload.p_tags) ? payload.p_tags : [],
+        orientation: payload.p_orientation === 'horizontal' ? 'horizontal' : 'vertical',
+        allow_guest_requests: payload.p_allow_guest_requests !== false
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
         }
-      };
-    }
-
-    if (fn === 'droxion_live_status' && result?.data?.is_live === true && result?.data?.session_id) {
-      recentStartedSession = String(result.data.session_id);
-      recentStartedAt = Date.now();
-    }
-
-    return result;
+      }
+    );
   };
 
-  supabase.__droxionLiveStartupRaceGuard = true;
+  window.__droxionLiveStartResponseBridge = true;
 }
