@@ -27,10 +27,29 @@ export default function NotificationsPanel({ open, onClose, onUnreadChange }) {
   }
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 12000);
-    const { data: listener } = supabase.auth.onAuthStateChange(() => load());
-    return () => { clearInterval(timer); listener?.subscription?.unsubscribe(); };
+    let alive = true;
+    const deferredLoad = () => {
+      window.setTimeout(() => {
+        if (alive) load().catch(() => {});
+      }, 0);
+    };
+
+    deferredLoad();
+    const timer = setInterval(() => {
+      if (alive) load().catch(() => {});
+    }, 12000);
+
+    // Never call a Supabase API directly from onAuthStateChange. Returning or
+    // awaiting that request can hold the auth lock and stall later LIVE calls.
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      deferredLoad();
+    });
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      listener?.subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => { if (open) load(); }, [open]);
