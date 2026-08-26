@@ -10,8 +10,11 @@ export default function DroxionLivePushBridge() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform?.()) return;
     let alive = true;
+    let busy = false;
 
     async function checkLive() {
+      if (!alive || busy || document.visibilityState === 'hidden') return;
+      busy = true;
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!alive || !session?.access_token || !session?.user?.id) return;
@@ -38,14 +41,24 @@ export default function DroxionLivePushBridge() {
         }
       } catch (error) {
         console.warn('LIVE push bridge failed', error);
+      } finally {
+        busy = false;
       }
     }
 
+    const wake = () => {
+      if (document.visibilityState !== 'hidden') checkLive();
+    };
+
     checkLive();
-    const timer = window.setInterval(checkLive, 3000);
+    const timer = window.setInterval(checkLive, 15000);
+    window.addEventListener('focus', wake);
+    document.addEventListener('visibilitychange', wake);
     return () => {
       alive = false;
       window.clearInterval(timer);
+      window.removeEventListener('focus', wake);
+      document.removeEventListener('visibilitychange', wake);
     };
   }, []);
 
