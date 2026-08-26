@@ -51,6 +51,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   const [success, setSuccess] = useState('');
   const paypalRef = useRef(null);
   const recoveryStartedRef = useRef(false);
+  const purchaseInFlightRef = useRef(false);
   const nativeStorePlatform = getNativeStorePlatform();
   const nativeMobile = Boolean(nativeStorePlatform);
   const isIOS = nativeStorePlatform === 'ios';
@@ -140,7 +141,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       console.warn('StoreKit finish retry needed', ackError);
     }
 
-    if (refreshBalance) await onBalanceRefresh?.();
+    if (refreshBalance) await onBalanceRefresh?.(Number(payload?.coinBalance));
     return payload;
   }
 
@@ -170,7 +171,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       console.warn('Google Play acknowledge retry needed', ackError);
     }
 
-    if (refreshBalance) await onBalanceRefresh?.();
+    if (refreshBalance) await onBalanceRefresh?.(Number(payload?.coinBalance));
     return payload;
   }
 
@@ -208,7 +209,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   }, [nativeMobile, isIOS, loading, storeLoading, storeProducts, products, onBalanceRefresh]);
 
   async function buyNativeCoins(product) {
-    if (checkoutId) return;
+    if (checkoutId || purchaseInFlightRef.current) return;
     const productId = isIOS ? product.apple_product_id : product.google_product_id;
     const nativeProduct = storeProductMap.get(productId);
     if (!productId || !nativeProduct) {
@@ -216,6 +217,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       return;
     }
 
+    purchaseInFlightRef.current = true;
     setError('');
     setSuccess('');
     setCheckoutId(product.id);
@@ -240,6 +242,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       const message = String(err?.message || 'Store purchase was not completed.');
       if (!/cancel/i.test(message)) setError(message);
     } finally {
+      purchaseInFlightRef.current = false;
       setCheckoutId('');
     }
   }
@@ -249,7 +252,8 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       await buyNativeCoins(product);
       return;
     }
-    if (checkoutId) return;
+    if (checkoutId || purchaseInFlightRef.current) return;
+    purchaseInFlightRef.current = true;
     setError('');
     setSuccess('');
     setCheckoutId(product.id);
@@ -272,6 +276,7 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       if (!response.ok || !payload.orderId) throw new Error(payload.error || 'PayPal checkout could not be started.');
       setPaypalOrderId(payload.orderId);
     } catch (err) {
+      purchaseInFlightRef.current = false;
       setError(err?.message || 'PayPal checkout could not be started.');
       setCheckoutId('');
       setSelectedProduct(null);
@@ -281,7 +286,11 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
   useEffect(() => {
     if (nativeMobile || !selectedProduct || !paypalOrderId || typeof window === 'undefined') return;
     if (!import.meta.env.VITE_PAYPAL_CLIENT_ID) {
+      purchaseInFlightRef.current = false;
       setError('PayPal is not configured for this environment yet.');
+      setCheckoutId('');
+      setSelectedProduct(null);
+      setPaypalOrderId('');
       return;
     }
     if (window.paypal) {
@@ -297,7 +306,13 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
       document.body.appendChild(script);
     }
     const onLoad = () => setPaypalReady(true);
-    const onError = () => setError('PayPal could not be loaded.');
+    const onError = () => {
+      purchaseInFlightRef.current = false;
+      setCheckoutId('');
+      setSelectedProduct(null);
+      setPaypalOrderId('');
+      setError('PayPal could not be loaded.');
+    };
     script.addEventListener('load', onLoad);
     script.addEventListener('error', onError);
     return () => {
@@ -328,10 +343,11 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
           const payload = await response.json().catch(() => ({}));
           if (!response.ok || payload.error) throw new Error(payload.error || 'Payment verification failed.');
           setSuccess('Payment complete. Your coins were added.');
-          await onBalanceRefresh?.();
+          await onBalanceRefresh?.(Number(payload?.coinBalance));
         } catch (err) {
           setError(err?.message || 'Payment verification failed.');
         } finally {
+          purchaseInFlightRef.current = false;
           setCheckoutId('');
           setSelectedProduct(null);
           setPaypalOrderId('');
@@ -339,19 +355,28 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         }
       },
       onCancel: () => {
+        purchaseInFlightRef.current = false;
         setError('PayPal checkout was cancelled.');
         setCheckoutId('');
         setSelectedProduct(null);
         setPaypalOrderId('');
       },
       onError: err => {
+        purchaseInFlightRef.current = false;
         setError(err?.message || 'PayPal checkout failed.');
         setCheckoutId('');
         setSelectedProduct(null);
         setPaypalOrderId('');
       }
     });
-    buttons.render(container).catch(err => setError(err?.message || 'PayPal checkout could not be displayed.'));
+    buttons.render(container).catch(err => {
+      purchaseInFlightRef.current = false;
+      setCheckoutId('');
+      setSelectedProduct(null);
+      setPaypalOrderId('');
+      setPaypalReady(false);
+      setError(err?.message || 'PayPal checkout could not be displayed.');
+    });
     return () => { container.innerHTML = ''; };
   }, [nativeMobile, paypalReady, paypalOrderId, selectedProduct, onBalanceRefresh]);
 
