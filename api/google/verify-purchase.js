@@ -1,5 +1,5 @@
 import { createSign } from 'node:crypto';
-import { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, readJsonBody } from '../paypal/lib.js';
+import { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, readJsonBody } from '../../server/paypal-lib.js';
 
 const PACKAGE_NAME = 'com.droxion.live';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
