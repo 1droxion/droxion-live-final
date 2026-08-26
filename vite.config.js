@@ -43,104 +43,6 @@ function liveStartReliabilityPatch() {
       }
       setGifts(giftRows || []);`;
 
-  const rpcBefore = `    const { data, error } = await supabase.rpc('droxion_start_live', {
-      p_title: liveSetup.title.trim() || 'Live on Droxion',
-      p_tags: tags,
-      p_orientation: liveSetup.orientation,
-      p_allow_guest_requests: liveSetup.allowGuests
-    });
-    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }`;
-
-  const rpcAfter = `    setSetupOpen(false);
-    setNotice('Starting LIVE...');
-
-    const clientSessionId = globalThis.crypto?.randomUUID?.();
-    if (!clientSessionId) {
-      setNotice('Could not create a LIVE session ID. Please try again.');
-      stopCamera();
-      return;
-    }
-
-    // Supabase auth can be temporarily locked by another auth callback. Reading
-    // the already-persisted browser session first keeps START LIVE independent
-    // of that lock. The bounded getSession fallback guarantees the UI can never
-    // sit on "Starting LIVE..." forever.
-    let accessToken = '';
-    try {
-      const projectRef = new URL(String(import.meta.env.VITE_SUPABASE_URL || '')).hostname.split('.')[0];
-      const rawSession = window.localStorage?.getItem('sb-' + projectRef + '-auth-token');
-      if (rawSession) {
-        const parsedSession = JSON.parse(rawSession);
-        const storedSession = parsedSession?.currentSession || parsedSession?.session || parsedSession;
-        const expiresAtMs = Number(storedSession?.expires_at || 0) * 1000;
-        if (storedSession?.access_token && (!expiresAtMs || expiresAtMs > Date.now() + 30000)) {
-          accessToken = storedSession.access_token;
-        }
-      }
-    } catch {}
-
-    if (!accessToken) {
-      const sessionResult = await Promise.race([
-        supabase.auth.getSession(),
-        new Promise(resolve => window.setTimeout(() => resolve({ data: { session: null }, error: new Error('session_timeout') }), 1500))
-      ]);
-      accessToken = sessionResult?.data?.session?.access_token || '';
-    }
-
-    if (!accessToken) {
-      setNotice('Could not read your login session. Please try LIVE again.');
-      stopCamera();
-      return;
-    }
-
-    const startController = new AbortController();
-    const startTimer = window.setTimeout(() => startController.abort(), 8000);
-    let startResponse = null;
-    try {
-      startResponse = await fetch(String(import.meta.env.VITE_SUPABASE_URL || '') + '/rest/v1/rpc/droxion_start_live_v2', {
-        method: 'POST',
-        headers: {
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + accessToken,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          p_session_id: clientSessionId,
-          p_title: liveSetup.title.trim() || 'Live on Droxion',
-          p_tags: tags,
-          p_orientation: liveSetup.orientation,
-          p_allow_guest_requests: liveSetup.allowGuests
-        }),
-        cache: 'no-store',
-        signal: startController.signal
-      });
-    } catch (startError) {
-      setNotice(startError?.name === 'AbortError' ? 'LIVE start timed out. Please try again.' : startError?.message || 'Could not start LIVE.');
-      stopCamera();
-      return;
-    } finally {
-      window.clearTimeout(startTimer);
-    }
-
-    if (!startResponse?.ok) {
-      setNotice('Could not start LIVE.');
-      stopCamera();
-      return;
-    }
-
-    // Do not read the PostgREST success body here. The old startup loop was
-    // created after the server write while the RPC wrapper was still waiting.
-    // The browser already owns the authoritative session ID.
-    const data = {
-      is_live: true,
-      session_id: clientSessionId,
-      title: liveSetup.title.trim() || 'Live on Droxion',
-      tags,
-      orientation: liveSetup.orientation,
-      allow_guest_requests: liveSetup.allowGuests
-    };
-    const error = null;`;
-
   const startBefore = `    const room = {
       user_id: currentUserId,
       session_id: data.session_id,
@@ -183,16 +85,9 @@ function liveStartReliabilityPatch() {
       allow_guest_requests: data.allow_guest_requests !== false
     };
 
-    // The backend session is authoritative now. Enter the LIVE room UI
-    // immediately instead of leaving the creator on the browse page while the
-    // media transport settles. Local camera preview is already available.
-    setBeautyMode('off');
-    setIsLive(true);
-    setOwnSessionId(startedSessionId);
-    setActiveRoom(room);
+    // Never leave the creator trapped in the setup sheet while media connects.
     setSetupOpen(false);
     setNotice('Connecting LIVE video...');
-    requestAnimationFrame(attachLocal);
 
     let bootstrapRoom = null;
     try {
@@ -242,15 +137,17 @@ function liveStartReliabilityPatch() {
         lkRoomRef.current = null;
         lkRoleRef.current = '';
       }
-      setIsLive(false);
-      setOwnSessionId('');
-      setActiveRoom(null);
       stopCamera();
       setSetupOpen(false);
       setNotice('LIVE video could not start. ' + (bootstrapError?.message || 'Please try again.'));
       return;
     }
 
+    setBeautyMode('off');
+    setIsLive(true);
+    setOwnSessionId(startedSessionId);
+    setActiveRoom(room);
+    setSetupOpen(false);
     setNotice('You are live.');
     requestAnimationFrame(attachLocal);
     highlightRecorderRef.current = createLiveHighlightRecorder({
@@ -272,12 +169,10 @@ function liveStartReliabilityPatch() {
       if (!normalizedId.endsWith("/src/LiveExperienceScale.jsx")) return null;
 
       if (!code.includes(statusBefore)) throw new Error("Droxion LIVE status patch target was not found.");
-      if (!code.includes(rpcBefore)) throw new Error("Droxion LIVE start RPC patch target was not found.");
       if (!code.includes(startBefore)) throw new Error("Droxion LIVE start patch target was not found.");
 
       let patched = code
         .replace(statusBefore, statusAfter)
-        .replace(rpcBefore, rpcAfter)
         .replace(startBefore, startAfter);
       if (patched.includes(closeBefore)) patched = patched.replace(closeBefore, closeAfter);
 
