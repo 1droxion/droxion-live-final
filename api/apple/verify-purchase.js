@@ -1,5 +1,5 @@
 import { X509Certificate, verify as verifySignature } from 'node:crypto';
-import { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, readJsonBody } from '../paypal/lib.js';
+import { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, readJsonBody } from '../../server/paypal-lib.js';
 
 const BUNDLE_ID = 'com.droxion.live';
 const APPLE_PRODUCTION_VERIFY_URL = 'https://buy.itunes.apple.com/verifyReceipt';
