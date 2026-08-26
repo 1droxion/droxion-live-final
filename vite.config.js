@@ -1,11 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// LIVE startup reliability patch. The browser has shown a repeatable failure
-// where PostgREST/Edge requests reach the server but the supabase-js promise
-// never settles. For the critical start/token/heartbeat path we therefore use
-// bounded native fetch requests with AbortController and only use the SDK for
-// the rest of the product.
+// LIVE startup reliability patch. The browser has shown repeatable failures in
+// camera acquisition and network promises. Critical startup steps are bounded
+// so the creator can never remain forever on "Starting LIVE...".
 function liveStartReliabilityPatch() {
   const statusBefore = `      const [{ data: status }, { data: giftRows }] = await Promise.all([
         supabase.rpc('droxion_live_status'),
@@ -45,6 +43,133 @@ function liveStartReliabilityPatch() {
       }
       setGifts(giftRows || []);`;
 
+  const ensureCameraBefore = `  const ensureCamera = useCallback(async (
+    orientation = 'vertical',
+    requestedFacing = facingMode,
+    recoveryState = null
+  ) => {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera is not supported on this device.');
+    if (streamRef.current?.active) { attachLocal(); return streamRef.current; }
+    const portrait = orientation !== 'horizontal';
+    const video = portrait
+      ? { facingMode: { ideal: requestedFacing }, width: { ideal: 720 }, height: { ideal: 1280 }, frameRate: { ideal: 30, max: 30 } }
+      : { facingMode: { ideal: requestedFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } };
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (firstError) {
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); }
+      catch { throw firstError; }
+    }
+    const cameraEnabled = recoveryState?.cameraOn ?? true;
+    const microphoneEnabled = recoveryState?.micOn ?? true;
+    applyMediaEnabledState(stream, { cameraOn: cameraEnabled, micOn: microphoneEnabled });
+    streamRef.current = stream;
+    setFacingMode(requestedFacing);
+    if (!recoveryState) {
+      setMicOn(true);
+      setCameraOn(true);
+    }
+    requestAnimationFrame(() => { attachLocal(); window.setTimeout(attachLocal, 150); });
+    return stream;
+  }, [attachLocal, facingMode]);`;
+
+  const ensureCameraAfter = `  const ensureCamera = useCallback(async (
+    orientation = 'vertical',
+    requestedFacing = facingMode,
+    recoveryState = null
+  ) => {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera is not supported on this device.');
+    if (streamRef.current?.active) { attachLocal(); return streamRef.current; }
+
+    const portrait = orientation !== 'horizontal';
+    const video = portrait
+      ? { facingMode: { ideal: requestedFacing }, width: { ideal: 720 }, height: { ideal: 1280 }, frameRate: { ideal: 30, max: 30 } }
+      : { facingMode: { ideal: requestedFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } };
+
+    const getMediaWithTimeout = (constraints, timeoutMs, timeoutMessage) => {
+      let expired = false;
+      let timer = null;
+      const request = navigator.mediaDevices.getUserMedia(constraints).then(media => {
+        if (expired) {
+          media.getTracks().forEach(track => track.stop());
+          const lateError = new Error(timeoutMessage);
+          lateError.name = 'CameraTimeoutError';
+          throw lateError;
+        }
+        return media;
+      });
+      const timeout = new Promise((_, reject) => {
+        timer = window.setTimeout(() => {
+          expired = true;
+          const timeoutError = new Error(timeoutMessage);
+          timeoutError.name = 'CameraTimeoutError';
+          reject(timeoutError);
+        }, timeoutMs);
+      });
+      return Promise.race([request, timeout]).finally(() => {
+        if (timer) window.clearTimeout(timer);
+      });
+    };
+
+    // Acquire the camera separately from the microphone. On some Chromium/
+    // Windows device combinations a combined audio+video request can remain
+    // pending indefinitely. Video is mandatory; microphone is best-effort.
+    let stream;
+    let cameraError = null;
+    try {
+      stream = await getMediaWithTimeout(
+        { video, audio: false },
+        7000,
+        'Camera did not start within 7 seconds.'
+      );
+    } catch (firstError) {
+      cameraError = firstError;
+      try {
+        stream = await getMediaWithTimeout(
+          { video: true, audio: false },
+          5000,
+          'Camera did not start. Close other apps using the camera and try again.'
+        );
+        cameraError = null;
+      } catch {
+        throw cameraError || firstError;
+      }
+    }
+
+    let microphoneAvailable = false;
+    try {
+      const microphoneStream = await getMediaWithTimeout(
+        { video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } },
+        2500,
+        'Microphone did not start.'
+      );
+      const microphoneTrack = microphoneStream.getAudioTracks()[0];
+      if (microphoneTrack) {
+        stream.addTrack(microphoneTrack);
+        microphoneAvailable = true;
+      }
+      microphoneStream.getTracks().forEach(track => {
+        if (track !== microphoneTrack) track.stop();
+      });
+    } catch {
+      // A microphone failure must not prevent the creator from going LIVE.
+      microphoneAvailable = false;
+    }
+
+    const cameraEnabled = recoveryState?.cameraOn ?? true;
+    const microphoneEnabled = microphoneAvailable && (recoveryState?.micOn ?? true);
+    applyMediaEnabledState(stream, { cameraOn: cameraEnabled, micOn: microphoneEnabled });
+    streamRef.current = stream;
+    setFacingMode(requestedFacing);
+    if (!recoveryState) {
+      setMicOn(microphoneAvailable);
+      setCameraOn(true);
+    }
+    requestAnimationFrame(() => { attachLocal(); window.setTimeout(attachLocal, 100); window.setTimeout(attachLocal, 300); });
+    return stream;
+  }, [attachLocal, facingMode]);`;
+
   const startEntryBefore = `  async function startLive() {
     if (!currentUserId) return setNotice('Sign in before going live.');
     setNotice('');
@@ -54,9 +179,12 @@ function liveStartReliabilityPatch() {
   const startEntryAfter = `  async function startLive() {
     if (!currentUserId) return setNotice('Sign in before going live.');
     setSetupOpen(false);
-    setNotice('Starting LIVE...');
+    setNotice('Opening camera...');
     let stream;
-    try { stream = await ensureCamera(liveSetup.orientation, 'user'); }`;
+    try {
+      stream = await ensureCamera(liveSetup.orientation, 'user');
+      setNotice('Starting LIVE...');
+    }`;
 
   const cameraFailureBefore = `      setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
         ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion, then try again.'
@@ -65,8 +193,8 @@ function liveStartReliabilityPatch() {
 
   const cameraFailureAfter = `      setSetupOpen(true);
       setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
-        ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion, then try again.'
-        : error?.message || 'Camera and microphone are required to go live.');
+        ? 'Camera permission is blocked. Allow Camera for Droxion, then try again.'
+        : error?.message || 'Camera is required to go live.');
       return;`;
 
   const startRpcBefore = `    const { data, error } = await supabase.rpc('droxion_start_live', {
@@ -318,8 +446,6 @@ function liveStartReliabilityPatch() {
       new Promise(resolve => setTimeout(resolve, 750))
     ]).catch(() => {});
   } catch {}
-  // Diagnostics must never block token retries, room.connect retries, media
-  // publishing, or disconnect cleanup. Callers may still await this safely.
   return Promise.resolve();
 }`;
 
@@ -392,10 +518,11 @@ function liveStartReliabilityPatch() {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
 
       if (normalizedId.endsWith("/src/LiveExperienceScale.jsx")) {
-        const required = [statusBefore, startEntryBefore, cameraFailureBefore, startRpcBefore, startBefore, heartbeatBefore];
+        const required = [statusBefore, ensureCameraBefore, startEntryBefore, cameraFailureBefore, startRpcBefore, startBefore, heartbeatBefore];
         if (required.some(target => !code.includes(target))) throw new Error("Droxion LIVE startup patch target was not found.");
         const patched = code
           .replace(statusBefore, statusAfter)
+          .replace(ensureCameraBefore, ensureCameraAfter)
           .replace(startEntryBefore, startEntryAfter)
           .replace(cameraFailureBefore, cameraFailureAfter)
           .replace(startRpcBefore, startRpcAfter)
