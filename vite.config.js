@@ -85,9 +85,16 @@ function liveStartReliabilityPatch() {
       allow_guest_requests: data.allow_guest_requests !== false
     };
 
-    // Never leave the creator trapped in the setup sheet while media connects.
+    // The backend session is authoritative now. Enter the LIVE room UI
+    // immediately instead of leaving the creator on the browse page while the
+    // media transport settles. Local camera preview is already available.
+    setBeautyMode('off');
+    setIsLive(true);
+    setOwnSessionId(startedSessionId);
+    setActiveRoom(room);
     setSetupOpen(false);
     setNotice('Connecting LIVE video...');
+    requestAnimationFrame(attachLocal);
 
     let bootstrapRoom = null;
     try {
@@ -137,17 +144,15 @@ function liveStartReliabilityPatch() {
         lkRoomRef.current = null;
         lkRoleRef.current = '';
       }
+      setIsLive(false);
+      setOwnSessionId('');
+      setActiveRoom(null);
       stopCamera();
       setSetupOpen(false);
       setNotice('LIVE video could not start. ' + (bootstrapError?.message || 'Please try again.'));
       return;
     }
 
-    setBeautyMode('off');
-    setIsLive(true);
-    setOwnSessionId(startedSessionId);
-    setActiveRoom(room);
-    setSetupOpen(false);
     setNotice('You are live.');
     requestAnimationFrame(attachLocal);
     highlightRecorderRef.current = createLiveHighlightRecorder({
