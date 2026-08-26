@@ -294,6 +294,35 @@ function liveStartReliabilityPatch() {
     return () => { disposed = true; window.clearInterval(timer); };
   }, [isLive, disconnectTransport, stopCamera]);`;
 
+  const logClientErrorBefore = `async function logClientError(stage, error, context = {}) {
+  try {
+    await supabase.rpc('droxion_log_live_client_error', {
+      p_stage: stage,
+      p_message: String(error?.message || error || 'unknown error'),
+      p_stack: String(error?.stack || ''),
+      p_context: context
+    });
+  } catch {}
+}`;
+
+  const logClientErrorAfter = `function logClientError(stage, error, context = {}) {
+  try {
+    const request = supabase.rpc('droxion_log_live_client_error', {
+      p_stage: stage,
+      p_message: String(error?.message || error || 'unknown error'),
+      p_stack: String(error?.stack || ''),
+      p_context: context
+    });
+    Promise.race([
+      Promise.resolve(request),
+      new Promise(resolve => setTimeout(resolve, 750))
+    ]).catch(() => {});
+  } catch {}
+  // Diagnostics must never block token retries, room.connect retries, media
+  // publishing, or disconnect cleanup. Callers may still await this safely.
+  return Promise.resolve();
+}`;
+
   const tokenInvokeBefore = `  const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
     body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
     headers: { Authorization: \`Bearer \${session.access_token}\` }
@@ -376,8 +405,14 @@ function liveStartReliabilityPatch() {
       }
 
       if (normalizedId.endsWith("/src/livekit/livekitRoom.js")) {
-        if (!code.includes(tokenInvokeBefore) || !code.includes(connectBefore)) throw new Error("Droxion LiveKit startup timeout patch target was not found.");
-        return { code: code.replace(tokenInvokeBefore, tokenInvokeAfter).replace(connectBefore, connectAfter), map: null };
+        if (!code.includes(logClientErrorBefore) || !code.includes(tokenInvokeBefore) || !code.includes(connectBefore)) throw new Error("Droxion LiveKit startup timeout patch target was not found.");
+        return {
+          code: code
+            .replace(logClientErrorBefore, logClientErrorAfter)
+            .replace(tokenInvokeBefore, tokenInvokeAfter)
+            .replace(connectBefore, connectAfter),
+          map: null
+        };
       }
 
       return null;
