@@ -48,6 +48,17 @@ export default function LiveHomePreviewEnhancer({ enabled = true }) {
       touchStart = { card, x: touch.clientX, y: touch.clientY };
     };
 
+    const onTouchMove = event => {
+      if (!touchStart?.card || !touchStart.card.isConnected) return;
+
+      // LIVE cards sit inside the Home pull-to-refresh surface. On iOS a tiny
+      // finger movement can reach that parent handler, which calls
+      // preventDefault() and suppresses the card's synthesized click. Keep card
+      // gestures out of the pull-to-refresh handler while preserving native
+      // vertical scrolling (we intentionally do not call preventDefault here).
+      event.stopPropagation();
+    };
+
     const onTouchEnd = event => {
       const start = touchStart;
       touchStart = null;
@@ -78,12 +89,14 @@ export default function LiveHomePreviewEnhancer({ enabled = true }) {
     const observer = new MutationObserver(decorate);
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener('touchstart', onTouchStart, true);
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: true });
     document.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
     document.addEventListener('click', onClickCapture, true);
 
     return () => {
       observer.disconnect();
       document.removeEventListener('touchstart', onTouchStart, true);
+      document.removeEventListener('touchmove', onTouchMove, true);
       document.removeEventListener('touchend', onTouchEnd, true);
       document.removeEventListener('click', onClickCapture, true);
     };
