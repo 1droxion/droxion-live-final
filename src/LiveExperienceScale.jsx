@@ -519,7 +519,11 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   async function startLive() {
     if (!currentUserId) return setNotice('Sign in before going live.');
-    setNotice('');
+    // Give immediate, truthful feedback before camera/RPC/LiveKit work begins.
+    // A successful backend write can otherwise leave this setup sheet visible
+    // while the browser is still settling the client response.
+    setSetupOpen(false);
+    setNotice('Starting LIVE…');
     let stream;
     try { stream = await ensureCamera(liveSetup.orientation, 'user'); }
     catch (error) {
@@ -527,6 +531,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
         ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion, then try again.'
         : error?.message || 'Camera and microphone are required to go live.');
+      setSetupOpen(true);
       return;
     }
     const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8);
@@ -536,7 +541,12 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       p_orientation: liveSetup.orientation,
       p_allow_guest_requests: liveSetup.allowGuests
     });
-    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }
+    if (error || !data?.is_live) {
+      setNotice(error?.message || 'Could not start LIVE.');
+      stopCamera();
+      setSetupOpen(true);
+      return;
+    }
 
     const room = {
       user_id: currentUserId,
