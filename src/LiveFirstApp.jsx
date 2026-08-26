@@ -26,6 +26,51 @@ const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
+let cachedAuthSession = null;
+
+function usableSession(session) {
+  if (!session?.access_token) return false;
+  const expiresAt = Number(session.expires_at || 0);
+  return !expiresAt || expiresAt * 1000 > Date.now() + 30000;
+}
+
+function storedAuthSession() {
+  try {
+    const projectRef = new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0];
+    const raw = window.localStorage.getItem(`sb-${projectRef}-auth-token`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const session = parsed?.currentSession || parsed?.session || parsed;
+    return usableSession(session) ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberAuthSession(session) {
+  cachedAuthSession = usableSession(session) ? session : null;
+}
+
+if (!supabase.auth.__droxionGetSessionPatched) {
+  const nativeGetSession = supabase.auth.getSession.bind(supabase.auth);
+  supabase.auth.getSession = async (...args) => {
+    if (usableSession(cachedAuthSession)) {
+      return { data: { session: cachedAuthSession }, error: null };
+    }
+
+    const stored = storedAuthSession();
+    if (stored) {
+      cachedAuthSession = stored;
+      return { data: { session: stored }, error: null };
+    }
+
+    const result = await nativeGetSession(...args);
+    if (usableSession(result?.data?.session)) cachedAuthSession = result.data.session;
+    return result;
+  };
+  supabase.auth.__droxionGetSessionPatched = true;
+}
+
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
   const [user, setUser] = useState(null);
@@ -48,10 +93,6 @@ export default function LiveFirstApp() {
   useEffect(() => {
     let mounted = true;
 
-    // Supabase auth callbacks must return immediately. Awaiting another Supabase
-    // call inside onAuthStateChange can hold the auth lock and stall the next RPC
-    // (including LIVE heartbeat / LiveKit token startup). Defer wallet reads until
-    // after the auth callback has fully returned.
     const scheduleWalletRefresh = authUser => {
       if (!authUser?.id) {
         setCoins(0);
@@ -63,16 +104,17 @@ export default function LiveFirstApp() {
       }, 0);
     };
 
-    supabase.auth.getUser().then(({ data }) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      rememberAuthSession(session);
       if (!mounted) return;
-      const authUser = data?.user || null;
+      const authUser = session?.user || null;
       setUser(authUser);
       scheduleWalletRefresh(authUser);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.getUser().then(({ data }) => {
       if (!mounted) return;
-      const authUser = session?.user || null;
+      const authUser = data?.user || null;
       setUser(authUser);
       scheduleWalletRefresh(authUser);
     });
@@ -104,9 +146,6 @@ export default function LiveFirstApp() {
       window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
         invalidateLiveFeedCache();
-        // Re-render the shell without changing the LIVE component identity.
-        // Changing a key here used to destroy an in-flight host/viewer room
-        // exactly when a live_started/live_ended event arrived.
         setLiveHomeVersion(version => version + 1);
       }, 120 + Math.floor(Math.random() * 280));
     };
