@@ -108,7 +108,25 @@ function liveStartReliabilityPatch() {
       bootstrapRoom = connection.room;
       lkRoomRef.current = bootstrapRoom;
       lkRoleRef.current = 'host';
-      await publishLocalMedia(bootstrapRoom, stream);
+      const mediaPublish = publishLocalMedia(bootstrapRoom, stream);
+      // The LiveKit server can confirm both tracks while the client SDK keeps
+      // this promise pending. Do not let that SDK stall trap the creator in the
+      // setup sheet after the room connection itself succeeded.
+      mediaPublish.catch(async publishError => {
+        try {
+          await supabase.rpc('droxion_log_live_client_error', {
+            p_stage: 'start-live-publish-background',
+            p_message: String(publishError?.message || publishError || 'LIVE background publish failed'),
+            p_stack: String(publishError?.stack || ''),
+            p_context: { sessionId: startedSessionId, role: 'host' }
+          });
+        } catch {}
+        setNotice('LIVE media needs attention. Please end the LIVE and try again.');
+      });
+      await Promise.race([
+        mediaPublish,
+        new Promise(resolve => window.setTimeout(resolve, 1500))
+      ]);
     } catch (bootstrapError) {
       try {
         await supabase.rpc('droxion_log_live_client_error', {
