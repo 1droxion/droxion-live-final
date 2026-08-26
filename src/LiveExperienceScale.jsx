@@ -517,6 +517,37 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   function openGoLiveSetup() { setNotice(''); setSetupOpen(true); }
 
+  async function directLiveRpc(functionName, payload = {}, timeoutMs = 6000) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Sign in before going live.');
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+        method: 'POST',
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(payload || {}),
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      const text = await response.text();
+      let body = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+      if (!response.ok) {
+        throw new Error(body?.message || body?.error || text || `LIVE request failed (${response.status}).`);
+      }
+      return body;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
   async function startLive() {
     if (!currentUserId) return setNotice('Sign in before going live.');
     // Give immediate, truthful feedback before camera/RPC/LiveKit work begins.
@@ -535,12 +566,27 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       return;
     }
     const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8);
-    const { data, error } = await supabase.rpc('droxion_start_live', {
+    const startPayload = {
       p_title: liveSetup.title.trim() || 'Live on Droxion',
       p_tags: tags,
       p_orientation: liveSetup.orientation,
       p_allow_guest_requests: liveSetup.allowGuests
-    });
+    };
+    let data = null;
+    let error = null;
+    try {
+      data = await directLiveRpc('droxion_start_live', startPayload, 6000);
+    } catch (startError) {
+      error = startError;
+      setNotice('Confirming LIVE…');
+      try {
+        const status = await directLiveRpc('droxion_live_status', {}, 4000);
+        if (status?.is_live) {
+          data = status;
+          error = null;
+        }
+      } catch {}
+    }
     if (error || !data?.is_live) {
       setNotice(error?.message || 'Could not start LIVE.');
       stopCamera();
