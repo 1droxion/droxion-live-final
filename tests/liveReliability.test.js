@@ -24,6 +24,7 @@ import {
   retryLiveReconnect,
   shouldEnterGuestMode,
 } from '../src/livekit/reliabilityState.js';
+import { startLiveSession } from '../src/livekit/liveStartSession.js';
 
 const liveComponentSource = fs.readFileSync(new URL('../src/LiveExperienceScale.jsx', import.meta.url), 'utf8');
 const liveCssSource = fs.readFileSync(new URL('../src/live-experience-v4.css', import.meta.url), 'utf8');
@@ -32,6 +33,7 @@ const cameraEnhancerSource = fs.readFileSync(new URL('../src/LiveCameraStartupEn
 const androidPrepareSource = fs.readFileSync(new URL('../scripts/prepare-android.sh', import.meta.url), 'utf8');
 const codemagicSource = fs.readFileSync(new URL('../codemagic.yaml', import.meta.url), 'utf8');
 const qualityGateSource = fs.readFileSync(new URL('../.github/workflows/quality-gate.yml', import.meta.url), 'utf8');
+const mainSource = fs.readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 
 test('reconnect exhaustion rejects with the final failure', async () => {
   const failures = [new Error('first'), new Error('final')];
@@ -49,6 +51,52 @@ test('reconnect exhaustion rejects with the final failure', async () => {
     /final/
   );
   assert.equal(attempts, 2);
+});
+
+test('successful LIVE start uses the client session ID without reading the response body', async () => {
+  const sessionId = '9d6da8d7-c8a9-4aa1-9999-476516148710';
+  let request = null;
+  let bodyRead = false;
+  let bodyCancelled = false;
+  const data = await startLiveSession({
+    client: {
+      auth: {
+        getSession: async () => ({ data: { session: { access_token: 'access-token' } }, error: null })
+      }
+    },
+    title: 'Test LIVE',
+    tags: ['test'],
+    orientation: 'vertical',
+    allowGuestRequests: true,
+    projectUrl: 'https://project.supabase.co',
+    anonKey: 'anon-key',
+    sessionIdFactory: () => sessionId,
+    fetchImpl: async (url, init) => {
+      request = { url, init };
+      return {
+        ok: true,
+        status: 200,
+        text: async () => { bodyRead = true; return '{}'; },
+        body: { cancel: () => { bodyCancelled = true; } }
+      };
+    }
+  });
+
+  assert.equal(data.session_id, sessionId);
+  assert.equal(data.is_live, true);
+  assert.equal(bodyRead, false);
+  assert.equal(bodyCancelled, true);
+  assert.match(request.url, /droxion_start_live_v2$/);
+  assert.equal(JSON.parse(request.init.body).p_session_id, sessionId);
+});
+
+test('LIVE start has one explicit request path and closes setup before async startup', () => {
+  assert.doesNotMatch(mainSource, /liveStartupRaceGuard/);
+  assert.match(liveComponentSource, /startLiveSession\(\{/);
+  assert.doesNotMatch(liveComponentSource, /supabase\.rpc\('droxion_start_live'/);
+  assert.match(liveComponentSource, /setSetupOpen\(false\);[\s\S]*await ensureCamera/);
+  assert.match(liveComponentSource, /const transportKey = sessionId && currentUserId/);
+  assert.match(liveComponentSource, /requestedAtRevision === liveStateRevisionRef\.current/);
 });
 
 test('a channel becoming ready during an RPC cannot clear reconciliation', () => {

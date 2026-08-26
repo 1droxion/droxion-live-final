@@ -14,6 +14,7 @@ import {
   unlockRemoteAudio
 } from './livekit/livekitRoom';
 import { createLiveHighlightRecorder } from './livekit/liveHighlightRecorder';
+import { startLiveSession } from './livekit/liveStartSession';
 import { actionableJoinRequests, applyMediaEnabledState, createLiveDeliveryProbe, createLiveEventBatcher, hasLiveGuest, liveChatRowFromWrite, liveFeedWindow, liveGiftReconciliationCursor, liveGuestEventTargetsUser, livePendingRecoveryDelay, mergeStableLiveEvents, shouldEnterGuestMode } from './livekit/reliabilityState';
 import './live-experience-v3.css';
 import './live-experience-v4.css';
@@ -59,6 +60,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const [guestVideoReady, setGuestVideoReady] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [startingLive, setStartingLive] = useState(false);
   const [followingHost, setFollowingHost] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [refreshingLiveFeed, setRefreshingLiveFeed] = useState(false);
@@ -95,9 +97,16 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const voluntarilyExitedRequestRef = useRef('');
   const pendingChatCommitsRef = useRef([]);
   const pendingGiftCommitsRef = useRef([]);
+  const startInFlightRef = useRef(false);
+  const liveStateRevisionRef = useRef(0);
 
   const sessionId = activeRoom?.session_id || (isLive ? ownSessionId : '');
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
+  const transportRole = isHostRoom ? 'host' : guestMode ? 'guest' : 'viewer';
+  const transportHostId = isHostRoom ? currentUserId : activeRoom?.user_id || '';
+  const transportKey = sessionId && currentUserId
+    ? `${sessionId}:${transportRole}:${currentUserId}:${transportHostId}`
+    : '';
   const roomOrientation = isHostRoom ? liveSetup.orientation : (activeRoom?.orientation || 'vertical');
   const immersive = Boolean(sessionId);
 
@@ -234,16 +243,19 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   }
 
   useEffect(() => {
-    if (!sessionId || !currentUserId) { disconnectTransport(); return; }
     let cancelled = false;
-    const role = isHostRoom ? 'host' : guestMode ? 'guest' : 'viewer';
+    let ownedRoom = null;
+
+    if (!transportKey) {
+      disconnectTransport();
+      return () => { cancelled = true; };
+    }
 
     (async () => {
-      await disconnectTransport();
       try {
         const { room } = await connectLiveKitRoom({
           sessionId,
-          role,
+          role: transportRole,
           onTrackSubscribed: (track, _publication, participant) => attachLiveKitTrack(track, participant),
           onTrackUnsubscribed: (track, _publication, participant) => detachLiveKitTrack(track, participant),
           onDisconnected: () => { if (!cancelled) setNotice('LIVE connection disconnected. Reconnecting when available…'); },
@@ -256,19 +268,43 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
           },
           onAudioPlaybackChanged: canPlay => { if (!cancelled) setAudioBlocked(!canPlay); }
         });
-        if (cancelled) { await disconnectLiveKitRoom(room); return; }
+        if (cancelled) {
+          if (lkRoomRef.current !== room) await disconnectLiveKitRoom(room);
+          return;
+        }
+        ownedRoom = room;
         lkRoomRef.current = room;
-        lkRoleRef.current = role;
-        if ((role === 'host' || role === 'guest') && streamRef.current) await publishLocalMedia(room, streamRef.current);
+        lkRoleRef.current = transportRole;
+        if ((transportRole === 'host' || transportRole === 'guest') && streamRef.current) {
+          await publishLocalMedia(room, streamRef.current);
+        }
+        if (cancelled || lkRoomRef.current !== room) {
+          if (lkRoomRef.current === room) {
+            lkRoomRef.current = null;
+            lkRoleRef.current = '';
+          }
+          await disconnectLiveKitRoom(room);
+          return;
+        }
         const unlocked = await unlockRemoteAudio(room);
-        if (!cancelled) setAudioBlocked(!unlocked);
+        if (!cancelled && lkRoomRef.current === room) {
+          setAudioBlocked(!unlocked);
+          if (transportRole === 'host') setNotice('You are live.');
+        }
       } catch (error) {
         if (!cancelled) setNotice(error?.message || 'Could not connect to LIVE video.');
       }
     })();
 
-    return () => { cancelled = true; disconnectTransport(); };
-  }, [sessionId, currentUserId, isHostRoom, guestMode, activeRoom?.user_id, disconnectTransport]);
+    return () => {
+      cancelled = true;
+      if (!ownedRoom || lkRoomRef.current !== ownedRoom) return;
+      lkRoomRef.current = null;
+      lkRoleRef.current = '';
+      clearRemoteMedia();
+      disconnectLiveKitRoom(ownedRoom);
+    };
+  }, [transportKey, sessionId, transportRole, disconnectTransport, clearRemoteMedia]);
 
   useEffect(() => () => {
     disconnectTransport();
@@ -479,22 +515,27 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   useEffect(() => {
     if (!currentUserId) return;
     let alive = true;
+    const requestedAtRevision = liveStateRevisionRef.current;
     (async () => {
       const [{ data: status }, { data: giftRows }] = await Promise.all([
         supabase.rpc('droxion_live_status'),
         supabase.rpc('droxion_gift_options')
       ]);
       if (!alive) return;
-      setIsLive(Boolean(status?.is_live));
-      setOwnSessionId(status?.is_live ? status?.session_id || '' : '');
-      if (status?.title || status?.orientation) {
-        setLiveSetup(current => ({
-          ...current,
-          title: status?.title || current.title,
-          tags: Array.isArray(status?.tags) ? status.tags.join(', ') : current.tags,
-          orientation: status?.orientation || current.orientation,
-          allowGuests: status?.allow_guest_requests !== false
-        }));
+      // A status read issued before START LIVE must never overwrite the newer
+      // session handoff after it eventually returns.
+      if (requestedAtRevision === liveStateRevisionRef.current) {
+        setIsLive(Boolean(status?.is_live));
+        setOwnSessionId(status?.is_live ? status?.session_id || '' : '');
+        if (status?.title || status?.orientation) {
+          setLiveSetup(current => ({
+            ...current,
+            title: status?.title || current.title,
+            tags: Array.isArray(status?.tags) ? status.tags.join(', ') : current.tags,
+            orientation: status?.orientation || current.orientation,
+            allowGuests: status?.allow_guest_requests !== false
+          }));
+        }
       }
       setGifts(giftRows || []);
       await loadLive();
@@ -510,6 +551,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
     const heartbeat = async () => {
       const { data } = await supabase.rpc('droxion_live_heartbeat');
       if (data?.is_live === false) {
+        liveStateRevisionRef.current += 1;
         setIsLive(false);
         setOwnSessionId('');
         await disconnectTransport();
@@ -526,51 +568,63 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
 
   async function startLive() {
     if (!currentUserId) return setNotice('Sign in before going live.');
-    setNotice('');
-    let stream;
-    try { stream = await ensureCamera(liveSetup.orientation, 'user'); }
-    catch (error) {
+    if (startInFlightRef.current) return;
+    startInFlightRef.current = true;
+    setStartingLive(true);
+    setSetupOpen(false);
+    setNotice('Starting LIVE…');
+
+    try {
+      const stream = await ensureCamera(liveSetup.orientation, 'user');
+      const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8);
+      const data = await startLiveSession({
+        client: supabase,
+        title: liveSetup.title.trim() || 'Live on Droxion',
+        tags,
+        orientation: liveSetup.orientation,
+        allowGuestRequests: liveSetup.allowGuests
+      });
+      const startedSessionId = String(data?.session_id || '');
+      if (!data?.is_live || !startedSessionId) throw new Error('LIVE session ID is missing.');
+
+      const room = {
+        user_id: currentUserId,
+        session_id: startedSessionId,
+        display_name: 'Your Live',
+        title: data.title || liveSetup.title || 'Live on Droxion',
+        tags: data.tags || tags,
+        orientation: data.orientation || liveSetup.orientation,
+        allow_guest_requests: data.allow_guest_requests !== false
+      };
+      liveStateRevisionRef.current += 1;
+      setBeautyMode('off');
+      setOwnSessionId(startedSessionId);
+      setIsLive(true);
+      setActiveRoom(room);
+      setNotice('Connecting LIVE video…');
+      requestAnimationFrame(attachLocal);
+      highlightRecorderRef.current = createLiveHighlightRecorder({
+        creatorId: currentUserId,
+        sessionId: startedSessionId,
+        stream,
+        title: room.title
+      });
+      loadLive().catch(() => {});
+    } catch (error) {
       const name = error?.name || '';
       setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
         ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion, then try again.'
-        : error?.message || 'Camera and microphone are required to go live.');
-      return;
+        : error?.message || 'Could not start LIVE.');
+      stopCamera();
+      setSetupOpen(true);
+    } finally {
+      startInFlightRef.current = false;
+      setStartingLive(false);
     }
-    const tags = liveSetup.tags.split(',').map(item => item.trim()).filter(Boolean).slice(0, 8);
-    const { data, error } = await supabase.rpc('droxion_start_live', {
-      p_title: liveSetup.title.trim() || 'Live on Droxion',
-      p_tags: tags,
-      p_orientation: liveSetup.orientation,
-      p_allow_guest_requests: liveSetup.allowGuests
-    });
-    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }
-
-    const room = {
-      user_id: currentUserId,
-      session_id: data.session_id,
-      display_name: 'Your Live',
-      title: data.title || liveSetup.title || 'Live on Droxion',
-      tags: data.tags || tags,
-      orientation: data.orientation || liveSetup.orientation,
-      allow_guest_requests: data.allow_guest_requests !== false
-    };
-    setBeautyMode('off');
-    setIsLive(true);
-    setOwnSessionId(data.session_id || '');
-    setActiveRoom(room);
-    setSetupOpen(false);
-    setNotice('You are live.');
-    requestAnimationFrame(attachLocal);
-    highlightRecorderRef.current = createLiveHighlightRecorder({
-      creatorId: currentUserId,
-      sessionId: data.session_id,
-      stream,
-      title: room.title
-    });
-    await loadLive();
   }
 
   async function endLive() {
+    liveStateRevisionRef.current += 1;
     const { error } = await supabase.rpc('droxion_set_live', { p_live: false });
     if (error) return setNotice(error.message || 'Could not end LIVE.');
     setNotice('Saving LIVE highlights…');
@@ -1266,7 +1320,7 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
       {notice && <div className="liveNotice">{notice}</div>}
       {profiles.length === 0 ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE right now</h2><p>When creators go LIVE, they will appear here.</p></div> : <div className="liveFeedScroll liveOnlyScroll" aria-label="People live now">{liveFeedWindow(profiles, visibleLiveCount).map(profile => <button key={profile.user_id} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}>{profile.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} loading="lazy" decoding="async" /> : <div className="liveBrowseFallback" />}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>{Array.isArray(profile.tags) && profile.tags.length > 0 && <div className="liveFeedTags">{profile.tags.slice(0, 3).map(tag => <span key={tag}>#{tag}</span>)}</div>}<em>Tap to open LIVE</em></div></button>)}{visibleLiveCount < profiles.length && <div ref={liveFeedSentinelRef} className="liveFeedSentinel" aria-hidden="true" />}</div>}
 
-      {setupOpen && <div className="liveSetupOverlay" role="dialog" aria-modal="true"><div className="liveSetupSheet"><div className="liveSetupHead"><div><span>🔴 GO LIVE</span><h2>Set up your LIVE</h2></div><button onClick={() => setSetupOpen(false)}><X size={21} /></button></div><label>LIVE title<input value={liveSetup.title} maxLength={100} placeholder="What are you talking about?" onChange={event => setLiveSetup(state => ({ ...state, title: event.target.value }))} /></label><label>Tags<input value={liveSetup.tags} placeholder="music, chatting, business" onChange={event => setLiveSetup(state => ({ ...state, tags: event.target.value }))} /></label><div className="liveOrientationChoice"><button className={liveSetup.orientation === 'vertical' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'vertical' }))}><Smartphone size={22} /><strong>Vertical</strong><span>Best for phones</span></button><button className={liveSetup.orientation === 'horizontal' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'horizontal' }))}><Maximize2 size={22} /><strong>Horizontal</strong><span>Wide LIVE</span></button></div><label className="liveGuestToggle"><input type="checkbox" checked={liveSetup.allowGuests} onChange={event => setLiveSetup(state => ({ ...state, allowGuests: event.target.checked }))} /><span><strong>Allow viewers to request to join</strong><small>You approve every guest before they come on camera.</small></span></label><button className="liveStartButton" onClick={startLive}><Radio size={19} /> START LIVE</button></div></div>}
+      {setupOpen && <div className="liveSetupOverlay" role="dialog" aria-modal="true"><div className="liveSetupSheet"><div className="liveSetupHead"><div><span>🔴 GO LIVE</span><h2>Set up your LIVE</h2></div><button disabled={startingLive} onClick={() => setSetupOpen(false)}><X size={21} /></button></div><label>LIVE title<input value={liveSetup.title} maxLength={100} placeholder="What are you talking about?" onChange={event => setLiveSetup(state => ({ ...state, title: event.target.value }))} /></label><label>Tags<input value={liveSetup.tags} placeholder="music, chatting, business" onChange={event => setLiveSetup(state => ({ ...state, tags: event.target.value }))} /></label><div className="liveOrientationChoice"><button className={liveSetup.orientation === 'vertical' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'vertical' }))}><Smartphone size={22} /><strong>Vertical</strong><span>Best for phones</span></button><button className={liveSetup.orientation === 'horizontal' ? 'selected' : ''} onClick={() => setLiveSetup(state => ({ ...state, orientation: 'horizontal' }))}><Maximize2 size={22} /><strong>Horizontal</strong><span>Wide LIVE</span></button></div><label className="liveGuestToggle"><input type="checkbox" checked={liveSetup.allowGuests} onChange={event => setLiveSetup(state => ({ ...state, allowGuests: event.target.checked }))} /><span><strong>Allow viewers to request to join</strong><small>You approve every guest before they come on camera.</small></span></label>{notice && <div className="liveNotice">{notice}</div>}<button className="liveStartButton" disabled={startingLive} onClick={startLive}><Radio size={19} /> {startingLive ? 'STARTING…' : 'START LIVE'}</button></div></div>}
     </section>
   );
 }
