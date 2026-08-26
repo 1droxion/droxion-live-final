@@ -12,15 +12,48 @@ export default function GlobalEnhancements() {
 
   useEffect(() => {
     let stopped = false;
+    let hasUser = false;
+    let busy = false;
+
+    const authListener = supabase.auth.onAuthStateChange((_event, session) => {
+      hasUser = Boolean(session?.user?.id);
+      if (!hasUser) setIncoming(null);
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!stopped) hasUser = Boolean(data?.session?.user?.id);
+    });
+
     async function poll() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || stopped) return;
-      const { data } = await supabase.rpc('droxion_incoming_direct_call');
-      if (!stopped) setIncoming(data?.call_id ? data : null);
+      if (stopped || busy || !hasUser || document.visibilityState === 'hidden') return;
+      if (document.querySelector('.liveRoomV4, .liveSetupOverlay')) return;
+      busy = true;
+      try {
+        const { data } = await supabase.rpc('droxion_incoming_direct_call');
+        if (!stopped) setIncoming(data?.call_id ? data : null);
+      } catch {
+      } finally {
+        busy = false;
+      }
     }
+
+    const wake = () => {
+      if (document.visibilityState !== 'hidden') poll();
+    };
+
     poll();
-    const timer = setInterval(poll, 1500);
-    return () => { stopped = true; clearInterval(timer); };
+    const timer = setInterval(poll, 8000);
+    window.addEventListener('focus', wake);
+    window.addEventListener('online', wake);
+    document.addEventListener('visibilitychange', wake);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener('focus', wake);
+      window.removeEventListener('online', wake);
+      document.removeEventListener('visibilitychange', wake);
+      authListener?.data?.subscription?.unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -35,7 +68,7 @@ export default function GlobalEnhancements() {
       }
     };
     check();
-    const timer = setInterval(check, 350);
+    const timer = setInterval(check, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -71,7 +104,7 @@ export default function GlobalEnhancements() {
     };
 
     attach();
-    const timer = setInterval(attach, 250);
+    const timer = setInterval(attach, 1200);
 
     return () => {
       clearInterval(timer);
