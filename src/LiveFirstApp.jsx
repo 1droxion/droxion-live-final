@@ -71,6 +71,47 @@ if (!supabase.auth.__droxionGetSessionPatched) {
   supabase.auth.__droxionGetSessionPatched = true;
 }
 
+// Chrome/Edge has intermittently completed the start-LIVE POST on the server
+// while the client stayed blocked waiting on the response body. The server-side
+// write is already authoritative at that point. For this one RPC only, confirm
+// the active session separately and hand a small deterministic JSON response to
+// the existing LIVE startup code. All other fetches keep their native behavior.
+if (typeof window !== 'undefined' && !window.__droxionLiveStartFetchPatched) {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input?.url || '');
+    const method = String(init?.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
+    const isLiveStart = method === 'POST' && /\/rest\/v1\/rpc\/droxion_start_live(?:\?|$)/.test(url);
+    if (!isLiveStart) return nativeFetch(input, init);
+
+    const response = await nativeFetch(input, init);
+    if (!response.ok) return response;
+
+    let confirmed = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        const { data, error } = await supabase.rpc('droxion_live_status');
+        if (!error && data?.is_live && data?.session_id) {
+          confirmed = data;
+          break;
+        }
+      } catch {}
+      await new Promise(resolve => window.setTimeout(resolve, 150 + attempt * 100));
+    }
+
+    if (!confirmed) return response;
+    const headers = new Headers(response.headers);
+    headers.set('Content-Type', 'application/json');
+    headers.set('Cache-Control', 'no-store');
+    return new Response(JSON.stringify(confirmed), {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
+  };
+  window.__droxionLiveStartFetchPatched = true;
+}
+
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
   const [user, setUser] = useState(null);
