@@ -42,43 +42,18 @@ async function logClientError(stage, error, context = {}) {
   } catch {}
 }
 
-async function requestLiveKitToken(session, sessionId, role) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6500);
-  try {
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${TOKEN_FUNCTION}`, {
-      method: 'POST',
-      headers: {
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID }),
-      cache: 'no-store',
-      signal: controller.signal
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(data?.error || `Could not authorize LIVE connection (${response.status}).`);
-    }
-    if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
-    return data;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function getToken(sessionId, role) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error('Sign in before joining LIVE.');
 
-  try {
-    return await requestLiveKitToken(session, sessionId, role);
-  } catch (firstError) {
-    await logClientError('token-first-attempt', firstError, { sessionId, role });
-    await wait(350);
-    return requestLiveKitToken(session, sessionId, role);
-  }
+  const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
+    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
+    headers: { Authorization: `Bearer ${session.access_token}` }
+  });
+
+  if (error) throw new Error(data?.error || error.message || 'Could not authorize LIVE connection.');
+  if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
+  return data;
 }
 
 function connectionKey(sessionId, role) {
