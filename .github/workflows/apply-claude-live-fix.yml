@@ -23,74 +23,39 @@ jobs:
         shell: bash
         run: |
           set -e
-          cat > /tmp/claude-live-fix.patch <<'PATCH'
-          diff --git a/src/LiveExperienceScale.jsx b/src/LiveExperienceScale.jsx
-          --- a/src/LiveExperienceScale.jsx
-          +++ b/src/LiveExperienceScale.jsx
-          @@ -33,7 +33,7 @@ function personAvatar(person, size = 42) {
-             return <div style={{ width: size, height: size, borderRadius: '50%', background: 'radial-gradient(circle at 50% 36%,rgba(226,232,240,.72) 0 14%,transparent 15%),radial-gradient(ellipse at 50% 86%,rgba(226,232,240,.55) 0 27%,transparent 28%),linear-gradient(135deg,#252538,#15151f)' }} />;
-           }
-           
-          -export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange }) {
-          +export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange, autoOpenGoLive = 0 }) {
-             const [isLive, setIsLive] = useState(false);
-             const [ownSessionId, setOwnSessionId] = useState('');
-             const [profiles, setProfiles] = useState([]);
-          @@ -101,6 +101,13 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoin
-             const roomOrientation = isHostRoom ? liveSetup.orientation : (activeRoom?.orientation || 'vertical');
-             const immersive = Boolean(sessionId);
-           
-          +  const autoOpenGoLiveHandled = useRef(0);
-          +  useEffect(() => {
-          +    if (!autoOpenGoLive || autoOpenGoLive === autoOpenGoLiveHandled.current) return;
-          +    autoOpenGoLiveHandled.current = autoOpenGoLive;
-          +    if (!isHostRoom) openGoLiveSetup();
-          +  }, [autoOpenGoLive, isHostRoom]);
-          +
-             useEffect(() => { onImmersiveChange?.(immersive); }, [immersive, onImmersiveChange]);
-             useEffect(() => { if (!roomStatus?.guest_id) setGuestMenuOpen(false); }, [roomStatus?.guest_id]);
-             useEffect(() => () => onImmersiveChange?.(false), [onImmersiveChange]);
-          diff --git a/src/LiveFirstApp.jsx b/src/LiveFirstApp.jsx
-          --- a/src/LiveFirstApp.jsx
-          +++ b/src/LiveFirstApp.jsx
-          @@ -28,6 +28,7 @@ const TABS = [
-           
-           export default function LiveFirstApp() {
-             const [tab, setTab] = useState('live');
-          +  const [goLiveSignal, setGoLiveSignal] = useState(0);
-             const [user, setUser] = useState(null);
-             const [coins, setCoins] = useState(0);
-             const [walletOpen, setWalletOpen] = useState(false);
-          @@ -140,7 +141,7 @@ export default function LiveFirstApp() {
-             setChatOpen(false);
-             if (nextTab === 'go-live') {
-               setTab('live');
-          -    window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
-          +    setGoLiveSignal(value => value + 1);
-               return;
-             }
-             setTab(nextTab);
-          @@ -148,7 +149,7 @@ export default function LiveFirstApp() {
-           
-             function startLiveFromFeed() {
-               setTab('live');
-          -    window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
-          +    setGoLiveSignal(value => value + 1);
-             }
-           
-             function watchCreatorLive(creatorId) {
-          @@ -156,7 +157,7 @@ export default function LiveFirstApp() {
-               window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
-             }
-           
-          -  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
-          +  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} autoOpenGoLive={goLiveSignal} /></>;
-             if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
-             if (tab === 'rankings') content = <Rankings />;
-             if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
-          PATCH
-          git apply --check /tmp/claude-live-fix.patch
-          git apply /tmp/claude-live-fix.patch
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/LiveFirstApp.jsx')
+          s = p.read_text()
+          s = s.replace("  const [tab, setTab] = useState('live');\n", "  const [tab, setTab] = useState('live');\n  const [goLiveSignal, setGoLiveSignal] = useState(0);\n", 1)
+          s = s.replace("      window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);", "      setGoLiveSignal(value => value + 1);", 1)
+          s = s.replace("    window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);", "    setGoLiveSignal(value => value + 1);", 1)
+          old = "  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;"
+          new = "  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} autoOpenGoLive={goLiveSignal} /></>;"
+          if old not in s:
+              raise SystemExit('LiveFirstApp content mount marker not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('src/LiveExperienceScale.jsx')
+          s = p.read_text()
+          old = "export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange }) {"
+          new = "export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange, autoOpenGoLive = 0 }) {"
+          if old not in s:
+              raise SystemExit('LiveExperienceScale signature marker not found')
+          s = s.replace(old, new, 1)
+          marker = "  const immersive = Boolean(sessionId);\n\n"
+          insert = "  const immersive = Boolean(sessionId);\n\n  const autoOpenGoLiveHandled = useRef(0);\n  useEffect(() => {\n    if (!autoOpenGoLive || autoOpenGoLive === autoOpenGoLiveHandled.current) return;\n    autoOpenGoLiveHandled.current = autoOpenGoLive;\n    if (!isHostRoom) openGoLiveSetup();\n  }, [autoOpenGoLive, isHostRoom]);\n\n"
+          if marker not in s:
+              raise SystemExit('LiveExperienceScale immersive marker not found')
+          s = s.replace(marker, insert, 1)
+          p.write_text(s)
+          PY
+
+          git diff --check
+          grep -q "autoOpenGoLive={goLiveSignal}" src/LiveFirstApp.jsx
+          grep -q "autoOpenGoLive = 0" src/LiveExperienceScale.jsx
 
       - name: Run LIVE reliability tests
         run: node --test tests/liveReliability.test.js
