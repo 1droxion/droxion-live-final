@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { supabase } from './supabaseClient';
 import './live-home-preview.css';
 
 function addOrientationBadge(card) {
@@ -27,7 +26,6 @@ export default function LiveHomePreviewEnhancer({ enabled = true }) {
   useEffect(() => {
     if (!enabled) return undefined;
     let touchStart = null;
-    let hostRecoveryTimer = null;
     const recentlyOpened = new WeakMap();
 
     const decorate = () => {
@@ -48,8 +46,8 @@ export default function LiveHomePreviewEnhancer({ enabled = true }) {
 
     const onTouchMove = event => {
       if (!touchStart?.card || !touchStart.card.isConnected) return;
-      // Do not let the Home pull-to-refresh gesture swallow taps on LIVE cards.
-      // We do not preventDefault, so normal vertical scrolling still works.
+      // Keep Home pull-to-refresh from swallowing taps on LIVE cards while
+      // preserving native vertical scrolling.
       event.stopPropagation();
     };
 
@@ -77,25 +75,6 @@ export default function LiveHomePreviewEnhancer({ enabled = true }) {
       event.stopPropagation();
     };
 
-    const recoverHostAfterStart = () => {
-      window.clearTimeout(hostRecoveryTimer);
-      hostRecoveryTimer = window.setTimeout(async () => {
-        // A successful start writes the LIVE session before the UI transitions.
-        // If an older/stale React state update leaves the setup sheet on screen,
-        // reload once. Startup hydration then restores the active host session.
-        if (!document.querySelector('.liveSetupOverlay')) return;
-        try {
-          const { data } = await supabase.rpc('droxion_live_status');
-          if (data?.is_live && data?.session_id) window.location.reload();
-        } catch {}
-      }, 2200);
-    };
-
-    const onStartLiveClick = event => {
-      if (!event.target?.closest?.('.liveStartButton')) return;
-      recoverHostAfterStart();
-    };
-
     decorate();
     const observer = new MutationObserver(decorate);
     observer.observe(document.body, { childList: true, subtree: true });
@@ -103,16 +82,13 @@ export default function LiveHomePreviewEnhancer({ enabled = true }) {
     document.addEventListener('touchmove', onTouchMove, { capture: true, passive: true });
     document.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
     document.addEventListener('click', onClickCapture, true);
-    document.addEventListener('click', onStartLiveClick, true);
 
     return () => {
-      window.clearTimeout(hostRecoveryTimer);
       observer.disconnect();
       document.removeEventListener('touchstart', onTouchStart, true);
       document.removeEventListener('touchmove', onTouchMove, true);
       document.removeEventListener('touchend', onTouchEnd, true);
       document.removeEventListener('click', onClickCapture, true);
-      document.removeEventListener('click', onStartLiveClick, true);
     };
   }, [enabled]);
 
