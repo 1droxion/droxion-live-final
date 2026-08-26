@@ -37,7 +37,7 @@ export default function LiveFirstApp() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
-  const [liveHomeVersion, setLiveHomeVersion] = useState(0);
+  const [, setLiveHomeVersion] = useState(0);
 
   async function refreshWallet(authUser = user) {
     if (!authUser?.id) { setCoins(0); return; }
@@ -86,6 +86,9 @@ export default function LiveFirstApp() {
       window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
         invalidateLiveFeedCache();
+        // Re-render the shell without changing the LIVE component identity.
+        // Changing a key here used to destroy an in-flight host/viewer room
+        // exactly when a live_started/live_ended event arrived.
         setLiveHomeVersion(version => version + 1);
       }, 120 + Math.floor(Math.random() * 280));
     };
@@ -137,7 +140,7 @@ export default function LiveFirstApp() {
     window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
   }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience key={liveHomeVersion} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
