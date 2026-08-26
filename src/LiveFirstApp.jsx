@@ -84,10 +84,15 @@ export default function LiveFirstApp() {
   const [chatOpen, setChatOpen] = useState(false);
   const [, setLiveHomeVersion] = useState(0);
 
-  async function refreshWallet(authUser = user) {
-    if (!authUser?.id) { setCoins(0); return; }
-    const { data } = await supabase.from('droxion_wallets').select('coin_balance').eq('user_id', authUser.id).maybeSingle();
-    setCoins(Number(data?.coin_balance || 0));
+  async function refreshWallet(authUser = user, knownBalance) {
+    const hasKnownBalance = Number.isFinite(knownBalance);
+    if (hasKnownBalance) setCoins(Number(knownBalance));
+    if (!authUser?.id) {
+      if (!hasKnownBalance) setCoins(0);
+      return;
+    }
+    const { data, error } = await supabase.from('droxion_wallets').select('coin_balance').eq('user_id', authUser.id).maybeSingle();
+    if (!error && data) setCoins(Number(data.coin_balance || 0));
   }
 
   useEffect(() => {
@@ -226,7 +231,7 @@ export default function LiveFirstApp() {
 
       {!immersiveLive && !chatOpen && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={active ? 'active' : ''}><span className="lfNavIcon"><Icon size={20} /></span><span>{item.label}</span></button>; })}</nav>}
 
-      {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={() => refreshWallet()} />}
+      {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={knownBalance => refreshWallet(user, knownBalance)} />}
       {user && <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} onUnreadChange={setUnreadNotifications} />}
     </main>
   );
