@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { canDecorateLiveRoom } from './livekit/reliabilityState';
 import './publish-ready.css';
 
 function formatDuration(ms) {
@@ -38,6 +39,12 @@ export default function PublishReadyEnhancer() {
     let contextBusy = false;
     let lastContextRefreshAt = 0;
     const hiddenComments = new Set();
+
+    function removeOrphanedLiveSafetyUi() {
+      document.querySelectorAll('.publishSafetyButton, .publishSafetyBackdrop').forEach(node => {
+        if (!node.closest('.liveRoomV4')) node.remove();
+      });
+    }
 
     function addDeleteAccount() {
       const menu = document.querySelector('.lpPage .lpMenu');
@@ -233,6 +240,7 @@ export default function PublishReadyEnhancer() {
     async function refreshLiveContext(force = false) {
       const room = document.querySelector('.liveRoomV4');
       if (!room) {
+        removeOrphanedLiveSafetyUi();
         timerStartedAt = null;
         lastContextRefreshAt = 0;
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
@@ -247,6 +255,12 @@ export default function PublishReadyEnhancer() {
       lastContextRefreshAt = now;
       try {
         const { data } = await supabase.rpc('droxion_current_live_context');
+        // React reuses the LIVE root section for Home. Never decorate a node
+        // that changed identity while the authoritative lookup was in flight.
+        if (!canDecorateLiveRoom(room)) {
+          removeOrphanedLiveSafetyUi();
+          return;
+        }
         if (!data?.active) return;
         timerStartedAt = data.started_at ? new Date(data.started_at).getTime() : Date.now();
         let badge = room.querySelector('.publishLiveTimer');
@@ -270,6 +284,7 @@ export default function PublishReadyEnhancer() {
     }
 
     function addLiveSafety(room) {
+      if (!canDecorateLiveRoom(room)) return;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'publishSafetyButton';
@@ -324,6 +339,7 @@ export default function PublishReadyEnhancer() {
     }
 
     const enhanceDom = () => {
+      removeOrphanedLiveSafetyUi();
       addDeleteAccount();
       addHomeSearch();
       addNativePaymentGuard();
@@ -346,6 +362,7 @@ export default function PublishReadyEnhancer() {
       observer.disconnect();
       clearInterval(poll);
       if (timerInterval) clearInterval(timerInterval);
+      removeOrphanedLiveSafetyUi();
     };
   }, []);
 

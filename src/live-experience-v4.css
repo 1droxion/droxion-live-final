@@ -1,1 +1,100 @@
 .liveRoomV4{position:fixed;inset:0;z-index:80;background:#000;padding:0;min-height:100dvh;overflow:hidden;color:#fff}.liveRoomV4 .liveStageV4{position:absolute;inset:0;width:100%;height:100dvh;min-height:0;background:#000;overflow:hidden}.liveRoomV4 .liveMainVideo{width:100%;height:100%;object-fit:contain;object-position:center;background:#000}.liveRoomV4.liveRoom-horizontal .liveMainVideo{object-fit:contain;background:#000}.liveLocalPreview.mirrored,.liveGuestSelfVideo.mirrored{transform:none}.liveMainVideo.beauty-off,.liveGuestVideo.beauty-off{filter:none}.liveMainVideo.beauty-soft,.liveGuestVideo.beauty-soft{filter:brightness(1.045) contrast(.97) saturate(1.03)}.liveMainVideo.beauty-clear,.liveGuestVideo.beauty-clear{filter:brightness(1.085) contrast(.94) saturate(1.04)}.liveTopV4{top:calc(env(safe-area-inset-top) + 10px);padding:6px 12px;background:linear-gradient(180deg,rgba(0,0,0,.64),rgba(0,0,0,.18),transparent);align-items:center;gap:8px}.liveTopV4 .liveBackButton{flex:0 0 auto;width:auto;min-width:58px;height:38px;padding:0 9px;border:1px solid rgba(255,255,255,.15);border-radius:999px;background:rgba(8,8,12,.44);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:flex;align-items:center;justify-content:center;gap:3px}.liveTopV4 .liveBackButton span{font-size:10px;font-weight:900}.liveTopV4 .liveIdentity{min-width:0;flex:1}.liveTopV4 .liveIdentityText strong{font-size:14px}.liveTopV4 .liveIdentityText small{max-width:132px}.liveFollowButton{border:1px solid rgba(255,255,255,.18);background:rgba(15,15,20,.62);backdrop-filter:blur(10px);color:#fff;border-radius:999px;height:34px;padding:0 10px;font-size:10px;font-weight:900}.liveFollowButton.following{background:rgba(124,58,237,.72);border-color:rgba(167,139,250,.4)}.liveViewerBadge{flex:0 0 auto;padding:0 8px;min-width:42px;height:34px;display:flex;align-items:center;justify-content:center;gap:4px;border-radius:999px;background:rgba(8,8,12,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.liveSwipeHint{position:absolute;top:calc(env(safe-area-inset-top) + 70px);left:50%;transform:translateX(-50%);z-index:7;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,.38);backdrop-filter:blur(8px);font-size:10px;color:rgba(255,255,255,.72);pointer-events:none;white-space:nowrap}.liveRoomV4 .liveBottomGradient{height:38%;background:linear-gradient(transparent,rgba(0,0,0,.48))}.liveChatV4{left:16px;right:76px;bottom:76px;max-height:140px;gap:6px;pointer-events:none}.liveChatV4 .liveChatLine{font-size:13px;padding:4px 7px;background:rgba(7,7,10,.2);border-radius:9px;backdrop-filter:blur(4px);text-shadow:0 1px 2px rgba(0,0,0,.7)}.liveChatV4 .liveGiftEvent{background:linear-gradient(90deg,rgba(124,58,237,.5),rgba(219,39,119,.22));border:1px solid rgba(255,255,255,.06)}.liveComposerV4{left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));grid-template-columns:1fr 42px 42px;gap:7px;z-index:12;padding:0;background:transparent!important;box-shadow:none!important}.liveComposerV4 input{height:42px;background:rgba(8,8,12,.25)!important;border:1px solid rgba(255,255,255,.16);font-size:14px;color:#fff;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);box-shadow:none!important}.liveComposerV4 input::placeholder{color:rgba(255,255,255,.72)}.liveComposerV4 button{width:42px;height:42px;border-radius:50%;background:rgba(15,15,20,.31)!important;border:1px solid rgba(255,255,255,.13);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);box-shadow:none!important}.liveComposerV4 .liveGiftButton{background:rgba(124,58,237,.35)!important}.liveFloatingJoin{position:absolute;right:12px;bottom:124px;z-index:10;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(12,12,17,.38);backdrop-filter:blur(10px);color:#fff;height:38px;padding:0 12px;display:flex;align-items:center;gap:7px;font-weight:900;font-size:11px;box-shadow:none}.liveFloatingJoin:disabled{opacity:.7}.liveHostControlsV4{position:absolute;right:12px;bottom:72px;z-index:11;display:flex;flex-direction:column;align-items:flex-end;gap:7px}.liveHostControlsV4 button{width:42px;height:42px;border:1px solid rgba(255,255,255,.15);border-radius:50%;display:grid;place-items:center;background:rgba(12,12,17,.38);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff}.liveHostControlsV4 button.beauty{width:auto;min-width:64px;padding:0 9px;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:5px}.liveHostControlsV4 button.beauty span{font-size:9px;font-weight:900}.liveHostControlsV4 button.beauty-soft{background:rgba(124,58,237,.58)}.liveHostControlsV4 button.beauty-clear{background:rgba(219,39,119,.58)}.liveHostControlsV4 button.end{background:rgba(185,28,28,.62)}.liveRoomV4 .liveGuestVideo{right:14px;top:calc(env(safe-area-inset-top) + 78px);width:min(29vw,136px);height:min(41vw,188px);object-fit:contain;background:#000;border-radius:20px;border:2px solid rgba(255,255,255,.88);z-index:8}.liveRoomV4.liveRoom-horizontal .liveGuestVideo{width:150px;height:100px}.liveNoticeV4{position:absolute;left:50%;right:auto;bottom:calc(64px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:15;width:max-content;max-width:calc(100% - 32px);margin:0;padding:9px 13px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(18,15,25,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);pointer-events:none;font-size:12px;text-align:center}.liveNoticeV4.liveToastSuccess{background:rgba(16,58,43,.78);color:#d1fae5}.liveOverlayCardV4{position:absolute;left:14px;right:14px;bottom:74px;z-index:20}.liveHostPanelV4{position:absolute;left:14px;right:14px;bottom:72px;z-index:14;max-height:34vh;overflow:auto;background:rgba(15,14,20,.9);backdrop-filter:blur(14px)}.liveViewerPanel.liveHostPanelV4:not(.liveRequestPanel){display:none!important}.liveRequestPanel.liveHostPanelV4{bottom:90px}.liveGiftDrawerBackdrop{position:fixed;inset:0;z-index:130;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}.liveGiftDrawer{width:min(560px,100%);padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:26px 26px 0 0;background:linear-gradient(180deg,#18131f,#0d0c11);border:1px solid rgba(255,255,255,.09)}.liveGiftDrawerHead{display:flex;align-items:center;justify-content:space-between}.liveGiftDrawerHead>div{display:flex;flex-direction:column;gap:4px}.liveGiftDrawerHead span{font-size:12px;color:#c4b5fd}.liveGiftDrawerHead button{width:40px;height:40px;border:0;border-radius:12px;background:#29232f;color:#fff}.liveGiftGridV4{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:14px}.liveGiftGridV4 button{min-height:98px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1d1823;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}.liveGiftGridV4 button>span{font-size:28px}.liveGiftGridV4 button strong{font-size:11px}.liveGiftGridV4 button small{font-size:9px;color:#aaa3b3}.liveBuyCoinsV4{width:100%;height:46px;margin-top:12px;border:0;border-radius:14px;background:#26202e;color:#d8ccff;font-weight:900}.liveRoomV4 .liveVideoLoading{z-index:3}.liveRoomV4 .liveTopOverlay,.liveRoomV4 .liveComposerOverlay,.liveRoomV4 .liveChatOverlay{max-width:700px;margin-left:auto;margin-right:auto}.liveRoomV4.liveRoom-horizontal .liveStageV4{display:grid;place-items:center}.liveRoomV4.liveRoom-horizontal .liveMainVideo{width:100%;height:100%;object-fit:contain}.liveRoomV4.liveRoom-horizontal:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at center,#17121d,#000 72%);z-index:-1}.liveOnlyHome{padding-top:14px}.liveOnlyHomeHead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 2px 6px}.liveOnlyHomeHead strong{display:flex;align-items:center;gap:6px;color:#ff9d9d;font-size:13px}.liveOnlyHomeHead span{color:#8f8b99;font-size:11px;text-align:right}.liveOnlyScroll{padding-top:12px}.liveOnlyHome .liveFeedCard>img{object-position:center}.liveZeroSimple{margin-top:12px}.liveNavGoTrigger{position:fixed!important;left:-9999px!important;top:-9999px!important;width:1px!important;height:1px!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important}.liveRoomV4.liveRoom-vertical:before{content:"";position:absolute;inset:0;background:#000;z-index:-1}@media(max-width:430px){.liveTopV4{gap:5px;padding-left:8px;padding-right:8px}.liveTopV4 .liveBackButton{min-width:54px;height:36px;padding:0 7px}.liveTopV4 .liveBadge{font-size:9px;padding:5px 6px}.liveTopV4 .liveIdentityText strong{font-size:12px}.liveTopV4 .liveIdentityText small{max-width:82px}.liveFollowButton{padding:0 7px}.liveViewerBadge{padding:0 7px;min-width:38px}.liveGiftGridV4{grid-template-columns:repeat(3,1fr)}.liveChatV4{right:64px}.liveFloatingJoin{right:10px}.liveHostControlsV4{right:10px;gap:6px}.liveHostControlsV4 button{width:40px;height:40px}.liveHostControlsV4 button.beauty{min-width:60px}.liveRoomV4 .liveGuestVideo{right:10px}.liveOnlyHomeHead{align-items:flex-start;flex-direction:column;gap:4px}.liveOnlyHomeHead span{text-align:left}.liveOnlyHome .liveFeedCard.vertical{width:min(82vw,330px);height:min(62dvh,520px)}}@media(max-height:650px){.liveHostControlsV4{bottom:64px;gap:5px}.liveHostControlsV4 button{width:38px;height:38px}.liveHostControlsV4 button.beauty{min-width:58px}.liveChatV4{max-height:100px}.liveSwipeHint{display:none}}.liveRoomV4 .liveMainVideo:not(.liveLocalPreview),.liveRoomV4 .liveGuestVideo:not(.liveGuestSelfVideo){transform:none!important}
+.liveAudioRecovery{position:absolute;z-index:18;top:72px;left:50%;transform:translateX(-50%);border:1px solid rgba(255,255,255,.32);background:rgba(8,8,12,.88);color:#fff;padding:9px 14px;border-radius:7px;font:700 13px/1 system-ui;box-shadow:0 8px 24px rgba(0,0,0,.28)}.liveAudioRecovery:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.livePullRefresh{height:0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:7px;color:#9ca3af;font-size:12px;transition:height .18s ease}.livePullRefresh.refreshing svg{animation:livePullSpin .8s linear infinite}@keyframes livePullSpin{to{transform:rotate(360deg)}}
+
+.liveHostControlsV4 button.leaveStage{width:auto;min-width:112px;padding:0 10px;border-radius:7px;display:flex;gap:6px;background:rgba(127,29,29,.72)}.liveHostControlsV4 button.leaveStage span{font-size:10px;font-weight:900}
+
+.liveRoomV4 .liveStage-split .liveMainVideo,
+.liveRoomV4 .liveStage-split .liveGuestVideo {
+  position: absolute;
+  margin: 0;
+  width: 100%;
+  height: 50%;
+  object-fit: cover;
+  object-position: center;
+  background: #000;
+  border: 0;
+  border-radius: 0;
+  transform: none;
+}
+.liveRoomV4 .liveStage-split .liveMainVideo { inset: 0 0 50%; }
+.liveRoomV4 .liveStage-split .liveGuestVideo { inset: 50% 0 0; z-index: 2; }
+.liveRoomV4 .liveStage-split .liveGuestVideo::before { content: none; }
+.liveStage-split::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  z-index: 3;
+  height: 1px;
+  background: rgba(255,255,255,.22);
+  pointer-events: none;
+}
+.liveGuestMenuButton {
+  position: absolute;
+  top: calc(50% + 12px);
+  right: 12px;
+  z-index: 19;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.24);
+  border-radius: 50%;
+  background: rgba(8,8,12,.58);
+  color: #fff;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.liveGuestMenu {
+  position: absolute;
+  top: calc(50% + 58px);
+  right: 12px;
+  z-index: 20;
+  width: min(230px, calc(100% - 24px));
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 8px;
+  background: rgba(13,13,18,.94);
+  color: #fff;
+  box-shadow: 0 16px 36px rgba(0,0,0,.36);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+@media (orientation: landscape) {
+  .liveRoomV4 .liveStage-split .liveMainVideo,
+  .liveRoomV4 .liveStage-split .liveGuestVideo {
+    top: 0;
+    width: 50%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .liveRoomV4 .liveStage-split .liveMainVideo { left: 0; right: 50%; }
+  .liveRoomV4 .liveStage-split .liveGuestVideo { left: 50%; right: 0; }
+  .liveStage-split::after { top: 0; bottom: 0; left: 50%; right: auto; width: 1px; height: auto; }
+  .liveGuestMenuButton { top: calc(env(safe-area-inset-top) + 68px); right: 12px; }
+  .liveGuestMenu { top: calc(env(safe-area-inset-top) + 114px); }
+}
+.liveGuestMenu strong { padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.liveGuestMenu button {
+  min-height: 42px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #29252f;
+  color: #fff;
+  font-weight: 800;
+}
+.liveGuestMenu button.danger { background: #5f1821; color: #fee2e2; }
+.liveGuestMenu button:disabled { opacity: .55; }
+.liveStage-split .liveTopV4,
+.liveStage-split .liveChatV4,
+.liveStage-split .liveComposerV4,
+.liveStage-split .liveHostControlsV4 { text-shadow: 0 1px 3px rgba(0,0,0,.88); }
+.liveRoomV4 .liveGuestVideoPending { visibility: hidden; pointer-events: none; }

@@ -1,8 +1,11 @@
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../supabaseClient';
+import { microphoneStateMatches, retryLiveReconnect } from './reliabilityState';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
+const AUDIO_BLOCKED_EVENT = 'droxion:live-audio-blocked';
+const AUDIO_RECOVERED_EVENT = 'droxion:live-audio-recovered';
 const DISCONNECT_GRACE_MS = 900;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
 const PUBLISH_RETRY_DELAYS_MS = [0, 180, 520];
@@ -18,8 +21,11 @@ const roomKeys = new WeakMap();
 const pendingDisconnects = new WeakMap();
 const publishedMediaByRoom = new WeakMap();
 const managedStateByRoom = new WeakMap();
-const recoveringRooms = new WeakSet();
+const recoveryPromisesByRoom = new WeakMap();
 const closingRooms = new WeakSet();
+const audioUnlocksByRoom = new WeakMap();
+const mediaPublishPromisesByRoom = new WeakMap();
+const microphoneSyncPromisesByRoom = new WeakMap();
 let latestPublisherRoom = null;
 let pendingPublisherVideoTrack = null;
 
@@ -59,7 +65,8 @@ function makeHandlers({
   onParticipantConnected,
   onParticipantDisconnected,
   onReconnecting,
-  onReconnected
+  onReconnected,
+  onAudioPlaybackChanged
 }) {
   return {
     onTrackSubscribed,
@@ -68,7 +75,8 @@ function makeHandlers({
     onParticipantConnected,
     onParticipantDisconnected,
     onReconnecting,
-    onReconnected
+    onReconnected,
+    onAudioPlaybackChanged
   };
 }
 
@@ -243,40 +251,105 @@ function announceCameraTrack(mediaStreamTrack) {
 }
 
 async function recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason }) {
-  if (!room || closingRooms.has(room) || recoveringRooms.has(room) || pendingDisconnects.has(room)) return;
-  recoveringRooms.add(room);
-  entry.handlers?.onReconnecting?.();
+  if (!room || closingRooms.has(room) || pendingDisconnects.has(room)) return;
+  const pendingRecovery = recoveryPromisesByRoom.get(room);
+  if (pendingRecovery) return pendingRecovery;
 
-  let lastError = null;
-  for (const delay of RECONNECT_DELAYS_MS) {
-    if (closingRooms.has(room) || pendingDisconnects.has(room)) {
-      recoveringRooms.delete(room);
-      return;
-    }
-
-    await wait(delay);
+  const recovery = (async () => {
+    entry.handlers?.onReconnecting?.();
     try {
-      const auth = await getToken(sessionId, role);
-      entry.auth = auth;
-      await room.connect(auth.url, auth.token, { autoSubscribe: true });
+      const result = await retryLiveReconnect({
+        delays: RECONNECT_DELAYS_MS,
+        wait,
+        shouldAbort: () => closingRooms.has(room) || pendingDisconnects.has(room),
+        attempt: async () => {
+          const auth = await getToken(sessionId, role);
+          entry.auth = auth;
+          await room.connect(auth.url, auth.token, { autoSubscribe: true });
 
-      const savedMedia = publishedMediaByRoom.get(room);
-      if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
-      forceRemoteSubscriptions(room, entry.handlers);
-
-      recoveringRooms.delete(room);
+          const savedMedia = publishedMediaByRoom.get(room);
+          if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
+          forceRemoteSubscriptions(room, entry.handlers);
+        },
+        onFailure: error => logClientError('reconnect', error, { sessionId, role }),
+        shouldStop: error => /ended|not active|not found/i.test(String(error?.message || ''))
+      });
+      if (result.aborted) return;
       entry.handlers?.onReconnected?.();
       return;
     } catch (error) {
-      lastError = error;
-      await logClientError('reconnect', error, { sessionId, role });
-      if (/ended|not active|not found/i.test(String(error?.message || ''))) break;
+      const failure = error || reason || new Error('LIVE reconnect failed.');
+      removeConnection(room);
+      entry.handlers?.onDisconnected?.(failure);
+      throw failure;
     }
+  })();
+
+  recoveryPromisesByRoom.set(room, recovery);
+  try {
+    return await recovery;
+  } finally {
+    if (recoveryPromisesByRoom.get(room) === recovery) recoveryPromisesByRoom.delete(room);
+  }
+}
+
+export async function recoverLiveKitAfterForeground(room, mediaStream) {
+  if (!room) return;
+  cancelPendingDisconnect(room);
+  closingRooms.delete(room);
+
+  const key = roomKeys.get(room);
+  const entry = key ? activeConnections.get(key) : null;
+  const connectionState = String(room.state || room.connectionState || '').toLowerCase();
+
+  if (connectionState === 'disconnected') {
+    if (!entry) throw new Error('LIVE connection is no longer available.');
+    await recoverUnexpectedDisconnect({
+      room,
+      sessionId: key.split(':')[0],
+      role: key.split(':').slice(1).join(':') || 'viewer',
+      entry,
+      reason: new Error('LIVE connection was interrupted while the app was backgrounded.')
+    });
+  } else {
+    forceRemoteSubscriptions(room, entry?.handlers);
+    setTimeout(() => forceRemoteSubscriptions(room, entry?.handlers), 150);
+    setTimeout(() => forceRemoteSubscriptions(room, entry?.handlers), 600);
   }
 
-  recoveringRooms.delete(room);
-  removeConnection(room);
-  entry.handlers?.onDisconnected?.(lastError || reason);
+  const state = managedStateByRoom.get(room);
+  if (!state || !mediaStream) return;
+
+  const repairTrack = async (localTrack, publication, replacementTrack, options, stage) => {
+    const mediaTrack = localTrack?.mediaStreamTrack;
+    if (!localTrack || (mediaTrack?.readyState === 'live' && (publication?.isMuted || !mediaTrack.muted))) return;
+    try {
+      if (replacementTrack?.readyState === 'live' && replacementTrack !== mediaTrack) {
+        await localTrack.replaceTrack?.(replacementTrack, true);
+      } else if (!publication?.isMuted) {
+        await localTrack.restartTrack?.(options);
+      }
+    } catch (error) {
+      await logClientError(stage, error, {
+        trackId: mediaTrack?.id || '',
+        readyState: mediaTrack?.readyState || '',
+        muted: Boolean(mediaTrack?.muted)
+      });
+      throw error;
+    }
+  };
+
+  const replacementVideo = mediaStream.getVideoTracks?.().find(track => track.readyState === 'live');
+  const replacementAudio = mediaStream.getAudioTracks?.().find(track => track.readyState === 'live');
+  await repairTrack(state.videoTrack, state.videoPublication, replacementVideo, state.videoCaptureOptions, 'foreground-camera-restart');
+  await repairTrack(state.audioTrack, state.audioPublication, replacementAudio, undefined, 'foreground-microphone-restart');
+
+  const localTracks = [state.videoTrack, state.audioTrack].filter(Boolean);
+  replaceStreamTracks(mediaStream, localTracks);
+  publishedMediaByRoom.set(room, mediaStream);
+  const videoTrack = state.videoTrack?.mediaStreamTrack;
+  if (videoTrack?.readyState === 'live') announceCameraTrack(videoTrack);
+  nudgeLocalPreview(mediaStream);
 }
 
 async function publishManagedTrackWithRetry(room, track, publishOptions = {}, stage = 'publish') {
@@ -311,6 +384,40 @@ async function publishManagedTrackWithRetry(room, track, publishOptions = {}, st
     : 'LIVE microphone could not publish.');
 }
 
+function getMicrophonePublications(room) {
+  const participant = room?.localParticipant;
+  if (!participant) return [];
+  const collections = [participant.audioTrackPublications, participant.trackPublications];
+  const publications = [];
+  for (const collection of collections) {
+    for (const publication of collection?.values?.() || []) {
+      const source = publication?.source || publication?.track?.source;
+      if (source === Track.Source.Microphone && !publications.includes(publication)) publications.push(publication);
+    }
+  }
+  const primary = participant.getTrackPublication?.(Track.Source.Microphone);
+  if (primary && !publications.includes(primary)) publications.push(primary);
+  return publications;
+}
+
+async function keepSingleMicrophonePublication(room, preferred) {
+  const participant = room?.localParticipant;
+  const publications = getMicrophonePublications(room);
+  const canonical = publications.includes(preferred) ? preferred : publications[0] || null;
+  for (const publication of publications) {
+    if (publication === canonical || !publication?.track) continue;
+    try {
+      await participant.unpublishTrack(publication.track, true);
+    } catch (error) {
+      await logClientError('cleanup-duplicate-microphone', error, {
+        trackSid: publication.trackSid || publication.sid || ''
+      });
+      throw new Error('Could not remove a duplicate LIVE microphone publication.');
+    }
+  }
+  return canonical;
+}
+
 export async function connectLiveKitRoom({
   sessionId,
   role = 'viewer',
@@ -320,7 +427,8 @@ export async function connectLiveKitRoom({
   onParticipantConnected,
   onParticipantDisconnected,
   onReconnecting,
-  onReconnected
+  onReconnected,
+  onAudioPlaybackChanged
 }) {
   const key = connectionKey(sessionId, role);
   const handlers = makeHandlers({
@@ -330,7 +438,8 @@ export async function connectLiveKitRoom({
     onParticipantConnected,
     onParticipantDisconnected,
     onReconnecting,
-    onReconnected
+    onReconnected,
+    onAudioPlaybackChanged
   });
   const existing = activeConnections.get(key);
 
@@ -388,10 +497,20 @@ export async function connectLiveKitRoom({
         entry.handlers?.onParticipantDisconnected?.(normalizedParticipant(participant));
       });
       room.on(RoomEvent.Reconnecting, (...args) => entry.handlers?.onReconnecting?.(...args));
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        entry.handlers?.onAudioPlaybackChanged?.(room.canPlaybackAudio !== false);
+      });
       room.on(RoomEvent.Reconnected, (...args) => {
-        forceRemoteSubscriptions(room, entry.handlers);
-        setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
-        entry.handlers?.onReconnected?.(...args);
+        (async () => {
+          const savedMedia = publishedMediaByRoom.get(room);
+          if (savedMedia?.active) await publishLocalMedia(room, savedMedia);
+          forceRemoteSubscriptions(room, entry.handlers);
+          setTimeout(() => forceRemoteSubscriptions(room, entry.handlers), 120);
+          entry.handlers?.onReconnected?.(...args);
+        })().catch(error => {
+          logClientError('reconnect-republish', error, { sessionId, role });
+          entry.handlers?.onDisconnected?.(error);
+        });
       });
 
       room.on(RoomEvent.Disconnected, reason => {
@@ -403,7 +522,6 @@ export async function connectLiveKitRoom({
         recoverUnexpectedDisconnect({ room, sessionId, role, entry, reason })
           .catch(error => {
             logClientError('reconnect:unhandled', error, { sessionId, role });
-            entry.handlers?.onDisconnected?.(reason);
           });
       });
 
@@ -431,23 +549,76 @@ export async function connectLiveKitRoom({
 
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
+  const pending = mediaPublishPromisesByRoom.get(room);
+  if (pending) return pending;
 
+  const publish = publishLocalMediaOnce(room, mediaStream)
+    .finally(() => mediaPublishPromisesByRoom.delete(room));
+  mediaPublishPromisesByRoom.set(room, publish);
+  return publish;
+}
+
+async function publishLocalMediaOnce(room, mediaStream) {
   cancelPendingDisconnect(room);
   closingRooms.delete(room);
   publishedMediaByRoom.set(room, mediaStream);
 
   const existingState = managedStateByRoom.get(room);
-  const existingVideoMedia = existingState?.videoTrack?.mediaStreamTrack;
-  if (existingVideoMedia?.readyState === 'live') {
+  const currentVideoPublication = room.localParticipant.getTrackPublication?.(Track.Source.Camera);
+  const currentVideoTrack = currentVideoPublication?.track;
+  const currentVideoMedia = currentVideoTrack?.mediaStreamTrack;
+  if (existingState && currentVideoMedia?.readyState === 'live') {
+    let currentAudioPublication = room.localParticipant.getTrackPublication?.(Track.Source.Microphone);
+    let currentAudioTrack = currentAudioPublication?.track;
+    const expectedAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+
+    existingState.videoPublication = currentVideoPublication;
+    existingState.videoTrack = currentVideoTrack;
+    if (expectedAudio && currentAudioTrack?.mediaStreamTrack?.readyState !== 'live') {
+      const audioCandidate = existingState.audioTrack?.mediaStreamTrack?.readyState === 'live'
+        ? existingState.audioTrack
+        : expectedAudio;
+      currentAudioPublication = await publishManagedTrackWithRetry(room, audioCandidate, {
+        source: Track.Source.Microphone
+      }, 'republish-microphone');
+      currentAudioTrack = currentAudioPublication?.track;
+      if (existingState.audioMuted) await currentAudioPublication.mute();
+    }
+
+    currentAudioPublication = await keepSingleMicrophonePublication(room, currentAudioPublication);
+    currentAudioTrack = currentAudioPublication?.track || null;
+    if (currentAudioPublication?.track) {
+      await (existingState.audioMuted ? currentAudioPublication.mute() : currentAudioPublication.unmute());
+      if (currentAudioTrack?.mediaStreamTrack) currentAudioTrack.mediaStreamTrack.enabled = !existingState.audioMuted;
+    }
+
+    existingState.audioPublication = currentAudioPublication || null;
+    existingState.audioTrack = currentAudioTrack || null;
     replaceStreamTracks(mediaStream, [existingState.videoTrack, existingState.audioTrack].filter(Boolean));
     latestPublisherRoom = room;
-    announceCameraTrack(existingVideoMedia);
+    announceCameraTrack(currentVideoMedia);
     nudgeLocalPreview(mediaStream);
     return [existingState.videoPublication, existingState.audioPublication].filter(Boolean);
   }
 
-  const browserVideo = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
-  const browserAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+  let browserVideo = mediaStream.getVideoTracks().find(track => track.readyState !== 'ended');
+  let browserAudio = mediaStream.getAudioTracks().find(track => track.readyState !== 'ended');
+  if (!browserVideo && existingState?.videoTrack && !existingState.videoPublication?.isMuted) {
+    try {
+      await existingState.videoTrack.restartTrack?.(existingState.videoCaptureOptions);
+      browserVideo = existingState.videoTrack.mediaStreamTrack;
+    } catch (error) {
+      await logClientError('republish-camera-restart', error, {});
+    }
+  }
+  if (!browserAudio && existingState?.audioTrack && !existingState.audioPublication?.isMuted) {
+    try {
+      await existingState.audioTrack.restartTrack?.();
+      browserAudio = existingState.audioTrack.mediaStreamTrack;
+    } catch (error) {
+      await logClientError('republish-microphone-restart', error, {});
+    }
+  }
   if (!browserVideo) throw new Error('LIVE camera track is missing.');
 
   const videoCaptureOptions = {
@@ -461,19 +632,23 @@ export async function publishLocalMedia(room, mediaStream) {
   };
 
   const state = {
-    videoTrack: null,
-    audioTrack: null,
+    videoTrack: existingState?.videoTrack || null,
+    audioTrack: existingState?.audioTrack || null,
     videoPublication: null,
     audioPublication: null,
+    videoMuted: Boolean(existingState?.videoMuted || existingState?.videoPublication?.isMuted),
+    audioMuted: Boolean(existingState?.audioMuted || existingState?.audioPublication?.isMuted),
     videoCaptureOptions,
     videoPublishOptions
   };
   managedStateByRoom.set(room, state);
 
   try {
-    state.videoPublication = await publishManagedTrackWithRetry(room, browserVideo, videoPublishOptions, 'publish-camera');
+    const videoCandidate = state.videoTrack?.mediaStreamTrack?.readyState === 'live' ? state.videoTrack : browserVideo;
+    state.videoPublication = await publishManagedTrackWithRetry(room, videoCandidate, videoPublishOptions, 'publish-camera');
     state.videoTrack = state.videoPublication?.track || null;
     if (!state.videoTrack?.mediaStreamTrack) throw new Error('LIVE camera publication is missing its track.');
+    if (state.videoMuted) await state.videoPublication.mute();
   } catch (error) {
     managedStateByRoom.delete(room);
     await logClientError('publish-camera:final', error, {
@@ -485,12 +660,17 @@ export async function publishLocalMedia(room, mediaStream) {
 
   if (browserAudio?.readyState === 'live') {
     try {
-      state.audioPublication = await publishManagedTrackWithRetry(room, browserAudio, {
+      const audioCandidate = state.audioTrack?.mediaStreamTrack?.readyState === 'live' ? state.audioTrack : browserAudio;
+      state.audioPublication = await publishManagedTrackWithRetry(room, audioCandidate, {
         source: Track.Source.Microphone
       }, 'publish-microphone');
       state.audioTrack = state.audioPublication?.track || null;
+      if (state.audioMuted) await state.audioPublication.mute();
+      state.audioPublication = await keepSingleMicrophonePublication(room, state.audioPublication);
+      state.audioTrack = state.audioPublication?.track || null;
     } catch (error) {
-      await logClientError('publish-microphone:ignored', error, {});
+      await logClientError('publish-microphone:final', error, {});
+      throw new Error('LIVE microphone could not republish.');
     }
   }
 
@@ -515,15 +695,61 @@ export async function publishLocalMedia(room, mediaStream) {
 
 export const publishHostMedia = publishLocalMedia;
 
+function dispatchAudioPlaybackEvent(type, error) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(type, {
+    detail: { message: String(error?.message || error || '') }
+  }));
+}
+
+export async function unlockRemoteAudio(room) {
+  if (!room) return false;
+  const pending = audioUnlocksByRoom.get(room);
+  if (pending) return pending;
+
+  const attempt = (async () => {
+    try {
+      await room.startAudio?.();
+      const elements = typeof document === 'undefined'
+        ? []
+        : Array.from(document.querySelectorAll('.liveRoomV4 audio')).filter(element => element.srcObject || element.src);
+      const playback = await Promise.allSettled(elements.map(element => element.play()));
+      const failure = playback.find(result => result.status === 'rejected');
+      if (room.canPlaybackAudio === false || failure) {
+        throw failure?.reason || new Error('Remote audio playback is blocked.');
+      }
+      dispatchAudioPlaybackEvent(AUDIO_RECOVERED_EVENT);
+      return true;
+    } catch (error) {
+      await logClientError('remote-audio-unlock', error, {});
+      dispatchAudioPlaybackEvent(AUDIO_BLOCKED_EVENT, error);
+      return false;
+    } finally {
+      audioUnlocksByRoom.delete(room);
+    }
+  })();
+
+  audioUnlocksByRoom.set(room, attempt);
+  return attempt;
+}
+
 export function attachRemoteTrack(track, element) {
   if (!track || !element) return;
   try { track.attach(element); } catch {}
   element.autoplay = true;
   element.playsInline = true;
   element.setAttribute('playsinline', '');
+  const isAudio = String(element.tagName || '').toLowerCase() === 'audio';
   const playback = element.play?.();
-  playback?.catch?.(() => {
-    setTimeout(() => element.play?.().catch?.(() => {}), 120);
+  playback?.then?.(() => {
+    if (isAudio) dispatchAudioPlaybackEvent(AUDIO_RECOVERED_EVENT);
+  }).catch?.(error => {
+    if (isAudio) dispatchAudioPlaybackEvent(AUDIO_BLOCKED_EVENT, error);
+    setTimeout(() => {
+      element.play?.()
+        .then?.(() => { if (isAudio) dispatchAudioPlaybackEvent(AUDIO_RECOVERED_EVENT); })
+        .catch?.(retryError => { if (isAudio) dispatchAudioPlaybackEvent(AUDIO_BLOCKED_EVENT, retryError); });
+    }, 120);
   });
 }
 
@@ -587,22 +813,76 @@ if (typeof window !== 'undefined') {
   };
 }
 
-export function setPublishedAudioMuted(room, muted) {
-  const state = room ? managedStateByRoom.get(room) : null;
-  const publication = state?.audioPublication;
-  if (!publication?.track) return;
-  Promise.resolve(muted ? publication.mute() : publication.unmute())
-    .catch(error => logClientError('toggle-microphone', error, { muted }));
+export async function setPublishedAudioMuted(room, muted, mediaStream) {
+  const savedMedia = mediaStream || (room ? publishedMediaByRoom.get(room) : null);
+  const browserTracks = savedMedia?.getAudioTracks?.().filter(track => track.readyState !== 'ended') || [];
+  if (muted) browserTracks.forEach(track => { track.enabled = false; });
+  if (!room) {
+    if (!muted) browserTracks.forEach(track => { track.enabled = true; });
+    return { muted: Boolean(muted), publicationCount: 0 };
+  }
+
+  const previous = microphoneSyncPromisesByRoom.get(room) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(async () => {
+    const pendingPublish = mediaPublishPromisesByRoom.get(room);
+    if (pendingPublish) await pendingPublish;
+    const state = managedStateByRoom.get(room);
+    if (state) state.audioMuted = Boolean(muted);
+
+    if (muted) {
+      const muteResults = await Promise.allSettled(getMicrophonePublications(room).map(publication => publication?.track ? publication.mute() : null));
+      for (const result of muteResults) {
+        if (result.status === 'rejected') await logClientError('mute-duplicate-microphone', result.reason, {});
+      }
+    }
+    let publication = await keepSingleMicrophonePublication(room, state?.audioPublication);
+    if (!publication?.track && browserTracks[0]?.readyState === 'live') {
+      publication = await publishManagedTrackWithRetry(room, browserTracks[0], {
+        source: Track.Source.Microphone
+      }, 'synchronize-microphone');
+      publication = await keepSingleMicrophonePublication(room, publication);
+    }
+
+    try {
+      if (!muted) browserTracks.forEach(track => { track.enabled = true; });
+      if (publication?.track) await (muted ? publication.mute() : publication.unmute());
+      if (muted) browserTracks.forEach(track => { track.enabled = false; });
+    } catch (error) {
+      await logClientError('toggle-microphone', error, { muted });
+      throw error;
+    }
+
+    const publications = getMicrophonePublications(room);
+    if (state) {
+      state.audioPublication = publication || null;
+      state.audioTrack = publication?.track || null;
+    }
+    if (!microphoneStateMatches({ browserTracks, publications, muted })) {
+      const error = new Error('LIVE microphone state did not synchronize.');
+      await logClientError('verify-microphone-state', error, {
+        muted,
+        browserEnabled: browserTracks.map(track => track.enabled),
+        publicationMuted: publications.map(item => item.isMuted),
+        publicationCount: publications.length
+      });
+      throw error;
+    }
+    return { muted: Boolean(muted), publicationCount: publications.length };
+  }).finally(() => {
+    if (microphoneSyncPromisesByRoom.get(room) === operation) microphoneSyncPromisesByRoom.delete(room);
+  });
+  microphoneSyncPromisesByRoom.set(room, operation);
+  return operation;
 }
 
-export function setPublishedVideoMuted(room, muted) {
+export async function setPublishedVideoMuted(room, muted) {
   const state = room ? managedStateByRoom.get(room) : null;
   const publication = state?.videoPublication;
   const savedMedia = room ? publishedMediaByRoom.get(room) : null;
+  if (state) state.videoMuted = muted;
   if (!state?.videoTrack || !publication?.track) return;
 
-  (async () => {
-    try {
+  try {
       cancelPendingDisconnect(room);
       closingRooms.delete(room);
 
@@ -628,14 +908,14 @@ export function setPublishedVideoMuted(room, muted) {
         nudgeLocalPreview(savedMedia);
       }
       announceCameraTrack(activeTrack);
-    } catch (error) {
-      await logClientError('toggle-camera', error, {
-        muted,
-        trackId: state.videoTrack?.mediaStreamTrack?.id || '',
-        readyState: state.videoTrack?.mediaStreamTrack?.readyState || ''
-      });
-    }
-  })();
+  } catch (error) {
+    await logClientError('toggle-camera', error, {
+      muted,
+      trackId: state.videoTrack?.mediaStreamTrack?.id || '',
+      readyState: state.videoTrack?.mediaStreamTrack?.readyState || ''
+    });
+    throw error;
+  }
 }
 
 export async function disconnectLiveKitRoom(room) {

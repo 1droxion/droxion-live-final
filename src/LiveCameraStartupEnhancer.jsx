@@ -72,7 +72,7 @@ function forceAttach(video, stream) {
 }
 
 const guestSplitCss = `
-.liveRoomV4 .liveStageV4:has(.liveGuestVideo) .liveMainVideo {
+.liveRoomV4 .liveStageV4.liveStage-split .liveMainVideo {
   position:absolute!important;
   left:0!important;
   right:0!important;
@@ -82,7 +82,7 @@ const guestSplitCss = `
   object-fit:cover!important;
   border-radius:0!important;
 }
-.liveRoomV4 .liveStageV4:has(.liveGuestVideo) .liveGuestVideo {
+.liveRoomV4 .liveStageV4.liveStage-split .liveGuestVideo {
   position:absolute!important;
   left:0!important;
   right:0!important;
@@ -97,18 +97,20 @@ const guestSplitCss = `
   border-radius:0!important;
   z-index:4!important;
 }
-.liveRoomV4.liveRoom-horizontal .liveStageV4:has(.liveGuestVideo) .liveMainVideo {
-  left:0!important;
-  top:0!important;
-  width:50%!important;
-  height:100%!important;
-}
-.liveRoomV4.liveRoom-horizontal .liveStageV4:has(.liveGuestVideo) .liveGuestVideo {
-  left:50%!important;
-  right:0!important;
-  top:0!important;
-  width:50%!important;
-  height:100%!important;
+@media (orientation: landscape) {
+  .liveRoomV4 .liveStageV4.liveStage-split .liveMainVideo {
+    left:0!important;
+    top:0!important;
+    width:50%!important;
+    height:100%!important;
+  }
+  .liveRoomV4 .liveStageV4.liveStage-split .liveGuestVideo {
+    left:50%!important;
+    right:0!important;
+    top:0!important;
+    width:50%!important;
+    height:100%!important;
+  }
 }
 `;
 

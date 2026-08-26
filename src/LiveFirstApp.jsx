@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
-import { supabase } from './supabaseClient';
+import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveExperience from './LiveExperienceScale';
 import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
@@ -37,6 +37,7 @@ export default function LiveFirstApp() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
+  const [liveHomeVersion, setLiveHomeVersion] = useState(0);
 
   async function refreshWallet(authUser = user) {
     if (!authUser?.id) { setCoins(0); return; }
@@ -77,6 +78,42 @@ export default function LiveFirstApp() {
     return () => { window.clearInterval(retry); events.forEach(eventName => document.removeEventListener(eventName, unlockLiveAudio)); };
   }, [immersiveLive]);
 
+  useEffect(() => {
+    if (!user?.id || tab !== 'live' || immersiveLive || chatOpen) return undefined;
+    let refreshTimer = null;
+
+    const refreshHome = () => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        invalidateLiveFeedCache();
+        setLiveHomeVersion(version => version + 1);
+      }, 120 + Math.floor(Math.random() * 280));
+    };
+
+    const lifecycle = supabase
+      .channel(`droxion-home-live-lifecycle:${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_started' }, refreshHome)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_ended' }, refreshHome)
+      .subscribe();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== 'hidden') refreshHome();
+    };
+    window.addEventListener('pageshow', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearTimeout(refreshTimer);
+      window.removeEventListener('pageshow', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      try { Promise.resolve(supabase.removeChannel(lifecycle)).catch(() => {}); } catch {}
+    };
+  }, [user?.id, tab, immersiveLive, chatOpen]);
+
   function chooseTab(nextTab) {
     setImmersiveLive(false);
     setSearchOpen(false);
@@ -100,7 +137,7 @@ export default function LiveFirstApp() {
     window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
   }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience key={liveHomeVersion} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
