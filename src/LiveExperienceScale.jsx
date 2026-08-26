@@ -33,7 +33,7 @@ function personAvatar(person, size = 42) {
   return <div style={{ width: size, height: size, borderRadius: '50%', background: 'radial-gradient(circle at 50% 36%,rgba(226,232,240,.72) 0 14%,transparent 15%),radial-gradient(ellipse at 50% 86%,rgba(226,232,240,.55) 0 27%,transparent 28%),linear-gradient(135deg,#252538,#15151f)' }} />;
 }
 
-export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange }) {
+export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange, autoOpenGoLive = 0 }) {
   const [isLive, setIsLive] = useState(false);
   const [ownSessionId, setOwnSessionId] = useState('');
   const [profiles, setProfiles] = useState([]);
@@ -100,6 +100,13 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsC
   const isHostRoom = Boolean(isLive && ownSessionId && sessionId === ownSessionId);
   const roomOrientation = isHostRoom ? liveSetup.orientation : (activeRoom?.orientation || 'vertical');
   const immersive = Boolean(sessionId);
+
+  const autoOpenGoLiveHandled = useRef(0);
+  useEffect(() => {
+    if (!autoOpenGoLive || autoOpenGoLive === autoOpenGoLiveHandled.current) return;
+    autoOpenGoLiveHandled.current = autoOpenGoLive;
+    if (!isHostRoom) openGoLiveSetup();
+  }, [autoOpenGoLive, isHostRoom]);
 
   useEffect(() => { onImmersiveChange?.(immersive); }, [immersive, onImmersiveChange]);
   useEffect(() => { if (!roomStatus?.guest_id) setGuestMenuOpen(false); }, [roomStatus?.guest_id]);

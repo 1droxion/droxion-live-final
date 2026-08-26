@@ -28,6 +28,7 @@ const TABS = [
 
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
+  const [goLiveSignal, setGoLiveSignal] = useState(0);
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -140,7 +141,7 @@ export default function LiveFirstApp() {
     setChatOpen(false);
     if (nextTab === 'go-live') {
       setTab('live');
-      window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
+      setGoLiveSignal(value => value + 1);
       return;
     }
     setTab(nextTab);
@@ -148,7 +149,7 @@ export default function LiveFirstApp() {
 
   function startLiveFromFeed() {
     setTab('live');
-    window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
+    setGoLiveSignal(value => value + 1);
   }
 
   function watchCreatorLive(creatorId) {
@@ -156,7 +157,7 @@ export default function LiveFirstApp() {
     window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
   }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} autoOpenGoLive={goLiveSignal} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
