@@ -2,8 +2,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
-import LiveJoinDeclineEnhancer from "./LiveJoinDeclineEnhancer.jsx";
-import LiveViewerRecoveryEnhancer from "./LiveViewerRecoveryEnhancer.jsx";
 import LiveGuestStageGuard from "./LiveGuestStageGuard.jsx";
 import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
@@ -22,8 +20,6 @@ export default function App() {
       <DroxionLivePushBridge />
       <GlobalEnhancements />
       <CreatorV11Enhancer />
-      <LiveJoinDeclineEnhancer />
-      <LiveViewerRecoveryEnhancer />
       <LiveGuestStageGuard />
       <ShortNativeActionsEnhancer />
       <Routes>
