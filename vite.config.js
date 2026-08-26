@@ -61,10 +61,34 @@ function liveStartReliabilityPatch() {
       return;
     }
 
-    const { data: authData } = await supabase.auth.getSession();
-    const authSession = authData?.session;
-    if (!authSession?.access_token) {
-      setNotice('Sign in before going LIVE.');
+    // Supabase auth can be temporarily locked by another auth callback. Reading
+    // the already-persisted browser session first keeps START LIVE independent
+    // of that lock. The bounded getSession fallback guarantees the UI can never
+    // sit on "Starting LIVE..." forever.
+    let accessToken = '';
+    try {
+      const projectRef = new URL(String(import.meta.env.VITE_SUPABASE_URL || '')).hostname.split('.')[0];
+      const rawSession = window.localStorage?.getItem('sb-' + projectRef + '-auth-token');
+      if (rawSession) {
+        const parsedSession = JSON.parse(rawSession);
+        const storedSession = parsedSession?.currentSession || parsedSession?.session || parsedSession;
+        const expiresAtMs = Number(storedSession?.expires_at || 0) * 1000;
+        if (storedSession?.access_token && (!expiresAtMs || expiresAtMs > Date.now() + 30000)) {
+          accessToken = storedSession.access_token;
+        }
+      }
+    } catch {}
+
+    if (!accessToken) {
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise(resolve => window.setTimeout(() => resolve({ data: { session: null }, error: new Error('session_timeout') }), 1500))
+      ]);
+      accessToken = sessionResult?.data?.session?.access_token || '';
+    }
+
+    if (!accessToken) {
+      setNotice('Could not read your login session. Please try LIVE again.');
       stopCamera();
       return;
     }
@@ -77,7 +101,7 @@ function liveStartReliabilityPatch() {
         method: 'POST',
         headers: {
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + authSession.access_token,
+          Authorization: 'Bearer ' + accessToken,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
