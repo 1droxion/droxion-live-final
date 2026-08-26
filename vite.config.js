@@ -2,8 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 // Production safety patch for LIVE startup. Keep the creator UI responsive even
-// when camera, database, or LiveKit work takes longer than expected, and recover
-// an initial LiveKit websocket connection that gets stuck instead of rejecting.
+// when camera, database, Supabase Edge Functions, or LiveKit take longer than
+// expected. Every network step gets a bounded recovery path instead of leaving
+// the creator on an endless "Starting LIVE" state.
 function liveStartReliabilityPatch() {
   const statusBefore = `      const [{ data: status }, { data: giftRows }] = await Promise.all([
         supabase.rpc('droxion_live_status'),
@@ -71,8 +72,62 @@ function liveStartReliabilityPatch() {
         : error?.message || 'Camera and microphone are required to go live.');
       return;`;
 
-  const rpcFailureBefore = `    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }`;
-  const rpcFailureAfter = `    if (error || !data?.is_live) { setSetupOpen(true); setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }`;
+  const startRpcBefore = `    const { data, error } = await supabase.rpc('droxion_start_live', {
+      p_title: liveSetup.title.trim() || 'Live on Droxion',
+      p_tags: tags,
+      p_orientation: liveSetup.orientation,
+      p_allow_guest_requests: liveSetup.allowGuests
+    });
+    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }`;
+
+  const startRpcAfter = `    const startPayload = {
+      p_title: liveSetup.title.trim() || 'Live on Droxion',
+      p_tags: tags,
+      p_orientation: liveSetup.orientation,
+      p_allow_guest_requests: liveSetup.allowGuests
+    };
+    const settleLiveStartRequest = (request, timeoutMs) => Promise.race([
+      Promise.resolve(request)
+        .then(value => ({ value }))
+        .catch(caught => ({ caught })),
+      new Promise(resolve => window.setTimeout(() => resolve({ timeout: true }), timeoutMs))
+    ]);
+
+    // A PostgREST request can reach Postgres successfully while the browser
+    // never receives/resolves the response. If that happens, verify the newly
+    // created LIVE through status, then retry idempotently if needed.
+    const firstStart = await settleLiveStartRequest(supabase.rpc('droxion_start_live', startPayload), 3500);
+    let data = firstStart?.value?.data || null;
+    let error = firstStart?.value?.error || firstStart?.caught || null;
+
+    if (firstStart?.timeout) {
+      setNotice('Confirming LIVE...');
+      const statusCheck = await settleLiveStartRequest(supabase.rpc('droxion_live_status'), 2500);
+      if (statusCheck?.value?.data?.is_live) {
+        data = statusCheck.value.data;
+        error = null;
+      } else {
+        setNotice('Retrying LIVE start...');
+        const retryStart = await settleLiveStartRequest(supabase.rpc('droxion_start_live', startPayload), 3500);
+        data = retryStart?.value?.data || null;
+        error = retryStart?.value?.error || retryStart?.caught || (retryStart?.timeout ? new Error('LIVE start timed out.') : null);
+      }
+    }
+
+    if (!data?.is_live) {
+      const finalStatus = await settleLiveStartRequest(supabase.rpc('droxion_live_status'), 2500);
+      if (finalStatus?.value?.data?.is_live) {
+        data = finalStatus.value.data;
+        error = null;
+      }
+    }
+
+    if (error || !data?.is_live) {
+      setSetupOpen(true);
+      setNotice(error?.message || 'Could not start LIVE. Please try again.');
+      stopCamera();
+      return;
+    }`;
 
   const startBefore = `    const room = {
       user_id: currentUserId,
@@ -133,9 +188,9 @@ function liveStartReliabilityPatch() {
     });
     loadLive().catch(() => {});
 
-    // Bootstrap transport in the background. If the initial LiveKit websocket
-    // stalls, connectLiveKitRoom now times out and removes the stale cache entry,
-    // allowing this loop to make a clean second attempt without freezing the UI.
+    // Bootstrap transport in the background. If the initial token request or
+    // LiveKit websocket stalls, connectLiveKitRoom now times out and removes the
+    // stale cache entry, allowing this loop to make a clean second attempt.
     (async () => {
       let lastBootstrapError = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -195,6 +250,39 @@ function liveStartReliabilityPatch() {
       setNotice('LIVE video connection failed. ' + (lastBootstrapError?.message || 'Please retry.'));
     })();`;
 
+  const tokenInvokeBefore = `  const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
+    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
+    headers: { Authorization: \`Bearer \${session.access_token}\` }
+  });
+
+  if (error) throw new Error(data?.error || error.message || 'Could not authorize LIVE connection.');
+  if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
+  return data;`;
+
+  const tokenInvokeAfter = `  const invokeToken = () => supabase.functions.invoke(TOKEN_FUNCTION, {
+    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
+    headers: { Authorization: \`Bearer \${session.access_token}\` }
+  });
+  const settleToken = request => Promise.race([
+    Promise.resolve(request)
+      .then(value => ({ value }))
+      .catch(caught => ({ caught })),
+    new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 6500))
+  ]);
+
+  let attempt = await settleToken(invokeToken());
+  if (attempt?.timeout) {
+    await logClientError('token-timeout', new Error('LIVE token request timed out.'), { sessionId, role });
+    attempt = await settleToken(invokeToken());
+  }
+
+  if (attempt?.timeout) throw new Error('LIVE video authorization timed out.');
+  if (attempt?.caught) throw attempt.caught;
+  const { data, error } = attempt?.value || {};
+  if (error) throw new Error(data?.error || error.message || 'Could not authorize LIVE connection.');
+  if (!data?.token || !data?.url) throw new Error(data?.error || 'LIVE connection token is missing.');
+  return data;`;
+
   const connectBefore = `      try {
         await room.connect(auth.url, auth.token, { autoSubscribe: true });
       } catch (error) {
@@ -226,7 +314,7 @@ function liveStartReliabilityPatch() {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
 
       if (normalizedId.endsWith("/src/LiveExperienceScale.jsx")) {
-        const required = [statusBefore, startEntryBefore, cameraFailureBefore, rpcFailureBefore, startBefore];
+        const required = [statusBefore, startEntryBefore, cameraFailureBefore, startRpcBefore, startBefore];
         if (required.some(target => !code.includes(target))) {
           throw new Error("Droxion LIVE startup patch target was not found.");
         }
@@ -234,16 +322,19 @@ function liveStartReliabilityPatch() {
           .replace(statusBefore, statusAfter)
           .replace(startEntryBefore, startEntryAfter)
           .replace(cameraFailureBefore, cameraFailureAfter)
-          .replace(rpcFailureBefore, rpcFailureAfter)
+          .replace(startRpcBefore, startRpcAfter)
           .replace(startBefore, startAfter);
         return { code: patched, map: null };
       }
 
       if (normalizedId.endsWith("/src/livekit/livekitRoom.js")) {
-        if (!code.includes(connectBefore)) {
-          throw new Error("Droxion LiveKit connect timeout patch target was not found.");
+        if (!code.includes(tokenInvokeBefore) || !code.includes(connectBefore)) {
+          throw new Error("Droxion LiveKit startup timeout patch target was not found.");
         }
-        return { code: code.replace(connectBefore, connectAfter), map: null };
+        const patched = code
+          .replace(tokenInvokeBefore, tokenInvokeAfter)
+          .replace(connectBefore, connectAfter);
+        return { code: patched, map: null };
       }
 
       return null;
