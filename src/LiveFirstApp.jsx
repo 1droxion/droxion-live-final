@@ -26,89 +26,6 @@ const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
-let cachedAuthSession = null;
-
-function usableSession(session) {
-  if (!session?.access_token) return false;
-  const expiresAt = Number(session.expires_at || 0);
-  return !expiresAt || expiresAt * 1000 > Date.now() + 30000;
-}
-
-function storedAuthSession() {
-  try {
-    const projectRef = new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0];
-    const raw = window.localStorage.getItem(`sb-${projectRef}-auth-token`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const session = parsed?.currentSession || parsed?.session || parsed;
-    return usableSession(session) ? session : null;
-  } catch {
-    return null;
-  }
-}
-
-function rememberAuthSession(session) {
-  cachedAuthSession = usableSession(session) ? session : null;
-}
-
-if (!supabase.auth.__droxionGetSessionPatched) {
-  const nativeGetSession = supabase.auth.getSession.bind(supabase.auth);
-  supabase.auth.getSession = async (...args) => {
-    if (usableSession(cachedAuthSession)) {
-      return { data: { session: cachedAuthSession }, error: null };
-    }
-
-    const stored = storedAuthSession();
-    if (stored) {
-      cachedAuthSession = stored;
-      return { data: { session: stored }, error: null };
-    }
-
-    const result = await nativeGetSession(...args);
-    if (usableSession(result?.data?.session)) cachedAuthSession = result.data.session;
-    return result;
-  };
-  supabase.auth.__droxionGetSessionPatched = true;
-}
-
-// LIVE startup must not depend on reading a response body after the server write.
-// Generate the session ID in the browser, send it to the v2 RPC, then return the
-// same ID to the existing startup code as soon as the server accepts the POST.
-if (typeof window !== 'undefined' && !window.__droxionLiveStartFetchPatched) {
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : String(input?.url || '');
-    const method = String(init?.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
-    const isLiveStart = method === 'POST' && /\/rest\/v1\/rpc\/droxion_start_live(?:\?|$)/.test(url);
-    if (!isLiveStart) return nativeFetch(input, init);
-
-    const sessionId = globalThis.crypto?.randomUUID?.();
-    if (!sessionId) return nativeFetch(input, init);
-
-    let payload = {};
-    try { payload = JSON.parse(String(init?.body || '{}')); } catch {}
-    const nextUrl = url.replace('/rpc/droxion_start_live', '/rpc/droxion_start_live_v2');
-    const response = await nativeFetch(nextUrl, {
-      ...init,
-      body: JSON.stringify({ ...payload, p_session_id: sessionId })
-    });
-    if (!response.ok) return response;
-
-    return new Response(JSON.stringify({
-      is_live: true,
-      session_id: sessionId,
-      title: payload.p_title || 'Live on Droxion',
-      tags: Array.isArray(payload.p_tags) ? payload.p_tags : [],
-      orientation: payload.p_orientation === 'horizontal' ? 'horizontal' : 'vertical',
-      allow_guest_requests: payload.p_allow_guest_requests !== false
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
-    });
-  };
-  window.__droxionLiveStartFetchPatched = true;
-}
-
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
   const [user, setUser] = useState(null);
@@ -148,7 +65,6 @@ export default function LiveFirstApp() {
     };
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      rememberAuthSession(session);
       if (!mounted) return;
       const authUser = session?.user || null;
       setUser(authUser);
