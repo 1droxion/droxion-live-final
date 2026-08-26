@@ -71,11 +71,9 @@ if (!supabase.auth.__droxionGetSessionPatched) {
   supabase.auth.__droxionGetSessionPatched = true;
 }
 
-// Chrome/Edge has intermittently completed the start-LIVE POST on the server
-// while the client stayed blocked waiting on the response body. The server-side
-// write is already authoritative at that point. For this one RPC only, confirm
-// the active session separately and hand a small deterministic JSON response to
-// the existing LIVE startup code. All other fetches keep their native behavior.
+// LIVE startup must not depend on reading a response body after the server write.
+// Generate the session ID in the browser, send it to the v2 RPC, then return the
+// same ID to the existing startup code as soon as the server accepts the POST.
 if (typeof window !== 'undefined' && !window.__droxionLiveStartFetchPatched) {
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
@@ -84,29 +82,28 @@ if (typeof window !== 'undefined' && !window.__droxionLiveStartFetchPatched) {
     const isLiveStart = method === 'POST' && /\/rest\/v1\/rpc\/droxion_start_live(?:\?|$)/.test(url);
     if (!isLiveStart) return nativeFetch(input, init);
 
-    const response = await nativeFetch(input, init);
+    const sessionId = globalThis.crypto?.randomUUID?.();
+    if (!sessionId) return nativeFetch(input, init);
+
+    let payload = {};
+    try { payload = JSON.parse(String(init?.body || '{}')); } catch {}
+    const nextUrl = url.replace('/rpc/droxion_start_live', '/rpc/droxion_start_live_v2');
+    const response = await nativeFetch(nextUrl, {
+      ...init,
+      body: JSON.stringify({ ...payload, p_session_id: sessionId })
+    });
     if (!response.ok) return response;
 
-    let confirmed = null;
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      try {
-        const { data, error } = await supabase.rpc('droxion_live_status');
-        if (!error && data?.is_live && data?.session_id) {
-          confirmed = data;
-          break;
-        }
-      } catch {}
-      await new Promise(resolve => window.setTimeout(resolve, 150 + attempt * 100));
-    }
-
-    if (!confirmed) return response;
-    const headers = new Headers(response.headers);
-    headers.set('Content-Type', 'application/json');
-    headers.set('Cache-Control', 'no-store');
-    return new Response(JSON.stringify(confirmed), {
-      status: response.status,
-      statusText: response.statusText,
-      headers
+    return new Response(JSON.stringify({
+      is_live: true,
+      session_id: sessionId,
+      title: payload.p_title || 'Live on Droxion',
+      tags: Array.isArray(payload.p_tags) ? payload.p_tags : [],
+      orientation: payload.p_orientation === 'horizontal' ? 'horizontal' : 'vertical',
+      allow_guest_requests: payload.p_allow_guest_requests !== false
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
     });
   };
   window.__droxionLiveStartFetchPatched = true;
