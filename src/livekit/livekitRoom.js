@@ -9,6 +9,8 @@ const AUDIO_RECOVERED_EVENT = 'droxion:live-audio-recovered';
 const DISCONNECT_GRACE_MS = 900;
 const RECONNECT_DELAYS_MS = [350, 900, 1800, 3200];
 const PUBLISH_RETRY_DELAYS_MS = [0, 180, 520];
+const PUBLISH_CONFIRMATION_POLL_MS = 200;
+const PUBLISH_CONFIRMATION_TIMEOUT_MS = 12_000;
 const CLIENT_INSTANCE_ID = (() => {
   try {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 24);
@@ -547,13 +549,59 @@ export async function connectLiveKitRoom({
   return { room, auth: entry.auth };
 }
 
+function localPublication(room, source) {
+  const participant = room?.localParticipant;
+  const direct = participant?.getTrackPublication?.(source);
+  if (direct?.track) return direct;
+  const publications = participant?.trackPublications?.values
+    ? Array.from(participant.trackPublications.values())
+    : [];
+  return publications.find(publication =>
+    publication?.track && (publication.source === source || publication.track?.source === source)
+  ) || null;
+}
+
+function confirmPublishedMedia(room, mediaStream) {
+  const needsAudio = Boolean(mediaStream?.getAudioTracks?.().some(track => track.readyState === 'live'));
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const check = () => {
+      const video = localPublication(room, Track.Source.Camera);
+      const audio = localPublication(room, Track.Source.Microphone);
+      if (video?.track && (!needsAudio || audio?.track)) {
+        resolve([video, audio].filter(Boolean));
+        return;
+      }
+      if (Date.now() - startedAt >= PUBLISH_CONFIRMATION_TIMEOUT_MS) {
+        reject(new Error('LIVE media publish confirmation timed out.'));
+        return;
+      }
+      setTimeout(check, PUBLISH_CONFIRMATION_POLL_MS);
+    };
+    setTimeout(check, PUBLISH_CONFIRMATION_POLL_MS);
+  });
+}
+
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
   const pending = mediaPublishPromisesByRoom.get(room);
   if (pending) return pending;
 
-  const publish = publishLocalMediaOnce(room, mediaStream)
-    .finally(() => mediaPublishPromisesByRoom.delete(room));
+  // LiveKit can occasionally publish both tracks while its publish promise
+  // remains pending. Confirm the authoritative local publications so the UI
+  // does not stay forever on "Connecting LIVE video...".
+  const publishAttempt = publishLocalMediaOnce(room, mediaStream);
+  const publish = Promise.race([
+    publishAttempt,
+    confirmPublishedMedia(room, mediaStream).then(publications => {
+      logClientError('publish-confirmed-after-promise-stall', new Error('LIVE tracks published before the SDK promise settled.'), {
+        publicationCount: publications.length
+      });
+      return publications;
+    })
+  ]).finally(() => {
+    if (mediaPublishPromisesByRoom.get(room) === publish) mediaPublishPromisesByRoom.delete(room);
+  });
   mediaPublishPromisesByRoom.set(room, publish);
   return publish;
 }
