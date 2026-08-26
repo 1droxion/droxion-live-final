@@ -1,10 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Production safety patch for LIVE startup. A stale/failed status request must
-// not erase a session that has just been created, and the setup modal must not
-// stay blocked on a LiveKit SDK promise after the server already has the host
-// camera and microphone tracks.
+// Production safety patch for LIVE startup. Keep the creator UI responsive even
+// when camera, database, or LiveKit work takes longer than expected, and recover
+// an initial LiveKit websocket connection that gets stuck instead of rejecting.
 function liveStartReliabilityPatch() {
   const statusBefore = `      const [{ data: status }, { data: giftRows }] = await Promise.all([
         supabase.rpc('droxion_live_status'),
@@ -46,6 +45,35 @@ function liveStartReliabilityPatch() {
       }
       setGifts(giftRows || []);`;
 
+  const startEntryBefore = `  async function startLive() {
+    if (!currentUserId) return setNotice('Sign in before going live.');
+    setNotice('');
+    let stream;
+    try { stream = await ensureCamera(liveSetup.orientation, 'user'); }`;
+
+  const startEntryAfter = `  async function startLive() {
+    if (!currentUserId) return setNotice('Sign in before going live.');
+    // Give immediate visual feedback. The setup sheet must never remain frozen
+    // while the browser or network is doing asynchronous LIVE startup work.
+    setSetupOpen(false);
+    setNotice('Starting LIVE...');
+    let stream;
+    try { stream = await ensureCamera(liveSetup.orientation, 'user'); }`;
+
+  const cameraFailureBefore = `      setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
+        ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion, then try again.'
+        : error?.message || 'Camera and microphone are required to go live.');
+      return;`;
+
+  const cameraFailureAfter = `      setSetupOpen(true);
+      setNotice(name === 'NotAllowedError' || name === 'PermissionDeniedError'
+        ? 'Camera or microphone permission is blocked. Allow Camera and Microphone for Droxion, then try again.'
+        : error?.message || 'Camera and microphone are required to go live.');
+      return;`;
+
+  const rpcFailureBefore = `    if (error || !data?.is_live) { setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }`;
+  const rpcFailureAfter = `    if (error || !data?.is_live) { setSetupOpen(true); setNotice(error?.message || 'Could not start LIVE.'); stopCamera(); return; }`;
+
   const startBefore = `    const room = {
       user_id: currentUserId,
       session_id: data.session_id,
@@ -72,7 +100,7 @@ function liveStartReliabilityPatch() {
 
   const startAfter = `    const startedSessionId = String(data.session_id || '').trim();
     if (!startedSessionId) {
-      setSetupOpen(false);
+      setSetupOpen(true);
       setNotice('LIVE session ID is missing. Please try again.');
       stopCamera();
       return;
@@ -88,9 +116,8 @@ function liveStartReliabilityPatch() {
       allow_guest_requests: data.allow_guest_requests !== false
     };
 
-    // Enter the host room immediately. The local camera is already available,
-    // so there is no reason to keep the creator trapped behind the setup modal
-    // while LiveKit finishes publication acknowledgements.
+    // Enter the local host stage before waiting for LiveKit. The creator should
+    // always see their own camera immediately after the LIVE session is created.
     setBeautyMode('off');
     setIsLive(true);
     setOwnSessionId(startedSessionId);
@@ -106,83 +133,120 @@ function liveStartReliabilityPatch() {
     });
     loadLive().catch(() => {});
 
-    // Bootstrap transport in the background. The normal React transport effect
-    // uses the same connection cache, so either path can finish first safely.
-    // Do not block the UI on publishLocalMedia: production diagnostics showed
-    // both camera and microphone present in LiveKit while this promise remained
-    // pending in the browser.
+    // Bootstrap transport in the background. If the initial LiveKit websocket
+    // stalls, connectLiveKitRoom now times out and removes the stale cache entry,
+    // allowing this loop to make a clean second attempt without freezing the UI.
     (async () => {
-      let bootstrapRoom = null;
-      try {
-        const connection = await connectLiveKitRoom({
-          sessionId: startedSessionId,
-          role: 'host',
-          onTrackSubscribed: (track, _publication, participant) => attachLiveKitTrack(track, participant),
-          onTrackUnsubscribed: (track, _publication, participant) => detachLiveKitTrack(track, participant),
-          onDisconnected: () => setNotice('LIVE connection disconnected. Reconnecting when available...'),
-          onReconnecting: () => setNotice('Reconnecting LIVE...'),
-          onReconnected: () => setNotice('You are live.'),
-          onAudioPlaybackChanged: canPlay => setAudioBlocked(!canPlay)
-        });
-        bootstrapRoom = connection.room;
-        lkRoomRef.current = bootstrapRoom;
-        lkRoleRef.current = 'host';
-
-        const publishing = publishLocalMedia(bootstrapRoom, stream);
-        const outcome = await Promise.race([
-          publishing.then(() => 'published'),
-          new Promise(resolve => window.setTimeout(() => resolve('timeout'), 5000))
-        ]);
-
-        if (outcome === 'published') setNotice('You are live.');
-        else {
-          // A timeout is not a failure. Keep the LIVE running and let the SDK
-          // finish in the background; server-side room probes verify the media.
-          setNotice('You are live.');
-          publishing.catch(async publishError => {
-            try {
-              await supabase.rpc('droxion_log_live_client_error', {
-                p_stage: 'start-live-publish-late-failure',
-                p_message: String(publishError?.message || publishError || 'LIVE publish failed'),
-                p_stack: String(publishError?.stack || ''),
-                p_context: { sessionId: startedSessionId, role: 'host' }
-              });
-            } catch {}
-            setNotice('LIVE video connection needs a retry.');
-          });
-        }
-      } catch (bootstrapError) {
+      let lastBootstrapError = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          await supabase.rpc('droxion_log_live_client_error', {
-            p_stage: 'start-live-bootstrap',
-            p_message: String(bootstrapError?.message || bootstrapError || 'LIVE bootstrap failed'),
-            p_stack: String(bootstrapError?.stack || ''),
-            p_context: { sessionId: startedSessionId, role: 'host' }
+          const connection = await connectLiveKitRoom({
+            sessionId: startedSessionId,
+            role: 'host',
+            onTrackSubscribed: (track, _publication, participant) => attachLiveKitTrack(track, participant),
+            onTrackUnsubscribed: (track, _publication, participant) => detachLiveKitTrack(track, participant),
+            onDisconnected: () => setNotice('LIVE connection disconnected. Reconnecting when available...'),
+            onReconnecting: () => setNotice('Reconnecting LIVE...'),
+            onReconnected: () => setNotice('You are live.'),
+            onAudioPlaybackChanged: canPlay => setAudioBlocked(!canPlay)
           });
-        } catch {}
-        setNotice('LIVE video connection failed. ' + (bootstrapError?.message || 'Please retry.'));
+          const bootstrapRoom = connection.room;
+          lkRoomRef.current = bootstrapRoom;
+          lkRoleRef.current = 'host';
+
+          const publishing = publishLocalMedia(bootstrapRoom, stream);
+          const outcome = await Promise.race([
+            publishing.then(() => 'published'),
+            new Promise(resolve => window.setTimeout(() => resolve('timeout'), 5000))
+          ]);
+
+          setNotice('You are live.');
+          if (outcome === 'timeout') {
+            publishing.catch(async publishError => {
+              try {
+                await supabase.rpc('droxion_log_live_client_error', {
+                  p_stage: 'start-live-publish-late-failure',
+                  p_message: String(publishError?.message || publishError || 'LIVE publish failed'),
+                  p_stack: String(publishError?.stack || ''),
+                  p_context: { sessionId: startedSessionId, role: 'host' }
+                });
+              } catch {}
+              setNotice('LIVE video connection needs a retry.');
+            });
+          }
+          return;
+        } catch (bootstrapError) {
+          lastBootstrapError = bootstrapError;
+          if (attempt === 0) {
+            setNotice('Retrying LIVE video...');
+            await new Promise(resolve => window.setTimeout(resolve, 700));
+          }
+        }
       }
+
+      try {
+        await supabase.rpc('droxion_log_live_client_error', {
+          p_stage: 'start-live-bootstrap',
+          p_message: String(lastBootstrapError?.message || lastBootstrapError || 'LIVE bootstrap failed'),
+          p_stack: String(lastBootstrapError?.stack || ''),
+          p_context: { sessionId: startedSessionId, role: 'host' }
+        });
+      } catch {}
+      setNotice('LIVE video connection failed. ' + (lastBootstrapError?.message || 'Please retry.'));
     })();`;
+
+  const connectBefore = `      try {
+        await room.connect(auth.url, auth.token, { autoSubscribe: true });
+      } catch (error) {
+        await logClientError('connect', error, { sessionId, role });
+        throw error;
+      }`;
+
+  const connectAfter = `      let initialConnectTimer = null;
+      try {
+        const connectAttempt = room.connect(auth.url, auth.token, { autoSubscribe: true });
+        await Promise.race([
+          connectAttempt,
+          new Promise((_, reject) => {
+            initialConnectTimer = setTimeout(() => reject(new Error('LIVE connection timed out.')), 8000);
+          })
+        ]);
+      } catch (error) {
+        try { room.disconnect(); } catch {}
+        await logClientError('connect', error, { sessionId, role });
+        throw error;
+      } finally {
+        if (initialConnectTimer) clearTimeout(initialConnectTimer);
+      }`;
 
   return {
     name: "droxion-live-start-reliability-patch",
     enforce: "pre",
     transform(code, id) {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
-      if (!normalizedId.endsWith("/src/LiveExperienceScale.jsx")) return null;
 
-      if (!code.includes(statusBefore)) {
-        throw new Error("Droxion LIVE status patch target was not found.");
+      if (normalizedId.endsWith("/src/LiveExperienceScale.jsx")) {
+        const required = [statusBefore, startEntryBefore, cameraFailureBefore, rpcFailureBefore, startBefore];
+        if (required.some(target => !code.includes(target))) {
+          throw new Error("Droxion LIVE startup patch target was not found.");
+        }
+        const patched = code
+          .replace(statusBefore, statusAfter)
+          .replace(startEntryBefore, startEntryAfter)
+          .replace(cameraFailureBefore, cameraFailureAfter)
+          .replace(rpcFailureBefore, rpcFailureAfter)
+          .replace(startBefore, startAfter);
+        return { code: patched, map: null };
       }
-      if (!code.includes(startBefore)) {
-        throw new Error("Droxion LIVE start patch target was not found.");
+
+      if (normalizedId.endsWith("/src/livekit/livekitRoom.js")) {
+        if (!code.includes(connectBefore)) {
+          throw new Error("Droxion LiveKit connect timeout patch target was not found.");
+        }
+        return { code: code.replace(connectBefore, connectAfter), map: null };
       }
 
-      const patched = code
-        .replace(statusBefore, statusAfter)
-        .replace(startBefore, startAfter);
-
-      return { code: patched, map: null };
+      return null;
     }
   };
 }
