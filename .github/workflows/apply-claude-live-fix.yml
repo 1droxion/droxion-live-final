@@ -1,0 +1,106 @@
+name: Apply Claude LIVE Fix
+
+on:
+  push:
+    branches: [temp-export-source-zip]
+    paths:
+      - '.github/workflows/apply-claude-live-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply isolated LIVE navigation handoff fix
+        shell: bash
+        run: |
+          set -e
+          cat > /tmp/claude-live-fix.patch <<'PATCH'
+          diff --git a/src/LiveExperienceScale.jsx b/src/LiveExperienceScale.jsx
+          --- a/src/LiveExperienceScale.jsx
+          +++ b/src/LiveExperienceScale.jsx
+          @@ -33,7 +33,7 @@ function personAvatar(person, size = 42) {
+             return <div style={{ width: size, height: size, borderRadius: '50%', background: 'radial-gradient(circle at 50% 36%,rgba(226,232,240,.72) 0 14%,transparent 15%),radial-gradient(ellipse at 50% 86%,rgba(226,232,240,.55) 0 27%,transparent 28%),linear-gradient(135deg,#252538,#15151f)' }} />;
+           }
+           
+          -export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange }) {
+          +export default function LiveExperienceScale({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange, autoOpenGoLive = 0 }) {
+             const [isLive, setIsLive] = useState(false);
+             const [ownSessionId, setOwnSessionId] = useState('');
+             const [profiles, setProfiles] = useState([]);
+          @@ -101,6 +101,13 @@ export default function LiveExperienceScale({ currentUserId, coins = 0, onCoin
+             const roomOrientation = isHostRoom ? liveSetup.orientation : (activeRoom?.orientation || 'vertical');
+             const immersive = Boolean(sessionId);
+           
+          +  const autoOpenGoLiveHandled = useRef(0);
+          +  useEffect(() => {
+          +    if (!autoOpenGoLive || autoOpenGoLive === autoOpenGoLiveHandled.current) return;
+          +    autoOpenGoLiveHandled.current = autoOpenGoLive;
+          +    if (!isHostRoom) openGoLiveSetup();
+          +  }, [autoOpenGoLive, isHostRoom]);
+          +
+             useEffect(() => { onImmersiveChange?.(immersive); }, [immersive, onImmersiveChange]);
+             useEffect(() => { if (!roomStatus?.guest_id) setGuestMenuOpen(false); }, [roomStatus?.guest_id]);
+             useEffect(() => () => onImmersiveChange?.(false), [onImmersiveChange]);
+          diff --git a/src/LiveFirstApp.jsx b/src/LiveFirstApp.jsx
+          --- a/src/LiveFirstApp.jsx
+          +++ b/src/LiveFirstApp.jsx
+          @@ -28,6 +28,7 @@ const TABS = [
+           
+           export default function LiveFirstApp() {
+             const [tab, setTab] = useState('live');
+          +  const [goLiveSignal, setGoLiveSignal] = useState(0);
+             const [user, setUser] = useState(null);
+             const [coins, setCoins] = useState(0);
+             const [walletOpen, setWalletOpen] = useState(false);
+          @@ -140,7 +141,7 @@ export default function LiveFirstApp() {
+             setChatOpen(false);
+             if (nextTab === 'go-live') {
+               setTab('live');
+          -    window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
+          +    setGoLiveSignal(value => value + 1);
+               return;
+             }
+             setTab(nextTab);
+          @@ -148,7 +149,7 @@ export default function LiveFirstApp() {
+           
+             function startLiveFromFeed() {
+               setTab('live');
+          -    window.setTimeout(() => document.querySelector('.liveGoButton')?.click(), 80);
+          +    setGoLiveSignal(value => value + 1);
+             }
+           
+             function watchCreatorLive(creatorId) {
+          @@ -156,7 +157,7 @@ export default function LiveFirstApp() {
+               window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
+             }
+           
+          -  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+          +  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} autoOpenGoLive={goLiveSignal} /></>;
+             if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
+             if (tab === 'rankings') content = <Rankings />;
+             if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
+          PATCH
+          git apply --check /tmp/claude-live-fix.patch
+          git apply /tmp/claude-live-fix.patch
+
+      - name: Run LIVE reliability tests
+        run: node --test tests/liveReliability.test.js
+
+      - name: Commit fix to main
+        shell: bash
+        run: |
+          set -e
+          git config user.name "1droxion"
+          git config user.email "patelsuchitbhai@gmail.com"
+          git add src/LiveExperienceScale.jsx src/LiveFirstApp.jsx
+          git commit -m "Apply Claude LIVE navigation handoff fix"
+          git push origin HEAD:main
