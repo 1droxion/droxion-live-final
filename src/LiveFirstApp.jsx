@@ -47,18 +47,36 @@ export default function LiveFirstApp() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(async ({ data }) => {
+
+    // Supabase auth callbacks must return immediately. Awaiting another Supabase
+    // call inside onAuthStateChange can hold the auth lock and stall the next RPC
+    // (including LIVE heartbeat / LiveKit token startup). Defer wallet reads until
+    // after the auth callback has fully returned.
+    const scheduleWalletRefresh = authUser => {
+      if (!authUser?.id) {
+        setCoins(0);
+        return;
+      }
+      window.setTimeout(() => {
+        if (!mounted) return;
+        refreshWallet(authUser).catch(() => {});
+      }, 0);
+    };
+
+    supabase.auth.getUser().then(({ data }) => {
       if (!mounted) return;
       const authUser = data?.user || null;
       setUser(authUser);
-      if (authUser) await refreshWallet(authUser);
+      scheduleWalletRefresh(authUser);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       const authUser = session?.user || null;
       setUser(authUser);
-      if (authUser) await refreshWallet(authUser); else setCoins(0);
+      scheduleWalletRefresh(authUser);
     });
+
     return () => { mounted = false; listener?.subscription?.unsubscribe(); };
   }, []);
 
