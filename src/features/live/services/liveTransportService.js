@@ -38,90 +38,25 @@ async function getLiveKitToken(sessionId, role) {
   return data;
 }
 
-function normalizedParticipant(participant) {
-  if (!participant) return participant;
-  let metadata = {};
-  try {
-    metadata = participant.metadata ? JSON.parse(participant.metadata) : {};
-  } catch {}
-  const rawIdentity = String(participant.identity || '');
-  const identity = String(metadata?.droxionUserId || rawIdentity.split('::')[0] || rawIdentity);
-  if (!identity || identity === rawIdentity) return participant;
-  return {
-    identity,
-    rawIdentity,
-    metadata: participant.metadata,
-    name: participant.name,
-    sid: participant.sid
-  };
-}
-
-function remotePublications(participant) {
-  if (!participant) return [];
-  if (participant.getTrackPublications) return participant.getTrackPublications() || [];
-  if (participant.trackPublications?.values) return Array.from(participant.trackPublications.values());
-  return [];
-}
-
-function replayRemoteTracks(room, callbacks = {}) {
-  if (!room) return;
-  const participants = room.remoteParticipants?.values
-    ? Array.from(room.remoteParticipants.values())
-    : [];
-
-  participants.forEach(participant => {
-    const appParticipant = normalizedParticipant(participant);
-    remotePublications(participant).forEach(publication => {
-      try {
-        if (typeof publication?.setSubscribed === 'function' && !publication.isSubscribed) {
-          publication.setSubscribed(true);
-        }
-      } catch {}
-      if (publication?.track) {
-        callbacks.onTrackSubscribed?.(publication.track, publication, appParticipant);
-      }
-    });
-  });
-}
-
 function bindRoomEvents(room, callbacks = {}) {
   room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-    callbacks.onTrackSubscribed?.(track, publication, normalizedParticipant(participant));
+    callbacks.onTrackSubscribed?.(track, publication, participant);
   });
   room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-    callbacks.onTrackUnsubscribed?.(track, publication, normalizedParticipant(participant));
+    callbacks.onTrackUnsubscribed?.(track, publication, participant);
   });
-  room.on(RoomEvent.TrackPublished, publication => {
-    try { publication?.setSubscribed?.(true); } catch {}
-    window.setTimeout(() => replayRemoteTracks(room, callbacks), 30);
-  });
-  room.on(RoomEvent.ParticipantConnected, participant => {
-    callbacks.onParticipantChange?.(normalizedParticipant(participant));
-    window.setTimeout(() => replayRemoteTracks(room, callbacks), 40);
-  });
-  room.on(RoomEvent.ParticipantDisconnected, participant => {
-    callbacks.onParticipantChange?.(normalizedParticipant(participant));
-  });
+  room.on(RoomEvent.ParticipantConnected, participant => callbacks.onParticipantChange?.(participant));
+  room.on(RoomEvent.ParticipantDisconnected, participant => callbacks.onParticipantChange?.(participant));
   room.on(RoomEvent.Reconnecting, () => callbacks.onReconnecting?.());
-  room.on(RoomEvent.Reconnected, () => {
-    replayRemoteTracks(room, callbacks);
-    window.setTimeout(() => replayRemoteTracks(room, callbacks), 150);
-    callbacks.onReconnected?.();
-  });
+  room.on(RoomEvent.Reconnected, () => callbacks.onReconnected?.());
   room.on(RoomEvent.Disconnected, reason => callbacks.onDisconnected?.(reason));
 }
 
-export async function connectLiveTransport({ sessionId, role = 'viewer', callbacks = {} }) {
+async function connectRoom(sessionId, role, callbacks) {
   const auth = await getLiveKitToken(sessionId, role);
-  const publishingRole = role === 'host' || role === 'guest';
   const room = new Room({
-    // Keep viewer transport deterministic. Adaptive streaming can pause a track
-    // based on element visibility/size, which is unnecessary for our first
-    // reliability path and caused difficult WebView behavior in the legacy UI.
-    adaptiveStream: publishingRole,
-    dynacast: publishingRole,
-    disconnectOnPageLeave: true,
-    stopLocalTrackOnUnpublish: false
+    adaptiveStream: role !== 'host',
+    dynacast: role === 'host'
   });
   bindRoomEvents(room, callbacks);
 
@@ -131,9 +66,6 @@ export async function connectLiveTransport({ sessionId, role = 'viewer', callbac
       CONNECT_TIMEOUT_MS,
       'LIVE video connection timed out.'
     );
-    replayRemoteTracks(room, callbacks);
-    window.setTimeout(() => replayRemoteTracks(room, callbacks), 150);
-    window.setTimeout(() => replayRemoteTracks(room, callbacks), 600);
     return room;
   } catch (error) {
     try { await room.disconnect(); } catch {}
@@ -142,7 +74,7 @@ export async function connectLiveTransport({ sessionId, role = 'viewer', callbac
 }
 
 export async function connectHostTransport({ sessionId, stream, callbacks = {} }) {
-  const room = await connectLiveTransport({ sessionId, role: 'host', callbacks });
+  const room = await connectRoom(sessionId, 'host', callbacks);
   const videoTrack = stream?.getVideoTracks?.().find(track => track.readyState === 'live');
   const audioTrack = stream?.getAudioTracks?.().find(track => track.readyState === 'live');
 
@@ -174,7 +106,7 @@ export async function connectHostTransport({ sessionId, stream, callbacks = {} }
 }
 
 export async function connectViewerTransport({ sessionId, callbacks = {} }) {
-  return connectLiveTransport({ sessionId, role: 'viewer', callbacks });
+  return connectRoom(sessionId, 'viewer', callbacks);
 }
 
 export async function disconnectTransport(room) {
