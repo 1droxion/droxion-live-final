@@ -37,10 +37,26 @@ export function useLiveBroadcast() {
   const runHeartbeat = useCallback(() => {
     clearHeartbeat();
     const beat = async () => {
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) return;
       try {
-        const status = await sendLiveHeartbeat();
-        if (sessionIdRef.current && status.sessionId && status.sessionId !== sessionIdRef.current) {
-          patchState({ phase: LIVE_PHASE.ERROR, error: 'LIVE session changed on the server.' });
+        const status = await sendLiveHeartbeat(sessionId);
+        if (!status.isLive) {
+          if (status.reason === 'session_mismatch') {
+            patchState({
+              phase: LIVE_PHASE.ERROR,
+              transportState: 'disconnected',
+              error: 'A newer LIVE session is active on another device.'
+            });
+            clearHeartbeat();
+            return;
+          }
+          patchState({
+            phase: LIVE_PHASE.ERROR,
+            transportState: 'disconnected',
+            error: 'This LIVE session is no longer active.'
+          });
+          clearHeartbeat();
         }
       } catch {
         // A transient heartbeat failure should not kill a healthy LiveKit room.
@@ -72,7 +88,7 @@ export function useLiveBroadcast() {
     operationRef.current = true;
     patchState({ phase: LIVE_PHASE.STARTING, error: '', transportState: 'disconnected' });
 
-    let sessionStarted = false;
+    let startedSessionId = '';
     try {
       let stream = streamRef.current;
       if (!isUsableMediaStream(stream)) {
@@ -82,16 +98,16 @@ export function useLiveBroadcast() {
       }
 
       const session = await createLiveSession({ title, orientation, allowGuestRequests });
-      sessionStarted = true;
-      sessionIdRef.current = session.sessionId;
+      startedSessionId = session.sessionId;
+      sessionIdRef.current = startedSessionId;
       patchState({
         phase: LIVE_PHASE.CONNECTING,
-        sessionId: session.sessionId,
+        sessionId: startedSessionId,
         transportState: 'connecting'
       });
 
       const transport = await connectHostTransport({
-        sessionId: session.sessionId,
+        sessionId: startedSessionId,
         stream,
         callbacks: {
           onParticipantChange: () => {
@@ -116,8 +132,8 @@ export function useLiveBroadcast() {
       });
       runHeartbeat();
     } catch (error) {
-      if (sessionStarted) {
-        try { await endLiveSession(); } catch {}
+      if (startedSessionId) {
+        try { await endLiveSession(startedSessionId); } catch {}
       }
       if (roomRef.current) await disconnectTransport(roomRef.current);
       roomRef.current = null;
@@ -143,11 +159,12 @@ export function useLiveBroadcast() {
     roomRef.current = null;
     const stream = streamRef.current;
     streamRef.current = null;
+    const sessionId = sessionIdRef.current;
     sessionIdRef.current = '';
 
     try {
       await disconnectTransport(room);
-      await endLiveSession();
+      if (sessionId) await endLiveSession(sessionId);
     } catch (error) {
       patchState({ error: error?.message || 'LIVE ended locally but server cleanup failed.' });
     } finally {
@@ -175,13 +192,13 @@ export function useLiveBroadcast() {
       clearHeartbeat();
       const room = roomRef.current;
       const stream = streamRef.current;
-      const hadSession = Boolean(sessionIdRef.current);
+      const sessionId = sessionIdRef.current;
       roomRef.current = null;
       streamRef.current = null;
       sessionIdRef.current = '';
       disconnectTransport(room);
       stopMediaStream(stream);
-      if (hadSession) endLiveSession().catch(() => {});
+      if (sessionId) endLiveSession(sessionId).catch(() => {});
     };
   }, [clearHeartbeat]);
 
