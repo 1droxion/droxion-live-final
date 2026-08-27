@@ -28,7 +28,7 @@ const TABS = [
 
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
-  const [goLiveSignal] = useState(0);
+  const [goLiveSignal, setGoLiveSignal] = useState(0);
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -140,17 +140,16 @@ export default function LiveFirstApp() {
     setNotificationsOpen(false);
     setChatOpen(false);
     if (nextTab === 'go-live') {
-      // The isolated V2 host flow is the proven camera + microphone publisher.
-      // Keep the navigation on the production origin so the existing Supabase
-      // session is preserved, and do not invoke the legacy Home start path.
-      window.location.assign('/live-v2');
+      setTab('live');
+      setGoLiveSignal(value => value + 1);
       return;
     }
     setTab(nextTab);
   }
 
   function startLiveFromFeed() {
-    window.location.assign('/live-v2');
+    setTab('live');
+    setGoLiveSignal(value => value + 1);
   }
 
   function watchCreatorLive(creatorId) {
