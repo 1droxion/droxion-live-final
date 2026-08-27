@@ -4,6 +4,7 @@ import OneSignal from '@onesignal/capacitor-plugin';
 import { supabase } from './supabaseClient';
 
 const ONESIGNAL_APP_ID = 'd04a1adc-eb95-486a-994a-993e41e0c178';
+const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
 
 let initPromise = null;
 
@@ -15,6 +16,15 @@ function ensureOneSignal() {
     });
   }
   return initPromise;
+}
+
+function readLivePushData(event) {
+  const notification = event?.notification || event?.result?.notification || {};
+  const data = notification.additionalData || notification.additional_data || notification.customData || {};
+  const sessionId = String(data.session_id || data.sessionId || '').trim();
+  const creatorId = String(data.creator_id || data.creatorId || '').trim();
+  if (!sessionId) return null;
+  return { type: 'creator_live', sessionId, creatorId };
 }
 
 export default function DroxionPushNotifications() {
@@ -57,6 +67,36 @@ export default function DroxionPushNotifications() {
     return () => {
       alive = false;
       listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform?.()) return undefined;
+    let handler = null;
+
+    (async () => {
+      try {
+        await ensureOneSignal();
+        handler = event => {
+          const payload = readLivePushData(event);
+          if (!payload) return;
+          try { window.localStorage.setItem(PENDING_LIVE_PUSH_KEY, JSON.stringify(payload)); } catch {}
+          try { window.dispatchEvent(new CustomEvent('droxion:live-push-open', { detail: payload })); } catch {}
+          // OneSignal already foregrounds/opens the native app on tap. Keep the
+          // user inside Droxion Home instead of launching an external browser.
+          if (window.location.pathname !== '/') {
+            try { window.history.replaceState({}, '', '/'); } catch {}
+          }
+        };
+        OneSignal.Notifications.addEventListener('click', handler);
+      } catch (error) {
+        console.warn('Could not register LIVE notification click handler', error);
+      }
+    })();
+
+    return () => {
+      if (!handler) return;
+      try { OneSignal.Notifications.removeEventListener('click', handler); } catch {}
     };
   }, []);
 
