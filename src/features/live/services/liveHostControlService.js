@@ -12,17 +12,34 @@ function getPublication(room, source) {
   ) || null;
 }
 
+function mediaTrackOf(localTrack) {
+  return localTrack?.mediaStreamTrack || localTrack || null;
+}
+
 async function setPublicationMuted(room, source, muted) {
   const publication = getPublication(room, source);
   const localTrack = publication?.track;
-  if (!localTrack) {
+  const mediaTrack = mediaTrackOf(localTrack);
+
+  if (!localTrack || !mediaTrack) {
     throw new Error(source === Track.Source.Microphone
       ? 'LIVE microphone control is unavailable.'
       : 'LIVE camera control is unavailable.');
   }
 
-  if (muted) await localTrack.mute?.();
-  else await localTrack.unmute?.();
+  // Keep this operation scoped to the exact already-published LocalTrack.
+  // We do not reconnect, republish, restart the room, or replace the session.
+  if (muted) {
+    try { mediaTrack.enabled = false; } catch {}
+    if (typeof localTrack.mute === 'function') await Promise.resolve(localTrack.mute());
+  } else {
+    try { mediaTrack.enabled = true; } catch {}
+    if (typeof localTrack.unmute === 'function') await Promise.resolve(localTrack.unmute());
+    try {
+      const activeTrack = mediaTrackOf(localTrack);
+      if (activeTrack?.readyState === 'live') activeTrack.enabled = true;
+    } catch {}
+  }
 
   return Boolean(publication.isMuted ?? localTrack.isMuted ?? muted);
 }
