@@ -95,6 +95,7 @@ workflows:
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
         IOS_MARKETING_VERSION: "1.2"
+        IOS_BUILD_NUMBER_BASE: "120000"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
         CM_CLONE_DEPTH: "1"
@@ -135,9 +136,6 @@ workflows:
         script: |
           set -e
 
-          # @capacitor/assets 3.0.5 uses sharp 0.32.6, whose legacy installer
-          # downloads libvips from GitHub. Prime Sharp's npm cache with retries
-          # so a transient network reset does not fail the whole iOS build.
           LIBVIPS_CACHE="$HOME/.npm/_libvips"
           LIBVIPS_FILE="$LIBVIPS_CACHE/libvips-8.14.5-darwin-arm64v8.tar.br"
           LIBVIPS_URL="https://github.com/lovell/sharp-libvips/releases/download/v8.14.5/libvips-8.14.5-darwin-arm64v8.tar.br"
@@ -208,10 +206,12 @@ workflows:
         script: |
           set -e
           cd "$IOS_PROJECT_PATH"
+          IOS_BUILD_NUMBER=$((IOS_BUILD_NUMBER_BASE + BUILD_NUMBER))
           agvtool new-marketing-version "$IOS_MARKETING_VERSION"
-          agvtool new-version -all "$BUILD_NUMBER"
+          agvtool new-version -all "$IOS_BUILD_NUMBER"
           echo "Droxion iOS marketing version: $IOS_MARKETING_VERSION"
-          echo "Droxion iOS build number: $BUILD_NUMBER"
+          echo "Droxion iOS build number: $IOS_BUILD_NUMBER"
+          test "$IOS_BUILD_NUMBER" -gt 63
 
       - name: Build signed IPA
         script: |
