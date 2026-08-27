@@ -19,6 +19,8 @@ import './real-home.css';
 import './live-first-app.css';
 import './product-shell.css';
 
+const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
+
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'feed', label: 'Feed', icon: Play },
@@ -80,6 +82,31 @@ export default function LiveFirstApp() {
     const retry = window.setInterval(unlockLiveAudio, 1200);
     return () => { window.clearInterval(retry); events.forEach(eventName => document.removeEventListener(eventName, unlockLiveAudio)); };
   }, [immersiveLive]);
+
+  useEffect(() => {
+    const openLiveHome = event => {
+      setHostStudioOpen(false);
+      setImmersiveLive(false);
+      setSearchOpen(false);
+      setNotificationsOpen(false);
+      setChatOpen(false);
+      setTab('live');
+      invalidateLiveFeedCache();
+      setLiveHomeVersion(version => version + 1);
+      try { window.localStorage.removeItem(PENDING_LIVE_PUSH_KEY); } catch {}
+    };
+
+    window.addEventListener('droxion:live-push-open', openLiveHome);
+
+    // Cold-start fallback: the OneSignal handler stores the payload before the
+    // main app finishes mounting. Consuming it here guarantees a fresh LIVE Home.
+    try {
+      const pending = window.localStorage.getItem(PENDING_LIVE_PUSH_KEY);
+      if (pending) window.setTimeout(openLiveHome, 0);
+    } catch {}
+
+    return () => window.removeEventListener('droxion:live-push-open', openLiveHome);
+  }, []);
 
   function openGoLiveInsideHome() {
     setTab('live');
