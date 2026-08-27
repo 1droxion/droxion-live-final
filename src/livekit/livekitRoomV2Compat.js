@@ -1,4 +1,4 @@
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent } from 'livekit-client';
 import { supabase } from '../supabaseClient';
 import {
   attachRemoteTrack,
@@ -8,7 +8,7 @@ import {
   setPublishedAudioMuted,
   setPublishedVideoMuted,
   unlockRemoteAudio
-} from './livekitRoom';
+} from './livekitRoomLegacy';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CONNECT_TIMEOUT_MS = 10000;
@@ -276,5 +276,3 @@ export {
   setPublishedVideoMuted,
   unlockRemoteAudio
 };
-
-export { Track };
