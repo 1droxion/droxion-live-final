@@ -7,11 +7,13 @@ import LiveCameraStartupEnhancer from "./LiveCameraStartupEnhancer.jsx";
 import "./index.css";
 import "./responsive-overrides.css";
 
+const isLiveV2Path = window.location.pathname.startsWith('/live-v2');
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <ShortFeedPlaybackEnhancer />
-      <LiveCameraStartupEnhancer />
+      {!isLiveV2Path && <ShortFeedPlaybackEnhancer />}
+      {!isLiveV2Path && <LiveCameraStartupEnhancer />}
       <App />
     </BrowserRouter>
   </React.StrictMode>
