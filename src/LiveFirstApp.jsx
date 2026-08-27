@@ -28,7 +28,7 @@ const TABS = [
 
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
-  const [goLiveSignal] = useState(0);
+  const [goLiveSignal, setGoLiveSignal] = useState(0);
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -134,23 +134,31 @@ export default function LiveFirstApp() {
     };
   }, [user?.id, tab, immersiveLive, chatOpen]);
 
-  function chooseTab(nextTab) {
+  function openGoLiveInsideHome() {
+    setTab('live');
     setImmersiveLive(false);
     setSearchOpen(false);
     setNotificationsOpen(false);
     setChatOpen(false);
+    // LiveExperience keeps the existing Droxion setup/host UI. Its transport
+    // resolves through livekitRoom.js, which now points directly at V2.
+    setGoLiveSignal(value => value + 1);
+  }
+
+  function chooseTab(nextTab) {
     if (nextTab === 'go-live') {
-      // Route LIVE creation through the isolated V2 host page. This preserves
-      // the proven camera + LiveKit publishing lifecycle instead of re-entering
-      // the legacy Home start state machine.
-      window.location.assign('/live-v2');
+      openGoLiveInsideHome();
       return;
     }
+    setImmersiveLive(false);
+    setSearchOpen(false);
+    setNotificationsOpen(false);
+    setChatOpen(false);
     setTab(nextTab);
   }
 
   function startLiveFromFeed() {
-    window.location.assign('/live-v2');
+    openGoLiveInsideHome();
   }
 
   function watchCreatorLive(creatorId) {
