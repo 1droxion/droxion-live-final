@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Radio, RefreshCw, Users } from 'lucide-react';
+import { ArrowLeft, Gift, Radio, RefreshCw, Send, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { supabase } from '../../../supabaseClient';
+import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { attachRemoteTrack, detachRemoteTrack, unlockRemoteAudio } from '../../../livekit/livekitRoom';
 import { connectViewerTransport, disconnectTransport } from '../services/liveTransportService';
 import '../styles/production-live-browser.css';
@@ -13,7 +13,24 @@ function safeRpc(name, args) {
   return Promise.resolve(supabase.rpc(name, args));
 }
 
-export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange }) {
+function dedupeById(rows, limit = 120) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = String(row?.id ?? `${row?.created_at || ''}:${row?.body || row?.gift_name || ''}`);
+    map.set(key, row);
+  }
+  return Array.from(map.values())
+    .sort((a, b) => String(a?.created_at || '').localeCompare(String(b?.created_at || '')))
+    .slice(-limit);
+}
+
+export default function ProductionLiveBrowser({
+  currentUserId,
+  coins = 0,
+  onCoinsChanged,
+  onOpenWallet,
+  onImmersiveChange
+}) {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,12 +40,22 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
   const [notice, setNotice] = useState('');
   const [viewerCount, setViewerCount] = useState(0);
 
+  // Viewer interaction only. These states do not participate in LiveKit.
+  const [messages, setMessages] = useState([]);
+  const [giftEvents, setGiftEvents] = useState([]);
+  const [giftOptions, setGiftOptions] = useState([]);
+  const [draft, setDraft] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
+  const [giftDrawerOpen, setGiftDrawerOpen] = useState(false);
+  const [busyGift, setBusyGift] = useState('');
+
   const roomRef = useRef(null);
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const pullStartYRef = useRef(null);
   const connectRunRef = useRef(0);
   const refreshTimerRef = useRef(null);
+  const lastChatIdRef = useRef(0);
 
   const loadFeed = useCallback(async ({ spinner = false } = {}) => {
     if (spinner) setRefreshing(true);
@@ -47,6 +74,10 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
 
   useEffect(() => {
     loadFeed();
+    safeRpc('droxion_gift_options').then(({ data, error }) => {
+      if (!error) setGiftOptions(Array.isArray(data) ? data : []);
+    }).catch(() => {});
+
     const queueRefresh = () => {
       window.clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = window.setTimeout(() => loadFeed(), 120);
@@ -104,6 +135,11 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
     setViewerState('idle');
     setNotice('');
     setViewerCount(0);
+    setMessages([]);
+    setGiftEvents([]);
+    setDraft('');
+    setGiftDrawerOpen(false);
+    lastChatIdRef.current = 0;
     loadFeed();
   }, [activeRoom?.session_id, loadFeed]);
 
@@ -119,9 +155,15 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
     setNotice('');
     setViewerState('connecting');
     setViewerCount(Number(profile.viewer_count || 0));
+    setMessages([]);
+    setGiftEvents([]);
+    setDraft('');
+    setGiftDrawerOpen(false);
+    lastChatIdRef.current = 0;
     setActiveRoom(profile);
   }
 
+  // WORKING VIDEO CONNECTION — intentionally unchanged.
   useEffect(() => {
     if (!activeRoom?.session_id || !activeRoom?.user_id) return undefined;
 
@@ -232,12 +274,113 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
     return () => window.clearInterval(timer);
   }, [activeRoom?.session_id]);
 
+  // Chat/gift subscriptions are deliberately separate from the video transport.
+  useEffect(() => {
+    const sessionId = activeRoom?.session_id;
+    if (!sessionId) return undefined;
+
+    let stopped = false;
+    lastChatIdRef.current = 0;
+
+    safeRpc('droxion_live_chat_messages', {
+      p_session_id: sessionId,
+      p_after_id: 0
+    }).then(({ data, error }) => {
+      if (stopped || error) return;
+      const rows = Array.isArray(data) ? data : [];
+      setMessages(dedupeById(rows));
+      lastChatIdRef.current = rows.reduce((max, row) => Math.max(max, Number(row?.id || 0)), 0);
+    }).catch(() => {});
+
+    let unsubscribe = null;
+    try {
+      unsubscribe = subscribeLiveEvents(sessionId, event => {
+        if (stopped || !event) return;
+        if (event.type === 'chat' && event.row) {
+          setMessages(current => dedupeById([...current, event.row]));
+          lastChatIdRef.current = Math.max(lastChatIdRef.current, Number(event.row.id || 0));
+        }
+        if (event.type === 'gift' && event.row) {
+          setGiftEvents(current => dedupeById([...current, event.row], 30));
+        }
+      });
+    } catch {}
+
+    return () => {
+      stopped = true;
+      try { unsubscribe?.(); } catch {}
+    };
+  }, [activeRoom?.session_id]);
+
   useEffect(() => () => {
     connectRunRef.current += 1;
     const room = roomRef.current;
     roomRef.current = null;
     disconnectTransport(room).catch(() => {});
   }, []);
+
+  async function sendChat() {
+    const sessionId = activeRoom?.session_id;
+    const body = draft.trim();
+    if (!sessionId || !body || sendingChat) return;
+
+    setSendingChat(true);
+    try {
+      const { data, error } = await safeRpc('droxion_send_live_chat', {
+        p_session_id: sessionId,
+        p_body: body
+      });
+      if (error || data?.allowed === false) {
+        throw new Error(error?.message || data?.reason || 'Message could not be sent.');
+      }
+      setDraft('');
+
+      // Pull the just-sent row immediately; realtime remains the normal path.
+      const { data: rows } = await safeRpc('droxion_live_chat_messages', {
+        p_session_id: sessionId,
+        p_after_id: lastChatIdRef.current
+      });
+      if (Array.isArray(rows) && rows.length) {
+        setMessages(current => dedupeById([...current, ...rows]));
+        lastChatIdRef.current = Math.max(lastChatIdRef.current, ...rows.map(row => Number(row?.id || 0)));
+      }
+    } catch (error) {
+      setNotice(error?.message || 'Message could not be sent.');
+    } finally {
+      setSendingChat(false);
+    }
+  }
+
+  async function sendGift(gift) {
+    if (!activeRoom?.user_id || !gift?.gift_code || busyGift) return;
+
+    setBusyGift(String(gift.gift_code));
+    try {
+      const { data, error } = await safeRpc('droxion_send_live_gift', {
+        p_recipient_id: activeRoom.user_id,
+        p_gift_code: gift.gift_code
+      });
+      if (error || data?.allowed === false) {
+        if (data?.reason === 'insufficient_coins') onOpenWallet?.();
+        throw new Error(error?.message || (data?.reason === 'insufficient_coins' ? 'Not enough coins.' : 'Gift could not be sent.'));
+      }
+      onCoinsChanged?.(Number(data?.coin_balance ?? coins));
+      setGiftDrawerOpen(false);
+      setNotice(`${data?.emoji || gift.emoji || '🎁'} ${data?.gift_name || gift.gift_name || 'Gift'} sent.`);
+      window.setTimeout(() => setNotice(current => current?.includes('sent.') ? '' : current), 1800);
+    } catch (error) {
+      setNotice(error?.message || 'Gift could not be sent.');
+    } finally {
+      setBusyGift('');
+    }
+  }
+
+  function handleComposerKeyDown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendChat();
+    }
+  }
 
   function handlePullStart(event) {
     if (activeRoom || refreshing) return;
@@ -268,6 +411,11 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
   }
 
   if (activeRoom) {
+    const combinedEvents = [
+      ...messages.slice(-7).map(row => ({ ...row, eventType: 'chat', eventKey: `chat-${row.id}` })),
+      ...giftEvents.slice(-4).map(row => ({ ...row, eventType: 'gift', eventKey: `gift-${row.id}` }))
+    ].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))).slice(-8);
+
     return (
       <section className="productionViewerPage">
         <video ref={videoRef} className="productionViewerVideo" autoPlay playsInline muted />
@@ -287,7 +435,64 @@ export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange
           </div>
         )}
 
+        {viewerState === 'live' && (
+          <>
+            <div className="productionViewerChat" aria-live="polite">
+              {combinedEvents.length === 0 && <div className="productionViewerChatHint">Live chat will appear here.</div>}
+              {combinedEvents.map(event => event.eventType === 'gift' ? (
+                <div className="productionViewerChatLine productionViewerGiftEvent" key={event.eventKey}>
+                  <strong>{event.display_name || 'Viewer'}</strong>
+                  <span>sent {event.emoji || '🎁'} {event.gift_name || 'a gift'}</span>
+                </div>
+              ) : (
+                <div className="productionViewerChatLine" key={event.eventKey}>
+                  <strong>{event.display_name || 'Viewer'}</strong>
+                  <span>{event.body}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="productionViewerComposer">
+              <input
+                value={draft}
+                onChange={event => setDraft(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+                placeholder="Say something…"
+                maxLength={500}
+                aria-label="Live chat message"
+              />
+              <button type="button" className="productionViewerGiftButton" onClick={() => setGiftDrawerOpen(true)} aria-label="Send gift">
+                <Gift size={20} />
+              </button>
+              <button type="button" className="productionViewerSendButton" onClick={sendChat} disabled={!draft.trim() || sendingChat} aria-label="Send message">
+                <Send size={20} />
+              </button>
+            </div>
+          </>
+        )}
+
         {viewerState === 'live' && notice && <div className="productionViewerNotice">{notice}</div>}
+
+        {giftDrawerOpen && (
+          <div className="productionGiftBackdrop" onClick={() => setGiftDrawerOpen(false)}>
+            <div className="productionGiftDrawer" onClick={event => event.stopPropagation()}>
+              <div className="productionGiftHeader">
+                <div><strong>Send a gift</strong><span>🪙 {coins} coins</span></div>
+                <button type="button" onClick={() => setGiftDrawerOpen(false)} aria-label="Close gifts"><X size={21} /></button>
+              </div>
+              <div className="productionGiftGrid">
+                {giftOptions.map(gift => (
+                  <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}>
+                    <span>{gift.emoji || '🎁'}</span>
+                    <strong>{gift.gift_name}</strong>
+                    <small>{gift.cost_coins} coins</small>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="productionBuyCoins" onClick={() => onOpenWallet?.()}>+ Buy Coins</button>
+            </div>
+          </div>
+        )}
       </section>
     );
   }
