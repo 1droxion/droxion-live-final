@@ -12,6 +12,8 @@ import ForgotPassword from "./ForgotPassword.jsx";
 import ResetPassword from "./ResetPassword.jsx";
 import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
+import LiveV2Page from "./pages/live/LiveV2Page.jsx";
+import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
 
 export default function App() {
   return (
@@ -24,6 +26,8 @@ export default function App() {
       <ShortNativeActionsEnhancer />
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
+        <Route path="/live-v2" element={<LiveV2Page />} />
+        <Route path="/live-v2/view/:sessionId" element={<LiveV2ViewerPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
