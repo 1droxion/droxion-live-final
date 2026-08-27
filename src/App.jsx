@@ -14,12 +14,14 @@ import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
 import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
+import LegacyViewerV2Bridge from "./features/live/compat/LegacyViewerV2Bridge.jsx";
 
 export default function App() {
   return (
     <>
       <DroxionPushNotifications />
       <DroxionLivePushBridge />
+      <LegacyViewerV2Bridge />
       <GlobalEnhancements />
       <CreatorV11Enhancer />
       <LiveJoinDeclineEnhancer />
