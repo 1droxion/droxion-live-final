@@ -28,7 +28,7 @@ const TABS = [
 
 export default function LiveFirstApp() {
   const [tab, setTab] = useState('live');
-  const [goLiveSignal, setGoLiveSignal] = useState(0);
+  const [goLiveSignal] = useState(0);
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -140,16 +140,17 @@ export default function LiveFirstApp() {
     setNotificationsOpen(false);
     setChatOpen(false);
     if (nextTab === 'go-live') {
-      setTab('live');
-      setGoLiveSignal(value => value + 1);
+      // Route LIVE creation through the isolated V2 host page. This preserves
+      // the proven camera + LiveKit publishing lifecycle instead of re-entering
+      // the legacy Home start state machine.
+      window.location.assign('/live-v2');
       return;
     }
     setTab(nextTab);
   }
 
   function startLiveFromFeed() {
-    setTab('live');
-    setGoLiveSignal(value => value + 1);
+    window.location.assign('/live-v2');
   }
 
   function watchCreatorLive(creatorId) {
