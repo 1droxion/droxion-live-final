@@ -1,29 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Gift, Radio, RefreshCw, Send, Users, X } from 'lucide-react';
+import { ArrowLeft, Radio, RefreshCw, Users } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
+import { supabase } from '../../../supabaseClient';
 import { attachRemoteTrack, detachRemoteTrack, unlockRemoteAudio } from '../../../livekit/livekitRoom';
 import { connectViewerTransport, disconnectTransport } from '../services/liveTransportService';
-import '../../../live-experience-v3.css';
-import '../../../live-experience-v4.css';
 import '../styles/production-live-browser.css';
 
 const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
-const ROOM_STATUS_MS = 15000;
 
-function dedupeById(rows, limit = 200) {
-  const map = new Map();
-  for (const row of rows || []) {
-    const key = String(row?.id ?? `${row?.created_at || ''}:${row?.body || row?.gift_name || ''}`);
-    map.set(key, row);
-  }
-  return Array.from(map.values())
-    .sort((a, b) => String(a?.created_at || '').localeCompare(String(b?.created_at || '')))
-    .slice(-limit);
+function safeRpc(name, args) {
+  return Promise.resolve(supabase.rpc(name, args));
 }
 
-export default function ProductionLiveBrowser({ currentUserId, coins = 0, onCoinsChanged, onOpenWallet, onImmersiveChange }) {
+export default function ProductionLiveBrowser({ currentUserId, onImmersiveChange }) {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,51 +21,39 @@ export default function ProductionLiveBrowser({ currentUserId, coins = 0, onCoin
   const [activeRoom, setActiveRoom] = useState(null);
   const [viewerState, setViewerState] = useState('idle');
   const [notice, setNotice] = useState('');
-  const [roomStatus, setRoomStatus] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [giftEvents, setGiftEvents] = useState([]);
-  const [gifts, setGifts] = useState([]);
-  const [giftDrawerOpen, setGiftDrawerOpen] = useState(false);
-  const [busyGift, setBusyGift] = useState('');
-  const [draft, setDraft] = useState('');
-  const [audioBlocked, setAudioBlocked] = useState(false);
+  const [viewerCount, setViewerCount] = useState(0);
 
   const roomRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const remoteAudioRef = useRef(null);
+  const videoRef = useRef(null);
+  const audioRef = useRef(null);
   const pullStartYRef = useRef(null);
-  const openRequestRef = useRef(0);
-  const lastChatIdRef = useRef(0);
+  const connectRunRef = useRef(0);
   const refreshTimerRef = useRef(null);
-
-  const sessionId = activeRoom?.session_id || '';
 
   const loadFeed = useCallback(async ({ spinner = false } = {}) => {
     if (spinner) setRefreshing(true);
-    const { data, error } = await supabase.rpc('droxion_live_feed');
-    if (!error) setProfiles(Array.isArray(data) ? data : []);
-    else setNotice(error.message || 'Could not refresh LIVE.');
-    setLoading(false);
-    if (spinner) setRefreshing(false);
-    return Array.isArray(data) ? data : [];
+    try {
+      const { data, error } = await safeRpc('droxion_live_feed');
+      if (error) throw error;
+      setProfiles(Array.isArray(data) ? data : []);
+      setNotice('');
+    } catch (error) {
+      setNotice(error?.message || 'Could not refresh LIVE.');
+    } finally {
+      setLoading(false);
+      if (spinner) setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => {
-    let alive = true;
-    Promise.all([
-      loadFeed(),
-      supabase.rpc('droxion_gift_options')
-    ]).then(([, giftResult]) => {
-      if (alive && !giftResult?.error) setGifts(giftResult?.data || []);
-    }).catch(() => {});
-
+    loadFeed();
     const queueRefresh = () => {
       window.clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = window.setTimeout(() => loadFeed().catch(() => {}), 120);
+      refreshTimerRef.current = window.setTimeout(() => loadFeed(), 120);
     };
 
-    const presence = supabase
-      .channel(`prod-live-browser-presence:${currentUserId || 'anon'}`)
+    const channel = supabase
+      .channel(`production-live-browser:${currentUserId || 'anon'}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'droxion_live_presence' }, queueRefresh)
       .subscribe();
 
@@ -88,13 +66,12 @@ export default function ProductionLiveBrowser({ currentUserId, coins = 0, onCoin
     document.addEventListener('visibilitychange', refreshVisible);
 
     return () => {
-      alive = false;
       window.clearTimeout(refreshTimerRef.current);
       window.removeEventListener('pageshow', refreshVisible);
       window.removeEventListener('focus', refreshVisible);
       window.removeEventListener('online', refreshVisible);
       document.removeEventListener('visibilitychange', refreshVisible);
-      try { Promise.resolve(supabase.removeChannel(presence)).catch(() => {}); } catch {}
+      try { Promise.resolve(supabase.removeChannel(channel)).catch(() => {}); } catch {}
     };
   }, [currentUserId, loadFeed, activeRoom]);
 
@@ -103,222 +80,164 @@ export default function ProductionLiveBrowser({ currentUserId, coins = 0, onCoin
     return () => onImmersiveChange?.(false);
   }, [activeRoom, onImmersiveChange]);
 
-  const clearRemoteElements = useCallback(() => {
-    const video = remoteVideoRef.current;
-    const audio = remoteAudioRef.current;
-    if (video) {
-      try { video.pause?.(); } catch {}
-      try { video.srcObject = null; } catch {}
-    }
-    if (audio) {
-      try { audio.pause?.(); } catch {}
-      try { audio.srcObject = null; } catch {}
-    }
-  }, []);
-
-  const leaveViewer = useCallback(async ({ refresh = true } = {}) => {
-    const leavingSession = activeRoom?.session_id || '';
-    const room = roomRef.current;
+  const leaveViewer = useCallback(() => {
+    const oldRoom = roomRef.current;
     roomRef.current = null;
-    openRequestRef.current += 1;
-    clearRemoteElements();
+    connectRunRef.current += 1;
+
+    const sessionId = activeRoom?.session_id;
+    if (sessionId) safeRpc('droxion_leave_live', { p_session_id: sessionId }).catch(() => {});
+
+    try {
+      if (videoRef.current) {
+        videoRef.current.pause?.();
+        videoRef.current.srcObject = null;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause?.();
+        audioRef.current.srcObject = null;
+      }
+    } catch {}
+
+    disconnectTransport(oldRoom).catch(() => {});
     setActiveRoom(null);
     setViewerState('idle');
-    setRoomStatus(null);
-    setMessages([]);
-    setGiftEvents([]);
-    setGiftDrawerOpen(false);
-    setAudioBlocked(false);
     setNotice('');
-    if (leavingSession) supabase.rpc('droxion_leave_live', { p_session_id: leavingSession }).catch(() => {});
-    disconnectTransport(room).catch(() => {});
-    if (refresh) loadFeed().catch(() => {});
-  }, [activeRoom?.session_id, clearRemoteElements, loadFeed]);
+    setViewerCount(0);
+    loadFeed();
+  }, [activeRoom?.session_id, loadFeed]);
 
-  const openRoom = useCallback(async profile => {
-    const nextSessionId = String(profile?.session_id || '');
-    const hostId = String(profile?.user_id || '');
-    if (!nextSessionId || !hostId) {
+  function openRoom(profile) {
+    if (!profile?.session_id || !profile?.user_id) {
       setNotice('This LIVE is no longer available. Pull down to refresh.');
-      loadFeed().catch(() => {});
+      loadFeed();
       return;
     }
 
-    const requestId = ++openRequestRef.current;
-    const oldRoom = roomRef.current;
-    roomRef.current = null;
-    clearRemoteElements();
-    disconnectTransport(oldRoom).catch(() => {});
-
-    // Open the viewer UI immediately. No backend cleanup call is allowed to
-    // block the tap/navigation path.
-    setActiveRoom(profile);
+    // IMPORTANT: render the viewer UI first. The LiveKit connection happens in
+    // the effect below only after the video/audio elements exist in the DOM.
+    setNotice('');
     setViewerState('connecting');
-    setNotice('Connecting LIVE video…');
-    setRoomStatus(null);
-    setMessages([]);
-    setGiftEvents([]);
-    lastChatIdRef.current = 0;
-
-    // Viewer registration is useful for analytics/counts, but LiveKit viewer
-    // authorization is session-based and does not depend on this write. Never
-    // await it before opening the room.
-    supabase.rpc('droxion_join_live', { p_host_id: hostId }).then(({ data, error }) => {
-      if (requestId !== openRequestRef.current) return;
-      if (error || data?.allowed === false) {
-        setNotice(error?.message || 'This LIVE may have ended.');
-      }
-    }).catch(() => {});
-
-    try {
-      const room = await connectViewerTransport({
-        sessionId: nextSessionId,
-        callbacks: {
-          onTrackSubscribed: (track, _publication, participant) => {
-            if (requestId !== openRequestRef.current) return;
-            const identity = String(participant?.identity || '').split('::')[0];
-            if (identity !== hostId) return;
-            const element = track.kind === Track.Kind.Video ? remoteVideoRef.current : remoteAudioRef.current;
-            if (!element) return;
-            attachRemoteTrack(track, element);
-            element.setAttribute('playsinline', '');
-            if (track.kind === Track.Kind.Video) element.muted = true;
-            const playback = element.play?.();
-            if (playback?.catch) playback.catch(() => {
-              if (track.kind === Track.Kind.Audio) setAudioBlocked(true);
-            });
-            if (track.kind === Track.Kind.Video) {
-              setViewerState('live');
-              setNotice('');
-            }
-          },
-          onTrackUnsubscribed: track => {
-            try { detachRemoteTrack(track); } catch {}
-          },
-          onReconnecting: () => {
-            if (requestId === openRequestRef.current) {
-              setViewerState('reconnecting');
-              setNotice('Reconnecting LIVE…');
-            }
-          },
-          onReconnected: () => {
-            if (requestId === openRequestRef.current) {
-              setViewerState('live');
-              setNotice('');
-            }
-          },
-          onDisconnected: () => {
-            if (requestId === openRequestRef.current) {
-              setViewerState('ended');
-              setNotice('LIVE disconnected. Pull down on Home to refresh.');
-            }
-          }
-        }
-      });
-
-      if (requestId !== openRequestRef.current) {
-        disconnectTransport(room).catch(() => {});
-        return;
-      }
-      roomRef.current = room;
-      const unlocked = await unlockRemoteAudio(room).catch(() => false);
-      if (requestId === openRequestRef.current) setAudioBlocked(!unlocked);
-    } catch (error) {
-      if (requestId !== openRequestRef.current) return;
-      setViewerState('error');
-      setNotice(error?.message || 'Could not open this LIVE.');
-      loadFeed().catch(() => {});
-    }
-  }, [clearRemoteElements, loadFeed]);
+    setViewerCount(Number(profile.viewer_count || 0));
+    setActiveRoom(profile);
+  }
 
   useEffect(() => {
+    if (!activeRoom?.session_id || !activeRoom?.user_id) return undefined;
+
+    const runId = ++connectRunRef.current;
+    const sessionId = String(activeRoom.session_id);
+    const hostId = String(activeRoom.user_id);
+    let cancelled = false;
+    let connectedRoom = null;
+
+    const attachTrack = (track, participant) => {
+      if (cancelled || runId !== connectRunRef.current) return;
+      const identity = String(participant?.identity || '').split('::')[0];
+      if (identity && identity !== hostId) return;
+
+      const element = track.kind === Track.Kind.Video ? videoRef.current : audioRef.current;
+      if (!element) return;
+
+      try {
+        attachRemoteTrack(track, element);
+        element.setAttribute('playsinline', '');
+        element.autoplay = true;
+        if (track.kind === Track.Kind.Video) {
+          element.muted = true;
+          setViewerState('live');
+          setNotice('');
+        }
+        Promise.resolve(element.play?.()).catch(() => {});
+      } catch (error) {
+        setNotice(error?.message || 'Could not display LIVE video.');
+      }
+    };
+
+    const connect = async () => {
+      try {
+        // Registration/counting must never block opening the viewer.
+        safeRpc('droxion_join_live', { p_host_id: hostId }).then(({ data, error }) => {
+          if (cancelled || runId !== connectRunRef.current) return;
+          if (error || data?.allowed === false) {
+            setNotice(error?.message || 'This LIVE may have ended.');
+          }
+        }).catch(() => {});
+
+        const room = await connectViewerTransport({
+          sessionId,
+          callbacks: {
+            onTrackSubscribed: (track, _publication, participant) => attachTrack(track, participant),
+            onTrackUnsubscribed: track => {
+              try { detachRemoteTrack(track); } catch {}
+            },
+            onParticipantChange: () => {
+              const count = roomRef.current?.remoteParticipants?.size || 0;
+              setViewerCount(Math.max(0, count));
+            },
+            onReconnecting: () => {
+              if (!cancelled) {
+                setViewerState('reconnecting');
+                setNotice('Reconnecting LIVE…');
+              }
+            },
+            onReconnected: () => {
+              if (!cancelled) setNotice('');
+            },
+            onDisconnected: () => {
+              if (!cancelled) {
+                setViewerState('ended');
+                setNotice('LIVE disconnected.');
+              }
+            }
+          }
+        });
+
+        if (cancelled || runId !== connectRunRef.current) {
+          disconnectTransport(room).catch(() => {});
+          return;
+        }
+
+        connectedRoom = room;
+        roomRef.current = room;
+        setViewerCount(Math.max(Number(activeRoom.viewer_count || 0), room.remoteParticipants?.size || 0));
+        Promise.resolve(unlockRemoteAudio(room)).catch(() => {});
+      } catch (error) {
+        if (!cancelled && runId === connectRunRef.current) {
+          setViewerState('error');
+          setNotice(error?.message || 'Could not open this LIVE.');
+        }
+      }
+    };
+
+    // One animation frame guarantees React has committed the <video>/<audio>
+    // elements before LiveKit can deliver TrackSubscribed.
+    const frame = window.requestAnimationFrame(connect);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (connectedRoom && roomRef.current === connectedRoom) roomRef.current = null;
+      disconnectTransport(connectedRoom).catch(() => {});
+    };
+  }, [activeRoom?.session_id, activeRoom?.user_id]);
+
+  useEffect(() => {
+    const sessionId = activeRoom?.session_id;
     if (!sessionId) return undefined;
-    const beat = () => supabase.rpc('droxion_live_viewer_heartbeat', { p_session_id: sessionId }).catch(() => {});
+
+    const beat = () => safeRpc('droxion_live_viewer_heartbeat', { p_session_id: sessionId }).catch(() => {});
     beat();
     const timer = window.setInterval(beat, VIEWER_HEARTBEAT_MS);
     return () => window.clearInterval(timer);
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return undefined;
-    let stopped = false;
-    const check = async () => {
-      const { data } = await supabase.rpc('droxion_live_room_status', { p_session_id: sessionId });
-      if (stopped) return;
-      setRoomStatus(data || null);
-      if (data?.active === false) {
-        setViewerState('ended');
-        setNotice('This LIVE has ended.');
-      }
-    };
-    check();
-    const timer = window.setInterval(check, ROOM_STATUS_MS);
-    return () => { stopped = true; window.clearInterval(timer); };
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return undefined;
-    let stopped = false;
-    supabase.rpc('droxion_live_chat_messages', { p_session_id: sessionId, p_after_id: 0 }).then(({ data }) => {
-      if (stopped) return;
-      const rows = Array.isArray(data) ? data : [];
-      setMessages(dedupeById(rows));
-      lastChatIdRef.current = rows.reduce((max, row) => Math.max(max, Number(row?.id || 0)), 0);
-    }).catch(() => {});
-
-    const unsubscribe = subscribeLiveEvents(sessionId, event => {
-      if (stopped) return;
-      if (event?.type === 'chat' && event.row) {
-        setMessages(current => dedupeById([...current, event.row]));
-        lastChatIdRef.current = Math.max(lastChatIdRef.current, Number(event.row.id || 0));
-      }
-      if (event?.type === 'gift' && event.row) {
-        setGiftEvents(current => dedupeById([...current, event.row], 30));
-      }
-    });
-    return () => { stopped = true; unsubscribe?.(); };
-  }, [sessionId]);
+  }, [activeRoom?.session_id]);
 
   useEffect(() => () => {
+    connectRunRef.current += 1;
     const room = roomRef.current;
     roomRef.current = null;
-    openRequestRef.current += 1;
     disconnectTransport(room).catch(() => {});
   }, []);
-
-  async function sendChat() {
-    const body = draft.trim();
-    if (!body || !sessionId) return;
-    setDraft('');
-    const { data, error } = await supabase.rpc('droxion_send_live_chat', { p_session_id: sessionId, p_body: body });
-    if (error || data?.allowed === false) {
-      setNotice(error?.message || 'Message could not be sent.');
-      return;
-    }
-    const { data: rows } = await supabase.rpc('droxion_live_chat_messages', { p_session_id: sessionId, p_after_id: lastChatIdRef.current });
-    if (rows?.length) {
-      setMessages(current => dedupeById([...current, ...rows]));
-      lastChatIdRef.current = Math.max(lastChatIdRef.current, ...rows.map(row => Number(row?.id || 0)));
-    }
-  }
-
-  async function sendGift(gift) {
-    if (!activeRoom?.user_id || busyGift) return;
-    setBusyGift(String(gift.gift_code || 'gift'));
-    const { data, error } = await supabase.rpc('droxion_send_live_gift', {
-      p_recipient_id: activeRoom.user_id,
-      p_gift_code: gift.gift_code
-    });
-    setBusyGift('');
-    if (error || data?.allowed === false) {
-      if (data?.reason === 'insufficient_coins') onOpenWallet?.();
-      setNotice(error?.message || (data?.reason === 'insufficient_coins' ? 'Not enough coins.' : 'Gift could not be sent.'));
-      return;
-    }
-    onCoinsChanged?.(Number(data.coin_balance || 0));
-    setGiftDrawerOpen(false);
-    setNotice(`${data?.emoji || gift.emoji || '🎁'} ${data?.gift_name || gift.gift_name || 'Gift'} sent.`);
-  }
 
   function handlePullStart(event) {
     if (activeRoom || refreshing) return;
@@ -332,8 +251,7 @@ export default function ProductionLiveBrowser({ currentUserId, coins = 0, onCoin
     const scrollTop = document.scrollingElement?.scrollTop || document.documentElement?.scrollTop || 0;
     if (scrollTop > 2) return;
     const y = event.touches?.[0]?.clientY ?? pullStartYRef.current;
-    const distance = Math.max(0, y - pullStartYRef.current);
-    setPullDistance(Math.min(92, distance * 0.55));
+    setPullDistance(Math.min(92, Math.max(0, y - pullStartYRef.current) * 0.55));
   }
 
   async function handlePullEnd() {
@@ -345,62 +263,65 @@ export default function ProductionLiveBrowser({ currentUserId, coins = 0, onCoin
       return;
     }
     setPullDistance(46);
-    try { await loadFeed({ spinner: true }); }
-    finally { setPullDistance(0); }
+    await loadFeed({ spinner: true });
+    setPullDistance(0);
   }
 
   if (activeRoom) {
-    const combinedEvents = [
-      ...messages.slice(-8).map(row => ({ ...row, eventType: 'chat', eventKey: `c-${row.id}` })),
-      ...giftEvents.slice(-5).map(row => ({ ...row, eventType: 'gift', eventKey: `g-${row.id}` }))
-    ].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))).slice(-8);
-
     return (
-      <section className={`liveRoomPage liveRoomV4 liveRoom-${activeRoom.orientation || 'vertical'}`}>
-        <div className="liveStage liveStageV4">
-          <video ref={remoteVideoRef} autoPlay playsInline muted className="liveMainVideo" />
-          <audio ref={remoteAudioRef} autoPlay playsInline />
+      <section className="productionViewerPage">
+        <video ref={videoRef} className="productionViewerVideo" autoPlay playsInline muted />
+        <audio ref={audioRef} autoPlay playsInline />
 
-          {viewerState !== 'live' && <div className="liveVideoLoading"><Radio size={30} /><strong>{viewerState === 'error' ? 'Could not open LIVE' : viewerState === 'ended' ? 'LIVE ended' : viewerState === 'reconnecting' ? 'Reconnecting LIVE…' : 'Connecting LIVE video…'}</strong></div>}
-          {audioBlocked && <button type="button" className="liveAudioRecovery" onClick={() => unlockRemoteAudio(roomRef.current).then(unlocked => setAudioBlocked(!unlocked))}>Enable audio</button>}
-
-          <div className="liveTopOverlay liveTopV4">
-            <button type="button" className="liveBackButton" onClick={() => leaveViewer()}><ArrowLeft size={21} /><span>Exit</span></button>
-            <div className="liveIdentity"><span className="liveBadge">LIVE</span><div className="liveIdentityText"><strong>{activeRoom.display_name || 'Droxion Live'}</strong><small>{activeRoom.title || 'Live on Droxion'}</small></div></div>
-            <div className="liveViewerBadge"><Users size={15} /> {roomStatus?.viewer_count || activeRoom.viewer_count || 0}</div>
-          </div>
-
-          <div className="liveBottomGradient" />
-          <div className="liveChatOverlay liveChatV4">
-            {combinedEvents.map(event => event.eventType === 'gift'
-              ? <div className="liveChatLine liveGiftEvent" key={event.eventKey}><strong>{event.display_name || 'Viewer'}</strong> sent {event.emoji} {event.gift_name}</div>
-              : <div className="liveChatLine" key={event.eventKey}><strong>{event.display_name || 'Viewer'}</strong> {event.body}</div>)}
-            {combinedEvents.length === 0 && <div className="liveChatHint">Live chat will appear here.</div>}
-          </div>
-
-          <div className="liveComposerOverlay liveComposerV4">
-            <input value={draft} onChange={event => setDraft(event.target.value)} placeholder="Say something…" maxLength={500} />
-            <button type="button" className="liveGiftButton" onClick={() => setGiftDrawerOpen(true)}><Gift size={19} /></button>
-            <button type="button" onClick={sendChat} disabled={!draft.trim()}><Send size={18} /></button>
-          </div>
-
-          {notice && <div className="liveNotice liveNoticeV4">{notice}</div>}
-
-          {giftDrawerOpen && <div className="liveGiftDrawerBackdrop" onClick={() => setGiftDrawerOpen(false)}><div className="liveGiftDrawer" onClick={event => event.stopPropagation()}><div className="liveGiftDrawerHead"><div><strong>Send a gift</strong><span>🪙 {coins} coins</span></div><button type="button" onClick={() => setGiftDrawerOpen(false)}><X size={20} /></button></div><div className="liveGiftGridV4">{gifts.map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji}</span><strong>{gift.gift_name}</strong><small>{gift.cost_coins} coins</small></button>)}</div><button type="button" className="liveBuyCoinsV4" onClick={() => onOpenWallet?.()}>+ Buy Coins</button></div></div>}
+        <div className="productionViewerTop">
+          <button type="button" onClick={leaveViewer} aria-label="Back to Home"><ArrowLeft size={22} /></button>
+          <div><span className="productionViewerLive">LIVE</span><strong>{activeRoom.display_name || 'Droxion Live'}</strong></div>
+          <span className="productionViewerCount"><Users size={15} /> {viewerCount}</span>
         </div>
+
+        {viewerState !== 'live' && (
+          <div className="productionViewerStatus">
+            <Radio size={32} />
+            <strong>{viewerState === 'error' ? 'Could not open LIVE' : viewerState === 'ended' ? 'LIVE ended' : viewerState === 'reconnecting' ? 'Reconnecting LIVE…' : 'Connecting LIVE video…'}</strong>
+            {notice && <span>{notice}</span>}
+          </div>
+        )}
+
+        {viewerState === 'live' && notice && <div className="productionViewerNotice">{notice}</div>}
       </section>
     );
   }
 
-  const pullText = refreshing ? 'Refreshing LIVE…' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh';
-
   return (
-    <section className="realPage liveBrowsePage liveFeedPage liveOnlyHome productionLiveBrowse" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
-      <div className={`livePullRefresh ${refreshing ? 'refreshing' : ''}`} style={{ height: pullDistance }} aria-live="polite"><RefreshCw size={19} /><span>{pullText}</span></div>
-      <div className="productionLiveRefreshHint"><span>Pull down to refresh LIVE</span><button type="button" onClick={() => loadFeed({ spinner: true })} disabled={refreshing} aria-label="Refresh LIVE"><RefreshCw size={15} /></button></div>
+    <section className="productionLiveBrowse" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
+      <div className="livePullRefresh" style={{ height: pullDistance }}><RefreshCw size={18} /><span>{refreshing ? 'Refreshing LIVE…' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh LIVE'}</span></div>
+      <div className="productionLiveRefreshHint"><span>Pull down to refresh LIVE</span><button type="button" onClick={() => loadFeed({ spinner: true })} disabled={refreshing}><RefreshCw size={16} /></button></div>
 
-      {notice && !loading && <div className="liveNotice productionBrowseNotice">{notice}</div>}
-      {loading ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><RefreshCw size={26} /></span><h2>Loading LIVE…</h2></div> : profiles.length === 0 ? <div className="liveZeroState liveZeroSimple"><span className="liveZeroIcon"><Radio size={28} /></span><h2>No one is LIVE right now</h2><p>Pull down to refresh when a creator starts LIVE.</p></div> : <div className="liveFeedScroll liveOnlyScroll" aria-label="People live now">{profiles.map(profile => <button type="button" key={`${profile.user_id}:${profile.session_id}`} className={`liveFeedCard ${profile.orientation === 'horizontal' ? 'horizontal' : 'vertical'}`} onClick={() => openRoom(profile)}><div className="liveBrowseFallback" />{profile.avatar_url && <img src={profile.avatar_url} alt={profile.display_name || 'LIVE creator'} loading="lazy" decoding="async" />}<div className="liveBrowseShade" /><div className="liveFeedCardTop"><span className="liveBadge">LIVE</span><span className="liveFeedViewers"><Users size={13} /> {profile.viewer_count || 0}</span></div><div className="liveBrowseInfo"><strong>{profile.display_name}{profile.age ? `, ${profile.age}` : ''}</strong><b>{profile.title || 'Live on Droxion'}</b><small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small><em>Tap to open LIVE</em></div></button>)}</div>}
+      {notice && <div className="productionBrowseNotice">{notice}</div>}
+      {loading ? (
+        <div className="productionLiveEmpty"><RefreshCw size={28} /><strong>Loading LIVE…</strong></div>
+      ) : profiles.length === 0 ? (
+        <div className="productionLiveEmpty"><Radio size={30} /><strong>No one is LIVE right now</strong><span>Pull down to refresh.</span></div>
+      ) : (
+        <div className="productionLiveGrid">
+          {profiles.map(profile => (
+            <button type="button" key={`${profile.user_id}:${profile.session_id}`} className="productionLiveCard" onClick={() => openRoom(profile)}>
+              <div className="productionLiveCardMedia">
+                {profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="productionLiveAvatarPlaceholder" />}
+                <div className="productionLiveCardShade" />
+                <span className="productionLiveBadge">LIVE</span>
+                <span className="productionLiveViewers"><Users size={14} /> {profile.viewer_count || 0}</span>
+                <div className="productionLiveCardInfo">
+                  <strong>{profile.display_name || 'Droxion creator'}{profile.age ? `, ${profile.age}` : ''}</strong>
+                  <b>{profile.title || 'Live on Droxion'}</b>
+                  <small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>
+                  <em>Tap to open LIVE</em>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
