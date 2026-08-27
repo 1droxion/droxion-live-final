@@ -14,6 +14,7 @@ import PublishReadyEnhancer from './PublishReadyEnhancer';
 import ProfileAccountActionsEnhancer from './ProfileAccountActionsEnhancer';
 import ProductionLiveHost from './features/live/components/ProductionLiveHost';
 import ProductionLiveBrowser from './features/live/components/ProductionLiveBrowser';
+import CreatorLiveClips from './features/clips/CreatorLiveClips';
 import './real-home.css';
 import './live-first-app.css';
 import './product-shell.css';
@@ -105,7 +106,7 @@ export default function LiveFirstApp() {
   let content = <><HomeDiscoveryControls query={searchQuery} /><ProductionLiveBrowser key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
-  if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
+  if (tab === 'profile') content = <><LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} /><CreatorLiveClips currentUserId={user?.id} /></>;
 
   return (
     <main className={`lfShell ${tab === 'feed' ? 'lfFeedTab' : ''} ${chatOpen ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
@@ -125,7 +126,7 @@ export default function LiveFirstApp() {
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{chatOpen ? <DroxionChat /> : content}</div>
       {!immersiveLive && !chatOpen && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={active ? 'active' : ''}><span className="lfNavIcon"><Icon size={20} /></span><span>{item.label}</span></button>; })}</nav>}
 
-      {hostStudioOpen && <ProductionLiveHost onClose={() => { setHostStudioOpen(false); invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }} />}
+      {hostStudioOpen && <ProductionLiveHost creatorId={user?.id} onClose={() => { setHostStudioOpen(false); invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }} />}
       {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={knownBalance => refreshWallet(user, knownBalance)} />}
       {user && <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} onUnreadChange={setUnreadNotifications} />}
     </main>
