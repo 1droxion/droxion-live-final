@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveExperience from './LiveExperienceScale';
@@ -27,8 +28,8 @@ const TABS = [
 ];
 
 export default function LiveFirstApp() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState('live');
-  const [goLiveSignal, setGoLiveSignal] = useState(0);
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -134,22 +135,28 @@ export default function LiveFirstApp() {
     };
   }, [user?.id, tab, immersiveLive, chatOpen]);
 
+  function openProvenLiveV2() {
+    setImmersiveLive(false);
+    setSearchOpen(false);
+    setNotificationsOpen(false);
+    setChatOpen(false);
+    navigate('/live-v2');
+  }
+
   function chooseTab(nextTab) {
     setImmersiveLive(false);
     setSearchOpen(false);
     setNotificationsOpen(false);
     setChatOpen(false);
     if (nextTab === 'go-live') {
-      setTab('live');
-      setGoLiveSignal(value => value + 1);
+      openProvenLiveV2();
       return;
     }
     setTab(nextTab);
   }
 
   function startLiveFromFeed() {
-    setTab('live');
-    setGoLiveSignal(value => value + 1);
+    openProvenLiveV2();
   }
 
   function watchCreatorLive(creatorId) {
@@ -157,7 +164,7 @@ export default function LiveFirstApp() {
     window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
   }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} autoOpenGoLive={goLiveSignal} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
