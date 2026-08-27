@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { createLiveHighlightRecorder } from '../../../livekit/liveHighlightRecorder';
 
-const NOTIFICATION_ENDPOINT = '/api/notifications/live-start';
+const NOTIFICATION_ENDPOINT = 'https://www.droxion.com/api/notifications/live-start';
 
 async function sendLiveStartedPush(sessionId) {
   if (!sessionId) return;
