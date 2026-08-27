@@ -3,13 +3,10 @@ import react from "@vitejs/plugin-react";
 
 // Production LIVE reliability patch.
 //
-// The last confirmed working host stream connected to LiveKit and started
-// publishing inside the START LIVE interaction itself. A later refactor moved
-// that work entirely into a React effect; production then showed successful
-// start RPCs and valid host tokens, but the LiveKit room still had 0
-// participants six seconds later. Keep the newer deterministic start-session
-// response path, but restore the proven direct host bootstrap before committing
-// the immersive LIVE UI state.
+// Start the authoritative database session, immediately hand the creator into
+// the host camera screen, and then finish LiveKit connection/publication. This
+// keeps the UI tied to the session that really exists instead of leaving the
+// creator on Home while a valid LiveKit host is already publishing.
 function liveHostBootstrapPatch() {
   const startBefore = `      liveStateRevisionRef.current += 1;
       setBeautyMode('off');
@@ -26,7 +23,23 @@ function liveHostBootstrapPatch() {
       });
       loadLive().catch(() => {});`;
 
-  const startAfter = `      setNotice('Connecting LIVE video…');
+  const startAfter = `      // The database session is authoritative at this point. Enter the host
+      // screen immediately so the local camera preview and LIVE controls are
+      // visible while LiveKit finishes its connection in the background.
+      liveStateRevisionRef.current += 1;
+      setBeautyMode('off');
+      setOwnSessionId(startedSessionId);
+      setIsLive(true);
+      setActiveRoom(room);
+      setNotice('Connecting LIVE video…');
+      requestAnimationFrame(attachLocal);
+      highlightRecorderRef.current = createLiveHighlightRecorder({
+        creatorId: currentUserId,
+        sessionId: startedSessionId,
+        stream,
+        title: room.title
+      });
+      loadLive().catch(() => {});
 
       let bootstrapRoom = null;
       try {
@@ -57,13 +70,13 @@ function liveHostBootstrapPatch() {
           setNotice('LIVE camera or microphone could not publish. Please end the LIVE and try again.');
         });
 
-        // Do not make the creator wait for every SDK publication callback once
-        // the host has joined the room. The existing publish confirmation path
-        // continues in the background and the transport effect reuses this room.
         await Promise.race([
           mediaPublish,
           new Promise(resolve => window.setTimeout(resolve, 1500))
         ]);
+
+        setNotice('You are live.');
+        requestAnimationFrame(attachLocal);
       } catch (bootstrapError) {
         try {
           await supabase.rpc('droxion_log_live_client_error', {
@@ -85,26 +98,12 @@ function liveHostBootstrapPatch() {
         setIsLive(false);
         setOwnSessionId('');
         setActiveRoom(null);
+        highlightRecorderRef.current = null;
         stopCamera();
         setSetupOpen(false);
         setNotice('LIVE video could not start. ' + (bootstrapError?.message || 'Please try again.'));
         return;
-      }
-
-      liveStateRevisionRef.current += 1;
-      setBeautyMode('off');
-      setOwnSessionId(startedSessionId);
-      setIsLive(true);
-      setActiveRoom(room);
-      setNotice('You are live.');
-      requestAnimationFrame(attachLocal);
-      highlightRecorderRef.current = createLiveHighlightRecorder({
-        creatorId: currentUserId,
-        sessionId: startedSessionId,
-        stream,
-        title: room.title
-      });
-      loadLive().catch(() => {});`;
+      }`;
 
   const connectBefore = `      try {
         await room.connect(auth.url, auth.token, { autoSubscribe: true });
