@@ -1,9 +1,9 @@
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent } from 'livekit-client';
 import { supabase } from '../../../supabaseClient';
+import { publishHostMediaV2 } from './livePublisherService';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CONNECT_TIMEOUT_MS = 10000;
-const PUBLISH_TIMEOUT_MS = 10000;
 const CLIENT_INSTANCE_ID = (() => {
   try {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, 24);
@@ -56,6 +56,9 @@ function bindRoomEvents(room, callbacks = {}) {
   room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
     callbacks.onTrackUnsubscribed?.(track, publication, participant);
   });
+  room.on(RoomEvent.TrackPublished, publication => {
+    try { publication?.setSubscribed?.(true); } catch {}
+  });
   room.on(RoomEvent.ParticipantConnected, participant => callbacks.onParticipantChange?.(participant));
   room.on(RoomEvent.ParticipantDisconnected, participant => callbacks.onParticipantChange?.(participant));
   room.on(RoomEvent.Reconnecting, () => callbacks.onReconnecting?.());
@@ -67,7 +70,9 @@ async function connectRoom(sessionId, role, callbacks) {
   const auth = await getLiveKitToken(sessionId, role);
   const room = new Room({
     adaptiveStream: role !== 'host',
-    dynacast: false
+    dynacast: role === 'host',
+    disconnectOnPageLeave: true,
+    stopLocalTrackOnUnpublish: false
   });
   bindRoomEvents(room, callbacks);
 
@@ -85,94 +90,18 @@ async function connectRoom(sessionId, role, callbacks) {
   }
 }
 
-function publicationSid(publication) {
-  return String(publication?.trackSid || publication?.sid || '');
-}
-
-async function publishCamera(room, videoTrack, sessionId) {
-  if (!videoTrack || videoTrack.readyState !== 'live') {
-    throw new Error('Camera stopped before LIVE video could publish.');
-  }
-
-  // Reliability first: publish a single camera encoding. Simulcast can be
-  // re-enabled after the core host/viewer path passes repeated device tests.
-  const publication = await withTimeout(
-    room.localParticipant.publishTrack(videoTrack, {
-      source: Track.Source.Camera,
-      simulcast: false
-    }),
-    PUBLISH_TIMEOUT_MS,
-    'LIVE camera publishing timed out.'
-  );
-
-  const sid = publicationSid(publication);
-  if (!sid) {
-    const error = new Error('LIVE camera was not confirmed by the video server.');
-    await logTransportFailure('v2-camera-unconfirmed', error, {
-      sessionId,
-      trackId: videoTrack.id || '',
-      readyState: videoTrack.readyState || '',
-      muted: Boolean(videoTrack.muted)
-    });
-    throw error;
-  }
-
-  return publication;
-}
-
-async function publishMicrophone(room, audioTrack, sessionId) {
-  if (!audioTrack || audioTrack.readyState !== 'live') {
-    throw new Error('Microphone stopped before LIVE audio could publish.');
-  }
-
-  const publication = await withTimeout(
-    room.localParticipant.publishTrack(audioTrack, {
-      source: Track.Source.Microphone
-    }),
-    PUBLISH_TIMEOUT_MS,
-    'LIVE microphone publishing timed out.'
-  );
-
-  const sid = publicationSid(publication);
-  if (!sid) {
-    const error = new Error('LIVE microphone was not confirmed by the video server.');
-    await logTransportFailure('v2-microphone-unconfirmed', error, {
-      sessionId,
-      trackId: audioTrack.id || '',
-      readyState: audioTrack.readyState || '',
-      muted: Boolean(audioTrack.muted)
-    });
-    throw error;
-  }
-
-  return publication;
-}
-
 export async function connectHostTransport({ sessionId, stream, callbacks = {} }) {
   const room = await connectRoom(sessionId, 'host', callbacks);
-  const videoTrack = stream?.getVideoTracks?.().find(track => track.readyState === 'live');
-  const audioTrack = stream?.getAudioTracks?.().find(track => track.readyState === 'live');
-
-  if (!videoTrack || !audioTrack) {
-    try { await room.disconnect(); } catch {}
-    throw new Error('Camera or microphone stopped before LIVE connected.');
-  }
 
   try {
-    // Camera is intentionally first. LIVE must never report success when only
-    // the microphone reached LiveKit.
-    const videoPublication = await publishCamera(room, videoTrack, sessionId);
-    const audioPublication = await publishMicrophone(room, audioTrack, sessionId);
-    return { room, videoPublication, audioPublication };
-  } catch (error) {
-    await logTransportFailure('v2-host-publish', error, {
-      sessionId,
-      videoTrackId: videoTrack.id || '',
-      videoReadyState: videoTrack.readyState || '',
-      videoMuted: Boolean(videoTrack.muted),
-      audioTrackId: audioTrack.id || '',
-      audioReadyState: audioTrack.readyState || ''
+    const published = await publishHostMediaV2({
+      room,
+      stream,
+      logFailure: (stage, error, context) => logTransportFailure(stage, error, { sessionId, ...context })
     });
+    return { room, ...published };
+  } catch (error) {
+    await logTransportFailure('v2-host-publish', error, { sessionId });
     try { await room.disconnect(); } catch {}
     throw error;
   }
