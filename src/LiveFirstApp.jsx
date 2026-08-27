@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
-import LiveExperience from './LiveExperienceScale';
-import LiveHomePreviewEnhancer from './LiveHomePreviewEnhancer';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
 import LiveProfile from './LiveProfile';
 import Rankings from './Rankings';
@@ -15,6 +13,7 @@ import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
 import PublishReadyEnhancer from './PublishReadyEnhancer';
 import ProfileAccountActionsEnhancer from './ProfileAccountActionsEnhancer';
 import ProductionLiveHost from './features/live/components/ProductionLiveHost';
+import ProductionLiveBrowser from './features/live/components/ProductionLiveBrowser';
 import './real-home.css';
 import './live-first-app.css';
 import './product-shell.css';
@@ -81,58 +80,29 @@ export default function LiveFirstApp() {
     return () => { window.clearInterval(retry); events.forEach(eventName => document.removeEventListener(eventName, unlockLiveAudio)); };
   }, [immersiveLive]);
 
-  useEffect(() => {
-    if (!user?.id || tab !== 'live' || immersiveLive || chatOpen || hostStudioOpen) return undefined;
-    let refreshTimer = null;
-    const refreshHome = () => {
-      window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        invalidateLiveFeedCache();
-        setLiveHomeVersion(version => version + 1);
-      }, 100);
-    };
-
-    const lifecycle = supabase.channel(`droxion-home-live-lifecycle:${user.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_started' }, refreshHome)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_ended' }, refreshHome)
-      .subscribe();
-
-    const presence = supabase.channel(`droxion-home-live-presence:${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'droxion_live_presence' }, refreshHome)
-      .subscribe();
-
-    const refreshWhenVisible = () => { if (document.visibilityState !== 'hidden') refreshHome(); };
-    window.addEventListener('pageshow', refreshWhenVisible);
-    window.addEventListener('focus', refreshWhenVisible);
-    window.addEventListener('online', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-
-    return () => {
-      window.clearTimeout(refreshTimer);
-      window.removeEventListener('pageshow', refreshWhenVisible);
-      window.removeEventListener('focus', refreshWhenVisible);
-      window.removeEventListener('online', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-      try { Promise.resolve(supabase.removeChannel(lifecycle)).catch(() => {}); } catch {}
-      try { Promise.resolve(supabase.removeChannel(presence)).catch(() => {}); } catch {}
-    };
-  }, [user?.id, tab, immersiveLive, chatOpen, hostStudioOpen]);
-
   function openGoLiveInsideHome() {
-    setTab('live'); setImmersiveLive(false); setSearchOpen(false); setNotificationsOpen(false); setChatOpen(false); setHostStudioOpen(true);
+    setTab('live');
+    setImmersiveLive(false);
+    setSearchOpen(false);
+    setNotificationsOpen(false);
+    setChatOpen(false);
+    setHostStudioOpen(true);
   }
 
   function chooseTab(nextTab) {
     if (nextTab === 'go-live') { openGoLiveInsideHome(); return; }
-    setHostStudioOpen(false); setImmersiveLive(false); setSearchOpen(false); setNotificationsOpen(false); setChatOpen(false); setTab(nextTab);
+    setHostStudioOpen(false);
+    setImmersiveLive(false);
+    setSearchOpen(false);
+    setNotificationsOpen(false);
+    setChatOpen(false);
+    setTab(nextTab);
   }
 
   function startLiveFromFeed() { openGoLiveInsideHome(); }
-  function watchCreatorLive(creatorId) {
-    setTab('live'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
-  }
+  function watchCreatorLive() { setTab('live'); setHostStudioOpen(false); }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><ProductionLiveBrowser key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
@@ -140,7 +110,6 @@ export default function LiveFirstApp() {
   return (
     <main className={`lfShell ${tab === 'feed' ? 'lfFeedTab' : ''} ${chatOpen ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
       <LiveClientDiagnostics /><ProfileAvatarEnhancer /><PublishReadyEnhancer /><ProfileAccountActionsEnhancer />
-      <LiveHomePreviewEnhancer currentUserId={user?.id} enabled={tab === 'live' && !immersiveLive && !chatOpen && !hostStudioOpen} />
 
       {!immersiveLive && !chatOpen && tab !== 'feed' && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
         <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
