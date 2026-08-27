@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Camera, Mic, Radio, RotateCcw, Users, X } from 'lucide-react';
 import LocalLiveVideo from './LocalLiveVideo';
+import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
@@ -68,6 +69,8 @@ export default function ProductionLiveHost({ onClose }) {
         {live && <div className="prodLiveBadge">LIVE</div>}
         <div className="prodLiveViewerPill"><Users size={17} /><span>{state.viewerCount || 0}</span></div>
         <div className="prodLiveMediaPill"><Mic size={17} /><Camera size={17} /></div>
+
+        {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
       </div>
 
       {state.error && <div className="prodLiveError">{state.error}</div>}
