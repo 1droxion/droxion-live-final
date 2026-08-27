@@ -166,6 +166,8 @@ export function useLiveBroadcast() {
     patchState({ ...initialState });
   }, [patchState]);
 
+  const getRoom = useCallback(() => roomRef.current, []);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -189,6 +191,7 @@ export function useLiveBroadcast() {
     ensurePreview,
     stopPreview,
     startBroadcast,
-    endBroadcast
+    endBroadcast,
+    getRoom
   };
 }
