@@ -2,6 +2,7 @@ const START_LIVE_TIMEOUT_MS = 10_000;
 const ERROR_BODY_TIMEOUT_MS = 750;
 const START_CONFIRM_INTERVAL_MS = 250;
 const START_CONFIRM_CALL_TIMEOUT_MS = 900;
+const START_HANDOFF_GRACE_MS = 1_800;
 
 function createSessionId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -91,6 +92,7 @@ export async function startLiveSession({
   timeoutMs = START_LIVE_TIMEOUT_MS,
   confirmIntervalMs = START_CONFIRM_INTERVAL_MS,
   confirmCallTimeoutMs = START_CONFIRM_CALL_TIMEOUT_MS,
+  handoffGraceMs = START_HANDOFF_GRACE_MS,
   sessionIdFactory = createSessionId
 }) {
   if (!client || !fetchImpl || !projectUrl || !anonKey) throw new Error('LIVE service is not configured.');
@@ -112,7 +114,7 @@ export async function startLiveSession({
   const controller = new AbortController();
   const deadlineAt = Date.now() + Math.max(1, timeoutMs);
   let timeoutHandle = null;
-  let confirmedByStatus = false;
+  let completed = false;
 
   const requestPromise = (async () => {
     const response = await fetchImpl(`${projectUrl}/rest/v1/rpc/droxion_start_live_v2`, {
@@ -149,8 +151,19 @@ export async function startLiveSession({
       callTimeoutMs: Math.max(1, confirmCallTimeoutMs)
     });
     if (!confirmed) return new Promise(() => {});
-    confirmedByStatus = true;
     return confirmed;
+  })();
+
+  // A few browser/WebView stacks can deliver the authenticated write to
+  // PostgREST while never resolving either JavaScript response promise. Do not
+  // leave the creator trapped on "Starting LIVE" in that case. After a short
+  // grace period, continue with the client-owned session ID. The LiveKit token
+  // endpoint immediately verifies that this exact session exists, is fresh and
+  // belongs to the signed-in host before any publishing permission is issued.
+  const handoffPromise = (async () => {
+    await wait(Math.max(1, handoffGraceMs));
+    if (completed) return new Promise(() => {});
+    return startedLiveResult(sessionId, payload);
   })();
 
   const timeoutPromise = new Promise((_, reject) => {
@@ -161,13 +174,14 @@ export async function startLiveSession({
   });
 
   try {
-    const result = await Promise.race([requestPromise, confirmationPromise, timeoutPromise]);
-    // Once the exact client-owned session ID is visible in live_status, the
-    // server write is authoritative. Stop waiting on a WebView response that
-    // may never settle and let React continue into heartbeat + LiveKit.
-    if (confirmedByStatus) controller.abort();
+    const result = await Promise.race([requestPromise, confirmationPromise, handoffPromise, timeoutPromise]);
+    completed = true;
+    // Stop a response handoff that is still hanging after another authoritative
+    // path (status confirmation or the guarded transport handoff) won the race.
+    try { controller.abort(); } catch {}
     return result;
   } catch (error) {
+    completed = true;
     if (error?.name === 'AbortError') throw new Error('Starting LIVE timed out. Please try again.');
     throw error;
   } finally {
