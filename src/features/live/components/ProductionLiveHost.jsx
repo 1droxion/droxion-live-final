@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Camera, Mic, Radio, RotateCcw, Users, X } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Radio, RotateCcw, Users, X } from 'lucide-react';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
+import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
 
 export default function ProductionLiveHost({ onClose }) {
-  const { state, mediaStream, ensurePreview, stopPreview, startBroadcast, endBroadcast } = useLiveBroadcast();
+  const { state, mediaStream, ensurePreview, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
   const [title, setTitle] = useState('Live on Droxion');
   const [orientation, setOrientation] = useState('vertical');
   const [previewRequested, setPreviewRequested] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraMuted, setCameraMuted] = useState(false);
+  const [controlBusy, setControlBusy] = useState('');
+  const [controlError, setControlError] = useState('');
 
   const busy = isLiveBusy(state.phase);
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
@@ -30,6 +35,15 @@ export default function ProductionLiveHost({ onClose }) {
     ensurePreview({ orientation }).catch(() => {});
   }, [previewRequested, mediaStream, live, connecting, orientation, ensurePreview]);
 
+  useEffect(() => {
+    if (!live) {
+      setMicMuted(false);
+      setCameraMuted(false);
+      setControlBusy('');
+      setControlError('');
+    }
+  }, [live]);
+
   async function closeHost() {
     if (live || connecting || state.sessionId) {
       try { await endBroadcast(); } catch {}
@@ -37,6 +51,40 @@ export default function ProductionLiveHost({ onClose }) {
       stopPreview();
     }
     onClose?.();
+  }
+
+  async function toggleMicrophone() {
+    if (!live || controlBusy) return;
+    const room = getRoom();
+    if (!room) return;
+    const nextMuted = !micMuted;
+    setControlBusy('mic');
+    setControlError('');
+    try {
+      await setHostMicrophoneMuted(room, nextMuted);
+      setMicMuted(nextMuted);
+    } catch (error) {
+      setControlError(error?.message || 'Could not change microphone.');
+    } finally {
+      setControlBusy('');
+    }
+  }
+
+  async function toggleCamera() {
+    if (!live || controlBusy) return;
+    const room = getRoom();
+    if (!room) return;
+    const nextMuted = !cameraMuted;
+    setControlBusy('camera');
+    setControlError('');
+    try {
+      await setHostCameraMuted(room, nextMuted);
+      setCameraMuted(nextMuted);
+    } catch (error) {
+      setControlError(error?.message || 'Could not change camera.');
+    } finally {
+      setControlBusy('');
+    }
   }
 
   return (
@@ -68,12 +116,38 @@ export default function ProductionLiveHost({ onClose }) {
 
         {live && <div className="prodLiveBadge">LIVE</div>}
         <div className="prodLiveViewerPill"><Users size={17} /><span>{state.viewerCount || 0}</span></div>
-        <div className="prodLiveMediaPill"><Mic size={17} /><Camera size={17} /></div>
+
+        {live ? (
+          <div className="prodLiveMediaControls" aria-label="LIVE media controls">
+            <button
+              type="button"
+              className={micMuted ? 'isOff' : ''}
+              onClick={toggleMicrophone}
+              disabled={Boolean(controlBusy)}
+              aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+              title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+            >
+              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+            </button>
+            <button
+              type="button"
+              className={cameraMuted ? 'isOff' : ''}
+              onClick={toggleCamera}
+              disabled={Boolean(controlBusy)}
+              aria-label={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
+              title={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
+            >
+              {cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}
+            </button>
+          </div>
+        ) : (
+          <div className="prodLiveMediaPill"><Mic size={17} /><Camera size={17} /></div>
+        )}
 
         {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
       </div>
 
-      {state.error && <div className="prodLiveError">{state.error}</div>}
+      {(state.error || controlError) && <div className="prodLiveError">{controlError || state.error}</div>}
 
       {!live && !connecting && (
         <div className="prodLiveSetup">
