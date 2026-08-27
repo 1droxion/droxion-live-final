@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
@@ -16,14 +16,17 @@ import LiveV2Page from "./pages/live/LiveV2Page.jsx";
 import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
 
 export default function App() {
+  const location = useLocation();
+  const isLiveV2 = location.pathname.startsWith('/live-v2');
+
   return (
     <>
-      <DroxionPushNotifications />
-      <DroxionLivePushBridge />
-      <GlobalEnhancements />
-      <CreatorV11Enhancer />
-      <LiveGuestStageGuard />
-      <ShortNativeActionsEnhancer />
+      {!isLiveV2 && <DroxionPushNotifications />}
+      {!isLiveV2 && <DroxionLivePushBridge />}
+      {!isLiveV2 && <GlobalEnhancements />}
+      {!isLiveV2 && <CreatorV11Enhancer />}
+      {!isLiveV2 && <LiveGuestStageGuard />}
+      {!isLiveV2 && <ShortNativeActionsEnhancer />}
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/live-v2" element={<LiveV2Page />} />
