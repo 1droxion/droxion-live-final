@@ -3,7 +3,6 @@ import { supabase } from '../../../supabaseClient';
 import { connectViewerTransport, disconnectTransport } from '../services/liveTransportService';
 
 const POLL_MS = 900;
-const ACTIVE_VIEWER_WINDOW_MS = 180000;
 
 function findLegacyViewerNodes() {
   const room = document.querySelector('.liveRoomV4');
@@ -21,19 +20,10 @@ function findLegacyViewerNodes() {
   return { room, hostVideo, hostAudio, loading };
 }
 
-async function latestViewerMembership(userId) {
-  const cutoff = new Date(Date.now() - ACTIVE_VIEWER_WINDOW_MS).toISOString();
-  const { data, error } = await supabase
-    .from('droxion_live_viewers')
-    .select('session_id,host_id,heartbeat_at')
-    .eq('viewer_id', userId)
-    .gte('heartbeat_at', cutoff)
-    .order('heartbeat_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
+async function currentViewerMembership() {
+  const { data, error } = await supabase.rpc('droxion_my_active_live_viewing');
   if (error) throw error;
-  return data || null;
+  return data && typeof data === 'object' ? data : null;
 }
 
 function attachTrack(track, element) {
@@ -85,18 +75,17 @@ export default function LegacyViewerV2Bridge() {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.id) return;
-
       let membership;
       try {
-        membership = await latestViewerMembership(user.id);
+        membership = await currentViewerMembership();
       } catch {
+        restoreLoading(nodes);
         return;
       }
-      if (!membership?.session_id) return;
+      if (!membership?.session_id || !membership?.host_id) return;
 
       const sessionId = String(membership.session_id);
+      const hostId = String(membership.host_id);
       if (roomRef.current && sessionRef.current === sessionId) return;
 
       connectingRef.current = true;
@@ -115,7 +104,7 @@ export default function LegacyViewerV2Bridge() {
               const currentNodes = findLegacyViewerNodes();
               if (!currentNodes) return;
               const identity = String(participant?.identity || '');
-              if (identity && membership.host_id && identity !== String(membership.host_id)) return;
+              if (identity && identity !== hostId) return;
 
               if (track.kind === 'video') {
                 attachTrack(track, currentNodes.hostVideo);
