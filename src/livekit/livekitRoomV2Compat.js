@@ -11,7 +11,9 @@ import {
 } from './livekitRoomLegacy';
 
 const TOKEN_FUNCTION = 'livekit-token';
-const CONNECT_TIMEOUT_MS = 10000;
+const CONNECT_TIMEOUT_MS = 8000;
+const CONNECT_ATTEMPTS = 2;
+const CONNECT_RETRY_DELAY_MS = 350;
 const roomMeta = new WeakMap();
 const mediaByRoom = new WeakMap();
 
@@ -35,6 +37,10 @@ function withTimeout(promise, timeoutMs, message) {
       reject(error);
     });
   });
+}
+
+function wait(ms) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
 async function logClientError(stage, error, context = {}) {
@@ -160,7 +166,27 @@ function bindRoomEvents(room) {
   room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
     handlers.onAudioPlaybackChanged?.(room.canPlaybackAudio !== false);
   });
-  room.on(RoomEvent.Disconnected, reason => handlers.onDisconnected?.(reason));
+  room.on(RoomEvent.Disconnected, reason => {
+    if (!meta.suppressDisconnect) handlers.onDisconnected?.(reason);
+  });
+}
+
+function createRoom(sessionId, role, handlers) {
+  const publishingRole = role === 'host' || role === 'guest';
+  const room = new Room({
+    adaptiveStream: !publishingRole,
+    dynacast: publishingRole,
+    disconnectOnPageLeave: true,
+    stopLocalTrackOnUnpublish: false
+  });
+  roomMeta.set(room, {
+    sessionId: String(sessionId),
+    role,
+    handlers,
+    suppressDisconnect: false
+  });
+  bindRoomEvents(room);
+  return room;
 }
 
 export async function connectLiveKitRoom({
@@ -177,52 +203,59 @@ export async function connectLiveKitRoom({
 }) {
   if (!sessionId) throw new Error('LIVE session ID is missing.');
   const normalizedRole = String(role || 'viewer').trim().toLowerCase();
-  const auth = await getToken(sessionId, normalizedRole);
-  const publishingRole = normalizedRole === 'host' || normalizedRole === 'guest';
+  const handlers = {
+    onTrackSubscribed,
+    onTrackUnsubscribed,
+    onDisconnected,
+    onParticipantConnected,
+    onParticipantDisconnected,
+    onReconnecting,
+    onReconnected,
+    onAudioPlaybackChanged
+  };
 
-  const room = new Room({
-    adaptiveStream: !publishingRole,
-    dynacast: publishingRole,
-    disconnectOnPageLeave: true,
-    stopLocalTrackOnUnpublish: false
-  });
+  let lastError = null;
+  for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt += 1) {
+    const auth = await getToken(sessionId, normalizedRole);
+    const room = createRoom(sessionId, normalizedRole, handlers);
 
-  roomMeta.set(room, {
-    sessionId: String(sessionId),
-    role: normalizedRole,
-    handlers: {
-      onTrackSubscribed,
-      onTrackUnsubscribed,
-      onDisconnected,
-      onParticipantConnected,
-      onParticipantDisconnected,
-      onReconnecting,
-      onReconnected,
-      onAudioPlaybackChanged
+    try {
+      await withTimeout(
+        room.connect(auth.url, auth.token, { autoSubscribe: true }),
+        CONNECT_TIMEOUT_MS,
+        'LIVE video connection timed out.'
+      );
+      replayRemoteTracks(room);
+      window.setTimeout(() => replayRemoteTracks(room), 150);
+      window.setTimeout(() => replayRemoteTracks(room), 600);
+      return { room, auth };
+    } catch (error) {
+      lastError = error;
+      await logClientError('regular-v2-connect', error, {
+        sessionId,
+        role: normalizedRole,
+        attempt,
+        maxAttempts: CONNECT_ATTEMPTS
+      });
+      const meta = roomMeta.get(room);
+      if (meta) meta.suppressDisconnect = true;
+      roomMeta.delete(room);
+      mediaByRoom.delete(room);
+      try { await room.disconnect(true); } catch {}
+      if (attempt < CONNECT_ATTEMPTS) {
+        handlers.onReconnecting?.();
+        await wait(CONNECT_RETRY_DELAY_MS);
+      }
     }
-  });
-  bindRoomEvents(room);
-
-  try {
-    await withTimeout(
-      room.connect(auth.url, auth.token, { autoSubscribe: true }),
-      CONNECT_TIMEOUT_MS,
-      'LIVE video connection timed out.'
-    );
-    replayRemoteTracks(room);
-    window.setTimeout(() => replayRemoteTracks(room), 150);
-    window.setTimeout(() => replayRemoteTracks(room), 600);
-    return { room, auth };
-  } catch (error) {
-    await logClientError('regular-v2-connect', error, { sessionId, role: normalizedRole });
-    roomMeta.delete(room);
-    try { await room.disconnect(true); } catch {}
-    throw error;
   }
+
+  throw lastError || new Error('Could not connect to LIVE video.');
 }
 
 export async function publishLocalMedia(room, mediaStream) {
   if (!room || !mediaStream) throw new Error('LIVE room or camera stream is missing.');
+  const liveVideo = mediaStream.getVideoTracks?.().find(track => track.readyState === 'live');
+  if (!liveVideo) throw new Error('LIVE camera track is missing or ended.');
   mediaByRoom.set(room, mediaStream);
   try {
     return await publishLegacyManagedMedia(room, mediaStream);
@@ -232,6 +265,7 @@ export async function publishLocalMedia(room, mediaStream) {
       sessionId: meta?.sessionId || '',
       role: meta?.role || '',
       videoTrackCount: mediaStream.getVideoTracks?.().length || 0,
+      liveVideoTrackCount: mediaStream.getVideoTracks?.().filter(track => track.readyState === 'live').length || 0,
       audioTrackCount: mediaStream.getAudioTracks?.().length || 0
     });
     throw error;
@@ -245,17 +279,34 @@ export async function recoverLiveKitAfterForeground(room, mediaStream) {
   const state = String(room.state || room.connectionState || '').toLowerCase();
 
   if (state === 'disconnected') {
-    const auth = await getToken(meta.sessionId, meta.role);
-    await withTimeout(
-      room.connect(auth.url, auth.token, { autoSubscribe: true }),
-      CONNECT_TIMEOUT_MS,
-      'LIVE video reconnection timed out.'
-    );
+    let lastError = null;
+    for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt += 1) {
+      try {
+        const auth = await getToken(meta.sessionId, meta.role);
+        await withTimeout(
+          room.connect(auth.url, auth.token, { autoSubscribe: true }),
+          CONNECT_TIMEOUT_MS,
+          'LIVE video reconnection timed out.'
+        );
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        await logClientError('regular-v2-reconnect', error, {
+          sessionId: meta.sessionId,
+          role: meta.role,
+          attempt,
+          maxAttempts: CONNECT_ATTEMPTS
+        });
+        if (attempt < CONNECT_ATTEMPTS) await wait(CONNECT_RETRY_DELAY_MS);
+      }
+    }
+    if (lastError) throw lastError;
   }
 
   if (mediaStream && (meta.role === 'host' || meta.role === 'guest')) {
     mediaByRoom.set(room, mediaStream);
-    await publishLegacyManagedMedia(room, mediaStream);
+    await publishLocalMedia(room, mediaStream);
   }
   replayRemoteTracks(room);
   window.setTimeout(() => replayRemoteTracks(room), 150);
@@ -263,6 +314,8 @@ export async function recoverLiveKitAfterForeground(room, mediaStream) {
 
 export async function disconnectLiveKitRoom(room) {
   if (!room) return;
+  const meta = roomMeta.get(room);
+  if (meta) meta.suppressDisconnect = true;
   roomMeta.delete(room);
   mediaByRoom.delete(room);
   try { await room.disconnect(); } catch {}
