@@ -9,6 +9,8 @@ function normalizeStatus(payload) {
     hostId: String(value.host_id ?? value.hostId ?? ''),
     title: String(value.title ?? ''),
     orientation: String(value.orientation ?? 'vertical'),
+    ended: Boolean(value.ended),
+    reason: String(value.reason ?? ''),
     raw: value
   };
 }
@@ -49,14 +51,16 @@ export async function getLiveRoomStatus(sessionId) {
   return normalizeStatus(data);
 }
 
-export async function sendLiveHeartbeat() {
-  const { data, error } = await supabase.rpc('droxion_live_heartbeat');
+export async function sendLiveHeartbeat(sessionId) {
+  if (!sessionId) throw new Error('LIVE session ID is missing.');
+  const { data, error } = await supabase.rpc('droxion_live_heartbeat_v2', { p_session_id: sessionId });
   if (error) throw error;
   return normalizeStatus(data);
 }
 
-export async function endLiveSession() {
-  const { data, error } = await supabase.rpc('droxion_set_live', { p_live: false });
+export async function endLiveSession(sessionId) {
+  if (!sessionId) return normalizeStatus({ ended: false, reason: 'missing_session' });
+  const { data, error } = await supabase.rpc('droxion_end_live_v2', { p_session_id: sessionId });
   if (error) throw error;
   return normalizeStatus(data);
 }
