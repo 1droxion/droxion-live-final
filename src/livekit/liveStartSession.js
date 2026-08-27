@@ -1,5 +1,7 @@
 const START_LIVE_TIMEOUT_MS = 10_000;
 const ERROR_BODY_TIMEOUT_MS = 750;
+const START_CONFIRM_INTERVAL_MS = 250;
+const START_CONFIRM_CALL_TIMEOUT_MS = 900;
 
 function createSessionId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -10,6 +12,24 @@ function createSessionId() {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
+
+function wait(ms) {
+  return new Promise(resolve => globalThis.setTimeout(resolve, ms));
+}
+
+function startedLiveResult(sessionId, payload, status = null) {
+  const statusOrientation = status?.orientation === 'horizontal' ? 'horizontal' : status?.orientation === 'vertical' ? 'vertical' : '';
+  return {
+    is_live: true,
+    session_id: sessionId,
+    title: status?.title || payload.p_title,
+    tags: Array.isArray(status?.tags) ? status.tags : payload.p_tags,
+    orientation: statusOrientation || payload.p_orientation,
+    allow_guest_requests: typeof status?.allow_guest_requests === 'boolean'
+      ? status.allow_guest_requests
+      : payload.p_allow_guest_requests
+  };
 }
 
 async function readFailureMessage(response) {
@@ -30,6 +50,35 @@ async function readFailureMessage(response) {
   }
 }
 
+async function confirmPersistedLive({
+  client,
+  sessionId,
+  payload,
+  deadlineAt,
+  intervalMs,
+  callTimeoutMs
+}) {
+  if (typeof client?.rpc !== 'function') return null;
+
+  while (Date.now() < deadlineAt) {
+    try {
+      const result = await Promise.race([
+        client.rpc('droxion_live_status'),
+        new Promise(resolve => globalThis.setTimeout(() => resolve(null), callTimeoutMs))
+      ]);
+      const status = result?.data;
+      if (status?.is_live && String(status?.session_id || '') === sessionId) {
+        return startedLiveResult(sessionId, payload, status);
+      }
+    } catch {}
+
+    if (Date.now() >= deadlineAt) break;
+    await wait(intervalMs);
+  }
+
+  return null;
+}
+
 export async function startLiveSession({
   client,
   title,
@@ -40,6 +89,8 @@ export async function startLiveSession({
   projectUrl = import.meta.env?.VITE_SUPABASE_URL,
   anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY,
   timeoutMs = START_LIVE_TIMEOUT_MS,
+  confirmIntervalMs = START_CONFIRM_INTERVAL_MS,
+  confirmCallTimeoutMs = START_CONFIRM_CALL_TIMEOUT_MS,
   sessionIdFactory = createSessionId
 }) {
   if (!client || !fetchImpl || !projectUrl || !anonKey) throw new Error('LIVE service is not configured.');
@@ -59,9 +110,11 @@ export async function startLiveSession({
     p_allow_guest_requests: allowGuestRequests !== false
   };
   const controller = new AbortController();
-  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const deadlineAt = Date.now() + Math.max(1, timeoutMs);
+  let timeoutHandle = null;
+  let confirmedByStatus = false;
 
-  try {
+  const requestPromise = (async () => {
     const response = await fetchImpl(`${projectUrl}/rest/v1/rpc/droxion_start_live_v2`, {
       method: 'POST',
       headers: {
@@ -80,23 +133,44 @@ export async function startLiveSession({
       throw new Error(message || `Could not start LIVE (${response.status}).`);
     }
 
-    // The v2 RPC persists the client-owned session ID before returning success.
-    // Do not read the success body: that read is the exact WebView/Supabase stall
-    // that previously left the setup sheet open after an HTTP 200 response.
+    // Do not read the success body. Some iPhone/WebView clients complete the
+    // database write but never finish the original response handoff.
     try { response.body?.cancel?.()?.catch?.(() => {}); } catch {}
+    return startedLiveResult(sessionId, payload);
+  })();
 
-    return {
-      is_live: true,
-      session_id: sessionId,
-      title: payload.p_title,
-      tags: normalizedTags,
-      orientation: normalizedOrientation,
-      allow_guest_requests: payload.p_allow_guest_requests
-    };
+  const confirmationPromise = (async () => {
+    const confirmed = await confirmPersistedLive({
+      client,
+      sessionId,
+      payload,
+      deadlineAt,
+      intervalMs: Math.max(0, confirmIntervalMs),
+      callTimeoutMs: Math.max(1, confirmCallTimeoutMs)
+    });
+    if (!confirmed) return new Promise(() => {});
+    confirmedByStatus = true;
+    return confirmed;
+  })();
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = globalThis.setTimeout(() => {
+      controller.abort();
+      reject(new Error('Starting LIVE timed out. Please try again.'));
+    }, Math.max(1, timeoutMs));
+  });
+
+  try {
+    const result = await Promise.race([requestPromise, confirmationPromise, timeoutPromise]);
+    // Once the exact client-owned session ID is visible in live_status, the
+    // server write is authoritative. Stop waiting on a WebView response that
+    // may never settle and let React continue into heartbeat + LiveKit.
+    if (confirmedByStatus) controller.abort();
+    return result;
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('Starting LIVE timed out. Please try again.');
     throw error;
   } finally {
-    globalThis.clearTimeout(timer);
+    if (timeoutHandle) globalThis.clearTimeout(timeoutHandle);
   }
 }
