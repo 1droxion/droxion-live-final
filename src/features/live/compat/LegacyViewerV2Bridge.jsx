@@ -21,7 +21,7 @@ function findLegacyViewerNodes() {
 }
 
 async function currentViewerMembership() {
-  const { data, error } = await supabase.rpc('droxion_my_active_live_viewing');
+  const { data, error } = await supabase.rpc('droxion_current_live_membership');
   if (error) throw error;
   return data && typeof data === 'object' ? data : null;
 }
