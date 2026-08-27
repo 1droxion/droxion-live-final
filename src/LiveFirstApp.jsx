@@ -39,7 +39,7 @@ export default function LiveFirstApp() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
-  const [, setLiveHomeVersion] = useState(0);
+  const [liveHomeVersion, setLiveHomeVersion] = useState(0);
 
   async function refreshWallet(authUser = user, knownBalance) {
     const hasKnownBalance = Number.isFinite(knownBalance);
@@ -86,17 +86,35 @@ export default function LiveFirstApp() {
     let refreshTimer = null;
     const refreshHome = () => {
       window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => { invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }, 120 + Math.floor(Math.random() * 280));
+      refreshTimer = window.setTimeout(() => {
+        invalidateLiveFeedCache();
+        setLiveHomeVersion(version => version + 1);
+      }, 100);
     };
+
     const lifecycle = supabase.channel(`droxion-home-live-lifecycle:${user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_started' }, refreshHome)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'droxion_live_events', filter: 'event_type=eq.live_ended' }, refreshHome)
       .subscribe();
+
+    const presence = supabase.channel(`droxion-home-live-presence:${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'droxion_live_presence' }, refreshHome)
+      .subscribe();
+
     const refreshWhenVisible = () => { if (document.visibilityState !== 'hidden') refreshHome(); };
-    window.addEventListener('pageshow', refreshWhenVisible); window.addEventListener('focus', refreshWhenVisible); window.addEventListener('online', refreshWhenVisible); document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('pageshow', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
     return () => {
-      window.clearTimeout(refreshTimer); window.removeEventListener('pageshow', refreshWhenVisible); window.removeEventListener('focus', refreshWhenVisible); window.removeEventListener('online', refreshWhenVisible); document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.clearTimeout(refreshTimer);
+      window.removeEventListener('pageshow', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
       try { Promise.resolve(supabase.removeChannel(lifecycle)).catch(() => {}); } catch {}
+      try { Promise.resolve(supabase.removeChannel(presence)).catch(() => {}); } catch {}
     };
   }, [user?.id, tab, immersiveLive, chatOpen, hostStudioOpen]);
 
@@ -114,7 +132,7 @@ export default function LiveFirstApp() {
     setTab('live'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('droxion:open-live-creator', { detail: { creatorId } })), 80);
   }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><LiveExperience key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} />;
