@@ -1,0 +1,10 @@
+.productionViewerVideo{
+  transform:scaleX(-1)!important;
+  transform-origin:center center;
+}
+
+@media(min-width:900px){
+  .productionViewerVideo{
+    transform:translateX(-50%) scaleX(-1)!important;
+  }
+}
