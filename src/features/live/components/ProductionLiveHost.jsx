@@ -3,11 +3,12 @@ import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Radio, RotateCcw, Users, X }
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
+import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
 import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
 
-export default function ProductionLiveHost({ onClose }) {
+export default function ProductionLiveHost({ onClose, creatorId }) {
   const { state, mediaStream, ensurePreview, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
   const [title, setTitle] = useState('Live on Droxion');
   const [orientation, setOrientation] = useState('vertical');
@@ -20,6 +21,14 @@ export default function ProductionLiveHost({ onClose }) {
   const busy = isLiveBusy(state.phase);
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
   const connecting = state.phase === LIVE_PHASE.STARTING || state.phase === LIVE_PHASE.CONNECTING;
+
+  useLiveReleaseSidecars({
+    enabled: live,
+    creatorId,
+    sessionId: state.sessionId,
+    stream: mediaStream,
+    title
+  });
 
   const statusText = useMemo(() => {
     if (live) return state.phase === LIVE_PHASE.RECONNECTING ? 'Reconnecting…' : 'You are live';
