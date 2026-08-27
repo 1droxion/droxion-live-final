@@ -49,6 +49,26 @@ async function getLiveKitToken(sessionId, role) {
   return data;
 }
 
+function publicationsOf(participant) {
+  if (!participant) return [];
+  if (typeof participant.getTrackPublications === 'function') return participant.getTrackPublications() || [];
+  if (participant.trackPublications?.values) return Array.from(participant.trackPublications.values());
+  return [];
+}
+
+function replayRemoteTracks(room, callbacks = {}) {
+  if (!room || !callbacks.onTrackSubscribed) return;
+  const participants = room.remoteParticipants?.values ? Array.from(room.remoteParticipants.values()) : [];
+  participants.forEach(participant => {
+    publicationsOf(participant).forEach(publication => {
+      try {
+        if (typeof publication?.setSubscribed === 'function' && !publication.isSubscribed) publication.setSubscribed(true);
+      } catch {}
+      if (publication?.track) callbacks.onTrackSubscribed(publication.track, publication, participant);
+    });
+  });
+}
+
 function bindRoomEvents(room, callbacks = {}) {
   room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
     callbacks.onTrackSubscribed?.(track, publication, participant);
@@ -58,11 +78,19 @@ function bindRoomEvents(room, callbacks = {}) {
   });
   room.on(RoomEvent.TrackPublished, publication => {
     try { publication?.setSubscribed?.(true); } catch {}
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 30);
   });
-  room.on(RoomEvent.ParticipantConnected, participant => callbacks.onParticipantChange?.(participant));
+  room.on(RoomEvent.ParticipantConnected, participant => {
+    callbacks.onParticipantChange?.(participant);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 30);
+  });
   room.on(RoomEvent.ParticipantDisconnected, participant => callbacks.onParticipantChange?.(participant));
   room.on(RoomEvent.Reconnecting, () => callbacks.onReconnecting?.());
-  room.on(RoomEvent.Reconnected, () => callbacks.onReconnected?.());
+  room.on(RoomEvent.Reconnected, () => {
+    replayRemoteTracks(room, callbacks);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 150);
+    callbacks.onReconnected?.();
+  });
   room.on(RoomEvent.Disconnected, reason => callbacks.onDisconnected?.(reason));
 }
 
@@ -82,6 +110,14 @@ async function connectRoom(sessionId, role, callbacks) {
       CONNECT_TIMEOUT_MS,
       'LIVE video connection timed out.'
     );
+    // Critical for viewers joining an already-running LIVE: TrackSubscribed can
+    // fire while React is still committing the viewer screen. Replay all
+    // authoritative remote publications after connect so the video element
+    // always receives the host track instead of staying on a black page.
+    replayRemoteTracks(room, callbacks);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 100);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 400);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 1000);
     return room;
   } catch (error) {
     await logTransportFailure('v2-room-connect', error, { sessionId, role });
