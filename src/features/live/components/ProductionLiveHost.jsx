@@ -53,34 +53,46 @@ export default function ProductionLiveHost({ onClose }) {
     onClose?.();
   }
 
-  async function toggleMicrophone() {
+  async function toggleMicrophone(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     if (!live || controlBusy) return;
     const room = getRoom();
     if (!room) return;
-    const nextMuted = !micMuted;
+
+    const previous = micMuted;
+    const nextMuted = !previous;
+    setMicMuted(nextMuted);
     setControlBusy('mic');
     setControlError('');
+
     try {
       await setHostMicrophoneMuted(room, nextMuted);
-      setMicMuted(nextMuted);
     } catch (error) {
+      setMicMuted(previous);
       setControlError(error?.message || 'Could not change microphone.');
     } finally {
       setControlBusy('');
     }
   }
 
-  async function toggleCamera() {
+  async function toggleCamera(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     if (!live || controlBusy) return;
     const room = getRoom();
     if (!room) return;
-    const nextMuted = !cameraMuted;
+
+    const previous = cameraMuted;
+    const nextMuted = !previous;
+    setCameraMuted(nextMuted);
     setControlBusy('camera');
     setControlError('');
+
     try {
       await setHostCameraMuted(room, nextMuted);
-      setCameraMuted(nextMuted);
     } catch (error) {
+      setCameraMuted(previous);
       setControlError(error?.message || 'Could not change camera.');
     } finally {
       setControlBusy('');
@@ -123,7 +135,8 @@ export default function ProductionLiveHost({ onClose }) {
               type="button"
               className={micMuted ? 'isOff' : ''}
               onClick={toggleMicrophone}
-              disabled={Boolean(controlBusy)}
+              aria-pressed={micMuted}
+              aria-busy={controlBusy === 'mic'}
               aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
               title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
@@ -133,7 +146,8 @@ export default function ProductionLiveHost({ onClose }) {
               type="button"
               className={cameraMuted ? 'isOff' : ''}
               onClick={toggleCamera}
-              disabled={Boolean(controlBusy)}
+              aria-pressed={cameraMuted}
+              aria-busy={controlBusy === 'camera'}
               aria-label={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
               title={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
             >
