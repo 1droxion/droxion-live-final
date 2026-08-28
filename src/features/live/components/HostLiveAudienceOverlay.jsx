@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { getLiveUserColor } from '../utils/livePresentation';
 import LiveGiftCinema from './LiveGiftCinema';
+import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import '../styles/host-live-audience-overlay.css';
 
 function safeRpc(name, args) {
@@ -22,12 +23,14 @@ function mergeRows(rows, limit = 120) {
 export default function HostLiveAudienceOverlay({ sessionId }) {
   const [messages, setMessages] = useState([]);
   const [giftEvents, setGiftEvents] = useState([]);
+  const [selectedProfile, setSelectedProfile] = useState(null);
   const lastChatIdRef = useRef(0);
 
   useEffect(() => {
     if (!sessionId) {
       setMessages([]);
       setGiftEvents([]);
+      setSelectedProfile(null);
       lastChatIdRef.current = 0;
       return undefined;
     }
@@ -88,10 +91,20 @@ export default function HostLiveAudienceOverlay({ sessionId }) {
           <div className="hostLiveAudienceHint">Viewer messages will appear here</div>
         ) : recentMessages.map(message => {
           const name = message.display_name || message.sender_name || 'Viewer';
-          const color = getLiveUserColor(message.sender_id || message.user_id, name);
+          const userId = message.sender_id || message.user_id || '';
+          const color = getLiveUserColor(userId, name);
           return (
             <div className="hostLiveAudienceLine" key={message.id || `${message.created_at}:${message.body}`}>
-              <strong style={{ color }}>{name}</strong>
+              {userId ? (
+                <button
+                  type="button"
+                  className="hostLiveAudienceProfileLink"
+                  style={{ color }}
+                  onClick={() => setSelectedProfile({ user_id: userId, ...message })}
+                >
+                  {name}
+                </button>
+              ) : <strong style={{ color }}>{name}</strong>}
               <span>{message.body}</span>
             </div>
           );
@@ -99,6 +112,14 @@ export default function HostLiveAudienceOverlay({ sessionId }) {
       </div>
 
       <LiveGiftCinema giftEvents={giftEvents} />
+
+      {selectedProfile?.user_id && (
+        <LiveMiniProfileSheet
+          userId={selectedProfile.user_id}
+          fallback={selectedProfile}
+          onClose={() => setSelectedProfile(null)}
+        />
+      )}
     </>
   );
 }

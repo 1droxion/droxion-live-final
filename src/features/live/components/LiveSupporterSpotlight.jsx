@@ -15,12 +15,11 @@ function remainingLabel(spotlight, now) {
   if (!Number.isFinite(expires)) return '';
   const ms = Math.max(0, expires - now);
   const minutes = Math.ceil(ms / 60000);
-  if (minutes >= 120) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   return `${minutes}m`;
 }
 
-export default function LiveSupporterSpotlight({ spotlights = [] }) {
+export default function LiveSupporterSpotlight({ spotlights = [], onSelectUser }) {
   const [rotation, setRotation] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
@@ -58,7 +57,13 @@ export default function LiveSupporterSpotlight({ spotlights = [] }) {
         {visible.map((supporter, index) => {
           const name = supporter.display_name || supporter.username || 'Supporter';
           return (
-            <div className={`liveSupporterChip ${supporter.full_live ? 'fullLive' : ''}`} key={`${supporter.supporter_id}:${supporter.latest_gift_at}:${index}`}>
+            <button
+              type="button"
+              className={`liveSupporterChip ${supporter.full_live ? 'fullLive' : ''}`}
+              key={`${supporter.supporter_id}:${supporter.latest_gift_at}:${index}`}
+              onClick={() => onSelectUser?.(supporter)}
+              aria-label={`Open ${name} profile`}
+            >
               <div className="liveSupporterAvatar">
                 {supporter.avatar_url ? <img src={supporter.avatar_url} alt="" /> : <span>{name.slice(0, 1).toUpperCase()}</span>}
               </div>
@@ -66,7 +71,7 @@ export default function LiveSupporterSpotlight({ spotlights = [] }) {
                 <strong>{name}</strong>
                 <small>{supporter.latest_emoji || '🎁'} {formatCoins(supporter.total_coins)} coins · {remainingLabel(supporter, now)}</small>
               </div>
-            </div>
+            </button>
           );
         })}
         {overflow > 0 && <div className="liveSupporterOverflow">+{overflow}</div>}
