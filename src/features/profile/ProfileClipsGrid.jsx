@@ -20,7 +20,7 @@ export default function ProfileClipsGrid({ currentUserId }) {
     if (!currentUserId) return setClips([]);
     const { data, error } = await supabase
       .from('droxion_live_clips')
-      .select('id,creator_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,status,storage_path,clip_type')
+      .select('id,creator_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,status,storage_path,clip_type,camera_facing')
       .eq('creator_id', currentUserId)
       .eq('status', 'ready')
       .order('published_at', { ascending: false, nullsFirst: false })
@@ -106,7 +106,7 @@ export default function ProfileClipsGrid({ currentUserId }) {
       <div className="profileClipsGrid">
         {clips.map(clip => (
           <button type="button" className="profileClipTile" key={clip.id} onClick={() => setActiveClip(clip)}>
-            <video src={clip.video_url} poster={clip.thumbnail_url || undefined} preload="metadata" muted playsInline />
+            <video data-camera-facing={clip.camera_facing || 'user'} src={clip.video_url} poster={clip.thumbnail_url || undefined} preload="metadata" muted playsInline />
             <span className="profileClipShade" />
             <span className="profileClipPlay"><Play size={20} fill="currentColor" /></span>
             <span className="profileClipViews"><Eye size={13} /> {compact(clip.views_count)}</span>
@@ -117,7 +117,7 @@ export default function ProfileClipsGrid({ currentUserId }) {
 
       {activeClip && (
         <div className="profileClipViewer" role="dialog" aria-modal="true" aria-label="LIVE clip">
-          <video src={activeClip.video_url} autoPlay controls playsInline loop />
+          <video data-camera-facing={activeClip.camera_facing || 'user'} src={activeClip.video_url} autoPlay controls playsInline loop />
           <button className="profileClipClose" type="button" onClick={() => setActiveClip(null)} aria-label="Close clip"><X size={22} /></button>
           <div className="profileClipViewerInfo">
             <strong>{activeClip.caption || 'From LIVE on Droxion'}</strong>
