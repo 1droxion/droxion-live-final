@@ -24,10 +24,46 @@ const SIGNATURE_GIFT_CONFIG = {
     duration: 5000,
     takeoverLevel: 'full'
   },
+  lion: {
+    scene: 'lion_roar',
+    soundProfile: 'lion',
+    duration: 4800,
+    takeoverLevel: 'full'
+  },
+  private_jet: {
+    scene: 'jet_flyby',
+    soundProfile: 'jet',
+    duration: 4700,
+    takeoverLevel: 'full'
+  },
+  yacht: {
+    scene: 'yacht_glide',
+    soundProfile: 'yacht',
+    duration: 4800,
+    takeoverLevel: 'full'
+  },
+  phoenix: {
+    scene: 'phoenix_rise',
+    soundProfile: 'phoenix',
+    duration: 5200,
+    takeoverLevel: 'full'
+  },
   droxion_universe: {
     scene: 'universe_expand',
     soundProfile: 'universe',
     duration: 5600,
+    takeoverLevel: 'full'
+  },
+  royal_throne: {
+    scene: 'throne_ascend',
+    soundProfile: 'throne',
+    duration: 5700,
+    takeoverLevel: 'full'
+  },
+  world_crown: {
+    scene: 'world_crown_orbit',
+    soundProfile: 'world_crown',
+    duration: 5800,
     takeoverLevel: 'full'
   },
   droxion_royalty: {
@@ -59,16 +95,33 @@ export function getGiftPresentation(gift = {}) {
   const name = String(gift.gift_name || gift.name || '').toLowerCase();
   const key = `${code} ${name}`;
 
+  const fallbackSignatureCode = /dragon/.test(key)
+    ? 'dragon'
+    : /royal lion|\blion\b/.test(key)
+      ? 'lion'
+      : /private jet|\bjet\b/.test(key)
+        ? 'private_jet'
+        : /luxury yacht|\byacht\b/.test(key)
+          ? 'yacht'
+          : /phoenix/.test(key)
+            ? 'phoenix'
+            : /royal throne|\bthrone\b/.test(key)
+              ? 'royal_throne'
+              : /world crown/.test(key)
+                ? 'world_crown'
+                : null;
+
   const signature = SIGNATURE_GIFT_CONFIG[code] || (
-    /dragon/.test(key) ? SIGNATURE_GIFT_CONFIG.dragon : null
+    fallbackSignatureCode ? SIGNATURE_GIFT_CONFIG[fallbackSignatureCode] : null
   );
 
   if (signature) {
-    const tier = code === 'dragon' || /dragon/.test(key)
+    const resolvedCode = SIGNATURE_GIFT_CONFIG[code] ? code : fallbackSignatureCode;
+    const tier = resolvedCode === 'dragon'
       ? 'premium'
-      : code === 'droxion_galaxy'
-        ? 'elite'
-        : 'legendary';
+      : ['droxion_universe', 'royal_throne', 'world_crown', 'droxion_royalty'].includes(resolvedCode)
+        ? 'legendary'
+        : 'elite';
     return { tier, ...signature };
   }
 
