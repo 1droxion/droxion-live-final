@@ -1,23 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Users, X } from 'lucide-react';
+import { RefreshCw, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import '../styles/live-audience-drawer.css';
+import '../styles/live-guest-invite.css';
 
 export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
   const [viewers, setViewers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [profileTarget, setProfileTarget] = useState(null);
+  const [guestState, setGuestState] = useState({ status: 'none' });
+  const [inviteBusy, setInviteBusy] = useState('');
 
   const load = useCallback(async () => {
     if (!open || !sessionId) return;
     setLoading(true);
     setError('');
     try {
-      const { data, error: rpcError } = await supabase.rpc('droxion_live_host_audience', { p_session_id: sessionId });
+      const [{ data, error: rpcError }, { data: guestData }] = await Promise.all([
+        supabase.rpc('droxion_live_host_audience', { p_session_id: sessionId }),
+        supabase.rpc('droxion_host_live_guest_state', { p_session_id: sessionId })
+      ]);
       if (rpcError) throw rpcError;
       setViewers(Array.isArray(data) ? data : []);
+      setGuestState(guestData && typeof guestData === 'object' ? guestData : { status: 'none' });
     } catch (loadError) {
       setError(loadError?.message || 'Could not load viewers.');
     } finally {
@@ -28,12 +35,38 @@ export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
   useEffect(() => {
     if (!open) {
       setProfileTarget(null);
+      setGuestState({ status: 'none' });
       return undefined;
     }
     load();
-    const timer = window.setInterval(load, 10000);
+    const timer = window.setInterval(load, 5000);
     return () => window.clearInterval(timer);
   }, [open, load]);
+
+  async function inviteViewer(viewer) {
+    if (!viewer?.user_id || inviteBusy) return;
+    setInviteBusy(String(viewer.user_id));
+    setError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('droxion_host_invite_live_guest', {
+        p_session_id: sessionId,
+        p_invitee_id: viewer.user_id
+      });
+      if (rpcError || data?.allowed === false) {
+        throw new Error(rpcError?.message || data?.reason || 'Could not invite viewer.');
+      }
+      setGuestState({
+        ...viewer,
+        invite_id: data?.invite_id,
+        invitee_id: viewer.user_id,
+        status: data?.status || 'pending'
+      });
+    } catch (inviteError) {
+      setError(inviteError?.message || 'Could not invite viewer.');
+    } finally {
+      setInviteBusy('');
+    }
+  }
 
   if (!open) return null;
 
@@ -63,24 +96,31 @@ export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
             <div className="liveAudienceList">
               {viewers.map(viewer => {
                 const name = viewer.display_name || 'Droxion viewer';
+                const isPending = guestState?.status === 'pending' && guestState?.invitee_id === viewer.user_id;
+                const isGuest = guestState?.status === 'accepted' && guestState?.invitee_id === viewer.user_id;
+                const anotherGuestActive = ['pending', 'accepted'].includes(guestState?.status) && guestState?.invitee_id !== viewer.user_id;
                 return (
-                  <button
-                    type="button"
-                    className="liveAudienceRow"
-                    key={viewer.user_id}
-                    onClick={() => setProfileTarget(viewer)}
-                  >
-                    {viewer.avatar_url ? (
-                      <img src={viewer.avatar_url} alt="" />
-                    ) : (
-                      <span className="liveAudienceAvatarFallback">{String(name).trim().charAt(0).toUpperCase()}</span>
-                    )}
-                    <div>
-                      <strong>{name}</strong>
-                      <span>{viewer.username ? `@${viewer.username}` : viewer.country || 'Viewer'}</span>
-                    </div>
-                    <small>View profile</small>
-                  </button>
+                  <div className="liveAudienceRow" key={viewer.user_id}>
+                    <button type="button" className="liveAudienceProfileButton" onClick={() => setProfileTarget(viewer)}>
+                      {viewer.avatar_url ? (
+                        <img src={viewer.avatar_url} alt="" />
+                      ) : (
+                        <span className="liveAudienceAvatarFallback">{String(name).trim().charAt(0).toUpperCase()}</span>
+                      )}
+                      <div>
+                        <strong>{name}</strong>
+                        <span>{viewer.username ? `@${viewer.username}` : viewer.country || 'Viewer'}</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`liveAudienceInviteButton ${isPending ? 'isPending' : ''} ${isGuest ? 'isGuest' : ''}`}
+                      disabled={Boolean(inviteBusy) || anotherGuestActive || isPending || isGuest}
+                      onClick={() => inviteViewer(viewer)}
+                    >
+                      {isGuest ? 'Guest LIVE' : isPending ? 'Invited' : inviteBusy === viewer.user_id ? 'Sending…' : <><UserPlus size={13} /> Invite</>}
+                    </button>
+                  </div>
                 );
               })}
             </div>
