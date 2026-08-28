@@ -3,6 +3,7 @@ import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Radio, RotateCcw, Users, X }
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import LiveAudienceDrawer from './LiveAudienceDrawer';
+import LiveRemoteGuestTile from './LiveRemoteGuestTile';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
 import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
@@ -152,6 +153,8 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         ) : (
           <div className="prodLiveViewerPill"><Users size={17} /><span>{state.viewerCount || 0}</span></div>
         )}
+
+        {live && <LiveRemoteGuestTile room={getRoom()} />}
 
         {live ? (
           <div className="prodLiveMediaControls" aria-label="LIVE media controls">
