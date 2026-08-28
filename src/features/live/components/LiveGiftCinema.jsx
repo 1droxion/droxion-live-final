@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getGiftPresentation, getLiveUserColor } from '../utils/livePresentation';
 import '../styles/live-gift-cinema.css';
 
-const PARTICLE_COUNT = 16;
+const PARTICLE_COUNT = 20;
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
@@ -36,7 +36,13 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
         ? 'star'
         : code === 'crown' || name.includes('crown')
           ? 'crown'
-          : 'gift';
+          : code === 'droxion_galaxy' || name.includes('galaxy')
+            ? 'galaxy'
+            : code === 'droxion_universe' || name.includes('universe')
+              ? 'universe'
+              : code === 'droxion_royalty' || name.includes('royalty')
+                ? 'royalty'
+                : 'gift';
 
   return (
     <div
@@ -54,8 +60,8 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
             key={index}
             style={{
               '--gift-particle-index': index,
-              '--gift-particle-delay': `${(index % 8) * 70}ms`,
-              '--gift-particle-x': `${6 + ((index * 37) % 88)}%`
+              '--gift-particle-delay': `${(index % 10) * 60}ms`,
+              '--gift-particle-x': `${5 + ((index * 37) % 90)}%`
             }}
           >
             {emoji}
