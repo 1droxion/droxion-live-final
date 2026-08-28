@@ -3,20 +3,15 @@ import { supabase } from '../../../supabaseClient';
 
 const REFRESH_MS = 12000;
 
-export default function useLiveSupporterSpotlights(sessionId) {
+export default function useLiveSupporterSpotlights(sessionId = null) {
   const [spotlights, setSpotlights] = useState([]);
   const refreshRunRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!sessionId) {
-      setSpotlights([]);
-      return;
-    }
-
     const run = ++refreshRunRef.current;
     try {
       const { data, error } = await supabase.rpc('droxion_live_supporter_spotlights', {
-        p_session_id: sessionId
+        p_session_id: sessionId || null
       });
       if (run !== refreshRunRef.current) return;
       if (error) throw error;
@@ -28,8 +23,6 @@ export default function useLiveSupporterSpotlights(sessionId) {
 
   useEffect(() => {
     refresh();
-    if (!sessionId) return undefined;
-
     const timer = window.setInterval(refresh, REFRESH_MS);
     const onVisible = () => {
       if (document.visibilityState !== 'hidden') refresh();
@@ -45,7 +38,7 @@ export default function useLiveSupporterSpotlights(sessionId) {
       window.removeEventListener('pageshow', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [sessionId, refresh]);
+  }, [refresh]);
 
   return { spotlights, refreshSpotlights: refresh };
 }
