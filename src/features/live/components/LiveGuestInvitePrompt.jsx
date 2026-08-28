@@ -5,7 +5,7 @@ import { requestBroadcastMedia, stopMediaStream } from '../services/liveMediaSer
 import { connectGuestTransport, disconnectTransport } from '../services/liveTransportService';
 import '../styles/live-guest-invite.css';
 
-export default function LiveGuestInvitePrompt({ sessionId, currentUserId, onGuestStateChange }) {
+export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, onGuestStateChange }) {
   const [invite, setInvite] = useState(null);
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
@@ -13,24 +13,31 @@ export default function LiveGuestInvitePrompt({ sessionId, currentUserId, onGues
   const guestRoomRef = useRef(null);
   const localVideoRef = useRef(null);
 
+  const effectiveSessionId = String(sessionId || invite?.session_id || '');
+
   const load = useCallback(async () => {
-    if (!sessionId || !currentUserId || phase === 'joining' || phase === 'live') return;
+    if (!currentUserId || phase === 'joining' || phase === 'live') return;
     try {
-      const { data, error: rpcError } = await supabase.rpc('droxion_my_live_guest_state', { p_session_id: sessionId });
+      const result = sessionId
+        ? await supabase.rpc('droxion_my_live_guest_state', { p_session_id: sessionId })
+        : await supabase.rpc('droxion_my_live_invite');
+      const { data, error: rpcError } = result;
       if (rpcError) throw rpcError;
       const next = data && typeof data === 'object' ? data : {};
-      setInvite(next.status && next.status !== 'none' ? next : null);
-      if (next.status === 'accepted' && phase === 'idle') setPhase('accepted');
-      onGuestStateChange?.(next);
+      const hasInvite = Boolean(next.invite_id) && Boolean(next.session_id);
+      const normalized = hasInvite ? { ...next, status: next.status || 'pending' } : null;
+      setInvite(normalized);
+      if (normalized?.status === 'accepted' && phase === 'idle') setPhase('accepted');
+      onGuestStateChange?.(normalized || { status: 'none' });
     } catch {}
   }, [sessionId, currentUserId, phase, onGuestStateChange]);
 
   useEffect(() => {
     load();
-    if (!sessionId || !currentUserId) return undefined;
+    if (!currentUserId) return undefined;
     const timer = window.setInterval(load, 3000);
     return () => window.clearInterval(timer);
-  }, [load, sessionId, currentUserId]);
+  }, [load, currentUserId]);
 
   useEffect(() => {
     const video = localVideoRef.current;
@@ -48,6 +55,8 @@ export default function LiveGuestInvitePrompt({ sessionId, currentUserId, onGues
 
   async function respond(accept) {
     if (!invite?.invite_id || phase === 'joining') return;
+    const targetSessionId = String(invite.session_id || sessionId || '');
+    if (!targetSessionId) return;
     setError('');
     setPhase(accept ? 'joining' : 'declining');
     try {
@@ -66,15 +75,16 @@ export default function LiveGuestInvitePrompt({ sessionId, currentUserId, onGues
       const stream = await requestBroadcastMedia({ orientation: 'vertical', facingMode: 'user' });
       setGuestStream(stream);
       const transport = await connectGuestTransport({
-        sessionId,
+        sessionId: targetSessionId,
         stream,
         callbacks: {
           onDisconnected: () => setPhase(current => current === 'live' ? 'ended' : current)
         }
       });
       guestRoomRef.current = transport.room;
+      setInvite(current => ({ ...(current || invite), status: 'accepted', session_id: targetSessionId }));
       setPhase('live');
-      onGuestStateChange?.({ ...invite, status: 'accepted' });
+      onGuestStateChange?.({ ...invite, status: 'accepted', session_id: targetSessionId });
     } catch (joinError) {
       setError(joinError?.message || 'Could not join as guest.');
       setPhase('accepted');
@@ -88,7 +98,9 @@ export default function LiveGuestInvitePrompt({ sessionId, currentUserId, onGues
     setGuestStream(null);
     await disconnectTransport(room);
     stopMediaStream(stream);
-    try { await supabase.rpc('droxion_leave_live_guest', { p_session_id: sessionId }); } catch {}
+    if (effectiveSessionId) {
+      try { await supabase.rpc('droxion_leave_live_guest', { p_session_id: effectiveSessionId }); } catch {}
+    }
     setInvite(null);
     setPhase('idle');
     onGuestStateChange?.({ status: 'removed' });
