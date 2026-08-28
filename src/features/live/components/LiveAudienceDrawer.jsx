@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshCw, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import LiveMiniProfileSheet from './LiveMiniProfileSheet';
@@ -88,9 +89,9 @@ export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
     }
   }
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <>
       <div className="liveAudienceBackdrop" onClick={onClose}>
         <section className="liveAudienceDrawer" onClick={event => event.stopPropagation()} aria-label="LIVE audience">
@@ -155,6 +156,7 @@ export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
           onClose={() => setProfileTarget(null)}
         />
       )}
-    </>
+    </>,
+    document.body
   );
 }
