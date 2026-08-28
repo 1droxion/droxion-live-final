@@ -68,6 +68,26 @@ export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
     }
   }
 
+  async function removeGuest(viewer) {
+    if (!viewer?.user_id || inviteBusy) return;
+    setInviteBusy(String(viewer.user_id));
+    setError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('droxion_host_remove_live_guest', {
+        p_session_id: sessionId,
+        p_invitee_id: viewer.user_id
+      });
+      if (rpcError || data?.allowed === false) {
+        throw new Error(rpcError?.message || data?.reason || 'Could not remove guest.');
+      }
+      setGuestState({ status: 'none' });
+    } catch (removeError) {
+      setError(removeError?.message || 'Could not remove guest.');
+    } finally {
+      setInviteBusy('');
+    }
+  }
+
   if (!open) return null;
 
   return (
@@ -115,10 +135,10 @@ export default function LiveAudienceDrawer({ open, sessionId, onClose }) {
                     <button
                       type="button"
                       className={`liveAudienceInviteButton ${isPending ? 'isPending' : ''} ${isGuest ? 'isGuest' : ''}`}
-                      disabled={Boolean(inviteBusy) || anotherGuestActive || isPending || isGuest}
-                      onClick={() => inviteViewer(viewer)}
+                      disabled={Boolean(inviteBusy) || anotherGuestActive || isPending}
+                      onClick={() => isGuest ? removeGuest(viewer) : inviteViewer(viewer)}
                     >
-                      {isGuest ? 'Guest LIVE' : isPending ? 'Invited' : inviteBusy === viewer.user_id ? 'Sending…' : <><UserPlus size={13} /> Invite</>}
+                      {inviteBusy === viewer.user_id ? 'Working…' : isGuest ? 'Remove guest' : isPending ? 'Invited' : <><UserPlus size={13} /> Invite</>}
                     </button>
                   </div>
                 );
