@@ -233,9 +233,20 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
             <strong>{title || 'Live on Droxion'}</strong>
             <span>{state.viewerCount || 0} viewer{state.viewerCount === 1 ? '' : 's'}</span>
           </div>
-          <button type="button" className="prodLiveEnd" onClick={endBroadcast} disabled={state.phase === LIVE_PHASE.ENDING}>
-            <X size={18} /> End LIVE
-          </button>
+          <div className="prodLiveBottomActions">
+            <button
+              type="button"
+              className="prodLiveAudienceButton"
+              onClick={() => setAudienceOpen(true)}
+              disabled={!state.sessionId}
+              aria-label="Open audience and invite viewers"
+            >
+              <Users size={18} /> Audience
+            </button>
+            <button type="button" className="prodLiveEnd" onClick={endBroadcast} disabled={state.phase === LIVE_PHASE.ENDING}>
+              <X size={18} /> End LIVE
+            </button>
+          </div>
         </div>
       )}
 
