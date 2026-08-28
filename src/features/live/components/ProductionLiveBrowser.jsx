@@ -4,7 +4,9 @@ import { Track } from 'livekit-client';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { attachRemoteTrack, detachRemoteTrack, unlockRemoteAudio } from '../../../livekit/livekitRoom';
 import { connectViewerTransport, disconnectTransport } from '../services/liveTransportService';
+import LiveGiftCinema from './LiveGiftCinema';
 import '../styles/production-live-browser.css';
+import '../styles/production-gift-selection.css';
 
 const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
@@ -22,6 +24,19 @@ function dedupeById(rows, limit = 120) {
   return Array.from(map.values())
     .sort((a, b) => String(a?.created_at || '').localeCompare(String(b?.created_at || '')))
     .slice(-limit);
+}
+
+function giftFailureMessage(data, error, gift) {
+  if (error?.message) return error.message;
+  const reason = String(data?.reason || '');
+  if (reason === 'insufficient_coins') {
+    return `Not enough coins. ${gift?.gift_name || 'This gift'} needs ${Number(data?.required_coins ?? gift?.cost_coins ?? 0)} coins and you have ${Number(data?.coin_balance ?? 0)}.`;
+  }
+  if (reason === 'recipient_not_live') return 'This creator is no longer LIVE.';
+  if (reason === 'invalid_gift') return 'This gift is unavailable. Choose another gift.';
+  if (reason === 'blocked') return 'This gift cannot be sent to this creator.';
+  if (reason === 'invalid_recipient') return "You can't send a gift to your own LIVE from the same account.";
+  return 'Gift could not be sent. Please try again.';
 }
 
 export default function ProductionLiveBrowser({
@@ -44,6 +59,7 @@ export default function ProductionLiveBrowser({
   const [messages, setMessages] = useState([]);
   const [giftEvents, setGiftEvents] = useState([]);
   const [giftOptions, setGiftOptions] = useState([]);
+  const [selectedGift, setSelectedGift] = useState(null);
   const [draft, setDraft] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
   const [giftDrawerOpen, setGiftDrawerOpen] = useState(false);
@@ -137,6 +153,7 @@ export default function ProductionLiveBrowser({
     setViewerCount(0);
     setMessages([]);
     setGiftEvents([]);
+    setSelectedGift(null);
     setDraft('');
     setGiftDrawerOpen(false);
     lastChatIdRef.current = 0;
@@ -157,6 +174,7 @@ export default function ProductionLiveBrowser({
     setViewerCount(Number(profile.viewer_count || 0));
     setMessages([]);
     setGiftEvents([]);
+    setSelectedGift(null);
     setDraft('');
     setGiftDrawerOpen(false);
     lastChatIdRef.current = 0;
@@ -351,25 +369,39 @@ export default function ProductionLiveBrowser({
     }
   }
 
-  async function sendGift(gift) {
-    if (!activeRoom?.user_id || !gift?.gift_code || busyGift) return;
+  async function sendGift(gift = selectedGift) {
+    if (!gift?.gift_code || busyGift) return;
+    if (!currentUserId) {
+      setNotice('Sign in to send gifts.');
+      return;
+    }
+    if (!activeRoom?.user_id) {
+      setNotice('This creator is no longer LIVE.');
+      return;
+    }
+    if (String(activeRoom.user_id) === String(currentUserId)) {
+      setNotice("You can't send a gift to your own LIVE from the same account.");
+      return;
+    }
 
     setBusyGift(String(gift.gift_code));
+    setNotice('');
     try {
       const { data, error } = await safeRpc('droxion_send_live_gift', {
         p_recipient_id: activeRoom.user_id,
         p_gift_code: gift.gift_code
       });
       if (error || data?.allowed === false) {
-        if (data?.reason === 'insufficient_coins') onOpenWallet?.();
-        throw new Error(error?.message || (data?.reason === 'insufficient_coins' ? 'Not enough coins.' : 'Gift could not be sent.'));
+        throw new Error(giftFailureMessage(data, error, gift));
       }
+
       onCoinsChanged?.(Number(data?.coin_balance ?? coins));
       setGiftDrawerOpen(false);
-      setNotice(`${data?.emoji || gift.emoji || '🎁'} ${data?.gift_name || gift.gift_name || 'Gift'} sent.`);
-      window.setTimeout(() => setNotice(current => current?.includes('sent.') ? '' : current), 1800);
+      setSelectedGift(null);
+      setNotice(`${data?.emoji || gift.emoji || '🎁'} ${data?.gift_name || gift.gift_name || 'Gift'} sent to ${activeRoom.display_name || 'creator'}.`);
+      window.setTimeout(() => setNotice(current => current?.includes('sent to') ? '' : current), 2200);
     } catch (error) {
-      setNotice(error?.message || 'Gift could not be sent.');
+      setNotice(error?.message || 'Gift could not be sent. Please try again.');
     } finally {
       setBusyGift('');
     }
@@ -437,11 +469,13 @@ export default function ProductionLiveBrowser({
 
         {viewerState === 'live' && (
           <>
+            <LiveGiftCinema giftEvents={giftEvents} />
+
             <div className="productionViewerChat" aria-live="polite">
               {combinedEvents.length === 0 && <div className="productionViewerChatHint">Live chat will appear here.</div>}
               {combinedEvents.map(event => event.eventType === 'gift' ? (
-                <div className="productionViewerChatLine productionViewerGiftEvent" key={event.eventKey}>
-                  <strong>{event.display_name || 'Viewer'}</strong>
+                <div className="productionViewerChatLine productionViewerGiftLine" key={event.eventKey}>
+                  <strong>{event.display_name || event.sender_name || 'Viewer'}</strong>
                   <span>sent {event.emoji || '🎁'} {event.gift_name || 'a gift'}</span>
                 </div>
               ) : (
@@ -461,7 +495,7 @@ export default function ProductionLiveBrowser({
                 maxLength={500}
                 aria-label="Live chat message"
               />
-              <button type="button" className="productionViewerGiftButton" onClick={() => setGiftDrawerOpen(true)} aria-label="Send gift">
+              <button type="button" className="productionViewerGiftButton" onClick={() => setGiftDrawerOpen(true)} aria-label="Open gifts">
                 <Gift size={20} />
               </button>
               <button type="button" className="productionViewerSendButton" onClick={sendChat} disabled={!draft.trim() || sendingChat} aria-label="Send message">
@@ -474,21 +508,49 @@ export default function ProductionLiveBrowser({
         {viewerState === 'live' && notice && <div className="productionViewerNotice">{notice}</div>}
 
         {giftDrawerOpen && (
-          <div className="productionGiftBackdrop" onClick={() => setGiftDrawerOpen(false)}>
+          <div className="productionGiftBackdrop" onClick={() => { if (!busyGift) { setGiftDrawerOpen(false); setSelectedGift(null); } }}>
             <div className="productionGiftDrawer" onClick={event => event.stopPropagation()}>
               <div className="productionGiftHeader">
-                <div><strong>Send a gift</strong><span>🪙 {coins} coins</span></div>
-                <button type="button" onClick={() => setGiftDrawerOpen(false)} aria-label="Close gifts"><X size={21} /></button>
+                <div><strong>Choose a gift</strong><span>🪙 {coins} coins · Select first, then SEND</span></div>
+                <button type="button" disabled={Boolean(busyGift)} onClick={() => { setGiftDrawerOpen(false); setSelectedGift(null); }} aria-label="Close gifts"><X size={21} /></button>
               </div>
               <div className="productionGiftGrid">
-                {giftOptions.map(gift => (
-                  <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}>
-                    <span>{gift.emoji || '🎁'}</span>
-                    <strong>{gift.gift_name}</strong>
-                    <small>{gift.cost_coins} coins</small>
-                  </button>
-                ))}
+                {giftOptions.map(gift => {
+                  const selected = selectedGift?.gift_code === gift.gift_code;
+                  return (
+                    <button
+                      type="button"
+                      key={gift.gift_code}
+                      className={selected ? 'isSelected' : ''}
+                      aria-pressed={selected}
+                      disabled={Boolean(busyGift)}
+                      onClick={() => setSelectedGift(gift)}
+                    >
+                      <span>{gift.emoji || '🎁'}</span>
+                      <strong>{gift.gift_name}</strong>
+                      <small>{gift.cost_coins} coins</small>
+                      {selected && <b className="productionGiftSelectedMark">Selected</b>}
+                    </button>
+                  );
+                })}
               </div>
+
+              <div className="productionGiftSelectionBar">
+                <div className="productionGiftSelectionSummary">
+                  {selectedGift ? (
+                    <>
+                      <span>{selectedGift.emoji || '🎁'}</span>
+                      <div><strong>{selectedGift.gift_name}</strong><small>{selectedGift.cost_coins} coins</small></div>
+                    </>
+                  ) : (
+                    <div><strong>Select a gift</strong><small>Nothing is charged until you tap SEND.</small></div>
+                  )}
+                </div>
+                <button type="button" className="productionGiftSend" disabled={!selectedGift || Boolean(busyGift)} onClick={() => sendGift()}>
+                  {busyGift ? 'SENDING…' : 'SEND'}
+                </button>
+              </div>
+
               <button type="button" className="productionBuyCoins" onClick={() => onOpenWallet?.()}>+ Buy Coins</button>
             </div>
           </div>
