@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Gift, Radio, RefreshCw, Send, Users, X } from 'lucide-react';
+import { ArrowLeft, Gift, Minus, Plus, Radio, RefreshCw, Send, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { attachRemoteTrack, detachRemoteTrack, unlockRemoteAudio } from '../../../livekit/livekitRoom';
@@ -10,6 +10,7 @@ import '../styles/production-gift-selection.css';
 
 const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
+const MAX_GIFT_QUANTITY = 10;
 const GIFT_TABS = [
   { id: 'popular', label: 'Popular' },
   { id: 'premium', label: 'Premium' },
@@ -73,6 +74,7 @@ export default function ProductionLiveBrowser({
   const [giftOptions, setGiftOptions] = useState([]);
   const [giftTab, setGiftTab] = useState('popular');
   const [selectedGift, setSelectedGift] = useState(null);
+  const [selectedGiftQuantity, setSelectedGiftQuantity] = useState(1);
   const [draft, setDraft] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
   const [giftDrawerOpen, setGiftDrawerOpen] = useState(false);
@@ -89,6 +91,11 @@ export default function ProductionLiveBrowser({
   const visibleGiftOptions = useMemo(
     () => giftOptions.filter(gift => giftTabFor(gift) === giftTab),
     [giftOptions, giftTab]
+  );
+
+  const selectedGiftTotal = useMemo(
+    () => Number(selectedGift?.cost_coins || 0) * selectedGiftQuantity,
+    [selectedGift, selectedGiftQuantity]
   );
 
   const loadFeed = useCallback(async ({ spinner = false } = {}) => {
@@ -173,6 +180,7 @@ export default function ProductionLiveBrowser({
     setGiftEvents([]);
     setGiftTab('popular');
     setSelectedGift(null);
+    setSelectedGiftQuantity(1);
     setDraft('');
     setGiftDrawerOpen(false);
     lastChatIdRef.current = 0;
@@ -195,6 +203,7 @@ export default function ProductionLiveBrowser({
     setGiftEvents([]);
     setGiftTab('popular');
     setSelectedGift(null);
+    setSelectedGiftQuantity(1);
     setDraft('');
     setGiftDrawerOpen(false);
     lastChatIdRef.current = 0;
@@ -404,29 +413,50 @@ export default function ProductionLiveBrowser({
       return;
     }
 
+    const quantity = Math.min(MAX_GIFT_QUANTITY, Math.max(1, Number(selectedGiftQuantity || 1)));
+    const requiredCoins = Number(gift.cost_coins || 0) * quantity;
+    if (requiredCoins > Number(coins || 0)) {
+      setGiftDrawerOpen(false);
+      setNotice('');
+      onOpenWallet?.();
+      return;
+    }
+
     setBusyGift(String(gift.gift_code));
     setNotice('');
+    let lastData = null;
+    let sentCount = 0;
+
     try {
-      const { data, error } = await safeRpc('droxion_send_live_gift', {
-        p_recipient_id: activeRoom.user_id,
-        p_gift_code: gift.gift_code
-      });
-      if (data?.reason === 'insufficient_coins') {
-        setGiftDrawerOpen(false);
-        setSelectedGift(null);
-        setNotice('');
-        onOpenWallet?.();
-        return;
-      }
-      if (error || data?.allowed === false) {
-        throw new Error(giftFailureMessage(data, error, gift));
+      for (let index = 0; index < quantity; index += 1) {
+        const { data, error } = await safeRpc('droxion_send_live_gift', {
+          p_recipient_id: activeRoom.user_id,
+          p_gift_code: gift.gift_code
+        });
+
+        if (data?.reason === 'insufficient_coins') {
+          if (sentCount === 0) {
+            setGiftDrawerOpen(false);
+            setNotice('');
+            onOpenWallet?.();
+            return;
+          }
+          throw new Error(`Sent ${sentCount} of ${quantity}. Your coin balance changed before the full quantity finished.`);
+        }
+        if (error || data?.allowed === false) {
+          throw new Error(giftFailureMessage(data, error, gift));
+        }
+
+        sentCount += 1;
+        lastData = data;
+        onCoinsChanged?.(Number(data?.coin_balance ?? coins));
       }
 
-      onCoinsChanged?.(Number(data?.coin_balance ?? coins));
       setGiftDrawerOpen(false);
       setSelectedGift(null);
-      setNotice(`${data?.emoji || gift.emoji || '🎁'} ${data?.gift_name || gift.gift_name || 'Gift'} sent to ${activeRoom.display_name || 'creator'}.`);
-      window.setTimeout(() => setNotice(current => current?.includes('sent to') ? '' : current), 2200);
+      setSelectedGiftQuantity(1);
+      setNotice(`${lastData?.emoji || gift.emoji || '🎁'} ${lastData?.gift_name || gift.gift_name || 'Gift'} ×${sentCount} sent to ${activeRoom.display_name || 'creator'}.`);
+      window.setTimeout(() => setNotice(current => current?.includes('sent to') ? '' : current), 2600);
     } catch (error) {
       setNotice(error?.message || 'Gift could not be sent. Please try again.');
     } finally {
@@ -528,6 +558,7 @@ export default function ProductionLiveBrowser({
                 onClick={() => {
                   setGiftTab('popular');
                   setSelectedGift(null);
+                  setSelectedGiftQuantity(1);
                   setGiftDrawerOpen(true);
                 }}
                 aria-label="Open gifts"
@@ -544,11 +575,11 @@ export default function ProductionLiveBrowser({
         {viewerState === 'live' && notice && <div className="productionViewerNotice">{notice}</div>}
 
         {giftDrawerOpen && (
-          <div className="productionGiftBackdrop" onClick={() => { if (!busyGift) { setGiftDrawerOpen(false); setSelectedGift(null); } }}>
+          <div className="productionGiftBackdrop" onClick={() => { if (!busyGift) { setGiftDrawerOpen(false); setSelectedGift(null); setSelectedGiftQuantity(1); } }}>
             <div className="productionGiftDrawer" onClick={event => event.stopPropagation()}>
               <div className="productionGiftHeader">
-                <div><strong>Choose a gift</strong><span>🪙 {coins} coins · Select first, then SEND</span></div>
-                <button type="button" disabled={Boolean(busyGift)} onClick={() => { setGiftDrawerOpen(false); setSelectedGift(null); }} aria-label="Close gifts"><X size={21} /></button>
+                <div><strong>Choose a gift</strong><span>🪙 {coins} coins · Choose quantity 1–10, then SEND</span></div>
+                <button type="button" disabled={Boolean(busyGift)} onClick={() => { setGiftDrawerOpen(false); setSelectedGift(null); setSelectedGiftQuantity(1); }} aria-label="Close gifts"><X size={21} /></button>
               </div>
 
               <div className="productionGiftTabs" role="tablist" aria-label="Gift categories">
@@ -563,6 +594,7 @@ export default function ProductionLiveBrowser({
                     onClick={() => {
                       setGiftTab(tab.id);
                       setSelectedGift(null);
+                      setSelectedGiftQuantity(1);
                     }}
                   >
                     {tab.label}
@@ -580,7 +612,10 @@ export default function ProductionLiveBrowser({
                       className={selected ? 'isSelected' : ''}
                       aria-pressed={selected}
                       disabled={Boolean(busyGift)}
-                      onClick={() => setSelectedGift(gift)}
+                      onClick={() => {
+                        setSelectedGift(gift);
+                        setSelectedGiftQuantity(1);
+                      }}
                     >
                       <span>{gift.emoji || '🎁'}</span>
                       <strong>{gift.gift_name}</strong>
@@ -596,14 +631,40 @@ export default function ProductionLiveBrowser({
                   {selectedGift ? (
                     <>
                       <span>{selectedGift.emoji || '🎁'}</span>
-                      <div><strong>{selectedGift.gift_name}</strong><small>{selectedGift.cost_coins} coins</small></div>
+                      <div>
+                        <strong>{selectedGift.gift_name}</strong>
+                        <small>🪙 {selectedGiftTotal.toLocaleString()} total</small>
+                      </div>
                     </>
                   ) : (
                     <div><strong>Select a gift</strong><small>Nothing is charged until you tap SEND.</small></div>
                   )}
                 </div>
+
+                {selectedGift && (
+                  <div className="productionGiftQuantity" aria-label="Gift quantity">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGiftQuantity(current => Math.max(1, current - 1))}
+                      disabled={Boolean(busyGift) || selectedGiftQuantity <= 1}
+                      aria-label="Decrease gift quantity"
+                    >
+                      <Minus size={17} />
+                    </button>
+                    <strong>{selectedGiftQuantity}</strong>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGiftQuantity(current => Math.min(MAX_GIFT_QUANTITY, current + 1))}
+                      disabled={Boolean(busyGift) || selectedGiftQuantity >= MAX_GIFT_QUANTITY}
+                      aria-label="Increase gift quantity"
+                    >
+                      <Plus size={17} />
+                    </button>
+                  </div>
+                )}
+
                 <button type="button" className="productionGiftSend" disabled={!selectedGift || Boolean(busyGift)} onClick={() => sendGift()}>
-                  {busyGift ? 'SENDING…' : 'SEND'}
+                  {busyGift ? `SENDING ${selectedGiftQuantity}…` : selectedGift ? `SEND ×${selectedGiftQuantity}` : 'SEND'}
                 </button>
               </div>
 
