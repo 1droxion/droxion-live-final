@@ -1,9 +1,12 @@
 const SOUND_PREFERENCE_KEY = 'droxion_gift_sounds_enabled';
 const MASTER_VOLUME = 0.42;
+const PENDING_SOUND_WINDOW_MS = 6000;
 
 let audioContext = null;
 let masterGain = null;
 let unlocked = false;
+let globalUnlockInstalled = false;
+let pendingGiftSound = null;
 
 function soundsEnabled() {
   try {
@@ -18,50 +21,109 @@ function getAudioContext() {
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) return null;
 
-  if (!audioContext) {
+  if (!audioContext || audioContext.state === 'closed') {
     audioContext = new AudioContextCtor();
     masterGain = audioContext.createGain();
     masterGain.gain.value = MASTER_VOLUME;
     masterGain.connect(audioContext.destination);
+    unlocked = audioContext.state === 'running';
   }
   return audioContext;
+}
+
+function commitOutputRoute(context) {
+  if (!context || !masterGain) return;
+  try {
+    // A nearly silent pulse inside a real user gesture helps iOS/WebKit and
+    // embedded WebViews commit Web Audio to the current device output route.
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+    oscillator.frequency.value = 220;
+    gain.gain.setValueAtTime(0.00001, now);
+    oscillator.connect(gain);
+    gain.connect(masterGain);
+    oscillator.start(now);
+    oscillator.stop(now + 0.025);
+  } catch {}
+}
+
+function queuePendingGiftSound(gift, presentation) {
+  pendingGiftSound = {
+    gift,
+    presentation,
+    expiresAt: Date.now() + PENDING_SOUND_WINDOW_MS
+  };
+}
+
+function flushPendingGiftSound() {
+  const pending = pendingGiftSound;
+  pendingGiftSound = null;
+  if (!pending || pending.expiresAt < Date.now()) return;
+  window.setTimeout(() => {
+    playGiftSound(pending.gift, pending.presentation).catch(() => {});
+  }, 0);
 }
 
 export function setGiftSoundsEnabled(enabled) {
   try {
     window.localStorage.setItem(SOUND_PREFERENCE_KEY, enabled ? 'true' : 'false');
   } catch {}
+  if (!enabled) pendingGiftSound = null;
 }
 
 export function getGiftSoundsEnabled() {
   return soundsEnabled();
 }
 
+export function getGiftSoundReady() {
+  return Boolean(unlocked && audioContext?.state === 'running');
+}
+
 export async function unlockGiftSound() {
   if (!soundsEnabled()) return false;
   const context = getAudioContext();
   if (!context) return false;
+  const wasUnlocked = unlocked && context.state === 'running';
+
   try {
-    if (context.state === 'suspended') await context.resume();
+    if (context.state !== 'running') await context.resume();
     unlocked = context.state === 'running';
 
-    // A nearly silent pulse inside the user gesture helps iOS/WebKit commit
-    // the AudioContext to the device output route without producing a click.
-    if (unlocked && masterGain) {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const now = context.currentTime;
-      oscillator.frequency.value = 220;
-      gain.gain.setValueAtTime(0.00001, now);
-      oscillator.connect(gain);
-      gain.connect(masterGain);
-      oscillator.start(now);
-      oscillator.stop(now + 0.025);
+    if (unlocked && !wasUnlocked) {
+      commitOutputRoute(context);
+      flushPendingGiftSound();
     }
   } catch {
     unlocked = false;
   }
   return unlocked;
+}
+
+function installGlobalGiftSoundUnlock() {
+  if (globalUnlockInstalled || typeof window === 'undefined' || typeof document === 'undefined') return;
+  globalUnlockInstalled = true;
+
+  const attemptUnlock = () => {
+    if (!soundsEnabled()) return;
+    unlockGiftSound().catch(() => {});
+  };
+
+  // Capture phase means the audio context is unlocked from the same physical
+  // tap that opens a LIVE, starts a LIVE, opens gifts, sends chat, etc.
+  document.addEventListener('pointerdown', attemptUnlock, { capture: true, passive: true });
+  document.addEventListener('touchend', attemptUnlock, { capture: true, passive: true });
+  document.addEventListener('click', attemptUnlock, { capture: true, passive: true });
+  document.addEventListener('keydown', attemptUnlock, true);
+
+  const markRouteForResume = () => {
+    if (!audioContext) return;
+    if (document.visibilityState === 'hidden' || audioContext.state !== 'running') {
+      unlocked = false;
+    }
+  };
+  document.addEventListener('visibilitychange', markRouteForResume);
+  window.addEventListener('pageshow', markRouteForResume);
 }
 
 function tone(context, {
@@ -227,7 +289,14 @@ export async function playGiftSound(gift = {}, presentation = {}) {
   if (context.state !== 'running') {
     try { await context.resume(); } catch {}
   }
-  if (context.state !== 'running' && !unlocked) return false;
+  if (context.state !== 'running') {
+    unlocked = false;
+    queuePendingGiftSound(gift, presentation);
+    return false;
+  }
+
+  unlocked = true;
+  pendingGiftSound = null;
 
   const tier = String(presentation.tier || 'standard').toLowerCase();
   const profile = String(presentation.soundProfile || '').toLowerCase();
@@ -287,3 +356,5 @@ export async function playGiftSound(gift = {}, presentation = {}) {
   sparkleChord(context, 0.78, 1.0, /royalty|crown|throne/.test(key) ? 740 : 820);
   return true;
 }
+
+installGlobalGiftSoundUnlock();
