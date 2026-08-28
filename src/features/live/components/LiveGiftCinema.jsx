@@ -21,7 +21,7 @@ const SIGNATURE_SCENES = new Set([
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
   const lastAnimatedEventRef = useRef('');
-  const { spotlights } = useLiveSupporterSpotlights();
+  const { spotlights, refreshSpotlights } = useLiveSupporterSpotlights();
 
   useEffect(() => {
     const unlock = () => { unlockGiftSound().catch(() => {}); };
@@ -49,9 +49,13 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
     setActiveGift({ ...latest, ...presentation, comboCount: combo.count, comboLevel: combo.level, animationKey });
     playGiftSound(latest, presentation).catch(() => {});
 
+    if (Number(latest.cost_coins || 0) >= 1000) {
+      window.setTimeout(() => refreshSpotlights().catch?.(() => {}), 120);
+    }
+
     const timer = window.setTimeout(() => setActiveGift(null), presentation.duration);
     return () => window.clearTimeout(timer);
-  }, [giftEvents]);
+  }, [giftEvents, refreshSpotlights]);
 
   const particles = useMemo(() => Array.from({ length: PARTICLE_COUNT }, (_, index) => index), []);
 
