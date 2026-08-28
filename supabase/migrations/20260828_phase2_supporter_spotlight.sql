@@ -3,7 +3,7 @@
 -- wallets, creator payouts, or the LIVE media path.
 
 create or replace function public.droxion_live_supporter_spotlights(
-  p_session_id uuid
+  p_session_id uuid default null
 )
 returns table(
   supporter_id uuid,
@@ -23,22 +23,47 @@ stable
 security definer
 set search_path = public, auth
 as $$
-  with recursive access_ok as (
-    select exists (
-      select 1
-      from public.droxion_live_presence lp
-      where lp.session_id = p_session_id
-        and (
-          lp.user_id = auth.uid()
-          or exists (
-            select 1
-            from public.droxion_live_viewers lv
-            where lv.session_id = p_session_id
-              and lv.viewer_id = auth.uid()
-              and lv.heartbeat_at > now() - interval '2 minutes'
+  with recursive target as (
+    select coalesce(
+      p_session_id,
+      (
+        select lp.session_id
+        from public.droxion_live_presence lp
+        where lp.user_id = auth.uid()
+          and lp.is_live = true
+        order by lp.started_at desc nulls last, lp.updated_at desc
+        limit 1
+      ),
+      (
+        select lv.session_id
+        from public.droxion_live_viewers lv
+        where lv.viewer_id = auth.uid()
+          and lv.heartbeat_at > now() - interval '2 minutes'
+        order by lv.heartbeat_at desc
+        limit 1
+      )
+    ) as session_id
+  ),
+  access_ok as (
+    select
+      t.session_id,
+      exists (
+        select 1
+        from public.droxion_live_presence lp
+        where lp.session_id = t.session_id
+          and (
+            lp.user_id = auth.uid()
+            or exists (
+              select 1
+              from public.droxion_live_viewers lv
+              where lv.session_id = t.session_id
+                and lv.viewer_id = auth.uid()
+                and lv.heartbeat_at > now() - interval '2 minutes'
+            )
           )
-        )
-    ) as allowed
+      ) as allowed
+    from target t
+    where t.session_id is not null
   ),
   qualified as (
     select
@@ -59,10 +84,8 @@ as $$
         order by g.created_at asc, g.id asc
       ) as rn
     from public.droxion_live_gifts g
-    cross join access_ok a
-    where a.allowed
-      and g.session_id = p_session_id
-      and g.cost_coins >= 1000
+    join access_ok a on a.allowed and a.session_id = g.session_id
+    where g.cost_coins >= 1000
   ),
   timeline as (
     select
