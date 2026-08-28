@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getGiftPresentation, getLiveUserColor } from '../utils/livePresentation';
 import { playGiftSound, unlockGiftSound } from '../utils/giftSoundEngine';
 import GiftSignatureScene from './GiftSignatureScene';
@@ -6,16 +7,11 @@ import '../styles/live-gift-cinema.css';
 
 const PARTICLE_COUNT = 28;
 const SIGNATURE_SCENES = new Set([
-  'dragon_fire',
-  'galaxy_blast',
-  'universe_expand',
-  'royalty_reveal',
-  'lion_roar',
-  'jet_flyby',
-  'yacht_glide',
-  'phoenix_rise',
-  'throne_ascend',
-  'world_crown_orbit'
+  'rose_petals','heart_pulse','star_burst','coffee_steam','sparkle_rain',
+  'teddy_hug','crown_drop','cake_party','fire_wave','rocket_launch',
+  'diamond_prism','supercar_drive','treasure_open','castle_reveal','dragon_fire',
+  'galaxy_blast','lion_roar','jet_flyby','yacht_glide','phoenix_rise',
+  'meteor_storm','universe_expand','throne_ascend','world_crown_orbit','royalty_reveal'
 ]);
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
@@ -48,7 +44,7 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
 
   const particles = useMemo(() => Array.from({ length: PARTICLE_COUNT }, (_, index) => index), []);
 
-  if (!activeGift) return null;
+  if (!activeGift || typeof document === 'undefined') return null;
 
   const emoji = activeGift.emoji || '🎁';
   const sender = activeGift.display_name || activeGift.sender_name || 'Viewer';
@@ -57,29 +53,11 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   const name = String(activeGift.gift_name || '').toLowerCase();
   const cost = Number(activeGift.cost_coins || 0);
   const hasSignatureScene = SIGNATURE_SCENES.has(activeGift.scene);
-  const giftClass = code === 'rose' || name.includes('rose')
-    ? 'rose'
-    : code === 'heart' || name.includes('heart')
-      ? 'heart'
-      : code === 'star' || name.includes('star')
-        ? 'star'
-        : code === 'crown' || name.includes('crown')
-          ? 'crown'
-          : code === 'droxion_galaxy' || name.includes('galaxy')
-            ? 'galaxy'
-            : code === 'droxion_universe' || name.includes('universe')
-              ? 'universe'
-              : code === 'droxion_royalty' || name.includes('royalty')
-                ? 'royalty'
-                : code.includes('dragon') || name.includes('dragon')
-                  ? 'dragon'
-                  : code.includes('rocket') || name.includes('rocket')
-                    ? 'rocket'
-                    : 'gift';
+  const giftClass = code || name.replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') || 'gift';
 
-  return (
+  const cinema = (
     <div
-      className={`liveGiftCinemaLayer ${activeGift.tier} ${giftClass} ${hasSignatureScene ? 'hasSignatureScene' : ''}`}
+      className={`liveGiftCinemaLayer liveGiftCinemaViewport ${activeGift.tier} ${giftClass} ${hasSignatureScene ? 'hasSignatureScene' : ''}`}
       key={activeGift.animationKey}
       aria-hidden="true"
     >
@@ -130,4 +108,6 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
       )}
     </div>
   );
+
+  return createPortal(cinema, document.body);
 }
