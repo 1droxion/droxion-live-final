@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, Trophy, Users } from 'lucide-react';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import LiveAudienceDrawer from './LiveAudienceDrawer';
@@ -76,13 +76,11 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     if (!live || controlBusy) return;
     const room = getRoom();
     if (!room) return;
-
     const previous = micMuted;
     const nextMuted = !previous;
     setMicMuted(nextMuted);
     setControlBusy('mic');
     setControlError('');
-
     try {
       await setHostMicrophoneMuted(room, nextMuted);
     } catch (error) {
@@ -99,13 +97,11 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     if (!live || controlBusy) return;
     const room = getRoom();
     if (!room) return;
-
     const previous = cameraMuted;
     const nextMuted = !previous;
     setCameraMuted(nextMuted);
     setControlBusy('camera');
     setControlError('');
-
     try {
       await setHostCameraMuted(room, nextMuted);
     } catch (error) {
@@ -123,7 +119,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
 
   function openTopSupporters() {
     setControlsOpen(false);
-    try { window.dispatchEvent(new Event('droxion:open-top-supporters')); } catch {}
+    try { document.querySelector('.liveTopSupportersTrigger')?.click(); } catch {}
   }
 
   return (
@@ -159,12 +155,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
           <div className="prodLiveMinimalTopLeft">
             <div className="prodLiveBadge">LIVE</div>
             {state.sessionId ? (
-              <button
-                type="button"
-                className="prodLiveViewerPill liveAudienceTrigger"
-                onClick={openAudience}
-                aria-label="Open LIVE audience"
-              >
+              <button type="button" className="prodLiveViewerPill liveAudienceTrigger" onClick={openAudience} aria-label="Open LIVE audience">
                 <Users size={16} /><span>{state.viewerCount || 0}</span>
               </button>
             ) : (
@@ -174,13 +165,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         )}
 
         {live && (
-          <button
-            type="button"
-            className="prodLiveMinimalEnd"
-            onClick={endBroadcast}
-            disabled={state.phase === LIVE_PHASE.ENDING}
-            aria-label="End LIVE"
-          >
+          <button type="button" className="prodLiveMinimalEnd" onClick={endBroadcast} disabled={state.phase === LIVE_PHASE.ENDING} aria-label="End LIVE">
             End LIVE
           </button>
         )}
@@ -210,13 +195,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         )}
 
         {live && (
-          <button
-            type="button"
-            className={`prodLiveMoreButton ${controlsOpen ? 'isOpen' : ''}`}
-            onClick={() => setControlsOpen(value => !value)}
-            aria-expanded={controlsOpen}
-            aria-label="More LIVE controls"
-          >
+          <button type="button" className={`prodLiveMoreButton ${controlsOpen ? 'isOpen' : ''}`} onClick={() => setControlsOpen(value => !value)} aria-expanded={controlsOpen} aria-label="More LIVE controls">
             <MoreHorizontal size={27} />
           </button>
         )}
@@ -226,46 +205,18 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
 
       {!live && !connecting && (
         <div className="prodLiveSetup">
-          <label>
-            <span>LIVE title</span>
-            <input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" />
-          </label>
-          <label>
-            <span>Orientation</span>
-            <select value={orientation} onChange={event => setOrientation(event.target.value)}>
-              <option value="vertical">Vertical</option>
-              <option value="horizontal">Horizontal</option>
-            </select>
-          </label>
-          {!mediaStream && (
-            <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation })} disabled={busy}>
-              <RotateCcw size={18} /> Retry camera
-            </button>
-          )}
-          <button
-            type="button"
-            className="prodLiveStart"
-            disabled={busy || !mediaStream}
-            onClick={() => startBroadcast({ title, orientation })}
-          >
-            <Radio size={19} /> Start LIVE
-          </button>
+          <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
+          <label><span>Orientation</span><select value={orientation} onChange={event => setOrientation(event.target.value)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></label>
+          {!mediaStream && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
+          <button type="button" className="prodLiveStart" disabled={busy || !mediaStream} onClick={() => startBroadcast({ title, orientation })}><Radio size={19} /> Start LIVE</button>
         </div>
       )}
 
       {connecting && (
-        <div className="prodLiveConnecting">
-          <span className="prodLiveSpinner" />
-          <strong>{statusText}</strong>
-          <span>Connecting your camera and microphone securely…</span>
-        </div>
+        <div className="prodLiveConnecting"><span className="prodLiveSpinner" /><strong>{statusText}</strong><span>Connecting your camera and microphone securely…</span></div>
       )}
 
-      <LiveAudienceDrawer
-        open={audienceOpen}
-        sessionId={state.sessionId}
-        onClose={() => setAudienceOpen(false)}
-      />
+      <LiveAudienceDrawer open={audienceOpen} sessionId={state.sessionId} onClose={() => setAudienceOpen(false)} />
     </section>
   );
 }
