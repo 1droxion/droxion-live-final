@@ -1,5 +1,5 @@
 const SOUND_PREFERENCE_KEY = 'droxion_gift_sounds_enabled';
-const MASTER_VOLUME = 0.18;
+const MASTER_VOLUME = 0.42;
 
 let audioContext = null;
 let masterGain = null;
@@ -44,6 +44,20 @@ export async function unlockGiftSound() {
   try {
     if (context.state === 'suspended') await context.resume();
     unlocked = context.state === 'running';
+
+    // A nearly silent pulse inside the user gesture helps iOS/WebKit commit
+    // the AudioContext to the device output route without producing a click.
+    if (unlocked && masterGain) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const now = context.currentTime;
+      oscillator.frequency.value = 220;
+      gain.gain.setValueAtTime(0.00001, now);
+      oscillator.connect(gain);
+      gain.connect(masterGain);
+      oscillator.start(now);
+      oscillator.stop(now + 0.025);
+    }
   } catch {
     unlocked = false;
   }
@@ -86,14 +100,16 @@ function noiseSweep(context, {
   duration = 0.45,
   gain = 0.045,
   low = 320,
-  high = 4200
+  high = 4200,
+  reverse = false
 } = {}) {
   if (!masterGain) return;
   const frameCount = Math.max(1, Math.floor(context.sampleRate * duration));
   const buffer = context.createBuffer(1, frameCount, context.sampleRate);
   const channel = buffer.getChannelData(0);
   for (let i = 0; i < frameCount; i += 1) {
-    const envelope = 1 - (i / frameCount);
+    const position = i / frameCount;
+    const envelope = reverse ? position : 1 - position;
     channel[i] = (Math.random() * 2 - 1) * envelope;
   }
 
@@ -106,7 +122,7 @@ function noiseSweep(context, {
   filter.type = 'bandpass';
   filter.Q.value = 0.8;
   filter.frequency.setValueAtTime(Math.max(20, low), now);
-  filter.frequency.exponentialRampToValueAtTime(Math.max(low + 1, high), now + duration);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(21, high), now + duration);
   envelope.gain.setValueAtTime(0.0001, now);
   envelope.gain.exponentialRampToValueAtTime(gain, now + Math.min(0.08, duration * 0.25));
   envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
@@ -121,26 +137,26 @@ function noiseSweep(context, {
 function impact(context, start = 0, strength = 1) {
   tone(context, {
     frequency: 92,
-    endFrequency: 48,
+    endFrequency: 42,
     start,
-    duration: 0.42,
-    gain: 0.15 * strength,
+    duration: 0.5,
+    gain: 0.18 * strength,
     type: 'sine'
   });
   tone(context, {
     frequency: 180,
-    endFrequency: 75,
+    endFrequency: 72,
     start: start + 0.008,
-    duration: 0.22,
-    gain: 0.055 * strength,
+    duration: 0.25,
+    gain: 0.07 * strength,
     type: 'triangle'
   });
   noiseSweep(context, {
     start,
-    duration: 0.18,
-    gain: 0.035 * strength,
+    duration: 0.2,
+    gain: 0.05 * strength,
     low: 120,
-    high: 900
+    high: 1100
   });
 }
 
@@ -150,24 +166,57 @@ function sparkleChord(context, start = 0, strength = 1, root = 660) {
       frequency: root * ratio,
       endFrequency: root * ratio * 1.04,
       start: start + index * 0.055,
-      duration: 0.38 + index * 0.03,
-      gain: (0.038 - index * 0.004) * strength,
+      duration: 0.4 + index * 0.03,
+      gain: (0.05 - index * 0.004) * strength,
       type: index % 2 ? 'triangle' : 'sine'
     });
   });
 }
 
-function cinematicChord(context, start = 0, strength = 1) {
-  [220, 330, 440, 660].forEach((frequency, index) => {
+function cinematicChord(context, start = 0, strength = 1, root = 220) {
+  [1, 1.5, 2, 3].forEach((ratio, index) => {
+    const frequency = root * ratio;
     tone(context, {
       frequency,
       endFrequency: frequency * 1.015,
       start: start + index * 0.025,
-      duration: 1.15 - index * 0.08,
-      gain: (0.052 - index * 0.006) * strength,
+      duration: 1.2 - index * 0.08,
+      gain: (0.068 - index * 0.006) * strength,
       type: index < 2 ? 'triangle' : 'sine'
     });
   });
+}
+
+function dragonSound(context) {
+  noiseSweep(context, { duration: 0.55, gain: 0.08, low: 140, high: 2800 });
+  tone(context, { frequency: 78, endFrequency: 48, start: 0.08, duration: 0.75, gain: 0.16, type: 'sawtooth' });
+  impact(context, 0.5, 1.15);
+  noiseSweep(context, { start: 0.7, duration: 1.25, gain: 0.12, low: 6200, high: 220, reverse: true });
+  tone(context, { frequency: 120, endFrequency: 58, start: 0.72, duration: 1.1, gain: 0.08, type: 'triangle' });
+}
+
+function galaxySound(context) {
+  tone(context, { frequency: 82, endFrequency: 180, duration: 1.1, gain: 0.1, type: 'sine' });
+  noiseSweep(context, { duration: 1.0, gain: 0.08, low: 120, high: 7200 });
+  sparkleChord(context, 0.22, 1.15, 720);
+  impact(context, 0.92, 1.28);
+  cinematicChord(context, 0.98, 1.05, 196);
+}
+
+function universeSound(context) {
+  tone(context, { frequency: 44, endFrequency: 84, duration: 1.55, gain: 0.16, type: 'sine' });
+  noiseSweep(context, { duration: 1.35, gain: 0.09, low: 70, high: 9000 });
+  cinematicChord(context, 0.48, 1.18, 174);
+  impact(context, 1.2, 1.42);
+  sparkleChord(context, 1.32, 1.0, 840);
+}
+
+function royaltySound(context) {
+  sparkleChord(context, 0, 1.0, 740);
+  tone(context, { frequency: 110, endFrequency: 64, start: 0.34, duration: 0.85, gain: 0.13, type: 'triangle' });
+  impact(context, 0.56, 1.4);
+  cinematicChord(context, 0.64, 1.28, 220);
+  sparkleChord(context, 1.02, 1.2, 920);
 }
 
 export async function playGiftSound(gift = {}, presentation = {}) {
@@ -181,43 +230,60 @@ export async function playGiftSound(gift = {}, presentation = {}) {
   if (context.state !== 'running' && !unlocked) return false;
 
   const tier = String(presentation.tier || 'standard').toLowerCase();
+  const profile = String(presentation.soundProfile || '').toLowerCase();
   const code = String(gift.gift_code || '').toLowerCase();
   const name = String(gift.gift_name || '').toLowerCase();
   const key = `${code} ${name}`;
 
+  if (profile === 'dragon' || /dragon/.test(key)) {
+    dragonSound(context);
+    return true;
+  }
+  if (profile === 'galaxy' || /droxion galaxy/.test(key)) {
+    galaxySound(context);
+    return true;
+  }
+  if (profile === 'universe' || /droxion universe/.test(key)) {
+    universeSound(context);
+    return true;
+  }
+  if (profile === 'royalty' || /droxion royalty/.test(key)) {
+    royaltySound(context);
+    return true;
+  }
+
   if (tier === 'standard') {
-    tone(context, { frequency: 720, endFrequency: 980, duration: 0.22, gain: 0.06, type: 'sine' });
-    tone(context, { frequency: 1080, endFrequency: 1380, start: 0.08, duration: 0.19, gain: 0.035, type: 'triangle' });
+    tone(context, { frequency: 720, endFrequency: 980, duration: 0.22, gain: 0.09, type: 'sine' });
+    tone(context, { frequency: 1080, endFrequency: 1380, start: 0.08, duration: 0.19, gain: 0.055, type: 'triangle' });
     return true;
   }
 
   if (tier === 'featured') {
-    noiseSweep(context, { duration: 0.28, gain: 0.025, low: 480, high: 3200 });
-    tone(context, { frequency: 420, endFrequency: 760, duration: 0.34, gain: 0.055, type: 'triangle' });
-    sparkleChord(context, 0.12, 0.9, /crown/.test(key) ? 720 : 640);
+    noiseSweep(context, { duration: 0.28, gain: 0.04, low: 480, high: 3200 });
+    tone(context, { frequency: 420, endFrequency: 760, duration: 0.34, gain: 0.085, type: 'triangle' });
+    sparkleChord(context, 0.12, 1.0, /crown/.test(key) ? 720 : 640);
     return true;
   }
 
   if (tier === 'premium') {
-    noiseSweep(context, { duration: 0.52, gain: 0.045, low: 180, high: 5200 });
-    impact(context, 0.08, 0.82);
-    sparkleChord(context, 0.18, 1.05, /diamond/.test(key) ? 820 : 620);
+    noiseSweep(context, { duration: 0.52, gain: 0.07, low: 180, high: 5200 });
+    impact(context, 0.08, 0.98);
+    sparkleChord(context, 0.18, 1.15, /diamond/.test(key) ? 820 : 620);
     return true;
   }
 
   if (tier === 'elite') {
-    noiseSweep(context, { duration: 0.78, gain: 0.052, low: 90, high: 6500 });
-    tone(context, { frequency: 72, endFrequency: 108, duration: 0.72, gain: 0.07, type: 'sine' });
-    impact(context, 0.36, 1.05);
-    cinematicChord(context, 0.42, 0.95);
-    if (/(galaxy|phoenix)/.test(key)) sparkleChord(context, 0.6, 0.75, 760);
+    noiseSweep(context, { duration: 0.78, gain: 0.08, low: 90, high: 6500 });
+    tone(context, { frequency: 72, endFrequency: 108, duration: 0.72, gain: 0.11, type: 'sine' });
+    impact(context, 0.36, 1.2);
+    cinematicChord(context, 0.42, 1.05);
     return true;
   }
 
-  noiseSweep(context, { duration: 1.05, gain: 0.06, low: 70, high: 7600 });
-  tone(context, { frequency: 58, endFrequency: 86, duration: 0.9, gain: 0.085, type: 'sine' });
-  impact(context, 0.46, 1.2);
-  cinematicChord(context, 0.5, 1.12);
-  sparkleChord(context, 0.78, 0.88, /royalty|crown|throne/.test(key) ? 740 : 820);
+  noiseSweep(context, { duration: 1.05, gain: 0.09, low: 70, high: 7600 });
+  tone(context, { frequency: 58, endFrequency: 86, duration: 0.9, gain: 0.13, type: 'sine' });
+  impact(context, 0.46, 1.35);
+  cinematicChord(context, 0.5, 1.2);
+  sparkleChord(context, 0.78, 1.0, /royalty|crown|throne/.test(key) ? 740 : 820);
   return true;
 }
