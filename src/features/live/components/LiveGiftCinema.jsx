@@ -5,6 +5,18 @@ import GiftSignatureScene from './GiftSignatureScene';
 import '../styles/live-gift-cinema.css';
 
 const PARTICLE_COUNT = 28;
+const SIGNATURE_SCENES = new Set([
+  'dragon_fire',
+  'galaxy_blast',
+  'universe_expand',
+  'royalty_reveal',
+  'lion_roar',
+  'jet_flyby',
+  'yacht_glide',
+  'phoenix_rise',
+  'throne_ascend',
+  'world_crown_orbit'
+]);
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
@@ -44,7 +56,7 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   const code = String(activeGift.gift_code || '').toLowerCase();
   const name = String(activeGift.gift_name || '').toLowerCase();
   const cost = Number(activeGift.cost_coins || 0);
-  const hasSignatureScene = ['dragon_fire', 'galaxy_blast', 'universe_expand', 'royalty_reveal'].includes(activeGift.scene);
+  const hasSignatureScene = SIGNATURE_SCENES.has(activeGift.scene);
   const giftClass = code === 'rose' || name.includes('rose')
     ? 'rose'
     : code === 'heart' || name.includes('heart')
