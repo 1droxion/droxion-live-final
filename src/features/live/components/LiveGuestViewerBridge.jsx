@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import LiveRemoteGuestTile from './LiveRemoteGuestTile';
 import '../styles/live-guest-invite.css';
 
-export default function LiveGuestViewerBridge({ enabled }) {
+export default function LiveGuestViewerBridge({ enabled, currentUserId }) {
   const [room, setRoom] = useState(null);
 
   useEffect(() => {
@@ -20,5 +20,5 @@ export default function LiveGuestViewerBridge({ enabled }) {
   }, []);
 
   if (!enabled || !room) return null;
-  return <div className="liveGuestGlobalLayer"><LiveRemoteGuestTile room={room} /></div>;
+  return <div className="liveGuestGlobalLayer"><LiveRemoteGuestTile room={room} excludeUserId={currentUserId} /></div>;
 }
