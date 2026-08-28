@@ -10,32 +10,55 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
   const [guestStream, setGuestStream] = useState(null);
+  const [viewerSessionId, setViewerSessionId] = useState('');
   const guestRoomRef = useRef(null);
   const localVideoRef = useRef(null);
 
-  const effectiveSessionId = String(sessionId || invite?.session_id || '');
+  const scopedSessionId = String(sessionId || viewerSessionId || '');
+  const effectiveSessionId = String(scopedSessionId || invite?.session_id || '');
+
+  useEffect(() => {
+    const handleViewerReady = event => {
+      const nextSessionId = String(event?.detail?.sessionId || '');
+      if (nextSessionId) setViewerSessionId(nextSessionId);
+    };
+    const handleViewerClosed = event => {
+      const closedSessionId = String(event?.detail?.sessionId || '');
+      setViewerSessionId(current => !closedSessionId || current === closedSessionId ? '' : current);
+    };
+
+    window.addEventListener('droxion:viewer-room-ready', handleViewerReady);
+    window.addEventListener('droxion:viewer-room-closed', handleViewerClosed);
+    return () => {
+      window.removeEventListener('droxion:viewer-room-ready', handleViewerReady);
+      window.removeEventListener('droxion:viewer-room-closed', handleViewerClosed);
+    };
+  }, []);
 
   const load = useCallback(async () => {
     if (!currentUserId || phase === 'joining' || phase === 'live') return;
     try {
-      const result = sessionId
-        ? await supabase.rpc('droxion_my_live_guest_state', { p_session_id: sessionId })
+      const result = scopedSessionId
+        ? await supabase.rpc('droxion_my_live_guest_state', { p_session_id: scopedSessionId })
         : await supabase.rpc('droxion_my_live_invite');
       const { data, error: rpcError } = result;
       if (rpcError) throw rpcError;
       const next = data && typeof data === 'object' ? data : {};
-      const hasInvite = Boolean(next.invite_id) && Boolean(next.session_id);
+      const hasInvite = Boolean(next.invite_id) && Boolean(next.session_id) && ['pending', 'accepted'].includes(String(next.status || 'pending'));
       const normalized = hasInvite ? { ...next, status: next.status || 'pending' } : null;
       setInvite(normalized);
       if (normalized?.status === 'accepted' && phase === 'idle') setPhase('accepted');
+      if (!normalized && phase === 'accepted') setPhase('idle');
       onGuestStateChange?.(normalized || { status: 'none' });
-    } catch {}
-  }, [sessionId, currentUserId, phase, onGuestStateChange]);
+    } catch (loadError) {
+      setError(loadError?.message || 'Could not check LIVE invitation.');
+    }
+  }, [scopedSessionId, currentUserId, phase, onGuestStateChange]);
 
   useEffect(() => {
     load();
     if (!currentUserId) return undefined;
-    const timer = window.setInterval(load, 3000);
+    const timer = window.setInterval(load, 1500);
     return () => window.clearInterval(timer);
   }, [load, currentUserId]);
 
@@ -54,8 +77,8 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
   }, [guestStream]);
 
   async function respond(accept) {
-    if (!invite?.invite_id || phase === 'joining') return;
-    const targetSessionId = String(invite.session_id || sessionId || '');
+    if (!invite?.invite_id || phase === 'joining' || phase === 'declining') return;
+    const targetSessionId = String(invite.session_id || scopedSessionId || '');
     if (!targetSessionId) return;
     setError('');
     setPhase(accept ? 'joining' : 'declining');
