@@ -12,67 +12,60 @@ const LIVE_USER_COLORS = [
 ];
 
 const SIGNATURE_GIFT_CONFIG = {
-  dragon: {
-    scene: 'dragon_fire',
-    soundProfile: 'dragon',
-    duration: 4600,
-    takeoverLevel: 'high'
-  },
-  droxion_galaxy: {
-    scene: 'galaxy_blast',
-    soundProfile: 'galaxy',
-    duration: 5000,
-    takeoverLevel: 'full'
-  },
-  lion: {
-    scene: 'lion_roar',
-    soundProfile: 'lion',
-    duration: 4800,
-    takeoverLevel: 'full'
-  },
-  private_jet: {
-    scene: 'jet_flyby',
-    soundProfile: 'jet',
-    duration: 4700,
-    takeoverLevel: 'full'
-  },
-  yacht: {
-    scene: 'yacht_glide',
-    soundProfile: 'yacht',
-    duration: 4800,
-    takeoverLevel: 'full'
-  },
-  phoenix: {
-    scene: 'phoenix_rise',
-    soundProfile: 'phoenix',
-    duration: 5200,
-    takeoverLevel: 'full'
-  },
-  droxion_universe: {
-    scene: 'universe_expand',
-    soundProfile: 'universe',
-    duration: 5600,
-    takeoverLevel: 'full'
-  },
-  royal_throne: {
-    scene: 'throne_ascend',
-    soundProfile: 'throne',
-    duration: 5700,
-    takeoverLevel: 'full'
-  },
-  world_crown: {
-    scene: 'world_crown_orbit',
-    soundProfile: 'world_crown',
-    duration: 5800,
-    takeoverLevel: 'full'
-  },
-  droxion_royalty: {
-    scene: 'royalty_reveal',
-    soundProfile: 'royalty',
-    duration: 5900,
-    takeoverLevel: 'full'
-  }
+  rose: { scene: 'rose_petals', soundProfile: 'rose', duration: 2200, takeoverLevel: 'light' },
+  heart: { scene: 'heart_pulse', soundProfile: 'heart', duration: 2300, takeoverLevel: 'light' },
+  star: { scene: 'star_burst', soundProfile: 'star', duration: 2350, takeoverLevel: 'light' },
+  coffee: { scene: 'coffee_steam', soundProfile: 'coffee', duration: 2400, takeoverLevel: 'light' },
+  sparkle: { scene: 'sparkle_rain', soundProfile: 'sparkle', duration: 2450, takeoverLevel: 'light' },
+  teddy: { scene: 'teddy_hug', soundProfile: 'teddy', duration: 2850, takeoverLevel: 'light' },
+  crown: { scene: 'crown_drop', soundProfile: 'crown', duration: 3000, takeoverLevel: 'medium' },
+  cake: { scene: 'cake_party', soundProfile: 'cake', duration: 3050, takeoverLevel: 'medium' },
+  fire: { scene: 'fire_wave', soundProfile: 'fire', duration: 3150, takeoverLevel: 'medium' },
+  rocket: { scene: 'rocket_launch', soundProfile: 'rocket', duration: 3400, takeoverLevel: 'medium' },
+  diamond: { scene: 'diamond_prism', soundProfile: 'diamond', duration: 3900, takeoverLevel: 'high' },
+  supercar: { scene: 'supercar_drive', soundProfile: 'supercar', duration: 4100, takeoverLevel: 'high' },
+  treasure: { scene: 'treasure_open', soundProfile: 'treasure', duration: 4200, takeoverLevel: 'high' },
+  castle: { scene: 'castle_reveal', soundProfile: 'castle', duration: 4300, takeoverLevel: 'high' },
+  dragon: { scene: 'dragon_fire', soundProfile: 'dragon', duration: 4600, takeoverLevel: 'high' },
+  droxion_galaxy: { scene: 'galaxy_blast', soundProfile: 'galaxy', duration: 5000, takeoverLevel: 'full' },
+  lion: { scene: 'lion_roar', soundProfile: 'lion', duration: 4800, takeoverLevel: 'full' },
+  private_jet: { scene: 'jet_flyby', soundProfile: 'jet', duration: 4700, takeoverLevel: 'full' },
+  yacht: { scene: 'yacht_glide', soundProfile: 'yacht', duration: 4800, takeoverLevel: 'full' },
+  phoenix: { scene: 'phoenix_rise', soundProfile: 'phoenix', duration: 5200, takeoverLevel: 'full' },
+  meteor_storm: { scene: 'meteor_storm', soundProfile: 'meteor', duration: 5450, takeoverLevel: 'full' },
+  droxion_universe: { scene: 'universe_expand', soundProfile: 'universe', duration: 5600, takeoverLevel: 'full' },
+  royal_throne: { scene: 'throne_ascend', soundProfile: 'throne', duration: 5700, takeoverLevel: 'full' },
+  world_crown: { scene: 'world_crown_orbit', soundProfile: 'world_crown', duration: 5800, takeoverLevel: 'full' },
+  droxion_royalty: { scene: 'royalty_reveal', soundProfile: 'royalty', duration: 5900, takeoverLevel: 'full' }
 };
+
+const NAME_TO_CODE = [
+  [/droxion royalty/, 'droxion_royalty'],
+  [/world crown/, 'world_crown'],
+  [/royal throne|\bthrone\b/, 'royal_throne'],
+  [/droxion universe/, 'droxion_universe'],
+  [/meteor storm|\bmeteor\b/, 'meteor_storm'],
+  [/phoenix/, 'phoenix'],
+  [/luxury yacht|\byacht\b/, 'yacht'],
+  [/private jet|\bjet\b/, 'private_jet'],
+  [/royal lion|\blion\b/, 'lion'],
+  [/droxion galaxy|\bgalaxy\b/, 'droxion_galaxy'],
+  [/dragon/, 'dragon'],
+  [/castle/, 'castle'],
+  [/treasure/, 'treasure'],
+  [/supercar|super car/, 'supercar'],
+  [/diamond/, 'diamond'],
+  [/rocket/, 'rocket'],
+  [/\bfire\b/, 'fire'],
+  [/cake/, 'cake'],
+  [/\bcrown\b/, 'crown'],
+  [/teddy/, 'teddy'],
+  [/sparkle/, 'sparkle'],
+  [/coffee/, 'coffee'],
+  [/\bstar\b/, 'star'],
+  [/heart/, 'heart'],
+  [/rose/, 'rose']
+];
 
 function hashText(value) {
   let hash = 2166136261;
@@ -82,6 +75,14 @@ function hashText(value) {
     hash = Math.imul(hash, 16777619);
   }
   return Math.abs(hash >>> 0);
+}
+
+function tierForCode(code, cost) {
+  if (['meteor_storm', 'droxion_universe', 'royal_throne', 'world_crown', 'droxion_royalty'].includes(code) || cost >= 20000) return 'legendary';
+  if (['droxion_galaxy', 'lion', 'private_jet', 'yacht', 'phoenix'].includes(code) || cost >= 5000) return 'elite';
+  if (['diamond', 'supercar', 'treasure', 'castle', 'dragon'].includes(code) || cost >= 750) return 'premium';
+  if (['teddy', 'crown', 'cake', 'fire', 'rocket'].includes(code) || cost >= 75) return 'featured';
+  return 'standard';
 }
 
 export function getLiveUserColor(userId, displayName) {
@@ -95,93 +96,28 @@ export function getGiftPresentation(gift = {}) {
   const name = String(gift.gift_name || gift.name || '').toLowerCase();
   const key = `${code} ${name}`;
 
-  const fallbackSignatureCode = /dragon/.test(key)
-    ? 'dragon'
-    : /royal lion|\blion\b/.test(key)
-      ? 'lion'
-      : /private jet|\bjet\b/.test(key)
-        ? 'private_jet'
-        : /luxury yacht|\byacht\b/.test(key)
-          ? 'yacht'
-          : /phoenix/.test(key)
-            ? 'phoenix'
-            : /royal throne|\bthrone\b/.test(key)
-              ? 'royal_throne'
-              : /world crown/.test(key)
-                ? 'world_crown'
-                : null;
+  const resolvedCode = SIGNATURE_GIFT_CONFIG[code]
+    ? code
+    : NAME_TO_CODE.find(([pattern]) => pattern.test(key))?.[1];
 
-  const signature = SIGNATURE_GIFT_CONFIG[code] || (
-    fallbackSignatureCode ? SIGNATURE_GIFT_CONFIG[fallbackSignatureCode] : null
-  );
-
-  if (signature) {
-    const resolvedCode = SIGNATURE_GIFT_CONFIG[code] ? code : fallbackSignatureCode;
-    const tier = resolvedCode === 'dragon'
-      ? 'premium'
-      : ['droxion_universe', 'royal_throne', 'world_crown', 'droxion_royalty'].includes(resolvedCode)
-        ? 'legendary'
-        : 'elite';
-    return { tier, ...signature };
-  }
-
-  if (
-    cost >= 20000 ||
-    /(meteor|universe|royalty|world crown|royal throne)/.test(key)
-  ) {
+  if (resolvedCode && SIGNATURE_GIFT_CONFIG[resolvedCode]) {
     return {
-      tier: 'legendary',
-      duration: 5200,
-      scene: 'legendary_generic',
-      soundProfile: 'legendary_stinger',
-      takeoverLevel: 'full'
+      tier: tierForCode(resolvedCode, cost),
+      ...SIGNATURE_GIFT_CONFIG[resolvedCode]
     };
   }
 
-  if (
-    cost >= 5000 ||
-    /(galaxy|lion|private jet|yacht|phoenix)/.test(key)
-  ) {
-    return {
-      tier: 'elite',
-      duration: 4400,
-      scene: 'elite_generic',
-      soundProfile: 'elite_impact',
-      takeoverLevel: 'high'
-    };
+  if (cost >= 20000) {
+    return { tier: 'legendary', duration: 5200, scene: 'legendary_generic', soundProfile: 'legendary_stinger', takeoverLevel: 'full' };
   }
-
-  if (
-    cost >= 750 ||
-    /(diamond|supercar|treasure|castle|dragon)/.test(key)
-  ) {
-    return {
-      tier: 'premium',
-      duration: 3600,
-      scene: 'premium_generic',
-      soundProfile: 'premium_whoosh',
-      takeoverLevel: 'medium'
-    };
+  if (cost >= 5000) {
+    return { tier: 'elite', duration: 4400, scene: 'elite_generic', soundProfile: 'elite_impact', takeoverLevel: 'high' };
   }
-
-  if (
-    cost >= 75 ||
-    /(teddy|crown|cake|fire|rocket)/.test(key)
-  ) {
-    return {
-      tier: 'featured',
-      duration: 2600,
-      scene: 'featured_generic',
-      soundProfile: 'sparkle_chime',
-      takeoverLevel: 'light'
-    };
+  if (cost >= 750) {
+    return { tier: 'premium', duration: 3600, scene: 'premium_generic', soundProfile: 'premium_whoosh', takeoverLevel: 'medium' };
   }
-
-  return {
-    tier: 'standard',
-    duration: 1800,
-    scene: 'standard_generic',
-    soundProfile: 'standard_pop',
-    takeoverLevel: 'light'
-  };
+  if (cost >= 75) {
+    return { tier: 'featured', duration: 2600, scene: 'featured_generic', soundProfile: 'sparkle_chime', takeoverLevel: 'light' };
+  }
+  return { tier: 'standard', duration: 1800, scene: 'standard_generic', soundProfile: 'standard_pop', takeoverLevel: 'light' };
 }
