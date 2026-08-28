@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getGiftPresentation, getLiveUserColor } from '../utils/livePresentation';
 import { playGiftSound, unlockGiftSound } from '../utils/giftSoundEngine';
+import GiftSignatureScene from './GiftSignatureScene';
 import '../styles/live-gift-cinema.css';
 
 const PARTICLE_COUNT = 28;
@@ -43,6 +44,7 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   const code = String(activeGift.gift_code || '').toLowerCase();
   const name = String(activeGift.gift_name || '').toLowerCase();
   const cost = Number(activeGift.cost_coins || 0);
+  const hasSignatureScene = ['dragon_fire', 'galaxy_blast', 'universe_expand', 'royalty_reveal'].includes(activeGift.scene);
   const giftClass = code === 'rose' || name.includes('rose')
     ? 'rose'
     : code === 'heart' || name.includes('heart')
@@ -65,7 +67,7 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
 
   return (
     <div
-      className={`liveGiftCinemaLayer ${activeGift.tier} ${giftClass}`}
+      className={`liveGiftCinemaLayer ${activeGift.tier} ${giftClass} ${hasSignatureScene ? 'hasSignatureScene' : ''}`}
       key={activeGift.animationKey}
       aria-hidden="true"
     >
@@ -78,23 +80,27 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
       <div className="liveGiftCinemaRing ringB" />
       <div className="liveGiftCinemaSweep" />
 
-      <div className="liveGiftCinemaParticles">
-        {particles.map(index => (
-          <span
-            key={index}
-            style={{
-              '--gift-particle-index': index,
-              '--gift-particle-delay': `${(index % 14) * 48}ms`,
-              '--gift-particle-x': `${3 + ((index * 37) % 94)}%`,
-              '--gift-particle-size': `${0.72 + ((index * 17) % 10) / 16}`
-            }}
-          >
-            {emoji}
-          </span>
-        ))}
-      </div>
+      {hasSignatureScene && <GiftSignatureScene scene={activeGift.scene} />}
 
-      <div className="liveGiftCinemaHero">
+      {!hasSignatureScene && (
+        <div className="liveGiftCinemaParticles">
+          {particles.map(index => (
+            <span
+              key={index}
+              style={{
+                '--gift-particle-index': index,
+                '--gift-particle-delay': `${(index % 14) * 48}ms`,
+                '--gift-particle-x': `${3 + ((index * 37) % 94)}%`,
+                '--gift-particle-size': `${0.72 + ((index * 17) % 10) / 16}`
+              }}
+            >
+              {emoji}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className={`liveGiftCinemaHero ${hasSignatureScene ? 'signatureHero' : ''}`}>
         <div className="liveGiftCinemaTierLabel">{activeGift.tier}</div>
         <div className="liveGiftCinemaHeroEmoji">{emoji}</div>
         <div className="liveGiftCinemaText">
