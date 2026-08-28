@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getGiftPresentation, getLiveUserColor } from '../utils/livePresentation';
 import '../styles/live-gift-cinema.css';
 
-const PARTICLE_COUNT = 12;
+const PARTICLE_COUNT = 16;
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
@@ -27,17 +27,26 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   const sender = activeGift.display_name || activeGift.sender_name || 'Viewer';
   const senderColor = getLiveUserColor(activeGift.sender_id || activeGift.user_id, sender);
   const code = String(activeGift.gift_code || '').toLowerCase();
-  const isRose = code === 'rose' || /rose/.test(String(activeGift.gift_name || '').toLowerCase());
-  const isHeart = code === 'heart' || /heart/.test(String(activeGift.gift_name || '').toLowerCase());
+  const name = String(activeGift.gift_name || '').toLowerCase();
+  const giftClass = code === 'rose' || name.includes('rose')
+    ? 'rose'
+    : code === 'heart' || name.includes('heart')
+      ? 'heart'
+      : code === 'star' || name.includes('star')
+        ? 'star'
+        : code === 'crown' || name.includes('crown')
+          ? 'crown'
+          : 'gift';
 
   return (
     <div
-      className={`liveGiftCinemaLayer ${activeGift.tier} ${isRose ? 'rose' : ''} ${isHeart ? 'heart' : ''}`}
+      className={`liveGiftCinemaLayer ${activeGift.tier} ${giftClass}`}
       key={activeGift.animationKey}
       aria-hidden="true"
     >
       <div className="liveGiftCinemaBackdrop" />
       <div className="liveGiftCinemaHalo" />
+      <div className="liveGiftCinemaSweep" />
 
       <div className="liveGiftCinemaParticles">
         {particles.map(index => (
@@ -45,8 +54,8 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
             key={index}
             style={{
               '--gift-particle-index': index,
-              '--gift-particle-delay': `${(index % 6) * 80}ms`,
-              '--gift-particle-x': `${10 + ((index * 37) % 80)}%`
+              '--gift-particle-delay': `${(index % 8) * 70}ms`,
+              '--gift-particle-x': `${6 + ((index * 37) % 88)}%`
             }}
           >
             {emoji}
