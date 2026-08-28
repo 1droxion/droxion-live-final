@@ -391,6 +391,13 @@ export default function ProductionLiveBrowser({
         p_recipient_id: activeRoom.user_id,
         p_gift_code: gift.gift_code
       });
+      if (data?.reason === 'insufficient_coins') {
+        setGiftDrawerOpen(false);
+        setSelectedGift(null);
+        setNotice('');
+        onOpenWallet?.();
+        return;
+      }
       if (error || data?.allowed === false) {
         throw new Error(giftFailureMessage(data, error, gift));
       }
