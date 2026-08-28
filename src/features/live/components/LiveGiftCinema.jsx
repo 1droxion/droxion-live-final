@@ -6,6 +6,7 @@ import { getGiftCombo, giftEventKey } from '../utils/giftCombo';
 import useLiveSupporterSpotlights from '../hooks/useLiveSupporterSpotlights';
 import GiftSignatureScene from './GiftSignatureScene';
 import LiveSupporterSpotlight from './LiveSupporterSpotlight';
+import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import '../styles/live-gift-cinema.css';
 import '../styles/live-gift-combo.css';
 
@@ -20,6 +21,7 @@ const SIGNATURE_SCENES = new Set([
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
+  const [selectedProfile, setSelectedProfile] = useState(null);
   const lastAnimatedEventRef = useRef('');
   const { spotlights, refreshSpotlights } = useLiveSupporterSpotlights();
 
@@ -65,7 +67,8 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   if (activeGift) {
     const emoji = activeGift.emoji || '🎁';
     const sender = activeGift.display_name || activeGift.sender_name || 'Viewer';
-    const senderColor = getLiveUserColor(activeGift.sender_id || activeGift.user_id, sender);
+    const senderId = activeGift.sender_id || activeGift.user_id || '';
+    const senderColor = getLiveUserColor(senderId, sender);
     const code = String(activeGift.gift_code || '').toLowerCase();
     const name = String(activeGift.gift_name || '').toLowerCase();
     const cost = Number(activeGift.cost_coins || 0);
@@ -79,7 +82,6 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
       <div
         className={`liveGiftCinemaLayer liveGiftCinemaViewport ${activeGift.tier} ${giftClass} ${hasSignatureScene ? 'hasSignatureScene' : ''} ${comboClass}`}
         key={activeGift.animationKey}
-        aria-hidden="true"
       >
         <div className="liveGiftCinemaVignette" />
         <div className="liveGiftCinemaBackdrop" />
@@ -127,7 +129,16 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
           <div className="liveGiftCinemaTierLabel">{activeGift.tier}</div>
           <div className="liveGiftCinemaHeroEmoji">{emoji}</div>
           <div className="liveGiftCinemaText">
-            <strong style={{ color: senderColor }}>{sender}</strong>
+            {senderId ? (
+              <button
+                type="button"
+                className="liveGiftCinemaProfileLink"
+                style={{ color: senderColor }}
+                onClick={() => setSelectedProfile({ user_id: senderId, ...activeGift })}
+              >
+                {sender}
+              </button>
+            ) : <strong style={{ color: senderColor }}>{sender}</strong>}
             <span className="liveGiftCinemaVerb">sent</span>
             <b>{activeGift.gift_name || 'a gift'}</b>
             {cost > 0 && <small>🪙 {cost.toLocaleString()}{comboCount > 1 ? ` × ${comboCount}` : ''}</small>}
@@ -145,8 +156,15 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
 
   return createPortal(
     <>
-      <LiveSupporterSpotlight spotlights={spotlights} />
+      <LiveSupporterSpotlight spotlights={spotlights} onSelectUser={supporter => setSelectedProfile({ user_id: supporter.supporter_id, ...supporter })} />
       {cinema}
+      {selectedProfile?.user_id && (
+        <LiveMiniProfileSheet
+          userId={selectedProfile.user_id}
+          fallback={selectedProfile}
+          onClose={() => setSelectedProfile(null)}
+        />
+      )}
     </>,
     document.body
   );
