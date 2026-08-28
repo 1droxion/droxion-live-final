@@ -3,13 +3,15 @@ import { RoomEvent, Track } from 'livekit-client';
 import { attachRemoteTrack, detachRemoteTrack } from '../../../livekit/livekitRoom';
 import '../styles/live-guest-invite.css';
 
-function participantRole(participant) {
-  try {
-    const metadata = participant?.metadata ? JSON.parse(participant.metadata) : {};
-    return String(metadata?.role || '').toLowerCase();
-  } catch {
-    return '';
-  }
+function participantMeta(participant) {
+  try { return participant?.metadata ? JSON.parse(participant.metadata) : {}; } catch { return {}; }
+}
+
+function isGuestParticipant(participant, excludeUserId = '') {
+  const metadata = participantMeta(participant);
+  if (String(metadata?.role || '').toLowerCase() !== 'guest') return false;
+  const userId = String(metadata?.droxionUserId || participant?.identity || '').split('::')[0];
+  return !excludeUserId || userId !== String(excludeUserId);
 }
 
 function publicationsOf(participant) {
@@ -19,7 +21,7 @@ function publicationsOf(participant) {
   return [];
 }
 
-export default function LiveRemoteGuestTile({ room }) {
+export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -30,7 +32,7 @@ export default function LiveRemoteGuestTile({ room }) {
     let stopped = false;
 
     const attach = (track, participant) => {
-      if (stopped || participantRole(participant) !== 'guest') return;
+      if (stopped || !isGuestParticipant(participant, excludeUserId)) return;
       const element = track?.kind === Track.Kind.Video ? videoRef.current : audioRef.current;
       if (!element) return;
       try {
@@ -48,24 +50,27 @@ export default function LiveRemoteGuestTile({ room }) {
     };
 
     const detach = (track, participant) => {
-      if (participantRole(participant) !== 'guest') return;
+      if (!isGuestParticipant(participant, excludeUserId)) return;
       try { detachRemoteTrack(track); } catch {}
       if (track?.kind === Track.Kind.Video) setVisible(false);
     };
 
     const replay = () => {
       const participants = room.remoteParticipants?.values ? Array.from(room.remoteParticipants.values()) : [];
+      let foundGuest = false;
       participants.forEach(participant => {
-        if (participantRole(participant) !== 'guest') return;
+        if (!isGuestParticipant(participant, excludeUserId)) return;
+        foundGuest = true;
         publicationsOf(participant).forEach(publication => {
           try { if (publication?.setSubscribed && !publication.isSubscribed) publication.setSubscribed(true); } catch {}
           if (publication?.track) attach(publication.track, participant);
         });
       });
+      if (!foundGuest) setVisible(false);
     };
 
     const disconnected = participant => {
-      if (participantRole(participant) === 'guest') setVisible(false);
+      if (isGuestParticipant(participant, excludeUserId)) setVisible(false);
     };
 
     room.on(RoomEvent.TrackSubscribed, attach);
@@ -81,7 +86,7 @@ export default function LiveRemoteGuestTile({ room }) {
       try { room.off(RoomEvent.TrackUnsubscribed, detach); } catch {}
       try { room.off(RoomEvent.ParticipantDisconnected, disconnected); } catch {}
     };
-  }, [room]);
+  }, [room, excludeUserId]);
 
   return (
     <div className="liveRemoteGuestTile" style={{ display: visible ? 'block' : 'none' }} aria-hidden={!visible}>
