@@ -4,12 +4,17 @@ import { publishHostMediaV2 } from './livePublisherService';
 
 const TOKEN_FUNCTION = 'livekit-token';
 const CONNECT_TIMEOUT_MS = 10000;
+const roomRoles = new WeakMap();
 const CLIENT_INSTANCE_ID = (() => {
   try {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, 24);
   } catch {}
   return `v2${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 24);
 })();
+
+function emitViewerRoom(eventName, detail) {
+  try { window.dispatchEvent(new CustomEvent(eventName, { detail })); } catch {}
+}
 
 function withTimeout(promise, timeoutMs, message) {
   return new Promise((resolve, reject) => {
@@ -102,6 +107,7 @@ async function connectRoom(sessionId, role, callbacks) {
     disconnectOnPageLeave: true,
     stopLocalTrackOnUnpublish: false
   });
+  roomRoles.set(room, role);
   bindRoomEvents(room, callbacks);
 
   try {
@@ -114,8 +120,10 @@ async function connectRoom(sessionId, role, callbacks) {
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 100);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 400);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 1000);
+    if (role === 'viewer') emitViewerRoom('droxion:viewer-room-ready', { room, sessionId });
     return room;
   } catch (error) {
+    roomRoles.delete(room);
     await logTransportFailure('v2-room-connect', error, { sessionId, role });
     try { await room.disconnect(); } catch {}
     throw error;
@@ -161,5 +169,8 @@ export async function connectGuestTransport({ sessionId, stream, callbacks = {} 
 
 export async function disconnectTransport(room) {
   if (!room) return;
+  const role = roomRoles.get(room);
+  if (role === 'viewer') emitViewerRoom('droxion:viewer-room-closed', { room });
+  roomRoles.delete(room);
   try { await room.disconnect(); } catch {}
 }
