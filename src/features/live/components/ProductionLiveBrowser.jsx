@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Gift, Radio, RefreshCw, Send, Users, X } from 'lucide-react';
 import { Track } from 'livekit-client';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
@@ -10,6 +10,11 @@ import '../styles/production-gift-selection.css';
 
 const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
+const GIFT_TABS = [
+  { id: 'popular', label: 'Popular' },
+  { id: 'premium', label: 'Premium' },
+  { id: 'big', label: 'Big Gifts' }
+];
 
 function safeRpc(name, args) {
   return Promise.resolve(supabase.rpc(name, args));
@@ -24,6 +29,13 @@ function dedupeById(rows, limit = 120) {
   return Array.from(map.values())
     .sort((a, b) => String(a?.created_at || '').localeCompare(String(b?.created_at || '')))
     .slice(-limit);
+}
+
+function giftTabFor(gift = {}) {
+  const cost = Number(gift.cost_coins || 0);
+  if (cost >= 5000) return 'big';
+  if (cost >= 750) return 'premium';
+  return 'popular';
 }
 
 function giftFailureMessage(data, error, gift) {
@@ -59,6 +71,7 @@ export default function ProductionLiveBrowser({
   const [messages, setMessages] = useState([]);
   const [giftEvents, setGiftEvents] = useState([]);
   const [giftOptions, setGiftOptions] = useState([]);
+  const [giftTab, setGiftTab] = useState('popular');
   const [selectedGift, setSelectedGift] = useState(null);
   const [draft, setDraft] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
@@ -72,6 +85,11 @@ export default function ProductionLiveBrowser({
   const connectRunRef = useRef(0);
   const refreshTimerRef = useRef(null);
   const lastChatIdRef = useRef(0);
+
+  const visibleGiftOptions = useMemo(
+    () => giftOptions.filter(gift => giftTabFor(gift) === giftTab),
+    [giftOptions, giftTab]
+  );
 
   const loadFeed = useCallback(async ({ spinner = false } = {}) => {
     if (spinner) setRefreshing(true);
@@ -153,6 +171,7 @@ export default function ProductionLiveBrowser({
     setViewerCount(0);
     setMessages([]);
     setGiftEvents([]);
+    setGiftTab('popular');
     setSelectedGift(null);
     setDraft('');
     setGiftDrawerOpen(false);
@@ -174,6 +193,7 @@ export default function ProductionLiveBrowser({
     setViewerCount(Number(profile.viewer_count || 0));
     setMessages([]);
     setGiftEvents([]);
+    setGiftTab('popular');
     setSelectedGift(null);
     setDraft('');
     setGiftDrawerOpen(false);
@@ -502,7 +522,16 @@ export default function ProductionLiveBrowser({
                 maxLength={500}
                 aria-label="Live chat message"
               />
-              <button type="button" className="productionViewerGiftButton" onClick={() => setGiftDrawerOpen(true)} aria-label="Open gifts">
+              <button
+                type="button"
+                className="productionViewerGiftButton"
+                onClick={() => {
+                  setGiftTab('popular');
+                  setSelectedGift(null);
+                  setGiftDrawerOpen(true);
+                }}
+                aria-label="Open gifts"
+              >
                 <Gift size={20} />
               </button>
               <button type="button" className="productionViewerSendButton" onClick={sendChat} disabled={!draft.trim() || sendingChat} aria-label="Send message">
@@ -521,8 +550,28 @@ export default function ProductionLiveBrowser({
                 <div><strong>Choose a gift</strong><span>🪙 {coins} coins · Select first, then SEND</span></div>
                 <button type="button" disabled={Boolean(busyGift)} onClick={() => { setGiftDrawerOpen(false); setSelectedGift(null); }} aria-label="Close gifts"><X size={21} /></button>
               </div>
+
+              <div className="productionGiftTabs" role="tablist" aria-label="Gift categories">
+                {GIFT_TABS.map(tab => (
+                  <button
+                    type="button"
+                    role="tab"
+                    key={tab.id}
+                    aria-selected={giftTab === tab.id}
+                    className={giftTab === tab.id ? 'isActive' : ''}
+                    disabled={Boolean(busyGift)}
+                    onClick={() => {
+                      setGiftTab(tab.id);
+                      setSelectedGift(null);
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="productionGiftGrid">
-                {giftOptions.map(gift => {
+                {visibleGiftOptions.map(gift => {
                   const selected = selectedGift?.gift_code === gift.gift_code;
                   return (
                     <button

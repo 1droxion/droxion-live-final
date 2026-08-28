@@ -1,3 +1,37 @@
-# Ignore all .env files
+# Dependencies
+node_modules/
+
+# Environment files and local secrets
 .env
-/src/.env
+.env.*
+!.env.example
+src/.env
+src/.env.*
+
+# Private keys / signing material
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*service-account*.json
+*service_account*.json
+credentials*.json
+secrets*.json
+
+# Build and test output
+dist/
+build/
+coverage/
+
+# Local tooling
+.vercel/
+.vscode/
+.idea/
+
+# Logs / OS files
+*.log
+.DS_Store
+Thumbs.db
