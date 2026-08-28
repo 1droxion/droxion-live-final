@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronRight, Coins, Settings, Users } from 'lucide-react';
+import { BarChart3, ChevronRight, Coins, Settings } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import LiveProfile from '../../LiveProfile';
 import ProfileClipsGrid from './ProfileClipsGrid';
@@ -145,8 +145,6 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
 
       <div className="creatorProfileClipsTitle"><strong>LIVE Clips</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
       <ProfileClipsGrid currentUserId={currentUserId} />
-
-      <button className="creatorProfileSettingsRow" type="button" onClick={() => setSettingsOpen(true)}><Settings size={18} /><span><strong>Profile Settings</strong><small>Edit profile, payouts, privacy, LIVE settings and account</small></span><ChevronRight size={19} /></button>
     </section>
   );
 }
