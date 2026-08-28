@@ -5,7 +5,7 @@ import {
   getSupabaseHeaders,
   getSupabaseUser,
   readJsonBody
-} from '../api/paypal/lib.js';
+} from './paypal-lib.js';
 
 export { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, readJsonBody };
 
