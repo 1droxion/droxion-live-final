@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@capgo/native-purchases": "7.16.0",
-    "@capacitor/core": "^7.0.0",
+    "@capacitor/core": "^8.5.0",
     "@capacitor/filesystem": "^7.0.0",
     "@onesignal/capacitor-plugin": "1.1.7",
     "@supabase/supabase-js": "^2.57.4",
