@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Radio, RotateCcw, Users, X } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, Trophy, Users, X } from 'lucide-react';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import LiveAudienceDrawer from './LiveAudienceDrawer';
@@ -10,6 +10,7 @@ import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHost
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
 import '../styles/live-audience-trigger.css';
+import '../styles/live-host-minimal-redesign.css';
 
 export default function ProductionLiveHost({ onClose, creatorId }) {
   const { state, mediaStream, ensurePreview, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
@@ -21,6 +22,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [controlBusy, setControlBusy] = useState('');
   const [controlError, setControlError] = useState('');
   const [audienceOpen, setAudienceOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
 
   const busy = isLiveBusy(state.phase);
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
@@ -55,6 +57,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       setControlBusy('');
       setControlError('');
       setAudienceOpen(false);
+      setControlsOpen(false);
     }
   }, [live]);
 
@@ -113,21 +116,33 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     }
   }
 
+  function openAudience() {
+    setControlsOpen(false);
+    setAudienceOpen(true);
+  }
+
+  function openTopSupporters() {
+    setControlsOpen(false);
+    try { window.dispatchEvent(new Event('droxion:open-top-supporters')); } catch {}
+  }
+
   return (
-    <section className="prodLiveHost" aria-label="Droxion LIVE studio">
-      <header className="prodLiveHostTopbar">
-        <button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back">
-          <ArrowLeft size={24} />
-        </button>
-        <div className="prodLiveIdentity">
-          <strong>{live ? 'Your LIVE' : 'Go LIVE'}</strong>
-          <span>{statusText}</span>
-        </div>
-        <div className={`prodLiveStatus ${live ? 'isLive' : ''}`}>
-          <Radio size={16} />
-          <span>{live ? 'LIVE' : 'PREVIEW'}</span>
-        </div>
-      </header>
+    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''}`} aria-label="Droxion LIVE studio">
+      {!live && (
+        <header className="prodLiveHostTopbar">
+          <button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back">
+            <ArrowLeft size={24} />
+          </button>
+          <div className="prodLiveIdentity">
+            <strong>Go LIVE</strong>
+            <span>{statusText}</span>
+          </div>
+          <div className="prodLiveStatus">
+            <Radio size={16} />
+            <span>PREVIEW</span>
+          </div>
+        </header>
+      )}
 
       <div className={`prodLiveStage ${orientation === 'horizontal' ? 'horizontal' : 'vertical'}`}>
         {mediaStream ? (
@@ -140,52 +155,71 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
           </div>
         )}
 
-        {live && <div className="prodLiveBadge">LIVE</div>}
-        {live && state.sessionId ? (
+        {live && (
+          <div className="prodLiveMinimalTopLeft">
+            <div className="prodLiveBadge">LIVE</div>
+            {state.sessionId ? (
+              <button
+                type="button"
+                className="prodLiveViewerPill liveAudienceTrigger"
+                onClick={openAudience}
+                aria-label="Open LIVE audience"
+              >
+                <Users size={16} /><span>{state.viewerCount || 0}</span>
+              </button>
+            ) : (
+              <div className="prodLiveViewerPill"><Users size={16} /><span>{state.viewerCount || 0}</span></div>
+            )}
+          </div>
+        )}
+
+        {live && (
           <button
             type="button"
-            className="prodLiveViewerPill liveAudienceTrigger"
-            onClick={() => setAudienceOpen(true)}
-            aria-label="Open LIVE audience"
+            className="prodLiveMinimalEnd"
+            onClick={endBroadcast}
+            disabled={state.phase === LIVE_PHASE.ENDING}
+            aria-label="End LIVE"
           >
-            <Users size={17} /><span>{state.viewerCount || 0}</span>
+            End LIVE
           </button>
-        ) : (
-          <div className="prodLiveViewerPill"><Users size={17} /><span>{state.viewerCount || 0}</span></div>
         )}
 
         {live && <LiveRemoteGuestTile room={getRoom()} />}
+        {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
 
-        {live ? (
-          <div className="prodLiveMediaControls" aria-label="LIVE media controls">
-            <button
-              type="button"
-              className={micMuted ? 'isOff' : ''}
-              onClick={toggleMicrophone}
-              aria-pressed={micMuted}
-              aria-busy={controlBusy === 'mic'}
-              aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-              title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-            >
-              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+        {live && controlsOpen && (
+          <div className="prodLiveMoreMenu" role="menu" aria-label="LIVE controls">
+            <button type="button" onClick={toggleMicrophone} disabled={Boolean(controlBusy)} role="menuitem">
+              {micMuted ? <MicOff size={19} /> : <Mic size={19} />}
+              <span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span>
             </button>
-            <button
-              type="button"
-              className={cameraMuted ? 'isOff' : ''}
-              onClick={toggleCamera}
-              aria-pressed={cameraMuted}
-              aria-busy={controlBusy === 'camera'}
-              aria-label={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
-              title={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
-            >
-              {cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}
+            <button type="button" onClick={toggleCamera} disabled={Boolean(controlBusy)} role="menuitem">
+              {cameraMuted ? <CameraOff size={19} /> : <Camera size={19} />}
+              <span><strong>Camera</strong><small>{cameraMuted ? 'Off' : 'On'}</small></span>
+            </button>
+            <button type="button" onClick={openAudience} disabled={!state.sessionId} role="menuitem">
+              <Users size={19} />
+              <span><strong>Audience</strong><small>Viewers & invite guest</small></span>
+            </button>
+            <button type="button" onClick={openTopSupporters} role="menuitem">
+              <Trophy size={19} />
+              <span><strong>Top Supporters</strong><small>LIVE gift ranking</small></span>
             </button>
           </div>
-        ) : (
-          <div className="prodLiveMediaPill"><Mic size={17} /><Camera size={17} /></div>
         )}
 
-        {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
+        {live && (
+          <button
+            type="button"
+            className={`prodLiveMoreButton ${controlsOpen ? 'isOpen' : ''}`}
+            onClick={() => setControlsOpen(value => !value)}
+            aria-expanded={controlsOpen}
+            aria-label="More LIVE controls"
+          >
+            <MoreHorizontal size={27} />
+          </button>
+        )}
       </div>
 
       {(state.error || controlError) && <div className="prodLiveError">{controlError || state.error}</div>}
@@ -224,29 +258,6 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
           <span className="prodLiveSpinner" />
           <strong>{statusText}</strong>
           <span>Connecting your camera and microphone securely…</span>
-        </div>
-      )}
-
-      {live && (
-        <div className="prodLiveBottomControls">
-          <div>
-            <strong>{title || 'Live on Droxion'}</strong>
-            <span>{state.viewerCount || 0} viewer{state.viewerCount === 1 ? '' : 's'}</span>
-          </div>
-          <div className="prodLiveBottomActions">
-            <button
-              type="button"
-              className="prodLiveAudienceButton"
-              onClick={() => setAudienceOpen(true)}
-              disabled={!state.sessionId}
-              aria-label="Open audience and invite viewers"
-            >
-              <Users size={18} /> Audience
-            </button>
-            <button type="button" className="prodLiveEnd" onClick={endBroadcast} disabled={state.phase === LIVE_PHASE.ENDING}>
-              <X size={18} /> End LIVE
-            </button>
-          </div>
         </div>
       )}
 
