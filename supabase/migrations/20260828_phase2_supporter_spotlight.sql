@@ -37,6 +37,7 @@ as $$
       (
         select lv.session_id
         from public.droxion_live_viewers lv
+        join public.droxion_live_presence lp on lp.session_id = lv.session_id and lp.is_live = true
         where lv.viewer_id = auth.uid()
           and lv.heartbeat_at > now() - interval '2 minutes'
         order by lv.heartbeat_at desc
@@ -51,6 +52,7 @@ as $$
         select 1
         from public.droxion_live_presence lp
         where lp.session_id = t.session_id
+          and lp.is_live = true
           and (
             lp.user_id = auth.uid()
             or exists (
