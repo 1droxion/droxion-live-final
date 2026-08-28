@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Radio, RotateCcw, Users, X } from 'lucide-react';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
+import LiveAudienceDrawer from './LiveAudienceDrawer';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
 import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
+import '../styles/live-audience-trigger.css';
 
 export default function ProductionLiveHost({ onClose, creatorId }) {
   const { state, mediaStream, ensurePreview, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
@@ -17,6 +19,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [cameraMuted, setCameraMuted] = useState(false);
   const [controlBusy, setControlBusy] = useState('');
   const [controlError, setControlError] = useState('');
+  const [audienceOpen, setAudienceOpen] = useState(false);
 
   const busy = isLiveBusy(state.phase);
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
@@ -50,6 +53,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       setCameraMuted(false);
       setControlBusy('');
       setControlError('');
+      setAudienceOpen(false);
     }
   }, [live]);
 
@@ -136,7 +140,18 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         )}
 
         {live && <div className="prodLiveBadge">LIVE</div>}
-        <div className="prodLiveViewerPill"><Users size={17} /><span>{state.viewerCount || 0}</span></div>
+        {live && state.sessionId ? (
+          <button
+            type="button"
+            className="prodLiveViewerPill liveAudienceTrigger"
+            onClick={() => setAudienceOpen(true)}
+            aria-label="Open LIVE audience"
+          >
+            <Users size={17} /><span>{state.viewerCount || 0}</span>
+          </button>
+        ) : (
+          <div className="prodLiveViewerPill"><Users size={17} /><span>{state.viewerCount || 0}</span></div>
+        )}
 
         {live ? (
           <div className="prodLiveMediaControls" aria-label="LIVE media controls">
@@ -220,6 +235,12 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
           </button>
         </div>
       )}
+
+      <LiveAudienceDrawer
+        open={audienceOpen}
+        sessionId={state.sessionId}
+        onClose={() => setAudienceOpen(false)}
+      />
     </section>
   );
 }
