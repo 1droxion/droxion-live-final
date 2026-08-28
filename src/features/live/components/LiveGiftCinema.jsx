@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getGiftPresentation, getLiveUserColor } from '../utils/livePresentation';
 import { playGiftSound, unlockGiftSound } from '../utils/giftSoundEngine';
+import { getGiftCombo, giftEventKey } from '../utils/giftCombo';
 import GiftSignatureScene from './GiftSignatureScene';
 import '../styles/live-gift-cinema.css';
+import '../styles/live-gift-combo.css';
 
 const PARTICLE_COUNT = 28;
 const SIGNATURE_SCENES = new Set([
@@ -16,6 +18,7 @@ const SIGNATURE_SCENES = new Set([
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
+  const lastAnimatedEventRef = useRef('');
 
   useEffect(() => {
     const unlock = () => { unlockGiftSound().catch(() => {}); };
@@ -33,9 +36,14 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
     const latest = giftEvents[giftEvents.length - 1];
     if (!latest) return undefined;
 
+    const eventKey = giftEventKey(latest);
+    if (eventKey && eventKey === lastAnimatedEventRef.current) return undefined;
+    lastAnimatedEventRef.current = eventKey;
+
     const presentation = getGiftPresentation(latest);
-    const animationKey = `${latest.id || latest.created_at || Date.now()}:${Math.random()}`;
-    setActiveGift({ ...latest, ...presentation, animationKey });
+    const combo = getGiftCombo(giftEvents);
+    const animationKey = `${eventKey || Date.now()}:${combo.count}`;
+    setActiveGift({ ...latest, ...presentation, comboCount: combo.count, comboLevel: combo.level, animationKey });
     playGiftSound(latest, presentation).catch(() => {});
 
     const timer = window.setTimeout(() => setActiveGift(null), presentation.duration);
@@ -52,12 +60,15 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   const code = String(activeGift.gift_code || '').toLowerCase();
   const name = String(activeGift.gift_name || '').toLowerCase();
   const cost = Number(activeGift.cost_coins || 0);
+  const comboCount = Number(activeGift.comboCount || 1);
+  const comboLevel = Number(activeGift.comboLevel || 0);
   const hasSignatureScene = SIGNATURE_SCENES.has(activeGift.scene);
   const giftClass = code || name.replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') || 'gift';
+  const comboClass = comboLevel ? `combo combo${comboLevel}` : '';
 
   const cinema = (
     <div
-      className={`liveGiftCinemaLayer liveGiftCinemaViewport ${activeGift.tier} ${giftClass} ${hasSignatureScene ? 'hasSignatureScene' : ''}`}
+      className={`liveGiftCinemaLayer liveGiftCinemaViewport ${activeGift.tier} ${giftClass} ${hasSignatureScene ? 'hasSignatureScene' : ''} ${comboClass}`}
       key={activeGift.animationKey}
       aria-hidden="true"
     >
@@ -69,6 +80,12 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
       <div className="liveGiftCinemaRing ringA" />
       <div className="liveGiftCinemaRing ringB" />
       <div className="liveGiftCinemaSweep" />
+
+      {comboLevel > 0 && (
+        <div className="liveGiftComboShockwaves">
+          <i /><i /><i />
+        </div>
+      )}
 
       {hasSignatureScene && <GiftSignatureScene scene={activeGift.scene} />}
 
@@ -90,6 +107,13 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
         </div>
       )}
 
+      {comboLevel > 0 && (
+        <div className="liveGiftComboBadge">
+          <span>COMBO</span>
+          <strong>x{comboCount}</strong>
+        </div>
+      )}
+
       <div className={`liveGiftCinemaHero ${hasSignatureScene ? 'signatureHero' : ''}`}>
         <div className="liveGiftCinemaTierLabel">{activeGift.tier}</div>
         <div className="liveGiftCinemaHeroEmoji">{emoji}</div>
@@ -97,7 +121,7 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
           <strong style={{ color: senderColor }}>{sender}</strong>
           <span className="liveGiftCinemaVerb">sent</span>
           <b>{activeGift.gift_name || 'a gift'}</b>
-          {cost > 0 && <small>🪙 {cost.toLocaleString()}</small>}
+          {cost > 0 && <small>🪙 {cost.toLocaleString()}{comboCount > 1 ? ` × ${comboCount}` : ''}</small>}
         </div>
       </div>
 
