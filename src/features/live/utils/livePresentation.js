@@ -11,6 +11,8 @@ const LIVE_USER_COLORS = [
   '#2dd4bf'
 ];
 
+const CINEMA_DURATION_SCALE = 0.8;
+
 const SIGNATURE_GIFT_CONFIG = {
   rose: { scene: 'rose_petals', soundProfile: 'rose', duration: 2200, takeoverLevel: 'light' },
   heart: { scene: 'heart_pulse', soundProfile: 'heart', duration: 2300, takeoverLevel: 'light' },
@@ -85,6 +87,10 @@ function tierForCode(code, cost) {
   return 'standard';
 }
 
+function fasterDuration(ms) {
+  return Math.max(900, Math.round(Number(ms || 0) * CINEMA_DURATION_SCALE));
+}
+
 export function getLiveUserColor(userId, displayName) {
   const key = String(userId || displayName || 'viewer');
   return LIVE_USER_COLORS[hashText(key) % LIVE_USER_COLORS.length];
@@ -101,23 +107,25 @@ export function getGiftPresentation(gift = {}) {
     : NAME_TO_CODE.find(([pattern]) => pattern.test(key))?.[1];
 
   if (resolvedCode && SIGNATURE_GIFT_CONFIG[resolvedCode]) {
+    const config = SIGNATURE_GIFT_CONFIG[resolvedCode];
     return {
       tier: tierForCode(resolvedCode, cost),
-      ...SIGNATURE_GIFT_CONFIG[resolvedCode]
+      ...config,
+      duration: fasterDuration(config.duration)
     };
   }
 
   if (cost >= 20000) {
-    return { tier: 'legendary', duration: 5200, scene: 'legendary_generic', soundProfile: 'legendary_stinger', takeoverLevel: 'full' };
+    return { tier: 'legendary', duration: fasterDuration(5200), scene: 'legendary_generic', soundProfile: 'legendary_stinger', takeoverLevel: 'full' };
   }
   if (cost >= 5000) {
-    return { tier: 'elite', duration: 4400, scene: 'elite_generic', soundProfile: 'elite_impact', takeoverLevel: 'high' };
+    return { tier: 'elite', duration: fasterDuration(4400), scene: 'elite_generic', soundProfile: 'elite_impact', takeoverLevel: 'high' };
   }
   if (cost >= 750) {
-    return { tier: 'premium', duration: 3600, scene: 'premium_generic', soundProfile: 'premium_whoosh', takeoverLevel: 'medium' };
+    return { tier: 'premium', duration: fasterDuration(3600), scene: 'premium_generic', soundProfile: 'premium_whoosh', takeoverLevel: 'medium' };
   }
   if (cost >= 75) {
-    return { tier: 'featured', duration: 2600, scene: 'featured_generic', soundProfile: 'sparkle_chime', takeoverLevel: 'light' };
+    return { tier: 'featured', duration: fasterDuration(2600), scene: 'featured_generic', soundProfile: 'sparkle_chime', takeoverLevel: 'light' };
   }
-  return { tier: 'standard', duration: 1800, scene: 'standard_generic', soundProfile: 'standard_pop', takeoverLevel: 'light' };
+  return { tier: 'standard', duration: fasterDuration(1800), scene: 'standard_generic', soundProfile: 'standard_pop', takeoverLevel: 'light' };
 }
