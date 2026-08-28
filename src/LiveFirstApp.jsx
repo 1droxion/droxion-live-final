@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
-import LiveProfile from './LiveProfile';
 import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
 import ShortFeed from './ShortFeed';
@@ -14,7 +13,7 @@ import PublishReadyEnhancer from './PublishReadyEnhancer';
 import ProfileAccountActionsEnhancer from './ProfileAccountActionsEnhancer';
 import ProductionLiveHost from './features/live/components/ProductionLiveHost';
 import ProductionLiveBrowser from './features/live/components/ProductionLiveBrowser';
-import CreatorLiveClips from './features/clips/CreatorLiveClips';
+import CreatorProfileHome from './features/profile/CreatorProfileHome';
 import './real-home.css';
 import './live-first-app.css';
 import './product-shell.css';
@@ -133,7 +132,7 @@ export default function LiveFirstApp() {
   let content = <><HomeDiscoveryControls query={searchQuery} /><ProductionLiveBrowser key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
-  if (tab === 'profile') content = <><LiveProfile onOpenWallet={() => setWalletOpen(true)} coins={coins} /><CreatorLiveClips currentUserId={user?.id} /></>;
+  if (tab === 'profile') content = <CreatorProfileHome currentUserId={user?.id} coins={coins} onOpenWallet={() => setWalletOpen(true)} />;
 
   return (
     <main className={`lfShell ${tab === 'feed' ? 'lfFeedTab' : ''} ${chatOpen ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
