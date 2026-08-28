@@ -1,4 +1,4 @@
-export const GIFT_COMBO_WINDOW_MS = 6000;
+export const GIFT_COMBO_WINDOW_MS = 15000;
 
 function senderKey(gift = {}) {
   return String(gift.sender_id || gift.user_id || gift.sender_name || gift.display_name || '').trim().toLowerCase();
