@@ -40,12 +40,27 @@ jobs:
           test -d dist
           test -n "$(find dist -maxdepth 2 -type f -print -quit)"
 
-      - name: Guard against obvious tracked secrets
+      - name: Guard against tracked secret files
         shell: bash
         run: |
           set -e
-          if git grep -nE '(BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|APP_STORE_CONNECT_PRIVATE_KEY[[:space:]]*[:=][[:space:]]*[^$])' -- ':!package-lock.json'; then
-            echo 'Potential private credential found in tracked files.'
+          tracked_secret_files="$(git ls-files | grep -E '(^|/)\.env($|\.)|\.(pem|key|p8|p12|pfx|jks|keystore)$|(^|/)(credentials|secrets)([-_.].*)?\.json$|service[-_]?account.*\.json$' || true)"
+          if [ -n "$tracked_secret_files" ]; then
+            echo 'High-risk secret or credential file is tracked:' >&2
+            echo "$tracked_secret_files" >&2
+            exit 1
+          fi
+
+      - name: Guard against obvious tracked credentials
+        shell: bash
+        run: |
+          set -e
+          if git grep -nE 'BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' -- ':!package-lock.json'; then
+            echo 'Potential private key found in tracked files.' >&2
+            exit 1
+          fi
+          if git grep -nE '(SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE|PAYPAL_CLIENT_SECRET|TROLLEY_SECRET_KEY|LIVEKIT_API_SECRET|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|APP_STORE_CONNECT_PRIVATE_KEY)[[:space:]]*[:=][[:space:]]*["'"']?[^$[:space:]{}]+' -- ':!package-lock.json' ':!*.md' ':!*.yml' ':!*.yaml'; then
+            echo 'Potential hard-coded production credential found in tracked source.' >&2
             exit 1
           fi
 
