@@ -28,18 +28,34 @@ export function getLiveUserColor(userId, displayName) {
 
 export function getGiftPresentation(gift = {}) {
   const cost = Number(gift.cost_coins ?? gift.coin_cost ?? gift.coins ?? 0);
+  const code = String(gift.gift_code || gift.code || '').toLowerCase();
   const name = String(gift.gift_name || gift.name || '').toLowerCase();
+  const key = `${code} ${name}`;
 
   if (
-    cost >= 1000 ||
-    /(lion|jet|galaxy|diamond|supercar|car|castle|dragon|universe|treasure)/.test(name)
+    cost >= 20000 ||
+    /(meteor|universe|royalty|world crown|royal throne)/.test(key)
+  ) {
+    return { tier: 'legendary', duration: 5200 };
+  }
+
+  if (
+    cost >= 5000 ||
+    /(galaxy|lion|private jet|yacht|phoenix)/.test(key)
+  ) {
+    return { tier: 'elite', duration: 4400 };
+  }
+
+  if (
+    cost >= 750 ||
+    /(diamond|supercar|treasure|castle|dragon)/.test(key)
   ) {
     return { tier: 'premium', duration: 3600 };
   }
 
   if (
-    cost >= 150 ||
-    /(crown|rocket|fire|teddy|cake|champagne|star)/.test(name)
+    cost >= 75 ||
+    /(teddy|crown|cake|fire|rocket)/.test(key)
   ) {
     return { tier: 'featured', duration: 2600 };
   }
