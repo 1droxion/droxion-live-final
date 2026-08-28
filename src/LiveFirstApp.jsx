@@ -13,6 +13,8 @@ import PublishReadyEnhancer from './PublishReadyEnhancer';
 import ProfileAccountActionsEnhancer from './ProfileAccountActionsEnhancer';
 import ProductionLiveHost from './features/live/components/ProductionLiveHost';
 import ProductionLiveBrowser from './features/live/components/ProductionLiveBrowser';
+import LiveGuestInvitePrompt from './features/live/components/LiveGuestInvitePrompt';
+import LiveGuestViewerBridge from './features/live/components/LiveGuestViewerBridge';
 import CreatorProfileHome from './features/profile/CreatorProfileHome';
 import './real-home.css';
 import './live-first-app.css';
@@ -137,6 +139,8 @@ export default function LiveFirstApp() {
   return (
     <main className={`lfShell ${tab === 'feed' ? 'lfFeedTab' : ''} ${chatOpen ? 'lfChatTab' : ''} ${immersiveLive ? 'lfImmersiveLive' : ''}`}>
       <LiveClientDiagnostics /><ProfileAvatarEnhancer /><PublishReadyEnhancer /><ProfileAccountActionsEnhancer />
+      <LiveGuestInvitePrompt currentUserId={user?.id} />
+      <LiveGuestViewerBridge enabled={immersiveLive} currentUserId={user?.id} />
 
       {!immersiveLive && !chatOpen && tab !== 'feed' && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
         <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
