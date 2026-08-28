@@ -97,8 +97,8 @@ function bindRoomEvents(room, callbacks = {}) {
 async function connectRoom(sessionId, role, callbacks) {
   const auth = await getLiveKitToken(sessionId, role);
   const room = new Room({
-    adaptiveStream: role !== 'host',
-    dynacast: role === 'host',
+    adaptiveStream: role !== 'host' && role !== 'guest',
+    dynacast: role === 'host' || role === 'guest',
     disconnectOnPageLeave: true,
     stopLocalTrackOnUnpublish: false
   });
@@ -110,10 +110,6 @@ async function connectRoom(sessionId, role, callbacks) {
       CONNECT_TIMEOUT_MS,
       'LIVE video connection timed out.'
     );
-    // Critical for viewers joining an already-running LIVE: TrackSubscribed can
-    // fire while React is still committing the viewer screen. Replay all
-    // authoritative remote publications after connect so the video element
-    // always receives the host track instead of staying on a black page.
     replayRemoteTracks(room, callbacks);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 100);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 400);
@@ -145,6 +141,22 @@ export async function connectHostTransport({ sessionId, stream, callbacks = {} }
 
 export async function connectViewerTransport({ sessionId, callbacks = {} }) {
   return connectRoom(sessionId, 'viewer', callbacks);
+}
+
+export async function connectGuestTransport({ sessionId, stream, callbacks = {} }) {
+  const room = await connectRoom(sessionId, 'guest', callbacks);
+  try {
+    const published = await publishHostMediaV2({
+      room,
+      stream,
+      logFailure: (stage, error, context) => logTransportFailure(`guest-${stage}`, error, { sessionId, ...context })
+    });
+    return { room, ...published };
+  } catch (error) {
+    await logTransportFailure('v2-guest-publish', error, { sessionId });
+    try { await room.disconnect(); } catch {}
+    throw error;
+  }
 }
 
 export async function disconnectTransport(room) {
