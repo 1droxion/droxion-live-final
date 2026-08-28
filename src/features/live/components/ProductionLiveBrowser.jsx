@@ -5,8 +5,10 @@ import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { attachRemoteTrack, detachRemoteTrack, unlockRemoteAudio } from '../../../livekit/livekitRoom';
 import { connectViewerTransport, disconnectTransport } from '../services/liveTransportService';
 import LiveGiftCinema from './LiveGiftCinema';
+import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import '../styles/production-live-browser.css';
 import '../styles/production-gift-selection.css';
+import '../styles/live-viewer-profile-taps.css';
 
 const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
@@ -79,6 +81,7 @@ export default function ProductionLiveBrowser({
   const [sendingChat, setSendingChat] = useState(false);
   const [giftDrawerOpen, setGiftDrawerOpen] = useState(false);
   const [busyGift, setBusyGift] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState(null);
 
   const roomRef = useRef(null);
   const videoRef = useRef(null);
@@ -183,6 +186,7 @@ export default function ProductionLiveBrowser({
     setSelectedGiftQuantity(1);
     setDraft('');
     setGiftDrawerOpen(false);
+    setSelectedProfile(null);
     lastChatIdRef.current = 0;
     loadFeed();
   }, [activeRoom?.session_id, loadFeed]);
@@ -206,6 +210,7 @@ export default function ProductionLiveBrowser({
     setSelectedGiftQuantity(1);
     setDraft('');
     setGiftDrawerOpen(false);
+    setSelectedProfile(null);
     lastChatIdRef.current = 0;
     setActiveRoom(profile);
   }
@@ -512,7 +517,19 @@ export default function ProductionLiveBrowser({
 
         <div className="productionViewerTop">
           <button type="button" onClick={leaveViewer} aria-label="Back to Home"><ArrowLeft size={22} /></button>
-          <div><span className="productionViewerLive">LIVE</span><strong>{activeRoom.display_name || 'Droxion Live'}</strong></div>
+          <button
+            type="button"
+            className="productionViewerCreatorProfile"
+            onClick={() => setSelectedProfile({ user_id: activeRoom.user_id, ...activeRoom })}
+            aria-label={`Open ${activeRoom.display_name || 'creator'} profile`}
+          >
+            {activeRoom.avatar_url ? (
+              <img src={activeRoom.avatar_url} alt="" />
+            ) : (
+              <span className="productionViewerCreatorAvatarFallback">{String(activeRoom.display_name || 'D').trim().charAt(0).toUpperCase()}</span>
+            )}
+            <strong>{activeRoom.display_name || 'Droxion Live'}</strong>
+          </button>
           <span className="productionViewerCount"><Users size={15} /> {viewerCount}</span>
         </div>
 
@@ -530,17 +547,31 @@ export default function ProductionLiveBrowser({
 
             <div className="productionViewerChat" aria-live="polite">
               {combinedEvents.length === 0 && <div className="productionViewerChatHint">Live chat will appear here.</div>}
-              {combinedEvents.map(event => event.eventType === 'gift' ? (
-                <div className="productionViewerChatLine productionViewerGiftLine" key={event.eventKey}>
-                  <strong>{event.display_name || event.sender_name || 'Viewer'}</strong>
-                  <span>sent {event.emoji || '🎁'} {event.gift_name || 'a gift'}</span>
-                </div>
-              ) : (
-                <div className="productionViewerChatLine" key={event.eventKey}>
-                  <strong>{event.display_name || 'Viewer'}</strong>
-                  <span>{event.body}</span>
-                </div>
-              ))}
+              {combinedEvents.map(event => {
+                const eventUserId = event.sender_id || event.user_id || '';
+                const eventName = event.display_name || event.sender_name || 'Viewer';
+                const profileName = eventUserId ? (
+                  <button
+                    type="button"
+                    className="productionViewerProfileLink"
+                    onClick={() => setSelectedProfile({ user_id: eventUserId, ...event })}
+                  >
+                    {eventName}
+                  </button>
+                ) : <strong>{eventName}</strong>;
+
+                return event.eventType === 'gift' ? (
+                  <div className="productionViewerChatLine productionViewerGiftLine" key={event.eventKey}>
+                    {profileName}
+                    <span>sent {event.emoji || '🎁'} {event.gift_name || 'a gift'}</span>
+                  </div>
+                ) : (
+                  <div className="productionViewerChatLine" key={event.eventKey}>
+                    {profileName}
+                    <span>{event.body}</span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="productionViewerComposer">
@@ -671,6 +702,15 @@ export default function ProductionLiveBrowser({
               <button type="button" className="productionBuyCoins" onClick={() => onOpenWallet?.()}>+ Buy Coins</button>
             </div>
           </div>
+        )}
+
+        {selectedProfile?.user_id && (
+          <LiveMiniProfileSheet
+            userId={selectedProfile.user_id}
+            currentUserId={currentUserId}
+            fallback={selectedProfile}
+            onClose={() => setSelectedProfile(null)}
+          />
         )}
       </section>
     );
