@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Trophy } from 'lucide-react';
 import { getGiftPresentation, getLiveUserColor } from '../utils/livePresentation';
 import { playGiftSound, unlockGiftSound } from '../utils/giftSoundEngine';
 import { getGiftCombo, giftEventKey } from '../utils/giftCombo';
@@ -7,6 +8,7 @@ import useLiveSupporterSpotlights from '../hooks/useLiveSupporterSpotlights';
 import GiftSignatureScene from './GiftSignatureScene';
 import LiveSupporterSpotlight from './LiveSupporterSpotlight';
 import LiveMiniProfileSheet from './LiveMiniProfileSheet';
+import LiveTopSupportersDrawer from './LiveTopSupportersDrawer';
 import '../styles/live-gift-cinema.css';
 import '../styles/live-gift-combo.css';
 
@@ -22,6 +24,7 @@ const SIGNATURE_SCENES = new Set([
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const lastAnimatedEventRef = useRef('');
   const { spotlights, refreshSpotlights } = useLiveSupporterSpotlights();
 
@@ -157,7 +160,19 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   return createPortal(
     <>
       <LiveSupporterSpotlight spotlights={spotlights} onSelectUser={supporter => setSelectedProfile({ user_id: supporter.supporter_id, ...supporter })} />
+
+      <button type="button" className="liveTopSupportersTrigger" onClick={() => setLeaderboardOpen(true)} aria-label="Open LIVE Top Supporters">
+        <Trophy size={15} /> Top Supporters
+      </button>
+
       {cinema}
+
+      <LiveTopSupportersDrawer
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        refreshKey={giftEvents.length}
+      />
+
       {selectedProfile?.user_id && (
         <LiveMiniProfileSheet
           userId={selectedProfile.user_id}
