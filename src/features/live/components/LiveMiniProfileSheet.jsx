@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, UserPlus, X } from 'lucide-react';
+import { Ban, Check, Flag, UserPlus, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import '../styles/live-mini-profile-sheet.css';
+
+const REPORT_REASONS = [
+  ['sexual_content', 'Sexual content'],
+  ['harassment', 'Harassment or bullying'],
+  ['hate_or_threats', 'Hate or threats'],
+  ['violence_or_danger', 'Violence or dangerous behavior'],
+  ['underage', 'Underage concern'],
+  ['spam_or_scam', 'Spam or scam'],
+  ['illegal_activity', 'Illegal activity'],
+  ['other', 'Other']
+];
 
 function compactNumber(value) {
   const number = Number(value || 0);
@@ -10,12 +21,16 @@ function compactNumber(value) {
   return `${(number / 1_000_000).toFixed(number >= 10_000_000 ? 0 : 1).replace('.0', '')}M`;
 }
 
-export default function LiveMiniProfileSheet({ userId, currentUserId, fallback = {}, onClose }) {
+export default function LiveMiniProfileSheet({ userId, currentUserId, fallback = {}, onClose, onBlocked }) {
   const [profile, setProfile] = useState(null);
   const [resolvedCurrentUserId, setResolvedCurrentUserId] = useState(currentUserId || '');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('harassment');
+  const [reportDetails, setReportDetails] = useState('');
+  const [safetyNotice, setSafetyNotice] = useState('');
 
   useEffect(() => {
     if (currentUserId) {
@@ -71,9 +86,56 @@ export default function LiveMiniProfileSheet({ userId, currentUserId, fallback =
     }
   }
 
+  async function submitReport() {
+    if (!resolvedCurrentUserId || !userId || busy) return;
+    setBusy(true);
+    setSafetyNotice('');
+    try {
+      const { data, error: reportError } = await supabase.rpc('droxion_submit_report', {
+        p_reported_user_id: userId,
+        p_category: reportReason,
+        p_details: reportDetails.trim() || null,
+        p_target_type: fallback.safety_target_type || 'user',
+        p_target_id: fallback.safety_target_id ? String(fallback.safety_target_id) : null,
+        p_session_id: fallback.session_id || null
+      });
+      if (reportError || data?.ok === false) throw reportError || new Error('Could not submit report.');
+      setSafetyNotice('Report submitted. Droxion moderation will review it.');
+      setReportDetails('');
+    } catch (reportError) {
+      setSafetyNotice(reportError?.message || 'Could not submit report.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function blockUser() {
+    if (!resolvedCurrentUserId || !userId || busy) return;
+    const confirmed = window.confirm(`Block ${displayName}? Their content will be removed from your Droxion feed immediately and Droxion moderation will be notified.`);
+    if (!confirmed) return;
+    setBusy(true);
+    setSafetyNotice('');
+    try {
+      const { data, error: blockError } = await supabase.rpc('droxion_block_user', {
+        p_blocked_user_id: userId,
+        p_context_type: fallback.safety_target_type || 'user',
+        p_context_id: fallback.safety_target_id ? String(fallback.safety_target_id) : null,
+        p_session_id: fallback.session_id || null
+      });
+      if (blockError || data?.ok === false) throw blockError || new Error('Could not block user.');
+      onBlocked?.(userId);
+      onClose?.();
+    } catch (blockError) {
+      setSafetyNotice(blockError?.message || 'Could not block user.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const displayName = profile?.display_name || fallback.display_name || fallback.sender_name || 'Droxion user';
   const username = profile?.username || fallback.username || '';
   const avatarUrl = profile?.avatar_url || fallback.avatar_url || '';
+  const isSelf = profile?.is_self || String(userId || '') === String(resolvedCurrentUserId || '');
 
   return (
     <div className="liveMiniProfileBackdrop" onClick={onClose}>
@@ -102,14 +164,34 @@ export default function LiveMiniProfileSheet({ userId, currentUserId, fallback =
               <div><strong>{compactNumber(profile.following_count)}</strong><span>Following</span></div>
             </div>
 
-            {!profile.is_self && resolvedCurrentUserId && (
+            {!isSelf && resolvedCurrentUserId && (
               <button type="button" className={`liveMiniProfileFollow ${profile.is_following ? 'isFollowing' : ''}`} onClick={toggleFollow} disabled={busy}>
                 {profile.is_following ? <Check size={18} /> : <UserPlus size={18} />}
                 {busy ? 'Updating…' : profile.is_following ? 'Following' : 'Follow'}
               </button>
             )}
-            {profile.is_self && <div className="liveMiniProfileSelf">This is you</div>}
+
+            {!isSelf && resolvedCurrentUserId && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                <button type="button" onClick={() => setSafetyOpen(value => !value)} disabled={busy} style={{ minHeight: 44, borderRadius: 12, border: '1px solid rgba(255,255,255,.13)', background: 'rgba(255,255,255,.06)', color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Flag size={17} /> Report</button>
+                <button type="button" onClick={blockUser} disabled={busy} style={{ minHeight: 44, borderRadius: 12, border: '1px solid rgba(248,113,113,.28)', background: 'rgba(239,68,68,.10)', color: '#fca5a5', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Ban size={17} /> Block User</button>
+              </div>
+            )}
+
+            {safetyOpen && !isSelf && (
+              <div style={{ marginTop: 12, padding: 12, border: '1px solid rgba(255,255,255,.10)', borderRadius: 14, background: 'rgba(0,0,0,.18)' }}>
+                <strong style={{ display: 'block', marginBottom: 8 }}>Report objectionable content or behavior</strong>
+                <select value={reportReason} onChange={event => setReportReason(event.target.value)} style={{ width: '100%', minHeight: 42, borderRadius: 10, border: '1px solid rgba(255,255,255,.12)', background: '#191922', color: '#fff', padding: '0 10px' }}>
+                  {REPORT_REASONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                </select>
+                <textarea value={reportDetails} onChange={event => setReportDetails(event.target.value)} maxLength={1000} placeholder="Optional details" style={{ width: '100%', minHeight: 72, marginTop: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,.12)', background: '#191922', color: '#fff', padding: 10, resize: 'vertical' }} />
+                <button type="button" onClick={submitReport} disabled={busy} style={{ width: '100%', minHeight: 42, marginTop: 8, border: 0, borderRadius: 10, background: '#9333ea', color: '#fff', fontWeight: 900 }}>{busy ? 'Submitting…' : 'Submit Report'}</button>
+              </div>
+            )}
+
+            {isSelf && <div className="liveMiniProfileSelf">This is you</div>}
             {error && <div className="liveMiniProfileError">{error}</div>}
+            {safetyNotice && <div className="liveMiniProfileError" style={{ color: '#ddd6fe' }}>{safetyNotice}</div>}
           </>
         ) : null}
       </section>

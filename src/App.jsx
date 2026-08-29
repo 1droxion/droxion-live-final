@@ -4,6 +4,7 @@ import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import LiveGuestStageGuard from "./LiveGuestStageGuard.jsx";
 import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
+import ShortSafetyEnhancer from "./ShortSafetyEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
 import DroxionLivePushBridge from "./DroxionLivePushBridge.jsx";
 import Login from "./Login.jsx";
@@ -27,6 +28,7 @@ export default function App() {
       {!isLiveV2 && <CreatorV11Enhancer />}
       {!isLiveV2 && <LiveGuestStageGuard />}
       {!isLiveV2 && <ShortNativeActionsEnhancer />}
+      {!isLiveV2 && <ShortSafetyEnhancer />}
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
         <Route path="/live-v2" element={<LiveV2Page />} />

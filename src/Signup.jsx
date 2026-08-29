@@ -2,6 +2,12 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
+const TERMS_VERSION = "2026-08-29-guideline-1-2";
+
+function platformName() {
+  try { return window.Capacitor?.getPlatform?.() || "web"; } catch { return "web"; }
+}
+
 function Signup() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -11,9 +17,10 @@ function Signup() {
   const [language, setLanguage] = useState("English");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmed21, setConfirmed21] = useState(false);
+  const [acceptedSafetyTerms, setAcceptedSafetyTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const legalReturnState = { from: "/signup" };
 
   const getMaximumBirthDate = () => {
     const today = new Date();
@@ -47,8 +54,8 @@ function Signup() {
       setError("Droxion is only available to people age 21 or older.");
       return;
     }
-    if (!confirmed21) {
-      setError("Please confirm that you are 21 years of age or older.");
+    if (!acceptedSafetyTerms) {
+      setError("You must agree to Droxion's Terms of Use and Community Guidelines before creating an account.");
       return;
     }
     if (password.length < 8) {
@@ -68,6 +75,8 @@ function Signup() {
           country: cleanCountry,
           language,
           confirmed21: true,
+          accepted_terms: true,
+          terms_version: TERMS_VERSION,
         },
       });
 
@@ -76,6 +85,12 @@ function Signup() {
 
       const { error: loginError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
       if (loginError) throw loginError;
+
+      const { error: termsError } = await supabase.rpc("droxion_record_terms_acceptance", {
+        p_terms_version: TERMS_VERSION,
+        p_platform: platformName(),
+      });
+      if (termsError) throw new Error("Account created, but we could not record your Terms acceptance. Please sign in again.");
 
       navigate("/", { replace: true });
     } catch (err) {
@@ -127,12 +142,14 @@ function Signup() {
           <label htmlFor="password" className="block mb-2 text-sm font-medium">Password</label>
           <input id="password" type="password" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 8 characters" className="w-full p-3 mb-5 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
 
-          <label className="flex items-start gap-3 mb-6 cursor-pointer">
-            <input type="checkbox" checked={confirmed21} onChange={(e) => setConfirmed21(e.target.checked)} className="mt-1" required />
-            <span className="text-sm text-gray-300">I confirm that I am 21 years of age or older and agree to follow Droxion's community rules.</span>
+          <label className="flex items-start gap-3 mb-6 cursor-pointer rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <input type="checkbox" checked={acceptedSafetyTerms} onChange={(e) => setAcceptedSafetyTerms(e.target.checked)} className="mt-1" required />
+            <span className="text-xs leading-5 text-gray-300">
+              I confirm I am 21+ and agree to Droxion's <Link to="/terms" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
+            </span>
           </label>
 
-          <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60 text-white py-3 px-4 rounded-xl font-bold transition">{loading ? "Creating account..." : "Create Droxion Account"}</button>
+          <button type="submit" disabled={loading || !acceptedSafetyTerms} className="w-full bg-purple-600 hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50 text-white py-3 px-4 rounded-xl font-bold transition">{loading ? "Creating account..." : "Create Droxion Account"}</button>
         </form>
 
         <div className="text-sm mt-6 text-center text-gray-400">Already have an account? <Link to="/login" className="text-purple-400 hover:text-purple-300 font-semibold">Login</Link></div>
