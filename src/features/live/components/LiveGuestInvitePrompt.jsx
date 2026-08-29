@@ -76,14 +76,32 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
     stopMediaStream(guestStream);
   }, [guestStream]);
 
+  async function clearAcceptedInvite(targetSessionId) {
+    try {
+      await supabase.rpc('droxion_leave_live_guest', { p_session_id: targetSessionId });
+    } catch {}
+    setInvite(null);
+    setError('');
+    setPhase('idle');
+    onGuestStateChange?.({ status: 'removed', session_id: targetSessionId });
+  }
+
   async function respond(accept) {
     if (!invite?.invite_id || phase === 'joining' || phase === 'declining') return;
     const targetSessionId = String(invite.session_id || scopedSessionId || '');
     if (!targetSessionId) return;
+
+    if (!accept && invite.status === 'accepted') {
+      setPhase('declining');
+      await clearAcceptedInvite(targetSessionId);
+      return;
+    }
+
     setError('');
     setPhase(accept ? 'joining' : 'declining');
 
     let stream = null;
+    let acceptedByBackend = invite.status === 'accepted';
     try {
       if (accept) {
         // iOS Safari requires getUserMedia to happen directly from the user's tap.
@@ -103,6 +121,7 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
           onGuestStateChange?.({ status: 'declined' });
           return;
         }
+        acceptedByBackend = true;
         setInvite(current => ({ ...(current || invite), status: 'accepted', session_id: targetSessionId }));
       }
 
@@ -122,8 +141,12 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
       if (stream && stream !== guestStream) stopMediaStream(stream);
       setGuestStream(null);
       setError(joinError?.message || 'Could not join as guest.');
-      setInvite(current => current ? { ...current, status: 'accepted', session_id: targetSessionId } : current);
-      setPhase('accepted');
+      setInvite(current => current ? {
+        ...current,
+        status: acceptedByBackend ? 'accepted' : (current.status || 'pending'),
+        session_id: targetSessionId
+      } : current);
+      setPhase(acceptedByBackend ? 'accepted' : 'idle');
     }
   }
 
