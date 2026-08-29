@@ -21,15 +21,30 @@ function publicationsOf(participant) {
   return [];
 }
 
-export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
+export default function LiveRemoteGuestTile({ room, excludeUserId = '', onVisibilityChange }) {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
+  const visibilityCallbackRef = useRef(onVisibilityChange);
   const [visible, setVisible] = useState(false);
   const [guestName, setGuestName] = useState('Guest');
 
   useEffect(() => {
-    if (!room) return undefined;
+    visibilityCallbackRef.current = onVisibilityChange;
+  }, [onVisibilityChange]);
+
+  useEffect(() => {
+    if (!room) {
+      setVisible(false);
+      visibilityCallbackRef.current?.(false);
+      return undefined;
+    }
     let stopped = false;
+
+    const updateVisibility = nextVisible => {
+      if (stopped) return;
+      setVisible(nextVisible);
+      visibilityCallbackRef.current?.(nextVisible);
+    };
 
     const attach = (track, participant) => {
       if (stopped || !isGuestParticipant(participant, excludeUserId)) return;
@@ -41,7 +56,7 @@ export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
         element.playsInline = true;
         if (track.kind === Track.Kind.Video) {
           element.muted = true;
-          setVisible(true);
+          updateVisibility(true);
         }
         const rawName = String(participant?.name || '').trim();
         setGuestName(rawName || 'Guest');
@@ -52,7 +67,7 @@ export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
     const detach = (track, participant) => {
       if (!isGuestParticipant(participant, excludeUserId)) return;
       try { detachRemoteTrack(track); } catch {}
-      if (track?.kind === Track.Kind.Video) setVisible(false);
+      if (track?.kind === Track.Kind.Video) updateVisibility(false);
     };
 
     const replay = () => {
@@ -66,11 +81,11 @@ export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
           if (publication?.track) attach(publication.track, participant);
         });
       });
-      if (!foundGuest) setVisible(false);
+      if (!foundGuest) updateVisibility(false);
     };
 
     const disconnected = participant => {
-      if (isGuestParticipant(participant, excludeUserId)) setVisible(false);
+      if (isGuestParticipant(participant, excludeUserId)) updateVisibility(false);
     };
 
     room.on(RoomEvent.TrackSubscribed, attach);
@@ -82,6 +97,7 @@ export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
     return () => {
       stopped = true;
       window.clearInterval(timer);
+      visibilityCallbackRef.current?.(false);
       try { room.off(RoomEvent.TrackSubscribed, attach); } catch {}
       try { room.off(RoomEvent.TrackUnsubscribed, detach); } catch {}
       try { room.off(RoomEvent.ParticipantDisconnected, disconnected); } catch {}
@@ -89,8 +105,8 @@ export default function LiveRemoteGuestTile({ room, excludeUserId = '' }) {
   }, [room, excludeUserId]);
 
   return (
-    <div className="liveRemoteGuestTile" style={{ display: visible ? 'block' : 'none' }} aria-hidden={!visible}>
-      <video ref={videoRef} autoPlay playsInline muted />
+    <div className={`liveRemoteGuestTile ${visible ? 'isVisible' : ''}`} style={{ display: visible ? 'block' : 'none' }} aria-hidden={!visible}>
+      <video ref={videoRef} className="liveRemoteGuestVideo" autoPlay playsInline muted />
       <audio ref={audioRef} autoPlay playsInline />
       <span className="liveRemoteGuestTileLabel">{guestName}</span>
     </div>
