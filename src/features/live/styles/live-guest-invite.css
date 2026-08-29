@@ -358,12 +358,9 @@ body.droxionGuestCohostLive .productionViewerVideo{
   background:#000!important;
 }
 
-/* Keep the already-correct top video unchanged. Correct only the bottom tile on each role. */
+/* Keep the already-correct top video unchanged. Bottom uses the same unmirrored orientation. */
 .liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
-.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video{
-  transform:scaleX(-1)!important;
-}
-
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video,
 .liveGuestSelfTile.isGuestLive video{
   transform:none!important;
 }
