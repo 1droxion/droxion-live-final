@@ -58,7 +58,8 @@
   width:100%!important;
   height:100%!important;
   object-fit:cover!important;
-  transform:none!important;
+  transform:scaleX(-1)!important;
+  transform-origin:center center!important;
 }
 
 .prodLiveMinimalLiveBadge{
