@@ -144,7 +144,14 @@
   pointer-events:none;
 }
 
-/* Ordinary viewers: host on top, guest on bottom only after a real guest frame exists. */
+/* Ordinary viewers: host on top, guest on bottom only after a real guest track exists.
+   Keep the viewer page above the media-only guest layer so chat, gifts and creator
+   controls remain interactive; the transparent lower half reveals the guest video. */
+body:has(.liveGuestGlobalLayer.isGuestVisible) .productionViewerPage{
+  z-index:2147483350!important;
+  background:transparent!important;
+}
+
 body:has(.liveGuestGlobalLayer.isGuestVisible) .productionViewerVideo{
   left:0!important;
   right:0!important;
