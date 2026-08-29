@@ -83,16 +83,19 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
     setError('');
     setPhase(accept ? 'joining' : 'declining');
     try {
-      const { data, error: rpcError } = await supabase.rpc('droxion_respond_live_invite', {
-        p_invite_id: invite.invite_id,
-        p_accept: Boolean(accept)
-      });
-      if (rpcError || data?.allowed === false) throw new Error(rpcError?.message || data?.reason || 'Could not respond to invite.');
-      if (!accept) {
-        setInvite(null);
-        setPhase('idle');
-        onGuestStateChange?.({ status: 'declined' });
-        return;
+      if (!accept || invite.status !== 'accepted') {
+        const { data, error: rpcError } = await supabase.rpc('droxion_respond_live_invite', {
+          p_invite_id: invite.invite_id,
+          p_accept: Boolean(accept)
+        });
+        if (rpcError || data?.allowed === false) throw new Error(rpcError?.message || data?.reason || 'Could not respond to invite.');
+        if (!accept) {
+          setInvite(null);
+          setPhase('idle');
+          onGuestStateChange?.({ status: 'declined' });
+          return;
+        }
+        setInvite(current => ({ ...(current || invite), status: 'accepted', session_id: targetSessionId }));
       }
 
       const stream = await requestBroadcastMedia({ orientation: 'vertical', facingMode: 'user' });
@@ -110,6 +113,7 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
       onGuestStateChange?.({ ...invite, status: 'accepted', session_id: targetSessionId });
     } catch (joinError) {
       setError(joinError?.message || 'Could not join as guest.');
+      setInvite(current => current ? { ...current, status: 'accepted', session_id: targetSessionId } : current);
       setPhase('accepted');
     }
   }
