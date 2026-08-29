@@ -71,17 +71,23 @@ const pages = {
 };
 
 export default function LegalPage() {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   const page = pages[pathname] || pages['/support'];
+  const requestedReturn = location.state?.from;
+  const returnTo = requestedReturn === '/login' || requestedReturn === '/signup' ? requestedReturn : '/';
+  const returnLabel = returnTo === '/signup' ? 'Back to Create Account' : returnTo === '/login' ? 'Back to Sign In' : 'Droxion';
+  const legalState = returnTo === '/' ? undefined : { from: returnTo };
+
   return (
     <main className="legalShell">
-      <div className="legalTop"><Link to="/">← Droxion</Link><span>LIVE SOCIAL</span></div>
+      <div className="legalTop"><Link to={returnTo}>← {returnLabel}</Link><span>LIVE SOCIAL</span></div>
       <article className="legalCard">
         <h1>{page.title}</h1>
         <div className="legalUpdated">Effective {updated}</div>
         <p className="legalIntro">{page.intro}</p>
         {page.sections.map(([title, body]) => <section key={title}><h2>{title}</h2><p>{body}</p></section>)}
-        <div className="legalLinks"><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/community-guidelines">Community Guidelines</Link><Link to="/child-safety">Child Safety</Link><Link to="/support">Support</Link></div>
+        <div className="legalLinks"><Link to="/privacy" state={legalState}>Privacy</Link><Link to="/terms" state={legalState}>Terms</Link><Link to="/community-guidelines" state={legalState}>Community Guidelines</Link><Link to="/child-safety" state={legalState}>Child Safety</Link><Link to="/support" state={legalState}>Support</Link></div>
       </article>
     </main>
   );
