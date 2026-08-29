@@ -158,7 +158,7 @@ body:has(.liveGuestGlobalLayer.isGuestVisible) .productionViewerVideo{
   height:50dvh!important;
   max-width:none!important;
   object-fit:cover!important;
-  transform:none!important;
+  transform:scaleX(-1)!important;
 }
 
 .liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile{
@@ -187,7 +187,7 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   height:50dvh!important;
   max-width:none!important;
   object-fit:cover!important;
-  transform:none!important;
+  transform:scaleX(-1)!important;
 }
 
 .liveGuestSelfTile.isGuestLive{
@@ -346,7 +346,7 @@ body.droxionGuestCohostLive .productionViewerVideo{
   max-width:none!important;
   object-fit:cover!important;
   object-position:center center!important;
-  transform:none!important;
+  transform:scaleX(-1)!important;
 }
 
 /* Bottom participant framing: show the whole portrait instead of zooming/cropping the face. */
@@ -358,6 +358,8 @@ body.droxionGuestCohostLive .productionViewerVideo{
   background:#000!important;
 }
 
+.liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video,
 .liveGuestSelfTile.isGuestLive video{
   transform:scaleX(-1)!important;
 }
