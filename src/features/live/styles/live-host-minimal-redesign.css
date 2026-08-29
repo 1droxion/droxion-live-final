@@ -24,6 +24,43 @@
   object-fit:cover;
 }
 
+/* Co-host mode: creator stays on top, invited guest fills the bottom half. */
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage>.liveV2LocalVideo{
+  left:0!important;
+  right:0!important;
+  top:0!important;
+  bottom:auto!important;
+  width:100%!important;
+  height:50%!important;
+  object-fit:cover!important;
+}
+
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile{
+  position:absolute!important;
+  left:0!important;
+  right:0!important;
+  top:50%!important;
+  bottom:0!important;
+  width:100%!important;
+  height:50%!important;
+  max-width:none!important;
+  aspect-ratio:auto!important;
+  border:0!important;
+  border-top:1px solid rgba(255,255,255,.16)!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  background:#09090c!important;
+}
+
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  transform:none!important;
+}
+
 .prodLiveMinimalLiveBadge{
   position:absolute!important;
   top:calc(14px + env(safe-area-inset-top));
@@ -134,6 +171,17 @@
 .prodLiveMoreMenu small{
   font-size:11px;
   color:rgba(255,255,255,.56);
+}
+
+.prodLiveMoreMenu .prodLiveMoreRemoveGuest{
+  color:#fbbf24;
+  border-top:1px solid rgba(255,255,255,.08);
+  border-radius:0;
+  margin-top:3px;
+}
+
+.prodLiveMoreMenu .prodLiveMoreRemoveGuest small{
+  color:rgba(251,191,36,.72);
 }
 
 .prodLiveMoreMenu .prodLiveMoreEnd{
