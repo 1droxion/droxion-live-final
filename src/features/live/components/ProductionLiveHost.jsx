@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, Trophy, Users, X } from 'lucide-react';
+import { supabase } from '../../../supabaseClient';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
 import LiveAudienceDrawer from './LiveAudienceDrawer';
@@ -23,10 +24,15 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [controlError, setControlError] = useState('');
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [guestState, setGuestState] = useState({ status: 'none' });
+  const [guestVisible, setGuestVisible] = useState(false);
+  const [guestBusy, setGuestBusy] = useState(false);
 
   const busy = isLiveBusy(state.phase);
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
   const connecting = state.phase === LIVE_PHASE.STARTING || state.phase === LIVE_PHASE.CONNECTING;
+  const guestAccepted = guestState?.status === 'accepted' && Boolean(guestState?.invitee_id);
+  const splitLive = live && guestAccepted && guestVisible;
 
   useLiveReleaseSidecars({ enabled: live, creatorId, sessionId: state.sessionId, stream: mediaStream, title });
 
@@ -52,8 +58,33 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       setControlError('');
       setAudienceOpen(false);
       setControlsOpen(false);
+      setGuestState({ status: 'none' });
+      setGuestVisible(false);
+      setGuestBusy(false);
     }
   }, [live]);
+
+  useEffect(() => {
+    if (!live || !state.sessionId) return undefined;
+    let stopped = false;
+
+    const loadGuestState = async () => {
+      try {
+        const { data, error } = await supabase.rpc('droxion_host_live_guest_state', { p_session_id: state.sessionId });
+        if (stopped || error) return;
+        const next = data && typeof data === 'object' ? data : { status: 'none' };
+        setGuestState(next);
+        if (next.status !== 'accepted') setGuestVisible(false);
+      } catch {}
+    };
+
+    loadGuestState();
+    const timer = window.setInterval(loadGuestState, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [live, state.sessionId]);
 
   useEffect(() => {
     if (!controlsOpen) return undefined;
@@ -128,13 +159,35 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     try { document.querySelector('.liveTopSupportersTrigger')?.click(); } catch {}
   }
 
+  async function removeGuestFromMenu() {
+    if (!state.sessionId || !guestState?.invitee_id || guestBusy) return;
+    setGuestBusy(true);
+    setControlError('');
+    try {
+      const { data, error } = await supabase.rpc('droxion_host_remove_live_guest', {
+        p_session_id: state.sessionId,
+        p_invitee_id: guestState.invitee_id
+      });
+      if (error || data?.allowed === false) {
+        throw new Error(error?.message || data?.reason || 'Could not remove guest.');
+      }
+      setGuestState({ status: 'none' });
+      setGuestVisible(false);
+      setControlsOpen(false);
+    } catch (error) {
+      setControlError(error?.message || 'Could not remove guest.');
+    } finally {
+      setGuestBusy(false);
+    }
+  }
+
   async function endLiveFromMenu() {
     setControlsOpen(false);
     await endBroadcast();
   }
 
   return (
-    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''}`} aria-label="Droxion LIVE studio">
+    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''} ${splitLive ? 'hasGuest' : ''}`} aria-label="Droxion LIVE studio">
       {!live && (
         <header className="prodLiveHostTopbar">
           <button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back"><ArrowLeft size={24} /></button>
@@ -158,7 +211,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
           <div className="prodLiveViewerPill prodLiveMinimalViewerCount"><Users size={16} /><span>{state.viewerCount || 0}</span></div>
         ))}
 
-        {live && <LiveRemoteGuestTile room={getRoom()} />}
+        {live && guestAccepted && <LiveRemoteGuestTile room={getRoom()} onVisibilityChange={setGuestVisible} />}
         {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
 
         {live && controlsOpen && (
@@ -177,6 +230,11 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
             <button type="button" onClick={openTopSupporters} role="menuitem">
               <Trophy size={19} /><span><strong>Top Supporters</strong><small>Who gave the most gifts</small></span>
             </button>
+            {guestAccepted && (
+              <button type="button" className="prodLiveMoreRemoveGuest" onClick={removeGuestFromMenu} disabled={guestBusy} role="menuitem">
+                <X size={19} /><span><strong>Remove Guest</strong><small>{guestBusy ? 'Removing…' : `Remove ${guestState.display_name || 'guest'} from LIVE`}</small></span>
+              </button>
+            )}
             <button type="button" className="prodLiveMoreEnd" onClick={endLiveFromMenu} disabled={state.phase === LIVE_PHASE.ENDING} role="menuitem">
               <X size={19} /><span><strong>End LIVE</strong><small>Stop this broadcast</small></span>
             </button>
