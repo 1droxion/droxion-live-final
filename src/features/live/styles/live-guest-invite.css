@@ -158,7 +158,7 @@ body:has(.liveGuestGlobalLayer.isGuestVisible) .productionViewerVideo{
   height:50dvh!important;
   max-width:none!important;
   object-fit:cover!important;
-  transform:scaleX(-1)!important;
+  transform:none!important;
 }
 
 .liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile{
@@ -187,7 +187,7 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   height:50dvh!important;
   max-width:none!important;
   object-fit:cover!important;
-  transform:scaleX(-1)!important;
+  transform:none!important;
 }
 
 .liveGuestSelfTile.isGuestLive{
@@ -217,7 +217,7 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   height:100%;
   object-fit:cover;
   display:block;
-  transform:scaleX(-1);
+  transform:none;
   transform-origin:center center;
 }
 
@@ -346,7 +346,7 @@ body.droxionGuestCohostLive .productionViewerVideo{
   max-width:none!important;
   object-fit:cover!important;
   object-position:center center!important;
-  transform:scaleX(-1)!important;
+  transform:none!important;
 }
 
 /* Bottom participant framing: show the whole portrait instead of zooming/cropping the face. */
@@ -358,10 +358,14 @@ body.droxionGuestCohostLive .productionViewerVideo{
   background:#000!important;
 }
 
+/* Keep the already-correct top video unchanged. Correct only the bottom tile on each role. */
 .liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
-.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video,
-.liveGuestSelfTile.isGuestLive video{
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video{
   transform:scaleX(-1)!important;
+}
+
+.liveGuestSelfTile.isGuestLive video{
+  transform:none!important;
 }
 
 .liveGuestSelfControls{
