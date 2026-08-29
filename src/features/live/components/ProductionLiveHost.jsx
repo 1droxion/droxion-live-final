@@ -55,6 +55,18 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     }
   }, [live]);
 
+  useEffect(() => {
+    if (!controlsOpen) return undefined;
+    const closeOutside = event => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.prodLiveMoreMenu') || target.closest('.prodLiveMoreButton')) return;
+      setControlsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOutside, true);
+  }, [controlsOpen]);
+
   async function closeHost() {
     if (live || connecting || state.sessionId) {
       try { await endBroadcast(); } catch {}
