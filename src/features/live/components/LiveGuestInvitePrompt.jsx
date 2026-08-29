@@ -82,7 +82,15 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
     if (!targetSessionId) return;
     setError('');
     setPhase(accept ? 'joining' : 'declining');
+
+    let stream = null;
     try {
+      if (accept) {
+        // iOS Safari requires getUserMedia to happen directly from the user's tap.
+        // Request camera/mic before awaiting Supabase or LiveKit network work.
+        stream = await requestBroadcastMedia({ orientation: 'vertical', facingMode: 'user' });
+      }
+
       if (!accept || invite.status !== 'accepted') {
         const { data, error: rpcError } = await supabase.rpc('droxion_respond_live_invite', {
           p_invite_id: invite.invite_id,
@@ -98,7 +106,6 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
         setInvite(current => ({ ...(current || invite), status: 'accepted', session_id: targetSessionId }));
       }
 
-      const stream = await requestBroadcastMedia({ orientation: 'vertical', facingMode: 'user' });
       setGuestStream(stream);
       const transport = await connectGuestTransport({
         sessionId: targetSessionId,
@@ -112,6 +119,8 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
       setPhase('live');
       onGuestStateChange?.({ ...invite, status: 'accepted', session_id: targetSessionId });
     } catch (joinError) {
+      if (stream && stream !== guestStream) stopMediaStream(stream);
+      setGuestStream(null);
       setError(joinError?.message || 'Could not join as guest.');
       setInvite(current => current ? { ...current, status: 'accepted', session_id: targetSessionId } : current);
       setPhase('accepted');
