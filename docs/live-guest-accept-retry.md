@@ -1,0 +1,1 @@
+LIVE guest accept retry fix: backend accepts repeated accept calls for the same already-accepted invite, and the client retries media/transport without re-accepting. Existing host/viewer LIVE media paths are unchanged.
