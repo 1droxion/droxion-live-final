@@ -31,6 +31,8 @@ function notice(message) {
 
 export default function ShortSafetyEnhancer() {
   const activeClipId = useRef('');
+  const activeClipCreatorId = useRef('');
+  const currentUserId = useRef('');
   const [reportOpen, setReportOpen] = useState(false);
   const [reason, setReason] = useState('harassment');
   const [details, setDetails] = useState('');
@@ -60,11 +62,36 @@ export default function ShortSafetyEnhancer() {
   }
 
   useEffect(() => {
+    let alive = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (alive) currentUserId.current = data?.user?.id || '';
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
     let observer = null;
+
+    const removeSafetyActions = sheet => {
+      sheet?.querySelectorAll?.('[data-droxion-safety-action]')?.forEach?.(button => button.remove());
+    };
 
     const enhanceSheet = () => {
       const sheet = document.querySelector('.sfActionSheet');
-      if (!sheet || sheet.querySelector('[data-droxion-safety-action]')) return;
+      if (!sheet) return;
+
+      const clipCreatorId = activeClipCreatorId.current;
+      const signedInUserId = currentUserId.current;
+      if (!clipCreatorId) return;
+
+      // A creator may delete only their own highlight. They must never see
+      // Report/Block controls against themselves; the backend rejects self-actions.
+      if (signedInUserId && String(clipCreatorId) === String(signedInUserId)) {
+        removeSafetyActions(sheet);
+        return;
+      }
+
+      if (sheet.querySelector('[data-droxion-safety-action]')) return;
       const cancel = sheet.querySelector('button.cancel');
       if (!cancel) return;
 
@@ -87,7 +114,14 @@ export default function ShortSafetyEnhancer() {
       const more = event.target.closest?.('.sfMoreButton');
       if (more) {
         activeClipId.current = clipIdFromSlide(more.closest('.sfSlide'));
-        window.setTimeout(enhanceSheet, 0);
+        activeClipCreatorId.current = '';
+        try {
+          const clip = await loadClip(activeClipId.current);
+          activeClipCreatorId.current = clip.creator_id;
+          window.setTimeout(enhanceSheet, 0);
+        } catch {
+          activeClipCreatorId.current = '';
+        }
         return;
       }
 
@@ -112,6 +146,10 @@ export default function ShortSafetyEnhancer() {
         try {
           setBusy(true);
           const clip = await loadClip(activeClipId.current);
+          if (currentUserId.current && String(clip.creator_id) === String(currentUserId.current)) {
+            notice('You cannot block your own account.');
+            return;
+          }
           const confirmed = window.confirm('Block this creator? Their content will be removed from your feed immediately and Droxion moderation will be notified.');
           if (!confirmed) return;
 
@@ -158,6 +196,11 @@ export default function ShortSafetyEnhancer() {
     setBusy(true);
     try {
       const clip = await loadClip(activeClipId.current);
+      if (currentUserId.current && String(clip.creator_id) === String(currentUserId.current)) {
+        setReportOpen(false);
+        notice('You cannot report your own content.');
+        return;
+      }
       const { data, error } = await supabase.rpc('droxion_submit_report', {
         p_reported_user_id: clip.creator_id,
         p_category: reason,
