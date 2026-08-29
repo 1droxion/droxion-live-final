@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Mic, UserPlus, X } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, MoreHorizontal, UserPlus, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import { requestBroadcastMedia, stopMediaStream } from '../services/liveMediaService';
 import { connectGuestTransport, disconnectTransport } from '../services/liveTransportService';
+import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
 import '../styles/live-guest-invite.css';
 
 export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, onGuestStateChange }) {
@@ -11,6 +12,10 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
   const [error, setError] = useState('');
   const [guestStream, setGuestStream] = useState(null);
   const [viewerSessionId, setViewerSessionId] = useState('');
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraMuted, setCameraMuted] = useState(false);
+  const [controlBusy, setControlBusy] = useState('');
   const guestRoomRef = useRef(null);
   const localVideoRef = useRef(null);
 
@@ -76,6 +81,58 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
     stopMediaStream(guestStream);
   }, [guestStream]);
 
+  useEffect(() => {
+    if (phase !== 'live' || !effectiveSessionId) return undefined;
+    let stopped = false;
+
+    const checkStillAccepted = async () => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('droxion_my_live_guest_state', { p_session_id: effectiveSessionId });
+        if (stopped || rpcError || data?.status === 'accepted') return;
+
+        const room = guestRoomRef.current;
+        guestRoomRef.current = null;
+        const stream = guestStream;
+        setGuestStream(null);
+        setInvite(null);
+        setPhase('idle');
+        setControlsOpen(false);
+        setMicMuted(false);
+        setCameraMuted(false);
+        setControlBusy('');
+        setError('');
+        onGuestStateChange?.({ status: 'removed', session_id: effectiveSessionId });
+        await disconnectTransport(room);
+        stopMediaStream(stream);
+      } catch {}
+    };
+
+    checkStillAccepted();
+    const timer = window.setInterval(checkStillAccepted, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [phase, effectiveSessionId, guestStream, onGuestStateChange]);
+
+  useEffect(() => {
+    if (phase === 'live') return;
+    setControlsOpen(false);
+    setControlBusy('');
+  }, [phase]);
+
+  useEffect(() => {
+    if (!controlsOpen) return undefined;
+    const closeOutside = event => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.liveGuestSelfMenu') || target.closest('.liveGuestSelfMoreButton')) return;
+      setControlsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOutside, true);
+  }, [controlsOpen]);
+
   async function clearAcceptedInvite(targetSessionId) {
     try {
       await supabase.rpc('droxion_leave_live_guest', { p_session_id: targetSessionId });
@@ -135,6 +192,8 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
       });
       guestRoomRef.current = transport.room;
       setInvite(current => ({ ...(current || invite), status: 'accepted', session_id: targetSessionId }));
+      setMicMuted(false);
+      setCameraMuted(false);
       setPhase('live');
       onGuestStateChange?.({ ...invite, status: 'accepted', session_id: targetSessionId });
     } catch (joinError) {
@@ -150,7 +209,50 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
     }
   }
 
+  async function toggleGuestMicrophone(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (phase !== 'live' || controlBusy) return;
+    const room = guestRoomRef.current;
+    if (!room) return;
+    const previous = micMuted;
+    const nextMuted = !previous;
+    setMicMuted(nextMuted);
+    setControlBusy('mic');
+    setError('');
+    try {
+      await setHostMicrophoneMuted(room, nextMuted);
+    } catch (controlError) {
+      setMicMuted(previous);
+      setError(controlError?.message || 'Could not change microphone.');
+    } finally {
+      setControlBusy('');
+    }
+  }
+
+  async function toggleGuestCamera(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (phase !== 'live' || controlBusy) return;
+    const room = guestRoomRef.current;
+    if (!room) return;
+    const previous = cameraMuted;
+    const nextMuted = !previous;
+    setCameraMuted(nextMuted);
+    setControlBusy('camera');
+    setError('');
+    try {
+      await setHostCameraMuted(room, nextMuted);
+    } catch (controlError) {
+      setCameraMuted(previous);
+      setError(controlError?.message || 'Could not change camera.');
+    } finally {
+      setControlBusy('');
+    }
+  }
+
   async function leaveGuest() {
+    setControlsOpen(false);
     const room = guestRoomRef.current;
     guestRoomRef.current = null;
     const stream = guestStream;
@@ -162,6 +264,9 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
     }
     setInvite(null);
     setPhase('idle');
+    setMicMuted(false);
+    setCameraMuted(false);
+    setControlBusy('');
     onGuestStateChange?.({ status: 'removed' });
   }
 
@@ -169,10 +274,36 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
 
   if (phase === 'live') {
     return (
-      <div className="liveGuestSelfTile">
-        <video ref={localVideoRef} muted playsInline autoPlay />
-        <div><strong>You are LIVE with {invite.host_name || 'creator'}</strong><span><Mic size={13} /> <Camera size={13} /> Guest camera + mic on</span></div>
-        <button type="button" onClick={leaveGuest}>Leave guest</button>
+      <div className="liveGuestSelfTile isGuestLive">
+        <video ref={localVideoRef} className="liveGuestSelfVideo" muted playsInline autoPlay />
+        <span className="liveGuestSelfLabel">Guest</span>
+        {error && <div className="liveGuestSelfError">{error}</div>}
+
+        {controlsOpen && (
+          <div className="liveGuestSelfMenu" role="menu" aria-label="Guest LIVE controls">
+            <button type="button" onClick={toggleGuestMicrophone} disabled={Boolean(controlBusy)} role="menuitem">
+              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+              <span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span>
+            </button>
+            <button type="button" onClick={toggleGuestCamera} disabled={Boolean(controlBusy)} role="menuitem">
+              {cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}
+              <span><strong>Camera</strong><small>{cameraMuted ? 'Off' : 'On'}</small></span>
+            </button>
+            <button type="button" className="liveGuestSelfLeave" onClick={leaveGuest} role="menuitem">
+              <X size={18} /><span><strong>Leave Guest</strong><small>Return to watching LIVE</small></span>
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className={`liveGuestSelfMoreButton ${controlsOpen ? 'isOpen' : ''}`}
+          onClick={() => setControlsOpen(value => !value)}
+          aria-expanded={controlsOpen}
+          aria-label="Guest controls"
+        >
+          <MoreHorizontal size={25} />
+        </button>
       </div>
     );
   }
