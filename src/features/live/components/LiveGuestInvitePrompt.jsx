@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Mic, MicOff, MoreHorizontal, UserPlus, X } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, UserPlus, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import { requestBroadcastMedia, stopMediaStream } from '../services/liveMediaService';
 import { connectGuestTransport, disconnectTransport } from '../services/liveTransportService';
@@ -12,7 +12,6 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
   const [error, setError] = useState('');
   const [guestStream, setGuestStream] = useState(null);
   const [viewerSessionId, setViewerSessionId] = useState('');
-  const [controlsOpen, setControlsOpen] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
   const [controlBusy, setControlBusy] = useState('');
@@ -39,6 +38,12 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
       window.removeEventListener('droxion:viewer-room-closed', handleViewerClosed);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.body.classList.toggle('droxionGuestCohostLive', phase === 'live');
+    return () => document.body.classList.remove('droxionGuestCohostLive');
+  }, [phase]);
 
   const load = useCallback(async () => {
     if (!currentUserId || phase === 'joining' || phase === 'live') return;
@@ -96,7 +101,6 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
         setGuestStream(null);
         setInvite(null);
         setPhase('idle');
-        setControlsOpen(false);
         setMicMuted(false);
         setCameraMuted(false);
         setControlBusy('');
@@ -117,21 +121,8 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
 
   useEffect(() => {
     if (phase === 'live') return;
-    setControlsOpen(false);
     setControlBusy('');
   }, [phase]);
-
-  useEffect(() => {
-    if (!controlsOpen) return undefined;
-    const closeOutside = event => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest('.liveGuestSelfMenu') || target.closest('.liveGuestSelfMoreButton')) return;
-      setControlsOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOutside, true);
-    return () => document.removeEventListener('pointerdown', closeOutside, true);
-  }, [controlsOpen]);
 
   async function clearAcceptedInvite(targetSessionId) {
     try {
@@ -252,7 +243,6 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
   }
 
   async function leaveGuest() {
-    setControlsOpen(false);
     const room = guestRoomRef.current;
     guestRoomRef.current = null;
     const stream = guestStream;
@@ -279,31 +269,32 @@ export default function LiveGuestInvitePrompt({ sessionId = '', currentUserId, o
         <span className="liveGuestSelfLabel">Guest</span>
         {error && <div className="liveGuestSelfError">{error}</div>}
 
-        {controlsOpen && (
-          <div className="liveGuestSelfMenu" role="menu" aria-label="Guest LIVE controls">
-            <button type="button" onClick={toggleGuestMicrophone} disabled={Boolean(controlBusy)} role="menuitem">
-              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-              <span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span>
-            </button>
-            <button type="button" onClick={toggleGuestCamera} disabled={Boolean(controlBusy)} role="menuitem">
-              {cameraMuted ? <CameraOff size={18} /> : <Camera size={18} />}
-              <span><strong>Camera</strong><small>{cameraMuted ? 'Off' : 'On'}</small></span>
-            </button>
-            <button type="button" className="liveGuestSelfLeave" onClick={leaveGuest} role="menuitem">
-              <X size={18} /><span><strong>Leave Guest</strong><small>Return to watching LIVE</small></span>
-            </button>
-          </div>
-        )}
-
-        <button
-          type="button"
-          className={`liveGuestSelfMoreButton ${controlsOpen ? 'isOpen' : ''}`}
-          onClick={() => setControlsOpen(value => !value)}
-          aria-expanded={controlsOpen}
-          aria-label="Guest controls"
-        >
-          <MoreHorizontal size={25} />
-        </button>
+        <div className="liveGuestSelfControls" aria-label="Guest LIVE controls">
+          <button
+            type="button"
+            className={micMuted ? 'isOff' : ''}
+            onClick={toggleGuestMicrophone}
+            disabled={Boolean(controlBusy)}
+            aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            {micMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            <span>{micMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+          <button
+            type="button"
+            className={cameraMuted ? 'isOff' : ''}
+            onClick={toggleGuestCamera}
+            disabled={Boolean(controlBusy)}
+            aria-label={cameraMuted ? 'Turn camera on' : 'Turn camera off'}
+          >
+            {cameraMuted ? <CameraOff size={20} /> : <Camera size={20} />}
+            <span>{cameraMuted ? 'Cam On' : 'Cam Off'}</span>
+          </button>
+          <button type="button" className="isLeave" onClick={leaveGuest} aria-label="Leave guest LIVE">
+            <X size={20} />
+            <span>Exit</span>
+          </button>
+        </div>
       </div>
     );
   }
