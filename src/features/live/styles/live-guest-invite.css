@@ -144,9 +144,6 @@
   pointer-events:none;
 }
 
-/* Ordinary viewers: host on top, guest on bottom only after a real guest track exists.
-   Keep the viewer page above the media-only guest layer so chat, gifts and creator
-   controls remain interactive; the transparent lower half reveals the guest video. */
 body:has(.liveGuestGlobalLayer.isGuestVisible) .productionViewerPage{
   z-index:2147483350!important;
   background:transparent!important;
@@ -181,7 +178,6 @@ body:has(.liveGuestGlobalLayer.isGuestVisible) .productionViewerVideo{
   background:#09090c;
 }
 
-/* The invited viewer sees the creator on top and their own mirrored selfie preview below. */
 body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   left:0!important;
   right:0!important;
@@ -334,6 +330,88 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   border:1px solid rgba(34,197,94,.28);
 }
 
+/* Explicit guest-live state: do not depend on :has() support on the invited phone. */
+body.droxionGuestCohostLive .productionViewerPage{
+  z-index:2147483350!important;
+  background:#000!important;
+}
+
+body.droxionGuestCohostLive .productionViewerVideo{
+  left:0!important;
+  right:0!important;
+  top:0!important;
+  bottom:auto!important;
+  width:100vw!important;
+  height:50dvh!important;
+  max-width:none!important;
+  object-fit:cover!important;
+  object-position:center center!important;
+  transform:none!important;
+}
+
+/* Bottom participant framing: show the whole portrait instead of zooming/cropping the face. */
+.liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video,
+.liveGuestSelfTile.isGuestLive video{
+  object-fit:contain!important;
+  object-position:center center!important;
+  background:#000!important;
+}
+
+.liveGuestSelfTile.isGuestLive video{
+  transform:scaleX(-1)!important;
+}
+
+.liveGuestSelfControls{
+  position:absolute;
+  left:50%;
+  bottom:calc(18px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  z-index:20;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  width:max-content;
+  max-width:calc(100vw - 24px);
+  padding:8px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:24px;
+  background:rgba(7,7,10,.58);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  box-shadow:0 10px 34px rgba(0,0,0,.32);
+}
+
+.liveGuestSelfControls button{
+  min-width:70px;
+  height:54px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;
+  background:rgba(255,255,255,.09);
+  color:#fff;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  font:inherit;
+  font-size:10px;
+  font-weight:850;
+  touch-action:manipulation;
+}
+
+.liveGuestSelfControls button.isOff{
+  background:rgba(255,255,255,.16);
+}
+
+.liveGuestSelfControls button.isLeave{
+  background:rgba(190,24,54,.72);
+  border-color:rgba(255,113,140,.35);
+}
+
+.liveGuestSelfControls button:disabled{opacity:.5}
+
 @media(max-width:680px){
   .liveGuestInviteBackdrop{
     align-items:end;
@@ -344,5 +422,16 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
     width:100%;
     border-radius:24px 24px 0 0;
     padding-bottom:calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .liveGuestSelfControls{
+    gap:8px;
+    padding:7px;
+  }
+
+  .liveGuestSelfControls button{
+    min-width:64px;
+    height:50px;
+    border-radius:16px;
   }
 }
