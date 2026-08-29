@@ -217,7 +217,7 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   height:100%;
   object-fit:cover;
   display:block;
-  transform:scaleX(-1);
+  transform:none;
   transform-origin:center center;
 }
 
@@ -358,8 +358,14 @@ body.droxionGuestCohostLive .productionViewerVideo{
   background:#000!important;
 }
 
-.liveGuestSelfTile.isGuestLive video{
+/* Keep the already-correct top video unchanged. Correct only the bottom tile on each role. */
+.liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
+.prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video{
   transform:scaleX(-1)!important;
+}
+
+.liveGuestSelfTile.isGuestLive video{
+  transform:none!important;
 }
 
 .liveGuestSelfControls{
