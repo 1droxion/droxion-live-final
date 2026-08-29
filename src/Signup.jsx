@@ -20,6 +20,7 @@ function Signup() {
   const [acceptedSafetyTerms, setAcceptedSafetyTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const legalReturnState = { from: "/signup" };
 
   const getMaximumBirthDate = () => {
     const today = new Date();
@@ -144,7 +145,7 @@ function Signup() {
           <label className="flex items-start gap-3 mb-6 cursor-pointer rounded-2xl border border-white/10 bg-white/[0.03] p-3">
             <input type="checkbox" checked={acceptedSafetyTerms} onChange={(e) => setAcceptedSafetyTerms(e.target.checked)} className="mt-1" required />
             <span className="text-xs leading-5 text-gray-300">
-              I confirm I am 21+ and agree to Droxion's <Link to="/terms" className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
+              I confirm I am 21+ and agree to Droxion's <Link to="/terms" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
             </span>
           </label>
 
