@@ -19,6 +19,7 @@ export default function Login() {
   const [error, setError] = useState("");
 
   const resetComplete = new URLSearchParams(location.search).get("reset") === "success";
+  const legalReturnState = { from: "/login" };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -84,7 +85,7 @@ export default function Login() {
           <label className="flex items-start gap-3 mb-6 cursor-pointer rounded-2xl border border-white/10 bg-white/[0.03] p-3">
             <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} className="mt-1" required />
             <span className="text-xs leading-5 text-gray-300">
-              I agree to Droxion's <Link to="/terms" className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
+              I agree to Droxion's <Link to="/terms" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
             </span>
           </label>
 
