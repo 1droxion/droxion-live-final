@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import './legal-page.css';
 
-const updated = 'August 25, 2026';
+const updated = 'August 29, 2026';
 
 const pages = {
   '/privacy': {
@@ -18,29 +18,31 @@ const pages = {
     ]
   },
   '/terms': {
-    title: 'Terms of Use',
-    intro: 'These Terms govern use of Droxion Live. By using Droxion, you agree to follow these Terms and the Community Guidelines.',
+    title: 'Terms of Use (EULA)',
+    intro: 'These Terms govern use of Droxion Live. You must agree to these Terms before registering or logging in. By accepting them, you also agree to follow the Community Guidelines.',
     sections: [
+      ['Zero tolerance for objectionable content and abusive users', 'Droxion has zero tolerance for objectionable content and abusive users. Illegal, exploitative, hateful, threatening, harassing, sexually explicit, fraudulent, dangerous, or otherwise abusive content or behavior is prohibited. Droxion may remove offending content, end LIVE access, restrict features, suspend users, or terminate accounts.'],
       ['Eligibility', 'You must be at least 21 years old and legally able to enter into these Terms. You are responsible for accurate account information and for activity on your account.'],
-      ['LIVE and user content', 'You are responsible for content you stream, post or send. Do not broadcast or share illegal, exploitative, abusive, hateful, threatening, sexually explicit, deceptive or otherwise prohibited content. Droxion may remove content, restrict features, suspend LIVE access or terminate accounts when necessary for safety or compliance.'],
+      ['LIVE and user content', 'You are responsible for content you stream, post or send. Do not broadcast or share illegal, exploitative, abusive, hateful, threatening, sexually explicit, deceptive or otherwise prohibited content. Content may be filtered, reported, reviewed, hidden, removed, or restricted when necessary for safety or compliance.'],
+      ['Reporting and blocking', 'Droxion provides tools to report objectionable content and abusive users. Blocking a user immediately removes that user’s content from the blocking user’s Droxion feed where applicable and also creates a safety record for Droxion moderation review.'],
+      ['24-hour moderation response', 'Droxion reviews valid objectionable-content reports and aims to act within 24 hours. Action may include removing the offending content, ending a LIVE, restricting features, suspending access, or ejecting or terminating the user who provided the offending content.'],
       ['Virtual coins and gifts', 'Droxion coins are virtual items for use within the service and are not money, deposits or transferable property. Purchases in native mobile apps must use the applicable app-store billing system when required. Gift values, availability and pricing may change.'],
       ['Creator earnings', 'Eligible creator gift activity may generate creator earnings subject to Droxion rules, platform commission, payment-store fees where applicable, taxes, refunds, chargebacks, fraud review and payout requirements. Payout requests may be reviewed before payment.'],
-      ['Safety and enforcement', 'Users can report and block others. Droxion may investigate suspected violations and take action including content restrictions, LIVE removal, feature limitations, suspension or account termination.'],
       ['Service availability', 'LIVE communications depend on network, device and third-party infrastructure conditions. Droxion may change, suspend or discontinue features as the service evolves.'],
       ['Account termination', 'You may delete your account from the app. Droxion may suspend or terminate accounts that violate these Terms, Community Guidelines, law or platform requirements.']
     ]
   },
   '/community-guidelines': {
     title: 'Community Guidelines',
-    intro: 'Droxion is built for adult LIVE social discovery. These rules apply to LIVE broadcasts, chat, profiles, gifts, guest appearances and other interactions.',
+    intro: 'Droxion is built for adult LIVE social discovery. There is zero tolerance for objectionable content and abusive users. These rules apply to LIVE broadcasts, chat, profiles, gifts, guest appearances, LIVE highlights, comments and other interactions.',
     sections: [
       ['Adults only — 21+', 'Do not use Droxion if you are under 21. Do not impersonate a minor or knowingly facilitate access by minors. Report any underage concern immediately.'],
       ['No sexual exploitation or explicit sexual content', 'Sexual exploitation, non-consensual sexual content, sexual services, sexual content involving minors, grooming, trafficking and explicit sexual activity are prohibited.'],
       ['No harassment, hate or threats', 'Do not bully, stalk, threaten, dox, degrade or target people with hateful conduct based on protected characteristics.'],
       ['No dangerous or illegal activity', 'Do not promote credible violence, self-harm encouragement, illegal drugs, weapons trafficking, fraud, scams, exploitation or other illegal activity.'],
       ['No spam or deception', 'Do not impersonate others, manipulate users, run scams, send repetitive spam or misrepresent gifts, earnings, identity or relationships.'],
-      ['Use safety tools', 'Use Report when content or behavior violates these rules. Use Block to stop interactions with a creator or user. Hosts should remove disruptive guests and end unsafe LIVE sessions.'],
-      ['Enforcement', 'Droxion may remove access to LIVE, restrict accounts, preserve relevant safety records, suspend users or permanently terminate accounts depending on severity and repeat behavior.']
+      ['Use Report and Block', 'Use Report when content or behavior violates these rules. Use Block to stop interactions with a creator or user. Blocking removes that user’s content from your feed where applicable and sends a safety record to Droxion for moderation review. Hosts should remove disruptive guests and end unsafe LIVE sessions.'],
+      ['24-hour review process', 'Valid reports involving objectionable content are reviewed for action within 24 hours. Droxion may remove content, end LIVE sessions, restrict features, suspend users, or permanently terminate accounts depending on severity and repeat behavior.']
     ]
   },
   '/child-safety': {
@@ -49,7 +51,7 @@ const pages = {
     sections: [
       ['Adults only — 21+', 'Droxion is intended only for people age 21 or older. Minors are not permitted to create or use Droxion accounts. Users must not impersonate a minor, help a minor access the service, or use Droxion to seek contact with minors.'],
       ['Zero tolerance for CSEA and CSAM', 'Droxion prohibits creating, uploading, streaming, requesting, sharing, linking to, promoting or facilitating child sexual abuse material or sexual exploitation of children. Grooming, sexual solicitation of minors, trafficking, sextortion, sexualized role-play involving minors, and attempts to normalize or coordinate such conduct are prohibited.'],
-      ['In-app reporting and blocking', 'During a LIVE, users can open the LIVE Safety menu to report harmful content or behavior, including an Underage concern or Sexual content report, and can block the creator. Users can also report users from LIVE chat safety options. Reports are recorded for moderation review.'],
+      ['In-app reporting and blocking', 'During a LIVE or while viewing user-generated content, users can report harmful content or behavior and block abusive users. Reports are recorded for moderation review.'],
       ['Review and enforcement', 'Droxion reviews safety reports and may end or restrict LIVE access, remove or limit content, restrict features, suspend or permanently terminate accounts, block interactions, and preserve relevant safety records when necessary for investigation, enforcement or legal compliance.'],
       ['Reporting to authorities', 'Droxion complies with applicable child-safety laws and lawful requests. When Droxion becomes aware of apparent child sexual abuse material or child sexual exploitation, it will take appropriate action consistent with applicable law, including preserving relevant information and making reports to appropriate regional or national authorities or designated reporting organizations when legally required.'],
       ['Safety contact', 'Child-safety concerns may also be sent to patelsuchitbhai@gmail.com. This contact is designated to receive and respond to child-safety and CSAM/CSEA compliance concerns for Droxion. For an immediate threat to a child or any person, contact the appropriate local emergency or law-enforcement service.'],
@@ -60,7 +62,7 @@ const pages = {
     title: 'Droxion Support',
     intro: 'For account, LIVE, safety, wallet or creator-support issues, signed-in users can open Me → Help & Support and send a support request directly to Droxion.',
     sections: [
-      ['Safety issues', 'If you encounter harmful behavior during a LIVE, use the LIVE safety menu to Report or Block the creator. For child-safety standards and reporting information, see the Child Safety Standards page. For immediate danger, contact the appropriate local emergency service.'],
+      ['Safety issues', 'If you encounter harmful behavior during a LIVE or highlight, use Report or Block. Reports are recorded for moderation review, and valid objectionable-content reports are acted on within 24 hours. For immediate danger, contact the appropriate local emergency service.'],
       ['Account access', 'Use the sign-in and account recovery options available in Droxion. If you can access your account, Me → Help & Support is the fastest way to send account-specific details.'],
       ['Account deletion', 'Signed-in users can permanently request account deletion from Me/Profile using Delete Account.'],
       ['App review access', 'Droxion is a LIVE social service. Camera and microphone features require permission and two test accounts may be useful for testing host/viewer interactions.']
