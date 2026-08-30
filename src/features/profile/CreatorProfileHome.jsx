@@ -63,6 +63,15 @@ function EarningsSparkline({ series }) {
   );
 }
 
+function ProfileActions({ onEdit, onSettings }) {
+  return (
+    <div className="creatorUserActions">
+      <button type="button" onClick={onEdit}><Edit3 size={19} /><span><strong>Edit Profile</strong><small>Name, bio, country, language and interests</small></span><ChevronRight size={18} /></button>
+      <button type="button" onClick={onSettings}><Settings size={19} /><span><strong>Settings</strong><small>Privacy, support and account controls</small></span><ChevronRight size={18} /></button>
+    </div>
+  );
+}
+
 export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWallet }) {
   const [panel, setPanel] = useState('');
   const [profileMode, setProfileMode] = useState(storedProfileMode);
@@ -146,7 +155,6 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
   return (
     <section className={`creatorProfileHome ${creatorMode ? 'isCreatorMode' : 'isUserMode'}`}>
       <header className="creatorProfileHero">
-        <button className="creatorProfileSettings" type="button" onClick={() => setPanel('settings')} aria-label="Open profile settings"><Settings size={21} /></button>
         {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="creatorProfileAvatarFallback">{(profile?.display_name || profile?.username || 'D')[0]?.toUpperCase()}</div>}
         <h1>{profile?.display_name || profile?.username || 'Droxion User'}</h1>
         {profile?.username && <span>@{profile.username}</span>}
@@ -165,10 +173,7 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
       </header>
 
       {!creatorMode ? (
-        <div className="creatorUserActions">
-          <button type="button" onClick={() => setPanel('edit')}><Edit3 size={19} /><span><strong>Edit Profile</strong><small>Name, bio, country, language and interests</small></span><ChevronRight size={18} /></button>
-          <button type="button" onClick={() => setPanel('settings')}><Settings size={19} /><span><strong>Settings</strong><small>Privacy, support and account controls</small></span><ChevronRight size={18} /></button>
-        </div>
+        <ProfileActions onEdit={() => setPanel('edit')} onSettings={() => setPanel('settings')} />
       ) : (
         <>
           <section className="creatorDashboardSection" aria-label="Creator dashboard">
@@ -188,6 +193,8 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
           <button className="creatorWalletMini" type="button" onClick={onOpenWallet}><Coins size={18} /><span><strong>{coins} coins</strong><small>Wallet</small></span><ChevronRight size={18} /></button>
 
           <button className="creatorWithdrawMini" type="button" onClick={() => setPanel('withdraw')}><Landmark size={19} /><span><strong>Withdraw Earnings</strong><small>PayPal or secure bank payout</small></span><ChevronRight size={18} /></button>
+
+          <ProfileActions onEdit={() => setPanel('edit')} onSettings={() => setPanel('settings')} />
 
           <div className="creatorProfileClipsTitle"><strong>LIVE Reels</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
           <ProfileClipsGrid currentUserId={currentUserId} />
