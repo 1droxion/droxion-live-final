@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronRight, Coins, Settings } from 'lucide-react';
+import { BarChart3, ChevronRight, Coins, Landmark, Settings } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import LiveProfile from '../../LiveProfile';
 import ProfileClipsGrid from './ProfileClipsGrid';
@@ -56,7 +56,7 @@ function EarningsSparkline({ series }) {
 }
 
 export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWallet }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panel, setPanel] = useState('');
   const [profile, setProfile] = useState(null);
   const [followers, setFollowers] = useState(0);
   const [following, setFollowing] = useState(0);
@@ -104,13 +104,21 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
   const todayEarnings = earningsRows.reduce((sum, row) => new Date(row.created_at) >= todayStart ? sum + Number(row.amount_cents || 0) : sum, 0);
   const sevenDayEarnings = sevenDays.reduce((sum, item) => sum + item.amount, 0);
 
-  if (settingsOpen) {
+  if (panel === 'settings') {
     return (
       <div className="creatorProfileSettingsShell">
-        <div className="creatorProfileSettingsTop"><button type="button" onClick={() => setSettingsOpen(false)}>← Profile</button><strong>Settings</strong></div>
+        <div className="creatorProfileSettingsTop"><button type="button" onClick={() => setPanel('')}>← Profile</button><strong>Settings</strong></div>
         <LiveProfile coins={coins} onOpenWallet={onOpenWallet} />
       </div>
     );
+  }
+
+  if (panel === 'withdraw') {
+    return <LiveProfile key="creator-dashboard-withdraw" coins={coins} onOpenWallet={onOpenWallet} initialView="withdraw" onExit={() => setPanel('')} />;
+  }
+
+  if (panel === 'followers' || panel === 'following') {
+    return <LiveProfile key={`creator-dashboard-${panel}`} coins={coins} onOpenWallet={onOpenWallet} initialView="network" initialNetworkMode={panel} onExit={() => setPanel('')} />;
   }
 
   if (loading) return <section className="creatorProfileHome creatorProfileLoading">Loading profile…</section>;
@@ -118,14 +126,14 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
   return (
     <section className="creatorProfileHome">
       <header className="creatorProfileHero">
-        <button className="creatorProfileSettings" type="button" onClick={() => setSettingsOpen(true)} aria-label="Open profile settings"><Settings size={21} /></button>
+        <button className="creatorProfileSettings" type="button" onClick={() => setPanel('settings')} aria-label="Open profile settings"><Settings size={21} /></button>
         {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="creatorProfileAvatarFallback">{(profile?.display_name || profile?.username || 'D')[0]?.toUpperCase()}</div>}
         <h1>{profile?.display_name || profile?.username || 'Droxion Creator'}</h1>
         {profile?.username && <span>@{profile.username}</span>}
         {profile?.bio && <p>{profile.bio}</p>}
         <div className="creatorProfileSocialStats">
-          <div><strong>{compact(followers)}</strong><span>Followers</span></div>
-          <div><strong>{compact(following)}</strong><span>Following</span></div>
+          <button type="button" onClick={() => setPanel('followers')} aria-label="View followers"><strong>{compact(followers)}</strong><span>Followers</span></button>
+          <button type="button" onClick={() => setPanel('following')} aria-label="View following"><strong>{compact(following)}</strong><span>Following</span></button>
           <div><strong>{compact(clipStats.clips)}</strong><span>Clips</span></div>
         </div>
       </header>
@@ -142,6 +150,8 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
       </button>
 
       <button className="creatorWalletMini" type="button" onClick={onOpenWallet}><Coins size={18} /><span><strong>{coins} coins</strong><small>Wallet</small></span><ChevronRight size={18} /></button>
+
+      <button className="creatorWithdrawMini" type="button" onClick={() => setPanel('withdraw')}><Landmark size={19} /><span><strong>Withdraw Earnings</strong><small>PayPal or secure bank payout</small></span><ChevronRight size={18} /></button>
 
       <div className="creatorProfileClipsTitle"><strong>LIVE Clips</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
       <ProfileClipsGrid currentUserId={currentUserId} />
