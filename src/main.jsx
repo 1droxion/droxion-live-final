@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import ShortFeedPlaybackEnhancer from "./ShortFeedPlaybackEnhancer.jsx";
 import LiveCameraStartupEnhancer from "./LiveCameraStartupEnhancer.jsx";
+import AdReadyEnhancer from "./AdReadyEnhancer.jsx";
 import "./index.css";
 import "./responsive-overrides.css";
 
@@ -14,6 +15,7 @@ createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       {!isLiveV2Path && <ShortFeedPlaybackEnhancer />}
       {!isLiveV2Path && <LiveCameraStartupEnhancer />}
+      {!isLiveV2Path && <AdReadyEnhancer />}
       <App />
     </BrowserRouter>
   </React.StrictMode>
