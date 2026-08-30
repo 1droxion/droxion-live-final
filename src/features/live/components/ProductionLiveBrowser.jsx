@@ -7,12 +7,14 @@ import { connectViewerTransport, disconnectTransport } from '../services/liveTra
 import LiveGiftCinema from './LiveGiftCinema';
 import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import '../styles/production-live-browser.css';
+import '../styles/production-live-home-polish.css';
 import '../styles/production-gift-selection.css';
 import '../styles/live-viewer-profile-taps.css';
 
 const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
 const MAX_GIFT_QUANTITY = 10;
+const LIVE_AD_FAIL_OPEN_MS = 15000;
 const GIFT_TABS = [
   { id: 'popular', label: 'Popular' },
   { id: 'premium', label: 'Premium' },
@@ -191,13 +193,7 @@ export default function ProductionLiveBrowser({
     loadFeed();
   }, [activeRoom?.session_id, loadFeed]);
 
-  function openRoom(profile) {
-    if (!profile?.session_id || !profile?.user_id) {
-      setNotice('This LIVE is no longer available. Pull down to refresh.');
-      loadFeed();
-      return;
-    }
-
+  function enterRoom(profile) {
     // IMPORTANT: render the viewer UI first. The LiveKit connection happens in
     // the effect below only after the video/audio elements exist in the DOM.
     setNotice('');
@@ -213,6 +209,56 @@ export default function ProductionLiveBrowser({
     setSelectedProfile(null);
     lastChatIdRef.current = 0;
     setActiveRoom(profile);
+  }
+
+  function openRoom(profile) {
+    if (!profile?.session_id || !profile?.user_id) {
+      setNotice('This LIVE is no longer available. Pull down to refresh.');
+      loadFeed();
+      return;
+    }
+
+    const adReady = typeof window !== 'undefined' ? window.__droxionAdReady : null;
+    if (!adReady?.livePrerollEnabled || adReady?.providerConnected !== true) {
+      enterRoom(profile);
+      return;
+    }
+
+    const requestId = `live-preroll-${profile.session_id}-${Date.now()}`;
+    let finished = false;
+    let timeoutId = null;
+
+    const cleanup = () => {
+      window.removeEventListener('droxion:ad-slot-complete', handleComplete);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      enterRoom(profile);
+    };
+
+    const handleComplete = event => {
+      const detail = event?.detail || {};
+      if (detail.placement !== 'live_preroll') return;
+      if (detail.requestId && detail.requestId !== requestId) return;
+      finish();
+    };
+
+    window.addEventListener('droxion:ad-slot-complete', handleComplete);
+    timeoutId = window.setTimeout(finish, LIVE_AD_FAIL_OPEN_MS);
+    window.dispatchEvent(new CustomEvent('droxion:request-live-entry-ad', {
+      detail: {
+        requestId,
+        sessionId: profile.session_id,
+        creatorId: profile.user_id,
+        optional: true,
+        skippable: true,
+        failOpen: true
+      }
+    }));
   }
 
   // WORKING VIDEO CONNECTION — intentionally unchanged.
@@ -728,22 +774,25 @@ export default function ProductionLiveBrowser({
         <div className="productionLiveEmpty"><Radio size={30} /><strong>No one is LIVE right now</strong><span>Pull down to refresh.</span></div>
       ) : (
         <div className="productionLiveGrid">
-          {profiles.map(profile => (
-            <button type="button" key={`${profile.user_id}:${profile.session_id}`} className="productionLiveCard" onClick={() => openRoom(profile)}>
-              <div className="productionLiveCardMedia">
-                {profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="productionLiveAvatarPlaceholder" />}
-                <div className="productionLiveCardShade" />
-                <span className="productionLiveBadge">LIVE</span>
-                <span className="productionLiveViewers"><Users size={14} /> {profile.viewer_count || 0}</span>
-                <div className="productionLiveCardInfo">
-                  <strong>{profile.display_name || 'Droxion creator'}{profile.age ? `, ${profile.age}` : ''}</strong>
-                  <b>{profile.title || 'Live on Droxion'}</b>
-                  <small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>
-                  <em>Tap to open LIVE</em>
+          {profiles.map(profile => {
+            const horizontal = String(profile.orientation || '').toLowerCase() === 'horizontal';
+            return (
+              <button type="button" key={`${profile.user_id}:${profile.session_id}`} className={`productionLiveCard ${horizontal ? 'isHorizontal' : 'isVertical'}`} onClick={() => openRoom(profile)}>
+                <div className="productionLiveCardMedia">
+                  {profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="productionLiveAvatarPlaceholder" />}
+                  <div className="productionLiveCardShade" />
+                  <span className="productionLiveBadge">LIVE</span>
+                  <span className="productionLiveViewers"><Users size={14} /> {profile.viewer_count || 0}</span>
+                  <div className="productionLiveCardInfo">
+                    <strong>{profile.display_name || 'Droxion creator'}{profile.age ? `, ${profile.age}` : ''}</strong>
+                    <b>{profile.title || 'Live on Droxion'}</b>
+                    <small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>
+                    <em>{horizontal ? 'Horizontal LIVE' : 'Vertical LIVE'} · Tap to open</em>
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
     </section>
