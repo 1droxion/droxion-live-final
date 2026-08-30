@@ -36,6 +36,7 @@ export default function ShortSafetyEnhancer() {
   const [reportOpen, setReportOpen] = useState(false);
   const [reason, setReason] = useState('harassment');
   const [details, setDetails] = useState('');
+  const [reportMessage, setReportMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const blockedCreatorIds = useRef(new Set());
   const blockedClipIds = useRef(new Set());
@@ -49,6 +50,17 @@ export default function ShortSafetyEnhancer() {
       .maybeSingle();
     if (error || !data?.creator_id) throw error || new Error('Highlight is unavailable.');
     return data;
+  }
+
+  async function resolveCurrentUserId() {
+    if (currentUserId.current) return currentUserId.current;
+    try {
+      const { data } = await supabase.auth.getUser();
+      currentUserId.current = data?.user?.id || '';
+    } catch {
+      currentUserId.current = '';
+    }
+    return currentUserId.current;
   }
 
   function applyBlockedHiding() {
@@ -76,16 +88,18 @@ export default function ShortSafetyEnhancer() {
       sheet?.querySelectorAll?.('[data-droxion-safety-action]')?.forEach?.(button => button.remove());
     };
 
-    const enhanceSheet = () => {
+    const enhanceSheet = async () => {
       const sheet = document.querySelector('.sfActionSheet');
       if (!sheet) return;
 
       const clipCreatorId = activeClipCreatorId.current;
-      const signedInUserId = currentUserId.current;
       if (!clipCreatorId) return;
 
-      // A creator may delete only their own highlight. They must never see
-      // Report/Block controls against themselves; the backend rejects self-actions.
+      const signedInUserId = await resolveCurrentUserId();
+      if (!document.body.contains(sheet)) return;
+
+      // A creator may delete only their own highlight. Never expose Report/Block
+      // controls against the signed-in creator's own content.
       if (signedInUserId && String(clipCreatorId) === String(signedInUserId)) {
         removeSafetyActions(sheet);
         return;
@@ -118,7 +132,7 @@ export default function ShortSafetyEnhancer() {
         try {
           const clip = await loadClip(activeClipId.current);
           activeClipCreatorId.current = clip.creator_id;
-          window.setTimeout(enhanceSheet, 0);
+          await enhanceSheet();
         } catch {
           activeClipCreatorId.current = '';
         }
@@ -137,6 +151,7 @@ export default function ShortSafetyEnhancer() {
       if (type === 'report') {
         setReason('harassment');
         setDetails('');
+        setReportMessage('');
         setReportOpen(true);
         return;
       }
@@ -146,7 +161,8 @@ export default function ShortSafetyEnhancer() {
         try {
           setBusy(true);
           const clip = await loadClip(activeClipId.current);
-          if (currentUserId.current && String(clip.creator_id) === String(currentUserId.current)) {
+          const signedInUserId = await resolveCurrentUserId();
+          if (signedInUserId && String(clip.creator_id) === String(signedInUserId)) {
             notice('You cannot block your own account.');
             return;
           }
@@ -180,7 +196,7 @@ export default function ShortSafetyEnhancer() {
 
     document.addEventListener('click', onClick, true);
     observer = new MutationObserver(() => {
-      enhanceSheet();
+      void enhanceSheet();
       applyBlockedHiding();
     });
     observer.observe(document.body, { childList: true, subtree: true });
@@ -194,11 +210,12 @@ export default function ShortSafetyEnhancer() {
   async function submitReport() {
     if (busy || !activeClipId.current) return;
     setBusy(true);
+    setReportMessage('');
     try {
       const clip = await loadClip(activeClipId.current);
-      if (currentUserId.current && String(clip.creator_id) === String(currentUserId.current)) {
-        setReportOpen(false);
-        notice('You cannot report your own content.');
+      const signedInUserId = await resolveCurrentUserId();
+      if (signedInUserId && String(clip.creator_id) === String(signedInUserId)) {
+        setReportMessage('This is your own highlight, so it cannot be reported.');
         return;
       }
       const { data, error } = await supabase.rpc('droxion_submit_report', {
@@ -210,11 +227,11 @@ export default function ShortSafetyEnhancer() {
         p_session_id: clip.session_id
       });
       if (error || data?.ok === false) throw error || new Error('Could not submit report.');
-      setReportOpen(false);
+      setReportMessage('Report submitted. Droxion moderation will review it.');
       setDetails('');
-      notice('Report submitted. Droxion moderation will review it within the safety process.');
+      window.setTimeout(() => setReportOpen(false), 900);
     } catch (error) {
-      notice(error?.message || 'Could not submit report.');
+      setReportMessage(error?.message || 'Could not submit report. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -235,6 +252,7 @@ export default function ShortSafetyEnhancer() {
             {REASONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
           </select>
           <textarea value={details} onChange={event => setDetails(event.target.value)} maxLength={1000} placeholder="Optional details" style={{ width: '100%', minHeight: 84, marginTop: 10, borderRadius: 12, border: '1px solid rgba(255,255,255,.12)', background: '#191922', color: '#fff', padding: 12, resize: 'vertical' }} />
+          {reportMessage && <div role="status" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(147,51,234,.12)', border: '1px solid rgba(196,181,253,.22)', color: '#ede9fe', fontSize: 14, lineHeight: 1.35 }}>{reportMessage}</div>}
           <button type="button" onClick={submitReport} disabled={busy} style={{ width: '100%', height: 48, marginTop: 10, border: 0, borderRadius: 12, background: '#9333ea', color: '#fff', fontWeight: 900 }}>{busy ? 'Submitting…' : 'Submit Report'}</button>
           <button type="button" onClick={() => setReportOpen(false)} disabled={busy} style={{ width: '100%', height: 46, marginTop: 8, border: '1px solid rgba(255,255,255,.10)', borderRadius: 12, background: '#20202a', color: '#fff', fontWeight: 800 }}>Cancel</button>
         </div>
