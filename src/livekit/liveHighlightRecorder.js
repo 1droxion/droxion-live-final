@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { highlightCountForLiveDuration } from './liveHighlightPolicy';
 
 const SEGMENT_MS = 30_000;
 const DATA_SLICE_MS = 1_000;
@@ -222,10 +223,12 @@ export function createLiveHighlightRecorder({ creatorId, sessionId, stream, titl
   async function finalizeAndPublish() {
     await enqueue(async () => { await stopCurrentSegment({ save: true }); });
 
+    const liveDurationMs = Math.max(0, Date.now() - liveStartedAt);
+    const highlightCount = highlightCountForLiveDuration(liveDurationMs);
     const candidates = [...segments]
       .filter(segment => segment.durationSeconds >= MIN_CLIP_SECONDS && segment.blob?.size)
       .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.sourceStartMs - b.sourceStartMs)
-      .slice(0, 2);
+      .slice(0, highlightCount);
 
     const results = [];
     for (let index = 0; index < candidates.length; index += 1) {
