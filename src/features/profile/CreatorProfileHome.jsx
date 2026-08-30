@@ -66,7 +66,6 @@ function EarningsSparkline({ series }) {
 export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWallet }) {
   const [panel, setPanel] = useState('');
   const [profileMode, setProfileMode] = useState(storedProfileMode);
-  const [isApprovedCreator, setIsApprovedCreator] = useState(false);
   const [profile, setProfile] = useState(null);
   const [followers, setFollowers] = useState(0);
   const [following, setFollowing] = useState(0);
@@ -85,18 +84,14 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
       setLoading(true);
       const since = new Date();
       since.setDate(since.getDate() - 30);
-      const [profileResult, statsResult, creatorResult, earningsResult, giftsResult, clipsResult] = await Promise.all([
+      const [profileResult, statsResult, earningsResult, giftsResult, clipsResult] = await Promise.all([
         supabase.from('droxion_profiles').select('user_id,display_name,username,avatar_url,bio,country,language').eq('user_id', currentUserId).maybeSingle(),
         supabase.rpc('droxion_follow_stats'),
-        supabase.from('droxion_creator_accounts').select('status').eq('user_id', currentUserId).maybeSingle(),
         supabase.from('droxion_creator_earnings').select('amount_cents,created_at,source').eq('user_id', currentUserId).gte('created_at', since.toISOString()).order('created_at', { ascending: true }),
         supabase.from('droxion_live_gifts').select('id', { count: 'exact', head: true }).eq('recipient_id', currentUserId),
         supabase.from('droxion_live_clips').select('views_count,likes_count,status').eq('creator_id', currentUserId)
       ]);
       if (!alive) return;
-      const approved = creatorResult.data?.status === 'approved';
-      setIsApprovedCreator(approved);
-      if (!approved) setProfileMode('user');
       setProfile(profileResult.data || null);
       setFollowers(Number(statsResult.data?.followers || 0));
       setFollowing(Number(statsResult.data?.following || 0));
@@ -119,7 +114,6 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
   const sevenDayEarnings = sevenDays.reduce((sum, item) => sum + item.amount, 0);
 
   function chooseMode(nextMode) {
-    if (nextMode === 'creator' && !isApprovedCreator) return;
     setProfileMode(nextMode);
     try { window.localStorage.setItem('droxion-profile-mode', nextMode); } catch {}
   }
@@ -147,28 +141,26 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
 
   if (loading) return <section className="creatorProfileHome creatorProfileLoading">Loading profile…</section>;
 
-  const creatorMode = isApprovedCreator && profileMode === 'creator';
+  const creatorMode = profileMode === 'creator';
 
   return (
     <section className={`creatorProfileHome ${creatorMode ? 'isCreatorMode' : 'isUserMode'}`}>
       <header className="creatorProfileHero">
-        <button className="creatorProfileSettings" type="button" onClick={() => setPanel(creatorMode ? 'settings' : 'edit')} aria-label={creatorMode ? 'Open profile settings' : 'Edit profile'}><Settings size={21} /></button>
+        <button className="creatorProfileSettings" type="button" onClick={() => setPanel('settings')} aria-label="Open profile settings"><Settings size={21} /></button>
         {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="creatorProfileAvatarFallback">{(profile?.display_name || profile?.username || 'D')[0]?.toUpperCase()}</div>}
         <h1>{profile?.display_name || profile?.username || 'Droxion User'}</h1>
         {profile?.username && <span>@{profile.username}</span>}
         {profile?.bio && <p>{profile.bio}</p>}
 
-        {isApprovedCreator && (
-          <div className="creatorProfileModeSwitch" role="group" aria-label="Profile mode">
-            <button type="button" className={creatorMode ? '' : 'active'} onClick={() => chooseMode('user')}><UserRound size={16} /> User</button>
-            <button type="button" className={creatorMode ? 'active' : ''} onClick={() => chooseMode('creator')}><Video size={16} /> Creator</button>
-          </div>
-        )}
+        <div className="creatorProfileModeSwitch" role="group" aria-label="Profile mode">
+          <button type="button" className={creatorMode ? '' : 'active'} onClick={() => chooseMode('user')}><UserRound size={16} /> User</button>
+          <button type="button" className={creatorMode ? 'active' : ''} onClick={() => chooseMode('creator')}><Video size={16} /> Creator</button>
+        </div>
 
         <div className={`creatorProfileSocialStats ${creatorMode ? '' : 'userStats'}`}>
           <button type="button" onClick={() => setPanel('followers')} aria-label="View followers"><strong>{compact(followers)}</strong><span>Followers</span></button>
           <button type="button" onClick={() => setPanel('following')} aria-label="View following"><strong>{compact(following)}</strong><span>Following</span></button>
-          {creatorMode && <div><strong>{compact(clipStats.clips)}</strong><span>Clips</span></div>}
+          {creatorMode && <div><strong>{compact(clipStats.clips)}</strong><span>Reels</span></div>}
         </div>
       </header>
 
@@ -179,22 +171,25 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
         </div>
       ) : (
         <>
-          <button className="creatorCenterCard" type="button" aria-label="Creator analytics">
-            <div className="creatorCenterHead"><span><BarChart3 size={19} /> Creator Center</span><ChevronRight size={19} /></div>
-            <div className="creatorCenterNumbers">
-              <div><strong>{money(todayEarnings)}</strong><span>Today</span></div>
-              <div><strong>{money(sevenDayEarnings)}</strong><span>7 days</span></div>
-              <div><strong>{compact(giftCount)}</strong><span>Gifts</span></div>
-              <div><strong>{compact(clipStats.views)}</strong><span>Clip views</span></div>
-            </div>
-            <EarningsSparkline series={sevenDays} />
-          </button>
+          <section className="creatorDashboardSection" aria-label="Creator dashboard">
+            <div className="creatorDashboardLabel"><BarChart3 size={18} /><strong>Creator Dashboard</strong></div>
+            <button className="creatorCenterCard" type="button" aria-label="Creator analytics">
+              <div className="creatorCenterHead"><span>Performance</span><ChevronRight size={19} /></div>
+              <div className="creatorCenterNumbers">
+                <div><strong>{money(todayEarnings)}</strong><span>Today</span></div>
+                <div><strong>{money(sevenDayEarnings)}</strong><span>7 days</span></div>
+                <div><strong>{compact(giftCount)}</strong><span>Gifts</span></div>
+                <div><strong>{compact(clipStats.views)}</strong><span>Reel views</span></div>
+              </div>
+              <EarningsSparkline series={sevenDays} />
+            </button>
+          </section>
 
           <button className="creatorWalletMini" type="button" onClick={onOpenWallet}><Coins size={18} /><span><strong>{coins} coins</strong><small>Wallet</small></span><ChevronRight size={18} /></button>
 
           <button className="creatorWithdrawMini" type="button" onClick={() => setPanel('withdraw')}><Landmark size={19} /><span><strong>Withdraw Earnings</strong><small>PayPal or secure bank payout</small></span><ChevronRight size={18} /></button>
 
-          <div className="creatorProfileClipsTitle"><strong>LIVE Clips</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
+          <div className="creatorProfileClipsTitle"><strong>LIVE Reels</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
           <ProfileClipsGrid currentUserId={currentUserId} />
         </>
       )}
