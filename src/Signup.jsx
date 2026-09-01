@@ -46,7 +46,7 @@ function Signup() {
     const cleanEmail = email.trim().toLowerCase();
     const cleanCountry = country.trim();
 
-    if (!cleanName || !dateOfBirth || !gender || !cleanCountry || !language || !cleanEmail || !password) {
+    if (!cleanName || !dateOfBirth || !cleanCountry || !language || !cleanEmail || !password) {
       setError("Please complete all required fields.");
       return;
     }
@@ -71,7 +71,7 @@ function Signup() {
           password,
           full_name: cleanName,
           date_of_birth: dateOfBirth,
-          gender,
+          gender: gender || null,
           country: cleanCountry,
           language,
           confirmed21: true,
@@ -119,9 +119,9 @@ function Signup() {
           <input id="dob" type="date" min="1900-01-01" max={getMaximumBirthDate()} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} className="w-full p-3 mb-2 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required />
           <p className="text-xs text-gray-500 mb-4">You must be 21 or older to use Droxion.</p>
 
-          <label htmlFor="gender" className="block mb-2 text-sm font-medium">Gender</label>
-          <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500" required>
-            <option value="">Select gender</option>
+          <label htmlFor="gender" className="block mb-2 text-sm font-medium">Gender <span className="text-gray-500 font-normal">(Optional)</span></label>
+          <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} className="w-full p-3 mb-4 rounded-xl bg-[#191922] text-white border border-white/10 outline-none focus:border-purple-500">
+            <option value="">Prefer not to provide</option>
             <option value="man">Man</option>
             <option value="woman">Woman</option>
             <option value="nonbinary">Non-binary</option>
