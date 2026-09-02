@@ -63,7 +63,7 @@ export function buildTrolleyWidgetUrl({ email, referenceId }) {
   params.set('hideEmail', 'false');
   params.set('hideAccountType', 'false');
   params.set('roEmail', 'true');
-  params.set('payoutMethods', 'bank-transfer');
+  params.set('payoutMethods', 'bank-transfer,paypal');
   params.set('locale', 'en');
   params.set('products', 'pay');
   const query = params.toString().replace(/\+/g, '%20');
@@ -80,24 +80,31 @@ export async function findTrolleyRecipient(referenceId) {
 export function safePayoutProfile(recipient) {
   if (!recipient) return null;
   const accounts = Array.isArray(recipient.accounts) ? recipient.accounts : [];
+  const primaryMethod = String(recipient?.payoutMethod || '').toLowerCase();
+  const primaryAccount = accounts.find(account => account?.primary === true && String(account?.type || account?.payoutMethod || '').toLowerCase() === primaryMethod)
+    || accounts.find(account => String(account?.type || account?.payoutMethod || '').toLowerCase() === primaryMethod)
+    || accounts.find(account => account?.primary === true)
+    || null;
   const bank = accounts.find(account => String(account?.type || account?.payoutMethod || '').toLowerCase() === 'bank-transfer')
     || accounts.find(account => account?.bankName || account?.accountNum)
     || null;
+  const paypal = accounts.find(account => String(account?.type || account?.payoutMethod || '').toLowerCase() === 'paypal') || null;
   const rawAccount = String(bank?.accountNum || bank?.accountNumber || '');
   const digits = rawAccount.replace(/\D/g, '');
   const last4 = digits ? digits.slice(-4) : '';
-  const country = String(bank?.country || recipient?.address?.country || '').toUpperCase();
-  const currency = String(bank?.currency || recipient?.primaryCurrency || '').toUpperCase();
+  const payoutMethod = String(primaryMethod || primaryAccount?.type || bank?.type || paypal?.type || '').toLowerCase();
+  const country = String(primaryAccount?.country || bank?.country || recipient?.address?.country || '').toUpperCase();
+  const currency = String(primaryAccount?.currency || bank?.currency || recipient?.primaryCurrency || '').toUpperCase();
   const compliance = String(recipient?.compliance?.status || recipient?.complianceStatus || '').toLowerCase();
-  const payoutMethod = String(recipient?.payoutMethod || bank?.type || '').toLowerCase();
   return {
     recipientId: recipient.id || '', status: String(recipient.status || '').toLowerCase(),
     complianceStatus: compliance, payoutMethod, country, currency,
-    routeType: recipient.routeType || bank?.routeType || null,
+    routeType: recipient.routeType || primaryAccount?.routeType || bank?.routeType || null,
     routeMinimum: recipient.routeMinimum ?? null,
     estimatedFee: recipient.estimatedFees ?? recipient.estimatedFee ?? null,
     bankName: bank?.bankName ? String(bank.bankName).slice(0, 120) : null,
-    accountLast4: last4 || null
+    accountLast4: last4 || null,
+    paypalEmail: paypal?.emailAddress ? String(paypal.emailAddress).toLowerCase() : null
   };
 }
 
