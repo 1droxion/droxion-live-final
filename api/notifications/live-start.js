@@ -7,6 +7,13 @@ import {
 
 const REACTION_FACTORY_BACKEND = 'https://zlnhaqzawbzagraxhmlb.supabase.co/functions/v1/reaction-factory-cloud';
 
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
 function cleanText(value, fallback, max = 120) {
   const text = String(value || '').trim();
   return (text || fallback).slice(0, max);
@@ -93,13 +100,20 @@ async function getCreatorName(userId) {
 }
 
 export default async function handler(req, res) {
+  setCorsHeaders(res);
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   if (String(req.query?.rf || '') === '1') {
     await handleReactionFactory(req, res);
     return;
   }
 
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+    res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({ error: 'Method not allowed.' });
     return;
   }
