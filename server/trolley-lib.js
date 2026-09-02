@@ -44,9 +44,28 @@ export async function trolleyRequest(path, { method = 'GET', body = null } = {})
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
     const first = Array.isArray(payload?.errors) ? payload.errors[0] : null;
-    const message = first?.message || payload?.message || payload?.error || `Trolley request failed (${response.status}).`;
-    const error = new Error(message);
+    const code = String(first?.code || payload?.code || payload?.error || '').trim();
+    const field = String(first?.field || '').trim();
+    const message = String(first?.message || payload?.message || payload?.error_description || payload?.error || `Trolley request failed (${response.status}).`).trim();
+    const details = [
+      `Trolley HTTP ${response.status}`,
+      code ? `code=${code}` : '',
+      field ? `field=${field}` : '',
+      message
+    ].filter(Boolean).join(' | ');
+    console.error('Trolley API request failed', {
+      method,
+      path: requestPath,
+      status: response.status,
+      code: code || null,
+      field: field || null,
+      message,
+      payload
+    });
+    const error = new Error(details);
     error.status = response.status;
+    error.code = code || null;
+    error.field = field || null;
     error.payload = payload;
     throw error;
   }
