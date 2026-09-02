@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
-const versionName = process.env.ANDROID_VERSION_NAME || '1.2';
-const versionCodeBase = Number(process.env.ANDROID_VERSION_CODE_BASE || 120000);
+const versionName = process.env.ANDROID_VERSION_NAME || '1.3';
+const versionCodeBase = Number(process.env.ANDROID_VERSION_CODE_BASE || 130000);
 const buildNumber = Math.max(1, Number(process.env.BUILD_NUMBER || 1));
 const withSigning = process.argv.includes('--signing');
 
