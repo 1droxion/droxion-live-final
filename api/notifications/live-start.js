@@ -163,7 +163,19 @@ export default async function handler(req, res) {
       throw new Error(payload?.errors?.[0] || payload?.errors || payload?.message || 'OneSignal push failed.');
     }
 
-    res.status(200).json({ ok: true, messageId: payload?.id || null });
+    console.log('OneSignal LIVE push accepted', {
+      appId,
+      messageId: payload?.id || null,
+      recipients: Number(payload?.recipients || 0),
+      externalId: payload?.external_id || null,
+      errors: payload?.errors || null
+    });
+
+    res.status(200).json({
+      ok: true,
+      messageId: payload?.id || null,
+      recipients: Number(payload?.recipients || 0)
+    });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not send LIVE notification.' });
   }
