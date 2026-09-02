@@ -10,8 +10,8 @@ workflows:
       vars:
         APP_NAME: Droxion Live
         PACKAGE_NAME: com.droxion.live
-        ANDROID_VERSION_NAME: "1.2"
-        ANDROID_VERSION_CODE_BASE: "120000"
+        ANDROID_VERSION_NAME: "1.3"
+        ANDROID_VERSION_CODE_BASE: "130000"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
         CM_CLONE_DEPTH: "1"
