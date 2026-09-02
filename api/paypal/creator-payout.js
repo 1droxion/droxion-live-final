@@ -1,14 +1,5 @@
-import {
-  buildPayPalHeaders,
-  callRpc,
-  getPayPalAccessToken,
-  getPayPalConfig,
-  getSupabaseConfig,
-  getSupabaseHeaders,
-  getSupabaseUser,
-  normalizeError,
-  readJsonBody
-} from '../../server/paypal-lib.js';
+import { callRpc, getSupabaseConfig, getSupabaseHeaders, getSupabaseUser, normalizeError, readJsonBody } from '../../server/paypal-lib.js';
+import { trolleyRequest } from '../../server/trolley-lib.js';
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,42 +8,28 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Max-Age', '86400');
 }
 
-function paypalFailureDetails(payload = {}) {
-  const name = String(payload?.name || payload?.error || '').trim();
-  const message = String(
-    payload?.message ||
-    payload?.error_description ||
-    payload?.details?.[0]?.description ||
-    payload?.details?.[0]?.issue ||
-    'PayPal payout failed.'
-  ).trim();
-  const debugId = String(payload?.debug_id || '').trim();
-  const issue = String(payload?.details?.[0]?.issue || '').trim();
-  const failureReason = [name, issue && issue !== name ? issue : '', message, debugId ? `debug_id=${debugId}` : '']
-    .filter(Boolean)
-    .join(' | ');
-
-  return { name, message, debugId, issue, failureReason };
+async function beginTrolleyPayPalPayout(accessToken, creatorCoins) {
+  const { supabaseUrl } = getSupabaseConfig();
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/droxion_begin_trolley_paypal_payout`, {
+    method: 'POST',
+    headers: { ...getSupabaseHeaders(accessToken, false), Prefer: 'return=representation' },
+    body: JSON.stringify({ p_creator_coins: creatorCoins })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.message || payload?.error || 'Unable to create PayPal payout request.');
+  return payload;
 }
 
-async function beginPayout(accessToken, paypalEmail, creatorCoins) {
-  const { supabaseUrl } = getSupabaseConfig();
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/droxion_begin_payout_request_v3`, {
-    method: 'POST',
-    headers: {
-      ...getSupabaseHeaders(accessToken, false),
-      Prefer: 'return=representation'
-    },
-    body: JSON.stringify({
-      p_method: 'paypal',
-      p_creator_coins: creatorCoins,
-      p_paypal_email: paypalEmail
-    })
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.message || payload?.error || 'Unable to create payout request.');
-  return payload;
+async function failRequest(requestId, reason) {
+  if (!requestId) return;
+  try {
+    await callRpc(null, 'droxion_finalize_payout', {
+      p_request_id: requestId,
+      p_success: false,
+      p_provider_item_id: null,
+      p_failure_reason: reason || 'Trolley PayPal payout failed.'
+    });
+  } catch {}
 }
 
 export default async function handler(req, res) {
@@ -77,105 +54,69 @@ export default async function handler(req, res) {
     await getSupabaseUser(accessToken);
 
     const body = await readJsonBody(req);
-    const paypalEmail = String(body?.paypalEmail || '').trim().toLowerCase();
     const creatorCoins = Math.floor(Number(body?.creatorCoins || 0));
 
-    const payoutRequest = await beginPayout(accessToken, paypalEmail, creatorCoins);
+    const payoutRequest = await beginTrolleyPayPalPayout(accessToken, creatorCoins);
     if (!payoutRequest?.allowed) {
-      res.status(400).json(payoutRequest || { error: 'Payout request was not allowed.' });
+      res.status(400).json(payoutRequest || { error: 'PayPal payout is not available.' });
       return;
     }
 
     requestId = payoutRequest.request_id;
-    const amount = (Number(payoutRequest.amount_cents || 0) / 100).toFixed(2);
-    const { clientId, clientSecret, baseUrl } = getPayPalConfig();
-    const paypalAccessToken = await getPayPalAccessToken({ clientId, clientSecret, baseUrl });
-    const senderBatchId = `droxion-${requestId}`;
+    const recipientId = String(payoutRequest.provider_recipient_id || '').trim();
+    const amountUsd = (Number(payoutRequest.amount_cents || 0) / 100).toFixed(2);
+    if (!recipientId) throw new Error('Complete secure PayPal payout setup first.');
 
-    const paypalResponse = await fetch(`${baseUrl}/v1/payments/payouts`, {
+    const batchPayload = await trolleyRequest('/v1/batches', {
       method: 'POST',
-      headers: buildPayPalHeaders(paypalAccessToken, {
-        'PayPal-Request-Id': senderBatchId
-      }),
-      body: JSON.stringify({
-        sender_batch_header: {
-          sender_batch_id: senderBatchId,
-          email_subject: 'Your Droxion creator payout',
-          email_message: 'Droxion sent your creator earnings payout.'
-        },
-        items: [{
-          recipient_type: 'EMAIL',
-          amount: { value: amount, currency: 'USD' },
-          receiver: paypalEmail,
-          note: 'Droxion creator earnings',
-          sender_item_id: requestId
-        }]
-      })
+      body: {
+        currency: 'USD',
+        description: `Droxion PayPal creator payout ${requestId}`,
+        tags: ['droxion', 'paypal', requestId]
+      }
+    });
+    const batchId = batchPayload?.batch?.id;
+    if (!batchId) throw new Error('Trolley did not create a payout batch.');
+
+    const paymentPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(batchId)}/payments`, {
+      method: 'POST',
+      body: {
+        recipient: { id: recipientId },
+        amount: amountUsd,
+        currency: 'USD',
+        memo: 'Droxion creator earnings',
+        tags: ['droxion', 'paypal', requestId]
+      }
+    });
+    const paymentId = paymentPayload?.payment?.id;
+    if (!paymentId) throw new Error('Trolley did not create a PayPal payment.');
+
+    await callRpc(null, 'droxion_attach_trolley_payment', {
+      p_request_id: requestId,
+      p_provider_batch_id: batchId,
+      p_provider_payment_id: paymentId
     });
 
-    const paypalPayload = await paypalResponse.json().catch(() => ({}));
-    if (!paypalResponse.ok || !paypalPayload?.batch_header?.payout_batch_id) {
-      const failure = paypalFailureDetails(paypalPayload);
-      console.error('PayPal payout rejected', {
-        requestId,
-        httpStatus: paypalResponse.status,
-        name: failure.name,
-        issue: failure.issue,
-        message: failure.message,
-        debugId: failure.debugId
-      });
-
-      await callRpc(null, 'droxion_finalize_payout', {
-        p_request_id: requestId,
-        p_success: false,
-        p_provider_item_id: null,
-        p_failure_reason: failure.failureReason
-      });
-
-      res.status(paypalResponse.status >= 400 ? paypalResponse.status : 400).json({
-        error: failure.message,
-        reason: failure.name || failure.issue || 'paypal_payout_failed',
-        paypalError: failure.name || null,
-        paypalIssue: failure.issue || null,
-        debugId: failure.debugId || null
-      });
-      return;
-    }
-
-    const batchId = paypalPayload.batch_header.payout_batch_id;
+    const processPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(batchId)}/start-processing`, { method: 'POST' });
     await callRpc(null, 'droxion_mark_payout_processing', {
       p_request_id: requestId,
       p_provider_batch_id: batchId
     });
 
-    const status = String(paypalPayload.batch_header.batch_status || '').toUpperCase();
-    if (status === 'SUCCESS') {
-      await callRpc(null, 'droxion_finalize_payout', {
-        p_request_id: requestId,
-        p_success: true,
-        p_provider_item_id: batchId,
-        p_failure_reason: null
-      });
-    }
-
     res.status(200).json({
       ok: true,
       requestId,
       payoutBatchId: batchId,
-      status: status || 'PENDING',
-      amount
+      paymentId,
+      status: String(processPayload?.batch?.status || 'processing').toLowerCase(),
+      amount: amountUsd,
+      provider: 'trolley',
+      method: 'paypal'
     });
   } catch (error) {
-    if (requestId) {
-      try {
-        await callRpc(null, 'droxion_finalize_payout', {
-          p_request_id: requestId,
-          p_success: false,
-          p_provider_item_id: null,
-          p_failure_reason: normalizeError(error)
-        });
-      } catch {}
-    }
-    res.status(400).json({ error: normalizeError(error) });
+    await failRequest(requestId, error?.message);
+    res.status(error?.status && Number.isInteger(error.status) ? error.status : 400).json({
+      error: normalizeError(error)
+    });
   }
 }
