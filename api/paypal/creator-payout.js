@@ -17,6 +17,24 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Max-Age', '86400');
 }
 
+function paypalFailureDetails(payload = {}) {
+  const name = String(payload?.name || payload?.error || '').trim();
+  const message = String(
+    payload?.message ||
+    payload?.error_description ||
+    payload?.details?.[0]?.description ||
+    payload?.details?.[0]?.issue ||
+    'PayPal payout failed.'
+  ).trim();
+  const debugId = String(payload?.debug_id || '').trim();
+  const issue = String(payload?.details?.[0]?.issue || '').trim();
+  const failureReason = [name, issue && issue !== name ? issue : '', message, debugId ? `debug_id=${debugId}` : '']
+    .filter(Boolean)
+    .join(' | ');
+
+  return { name, message, debugId, issue, failureReason };
+}
+
 async function beginPayout(accessToken, paypalEmail, creatorCoins) {
   const { supabaseUrl } = getSupabaseConfig();
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/droxion_begin_payout_request_v3`, {
@@ -97,13 +115,30 @@ export default async function handler(req, res) {
 
     const paypalPayload = await paypalResponse.json().catch(() => ({}));
     if (!paypalResponse.ok || !paypalPayload?.batch_header?.payout_batch_id) {
+      const failure = paypalFailureDetails(paypalPayload);
+      console.error('PayPal payout rejected', {
+        requestId,
+        httpStatus: paypalResponse.status,
+        name: failure.name,
+        issue: failure.issue,
+        message: failure.message,
+        debugId: failure.debugId
+      });
+
       await callRpc(null, 'droxion_finalize_payout', {
         p_request_id: requestId,
         p_success: false,
         p_provider_item_id: null,
-        p_failure_reason: paypalPayload?.message || paypalPayload?.error_description || 'PayPal payout failed.'
+        p_failure_reason: failure.failureReason
       });
-      res.status(400).json({ error: paypalPayload?.message || 'PayPal payout failed.' });
+
+      res.status(paypalResponse.status >= 400 ? paypalResponse.status : 400).json({
+        error: failure.message,
+        reason: failure.name || failure.issue || 'paypal_payout_failed',
+        paypalError: failure.name || null,
+        paypalIssue: failure.issue || null,
+        debugId: failure.debugId || null
+      });
       return;
     }
 
