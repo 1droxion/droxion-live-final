@@ -1,4 +1,5 @@
 import { Track } from 'livekit-client';
+import { mediaTrackSnapshot, publicationSnapshot, recordScreenShareDiagnostic } from '../../../livekit/screenShareDiagnostics';
 
 const PUBLISH_RETRY_DELAYS_MS = [0, 180, 520];
 const CONFIRM_POLL_MS = 120;
@@ -156,6 +157,12 @@ async function publishScreenTrack(room, screenTrack, logFailure, studio = {}) {
   const maxFramerate = requestedFps > 35 ? 60 : 30;
   const maxBitrate = maxFramerate > 30 ? 4_000_000 : 3_000_000;
 
+  recordScreenShareDiagnostic('host-publish-start', {
+    track: mediaTrackSnapshot(screenTrack),
+    requestedMaxFramerate: maxFramerate,
+    requestedMaxBitrate: maxBitrate
+  });
+
   await publishWithRetry(room, screenTrack, {
     source: Track.Source.ScreenShare,
     name: screenTrackName(studio),
@@ -163,7 +170,12 @@ async function publishScreenTrack(room, screenTrack, logFailure, studio = {}) {
     videoEncoding: { maxBitrate, maxFramerate },
     videoCodec: undefined
   }, 'screen', logFailure);
-  return waitForPublication(room, Track.Source.ScreenShare, 'LIVE screen');
+  const publication = await waitForPublication(room, Track.Source.ScreenShare, 'LIVE screen');
+  recordScreenShareDiagnostic('host-published', {
+    track: mediaTrackSnapshot(mediaTrackOf(publication.track)),
+    publication: publicationSnapshot(publication)
+  });
+  return publication;
 }
 
 async function publishCameraTrack(room, cameraTrack, logFailure, { facecam = false, studio = null } = {}) {

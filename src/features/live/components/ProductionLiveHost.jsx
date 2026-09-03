@@ -27,6 +27,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const studioControllerRef = useRef(null);
   const stageRef = useRef(null);
   const dragRef = useRef(null);
+  const screenEndShouldEndBroadcastRef = useRef(false);
   const [previewRequested, setPreviewRequested] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
@@ -42,6 +43,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const busy = isLiveBusy(state.phase) || studioPreparing;
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
   const connecting = state.phase === LIVE_PHASE.STARTING || state.phase === LIVE_PHASE.CONNECTING;
+  screenEndShouldEndBroadcastRef.current = Boolean(state.sessionId) || live || connecting;
   const guestAccepted = guestState?.status === 'accepted' && Boolean(guestState?.invitee_id);
   const splitLive = live && guestAccepted && guestVisible;
   const isStudioMode = sourceMode !== LIVE_SOURCE_MODE.CAMERA;
@@ -154,7 +156,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         facingMode,
         facecamPosition,
         onScreenEnded: () => {
-          if (state.sessionId) endBroadcast().catch(() => {});
+          if (screenEndShouldEndBroadcastRef.current) endBroadcast().catch(() => {});
           else {
             stopPreview();
             studioControllerRef.current = null;

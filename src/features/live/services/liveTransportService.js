@@ -1,6 +1,7 @@
-import { Room, RoomEvent } from 'livekit-client';
+import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../../../supabaseClient';
 import { rememberRemoteTrackMetadata, forgetRemoteTrackMetadata } from '../../../livekit/remoteTrackMetadata';
+import { mediaTrackSnapshot, publicationSnapshot, recordScreenShareDiagnostic } from '../../../livekit/screenShareDiagnostics';
 import { publishHostMediaV2 } from './livePublisherService';
 
 const TOKEN_FUNCTION = 'livekit-token';
@@ -72,6 +73,22 @@ function decorateRemoteTrack(track, publication) {
   return track;
 }
 
+function isScreenPublication(track, publication) {
+  const source = publication?.source || track?.source || track?.__droxionSource || '';
+  const sourceText = String(source || '').toLowerCase();
+  const name = String(publication?.trackName || publication?.name || track?.__droxionPublicationName || track?.name || '').toLowerCase();
+  return source === Track.Source.ScreenShare || sourceText.includes('screen') || name.startsWith('droxion_screen');
+}
+
+function recordViewerScreen(room, stage, track, publication, participant) {
+  if (roomRoles.get(room) !== 'viewer' || !isScreenPublication(track, publication)) return;
+  recordScreenShareDiagnostic(stage, {
+    participantIdentity: String(participant?.identity || ''),
+    track: mediaTrackSnapshot(track),
+    publication: publicationSnapshot(publication)
+  });
+}
+
 function replayRemoteTracks(room, callbacks = {}) {
   if (!room || !callbacks.onTrackSubscribed) return;
   const participants = room.remoteParticipants?.values ? Array.from(room.remoteParticipants.values()) : [];
@@ -87,10 +104,14 @@ function replayRemoteTracks(room, callbacks = {}) {
 
 function bindRoomEvents(room, callbacks = {}) {
   room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-    callbacks.onTrackSubscribed?.(decorateRemoteTrack(track, publication), publication, participant);
+    const decorated = decorateRemoteTrack(track, publication);
+    recordViewerScreen(room, 'viewer-subscribed', decorated, publication, participant);
+    callbacks.onTrackSubscribed?.(decorated, publication, participant);
   });
   room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-    callbacks.onTrackUnsubscribed?.(decorateRemoteTrack(track, publication), publication, participant);
+    const decorated = decorateRemoteTrack(track, publication);
+    recordViewerScreen(room, 'viewer-unsubscribed', decorated, publication, participant);
+    callbacks.onTrackUnsubscribed?.(decorated, publication, participant);
     forgetRemoteTrackMetadata(track);
   });
   room.on(RoomEvent.TrackPublished, publication => {
@@ -108,7 +129,10 @@ function bindRoomEvents(room, callbacks = {}) {
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 150);
     callbacks.onReconnected?.();
   });
-  room.on(RoomEvent.Disconnected, reason => callbacks.onDisconnected?.(reason));
+  room.on(RoomEvent.Disconnected, reason => {
+    if (roomRoles.get(room) === 'viewer') emitViewerRoom('droxion:viewer-room-closed', { room, reason, unexpected: true });
+    callbacks.onDisconnected?.(reason);
+  });
 }
 
 async function connectRoom(sessionId, role, callbacks) {

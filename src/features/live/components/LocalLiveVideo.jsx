@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { mediaTrackSnapshot, recordScreenShareDiagnostic, startVideoFrameDiagnostics } from '../../../livekit/screenShareDiagnostics';
 
 function attachVideo(video, stream) {
   if (!video) return;
@@ -91,6 +92,16 @@ export default function LocalLiveVideo({ stream }) {
     attachVideo(mainVideo, screenStream);
     attachVideo(facecamVideo, cameraStream);
 
+    recordScreenShareDiagnostic('host-capture-attached', {
+      track: mediaTrackSnapshot(screenTrack),
+      mode: String(studio.mode || ''),
+      orientation: String(studio.orientation || ''),
+      displaySurface: String(studio.displaySurface || '')
+    });
+    const stopFrameDiagnostics = screenTrack
+      ? startVideoFrameDiagnostics(mainVideo, { stage: 'host-capture-frames', track: screenTrack })
+      : () => {};
+
     let stopped = false;
     const refreshLayout = () => {
       if (stopped) return;
@@ -101,6 +112,7 @@ export default function LocalLiveVideo({ stream }) {
 
     return () => {
       stopped = true;
+      stopFrameDiagnostics();
       mainVideo.srcObject = null;
       if (facecamVideo) facecamVideo.srcObject = null;
     };

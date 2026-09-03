@@ -1,6 +1,7 @@
 import { Track } from 'livekit-client';
 import { attachRemoteTrack as attachLegacyRemoteTrack, detachRemoteTrack as detachLegacyRemoteTrack } from './livekitRoomLegacy';
 import { remoteTrackMetadata, forgetRemoteTrackMetadata } from './remoteTrackMetadata';
+import { mediaTrackSnapshot, recordScreenShareDiagnostic, startVideoFrameDiagnostics } from './screenShareDiagnostics';
 
 const routedElements = new WeakMap();
 const viewerStates = new WeakMap();
@@ -70,7 +71,14 @@ function parseFacecamMeta(track) {
 function stateFor(mainVideo) {
   let state = viewerStates.get(mainVideo);
   if (!state) {
-    state = { screenTrack: null, cameraTrack: null, facecamElement: null, meta: null, studio: false };
+    state = {
+      screenTrack: null,
+      cameraTrack: null,
+      facecamElement: null,
+      meta: null,
+      studio: false,
+      screenFrameCleanup: null
+    };
     viewerStates.set(mainVideo, state);
   }
   activeMainVideos.add(mainVideo);
@@ -100,6 +108,12 @@ function clearElement(element) {
   try { element.srcObject = null; } catch {}
 }
 
+function stopScreenFrameDiagnostics(state) {
+  if (!state?.screenFrameCleanup) return;
+  try { state.screenFrameCleanup(); } catch {}
+  state.screenFrameCleanup = null;
+}
+
 function detachKnownTrack(track) {
   if (!track) return;
   const routed = routedElements.get(track) || null;
@@ -112,6 +126,7 @@ function resetViewer(mainVideo) {
   if (!mainVideo) return;
   const state = viewerStates.get(mainVideo);
   if (state) {
+    stopScreenFrameDiagnostics(state);
     detachKnownTrack(state.screenTrack);
     detachKnownTrack(state.cameraTrack);
     clearElement(state.facecamElement);
@@ -208,8 +223,34 @@ function applyFacecamLayout(mainVideo, meta) {
   return video;
 }
 
+function startViewerScreenDiagnostics(track, mainVideo, state) {
+  stopScreenFrameDiagnostics(state);
+  recordScreenShareDiagnostic('viewer-screen-attached', {
+    track: mediaTrackSnapshot(track),
+    videoReadyState: Number(mainVideo?.readyState || 0),
+    videoWidth: Number(mainVideo?.videoWidth || 0),
+    videoHeight: Number(mainVideo?.videoHeight || 0)
+  });
+  state.screenFrameCleanup = startVideoFrameDiagnostics(mainVideo, {
+    stage: 'viewer-screen-frames',
+    track
+  });
+}
+
 function attachScreen(track, mainVideo, state) {
-  if (state.screenTrack && state.screenTrack !== track) detachKnownTrack(state.screenTrack);
+  const alreadyAttached = state.screenTrack === track && routedElements.get(track) === mainVideo;
+  if (alreadyAttached) {
+    applyScreenLayout(mainVideo, state.meta || parseScreenMeta(track));
+    mainVideo.muted = true;
+    Promise.resolve(mainVideo.play?.()).catch(() => {});
+    if (!state.screenFrameCleanup) startViewerScreenDiagnostics(track, mainVideo, state);
+    return;
+  }
+
+  if (state.screenTrack && state.screenTrack !== track) {
+    stopScreenFrameDiagnostics(state);
+    detachKnownTrack(state.screenTrack);
+  }
   state.studio = true;
   state.screenTrack = track;
   const screenMeta = parseScreenMeta(track);
@@ -227,6 +268,7 @@ function attachScreen(track, mainVideo, state) {
   attachLegacyRemoteTrack(track, mainVideo);
   mainVideo.muted = true;
   Promise.resolve(mainVideo.play?.()).catch(() => {});
+  startViewerScreenDiagnostics(track, mainVideo, state);
 
   if (state.cameraTrack && isFacecamTrack(state.cameraTrack)) {
     const facecam = applyFacecamLayout(mainVideo, state.meta);
@@ -304,11 +346,17 @@ export function detachStudioAwareRemoteTrack(track, element) {
 
   const mainVideo = isVideoElement(element)
     ? element
-    : (routed?.classList?.contains('droxionViewerFacecam') ? routed.parentElement?.querySelector('.productionViewerVideo') : null);
+    : (routed?.classList?.contains('droxionViewerFacecam')
+      ? routed.parentElement?.querySelector('.productionViewerVideo')
+      : (isVideoElement(routed) ? routed : null));
 
   if (mainVideo) {
     const state = viewerStates.get(mainVideo);
-    if (state?.screenTrack === track) state.screenTrack = null;
+    if (state?.screenTrack === track) {
+      recordScreenShareDiagnostic('viewer-screen-detached', { track: mediaTrackSnapshot(track) });
+      stopScreenFrameDiagnostics(state);
+      state.screenTrack = null;
+    }
     if (state?.cameraTrack === track) state.cameraTrack = null;
     if (!state?.cameraTrack && state?.facecamElement) {
       clearElement(state.facecamElement);
