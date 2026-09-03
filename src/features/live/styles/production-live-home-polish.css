@@ -30,10 +30,11 @@
   min-height:0!important;
 }
 
-/* Studio facecam is a separate remote camera track and must show the same
- * left/right orientation as the source. Never inherit the old camera-only
- * selfie mirror treatment. */
+/* The desktop webcam used by Studio is arriving reversed relative to the
+ * creator's real left/right orientation. Correct it once on the dedicated
+ * Studio facecam element. This never touches camera-only LIVE. */
 .productionViewerPage .droxionViewerFacecam{
-  transform:none!important;
+  transform:scaleX(-1)!important;
+  -webkit-transform:scaleX(-1)!important;
   transform-origin:center center!important;
 }
