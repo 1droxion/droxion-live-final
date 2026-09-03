@@ -29,3 +29,11 @@
   height:100%!important;
   min-height:0!important;
 }
+
+/* Studio facecam is a separate remote camera track and must show the same
+ * left/right orientation as the source. Never inherit the old camera-only
+ * selfie mirror treatment. */
+.productionViewerPage .droxionViewerFacecam{
+  transform:none!important;
+  transform-origin:center center!important;
+}
