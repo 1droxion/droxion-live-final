@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { getLiveUserColor } from '../utils/livePresentation';
 import LiveGiftCinema from './LiveGiftCinema';
@@ -51,11 +52,22 @@ function giftCursor(value) {
   return new Date(Math.max(0, parsed - 1000)).toISOString();
 }
 
+function installMonitorStyles(targetWindow) {
+  if (!targetWindow?.document || targetWindow.document.getElementById('droxion-creator-monitor-style')) return;
+  const style = targetWindow.document.createElement('style');
+  style.id = 'droxion-creator-monitor-style';
+  style.textContent = `
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#09090d;color:#fff;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}.dxCreatorMonitor{height:100vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:radial-gradient(circle at 80% 0%,rgba(124,58,237,.19),transparent 42%),#09090d}.dxCreatorMonitorHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;border-bottom:1px solid rgba(255,255,255,.09);background:rgba(12,12,18,.94)}.dxCreatorMonitorBrand{display:flex;align-items:center;gap:8px;min-width:0}.dxCreatorMonitorLive{padding:5px 7px;border-radius:7px;background:#f52e54;font-size:9px;font-weight:950;letter-spacing:.08em}.dxCreatorMonitorBrand strong{font-size:13px;letter-spacing:.035em}.dxCreatorMonitorClose{width:30px;height:30px;border:1px solid rgba(255,255,255,.12);border-radius:50%;background:#15151d;color:#fff;font-size:17px;cursor:pointer}.dxCreatorMonitorChat{overflow:auto;padding:10px;display:flex;flex-direction:column;gap:7px}.dxCreatorMonitorEmpty{margin:auto;color:#918c9e;font-size:12px;text-align:center}.dxCreatorMonitorLine{padding:8px 9px;border:1px solid rgba(255,255,255,.06);border-radius:10px;background:rgba(255,255,255,.045);font-size:12px;line-height:1.35}.dxCreatorMonitorLine strong{margin-right:6px}.dxCreatorMonitorGift{margin:0 10px 10px;padding:10px;border:1px solid rgba(192,132,252,.22);border-radius:12px;background:linear-gradient(135deg,rgba(91,33,182,.34),rgba(190,24,93,.26));display:flex;align-items:center;gap:9px;min-height:58px}.dxCreatorMonitorGift>b{font-size:26px}.dxCreatorMonitorGift div{display:flex;flex-direction:column;min-width:0}.dxCreatorMonitorGift strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dxCreatorMonitorGift span,.dxCreatorMonitorGift small{font-size:10px;color:#e7dff0}.dxCreatorMonitorGift .emptyGift{color:#aaa3b8;font-size:11px}`;
+  targetWindow.document.head.appendChild(style);
+}
+
 export default function HostLiveAudienceOverlay({ sessionId }) {
   const [messages, setMessages] = useState([]);
   const [giftEvents, setGiftEvents] = useState([]);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [hud, setHud] = useState(readHudPositions);
+  const [monitorWindow, setMonitorWindow] = useState(null);
+  const [monitorError, setMonitorError] = useState('');
   const lastChatIdRef = useRef(0);
   const lastGiftAtRef = useRef('');
   const dragRef = useRef(null);
@@ -103,7 +115,6 @@ export default function HostLiveAudienceOverlay({ sessionId }) {
     try {
       unsubscribe = subscribeLiveEvents(sessionId, event => {
         if (stopped || !event) return;
-
         if (event.type === 'chat' && event.row) mergeChats([event.row]);
         if (event.type === 'gift' && event.row) mergeGifts([event.row]);
       });
@@ -132,6 +143,48 @@ export default function HostLiveAudienceOverlay({ sessionId }) {
       try { unsubscribe?.(); } catch {}
     };
   }, [sessionId]);
+
+  useEffect(() => () => {
+    try { if (monitorWindow && !monitorWindow.closed) monitorWindow.close(); } catch {}
+  }, [monitorWindow]);
+
+  async function openCreatorMonitor(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    setMonitorError('');
+    if (monitorWindow && !monitorWindow.closed) {
+      try { monitorWindow.focus(); } catch {}
+      return;
+    }
+
+    let nextWindow = null;
+    try {
+      if (window.documentPictureInPicture?.requestWindow) {
+        nextWindow = await window.documentPictureInPicture.requestWindow({ width: 370, height: 520 });
+      } else {
+        nextWindow = window.open('', 'droxionCreatorMonitor', 'popup=yes,width=370,height=520,resizable=yes,scrollbars=no');
+      }
+    } catch (error) {
+      setMonitorError(error?.message || 'Creator Monitor could not open.');
+      return;
+    }
+
+    if (!nextWindow) {
+      setMonitorError('Allow pop-ups for Droxion to open Creator Monitor.');
+      return;
+    }
+
+    try {
+      nextWindow.document.title = 'Droxion Creator Monitor';
+      nextWindow.document.body.innerHTML = '';
+      installMonitorStyles(nextWindow);
+    } catch {}
+
+    const onClosed = () => setMonitorWindow(current => current === nextWindow ? null : current);
+    try { nextWindow.addEventListener('pagehide', onClosed, { once: true }); } catch {}
+    try { nextWindow.addEventListener('beforeunload', onClosed, { once: true }); } catch {}
+    setMonitorWindow(nextWindow);
+  }
 
   function beginHudDrag(kind, event) {
     const box = kind === 'chat' ? chatRef.current : giftRef.current;
@@ -175,13 +228,39 @@ export default function HostLiveAudienceOverlay({ sessionId }) {
   }
 
   const recentMessages = messages.slice(-6);
+  const monitorMessages = messages.slice(-12);
   const latestGift = giftEvents[giftEvents.length - 1] || null;
   const giftSender = latestGift?.display_name || latestGift?.sender_name || 'Viewer';
   const giftSenderId = latestGift?.sender_id || latestGift?.user_id || '';
   const giftColor = getLiveUserColor(giftSenderId, giftSender);
 
+  const creatorMonitor = monitorWindow && !monitorWindow.closed ? createPortal(
+    <main className="dxCreatorMonitor">
+      <header className="dxCreatorMonitorHeader">
+        <div className="dxCreatorMonitorBrand"><span className="dxCreatorMonitorLive">LIVE</span><strong>DROXION CREATOR MONITOR</strong></div>
+        <button type="button" className="dxCreatorMonitorClose" onClick={() => { try { monitorWindow.close(); } catch {} }} aria-label="Close Creator Monitor">×</button>
+      </header>
+      <section className="dxCreatorMonitorChat" aria-live="polite">
+        {monitorMessages.length === 0 ? <div className="dxCreatorMonitorEmpty">Viewer messages will appear here while you stream.</div> : monitorMessages.map(message => {
+          const name = message.display_name || message.sender_name || 'Viewer';
+          const userId = message.sender_id || message.user_id || '';
+          return <div className="dxCreatorMonitorLine" key={message.id || `${message.created_at}:${message.body}`}><strong style={{ color: getLiveUserColor(userId, name) }}>{name}</strong><span>{message.body}</span></div>;
+        })}
+      </section>
+      <section className="dxCreatorMonitorGift" aria-live="polite">
+        {latestGift ? <><b>{latestGift.emoji || '🎁'}</b><div><strong style={{ color: giftColor }}>{giftSender}</strong><span>sent {latestGift.gift_name || 'a gift'}</span>{Number(latestGift.cost_coins || 0) > 0 && <small>🪙 {Number(latestGift.cost_coins).toLocaleString()}</small>}</div></> : <span className="emptyGift">Latest gift will appear here.</span>}
+      </section>
+    </main>,
+    monitorWindow.document.body
+  ) : null;
+
   return (
     <>
+      <button type="button" className={`hostLiveMonitorTrigger ${monitorWindow && !monitorWindow.closed ? 'isOpen' : ''}`} onClick={openCreatorMonitor}>
+        <span>{monitorWindow && !monitorWindow.closed ? 'Creator Monitor open' : 'Keep chat over game'}</span><small>{monitorWindow && !monitorWindow.closed ? 'Click to focus' : 'Open mini monitor'}</small>
+      </button>
+      {monitorError && <div className="hostLiveMonitorError">{monitorError}</div>}
+
       <div
         ref={chatRef}
         className="hostLiveAudienceChat hostLiveHudPositioned"
@@ -259,6 +338,7 @@ export default function HostLiveAudienceOverlay({ sessionId }) {
       </div>
 
       <LiveGiftCinema giftEvents={giftEvents} />
+      {creatorMonitor}
 
       {selectedProfile?.user_id && (
         <LiveMiniProfileSheet
