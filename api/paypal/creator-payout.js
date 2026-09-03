@@ -47,6 +47,7 @@ export default async function handler(req, res) {
   }
 
   let requestId = null;
+  let stage = 'begin';
 
   try {
     const authorization = req.headers.authorization || '';
@@ -67,25 +68,31 @@ export default async function handler(req, res) {
     const amountUsd = (Number(payoutRequest.amount_cents || 0) / 100).toFixed(2);
     if (!recipientId) throw new Error('Complete secure PayPal payout setup first.');
 
+    stage = 'create_batch';
     const batchPayload = await trolleyRequest('/v1/batches', {
       method: 'POST',
       body: {
         currency: 'USD',
-        description: `Droxion PayPal creator payout ${requestId}`,
-        tags: ['droxion', 'paypal', requestId]
+        description: `Droxion creator payout ${requestId}`,
+        tags: ['droxion', 'paypal']
       }
     });
     const batchId = batchPayload?.batch?.id;
     if (!batchId) throw new Error('Trolley did not create a payout batch.');
 
+    stage = 'create_payment';
     const paymentPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(batchId)}/payments`, {
       method: 'POST',
       body: {
         recipient: { id: recipientId },
         amount: amountUsd,
         currency: 'USD',
-        memo: 'Droxion creator earnings',
-        tags: ['droxion', 'paypal', requestId]
+        memo: 'DROXION CREATOR PAYOUT',
+        externalId: requestId,
+        taxReportable: true,
+        category: 'services',
+        coverFees: false,
+        tags: ['droxion', 'paypal']
       }
     });
     const paymentId = paymentPayload?.payment?.id;
@@ -97,6 +104,7 @@ export default async function handler(req, res) {
       p_provider_payment_id: paymentId
     });
 
+    stage = 'start_processing';
     const processPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(batchId)}/start-processing`, { method: 'POST' });
     await callRpc(null, 'droxion_mark_payout_processing', {
       p_request_id: requestId,
@@ -114,9 +122,12 @@ export default async function handler(req, res) {
       method: 'paypal'
     });
   } catch (error) {
-    await failRequest(requestId, error?.message);
+    const rawMessage = error?.message || 'Trolley PayPal payout failed.';
+    const reason = `${stage}: ${rawMessage}`;
+    console.error('Trolley PayPal payout failed', { stage, requestId, message: rawMessage });
+    await failRequest(requestId, reason);
     res.status(error?.status && Number.isInteger(error.status) ? error.status : 400).json({
-      error: normalizeError(error)
+      error: reason
     });
   }
 }
