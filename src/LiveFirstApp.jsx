@@ -21,6 +21,7 @@ import './live-first-app.css';
 import './product-shell.css';
 
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
+const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
@@ -85,7 +86,7 @@ export default function LiveFirstApp() {
   }, [immersiveLive]);
 
   useEffect(() => {
-    const openLiveHome = event => {
+    const openLiveHome = () => {
       setHostStudioOpen(false);
       setImmersiveLive(false);
       setSearchOpen(false);
@@ -97,16 +98,32 @@ export default function LiveFirstApp() {
       try { window.localStorage.removeItem(PENDING_LIVE_PUSH_KEY); } catch {}
     };
 
-    window.addEventListener('droxion:live-push-open', openLiveHome);
+    const openChatFromPush = () => {
+      setHostStudioOpen(false);
+      setImmersiveLive(false);
+      setSearchOpen(false);
+      setNotificationsOpen(false);
+      setTab('live');
+      // Do not clear the pending chat payload here. DroxionChat consumes it and
+      // opens the exact sender thread after its user/session state is ready.
+      setChatOpen(true);
+    };
 
-    // Cold-start fallback: the OneSignal handler stores the payload before the
-    // main app finishes mounting. Consuming it here guarantees a fresh LIVE Home.
+    window.addEventListener('droxion:live-push-open', openLiveHome);
+    window.addEventListener('droxion:chat-push-open', openChatFromPush);
+
+    // Cold-start fallback: OneSignal stores the payload before React mounts.
     try {
-      const pending = window.localStorage.getItem(PENDING_LIVE_PUSH_KEY);
-      if (pending) window.setTimeout(openLiveHome, 0);
+      const pendingLive = window.localStorage.getItem(PENDING_LIVE_PUSH_KEY);
+      const pendingChat = window.localStorage.getItem(PENDING_CHAT_PUSH_KEY);
+      if (pendingChat) window.setTimeout(openChatFromPush, 0);
+      else if (pendingLive) window.setTimeout(openLiveHome, 0);
     } catch {}
 
-    return () => window.removeEventListener('droxion:live-push-open', openLiveHome);
+    return () => {
+      window.removeEventListener('droxion:live-push-open', openLiveHome);
+      window.removeEventListener('droxion:chat-push-open', openChatFromPush);
+    };
   }, []);
 
   function openGoLiveInsideHome() {
