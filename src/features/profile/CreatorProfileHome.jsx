@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronRight, Coins, Edit3, Landmark, Settings, UserRound, Video } from 'lucide-react';
+import { BadgeCheck, BarChart3, ChevronRight, Coins, Edit3, Landmark, Settings, Share2, Sparkles } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import LiveProfile from '../../LiveProfile';
 import ProfileClipsGrid from './ProfileClipsGrid';
@@ -37,14 +37,6 @@ function buildSevenDaySeries(rows) {
   });
 }
 
-function storedProfileMode() {
-  try {
-    return window.localStorage.getItem('droxion-profile-mode') === 'user' ? 'user' : 'creator';
-  } catch {
-    return 'creator';
-  }
-}
-
 function EarningsSparkline({ series }) {
   const max = Math.max(1, ...series.map(item => Number(item.amount || 0)));
   const points = series.map((item, index) => {
@@ -63,18 +55,18 @@ function EarningsSparkline({ series }) {
   );
 }
 
-function ProfileActions({ onEdit, onSettings }) {
+function ProfileActions({ onEdit, onSettings, onShare }) {
   return (
     <div className="creatorUserActions">
-      <button type="button" onClick={onEdit}><Edit3 size={19} /><span><strong>Edit Profile</strong><small>Name, bio, country, language and interests</small></span><ChevronRight size={18} /></button>
-      <button type="button" onClick={onSettings}><Settings size={19} /><span><strong>Settings</strong><small>Privacy, support and account controls</small></span><ChevronRight size={18} /></button>
+      <button type="button" onClick={onEdit}><Edit3 size={18} /><span><strong>Edit profile</strong><small>Identity, bio and interests</small></span><ChevronRight size={17} /></button>
+      <button type="button" onClick={onSettings}><Settings size={18} /><span><strong>Settings</strong><small>Privacy, safety and account</small></span><ChevronRight size={17} /></button>
+      <button type="button" onClick={onShare}><Share2 size={18} /><span><strong>Share profile</strong><small>Invite people to follow you</small></span><ChevronRight size={17} /></button>
     </div>
   );
 }
 
 export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWallet }) {
   const [panel, setPanel] = useState('');
-  const [profileMode, setProfileMode] = useState(storedProfileMode);
   const [profile, setProfile] = useState(null);
   const [followers, setFollowers] = useState(0);
   const [following, setFollowing] = useState(0);
@@ -122,9 +114,15 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
   const todayEarnings = earningsRows.reduce((sum, row) => new Date(row.created_at) >= todayStart ? sum + Number(row.amount_cents || 0) : sum, 0);
   const sevenDayEarnings = sevenDays.reduce((sum, item) => sum + item.amount, 0);
 
-  function chooseMode(nextMode) {
-    setProfileMode(nextMode);
-    try { window.localStorage.setItem('droxion-profile-mode', nextMode); } catch {}
+  async function shareProfile() {
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const title = profile?.display_name || profile?.username || 'Droxion profile';
+    try {
+      if (navigator.share) await navigator.share({ title, text: `Follow ${title} on Droxion`, url: shareUrl });
+      else if (navigator.clipboard && shareUrl) await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // User cancellation is intentionally silent.
+    }
   }
 
   if (panel === 'settings') {
@@ -141,7 +139,7 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
   }
 
   if (panel === 'withdraw') {
-    return <LiveProfile key="creator-dashboard-withdraw" coins={coins} onOpenWallet={onOpenWallet} initialView="withdraw" onExit={() => setPanel('')} />;
+    return <LiveProfile key="creator-dashboard-withdraw" coins={coins} onOpenWallet={onOpenWallet} initialView="withdraw" onExit={() => setPanel('studio')} />;
   }
 
   if (panel === 'followers' || panel === 'following') {
@@ -150,54 +148,64 @@ export default function CreatorProfileHome({ currentUserId, coins = 0, onOpenWal
 
   if (loading) return <section className="creatorProfileHome creatorProfileLoading">Loading profile…</section>;
 
-  const creatorMode = profileMode === 'creator';
+  const displayName = profile?.display_name || profile?.username || 'Droxion User';
 
   return (
-    <section className={`creatorProfileHome ${creatorMode ? 'isCreatorMode' : 'isUserMode'}`}>
-      <header className="creatorProfileHero">
-        {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="creatorProfileAvatarFallback">{(profile?.display_name || profile?.username || 'D')[0]?.toUpperCase()}</div>}
-        <h1>{profile?.display_name || profile?.username || 'Droxion User'}</h1>
-        {profile?.username && <span>@{profile.username}</span>}
-        {profile?.bio && <p>{profile.bio}</p>}
-
-        <div className="creatorProfileModeSwitch" role="group" aria-label="Profile mode">
-          <button type="button" className={creatorMode ? '' : 'active'} onClick={() => chooseMode('user')}><UserRound size={16} /> User</button>
-          <button type="button" className={creatorMode ? 'active' : ''} onClick={() => chooseMode('creator')}><Video size={16} /> Creator</button>
+    <section className="creatorProfileHome profileV3">
+      <header className="creatorProfileHeroV3">
+        <div className="creatorProfileCover" aria-hidden="true"><div className="creatorProfileCoverGlow" /></div>
+        <div className="creatorProfileIdentity">
+          <div className="creatorProfileAvatarWrap">
+            {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="creatorProfileAvatarFallback">{displayName[0]?.toUpperCase()}</div>}
+            <span className="creatorProfileLiveRing" aria-hidden="true" />
+          </div>
+          <div className="creatorProfileNameBlock">
+            <h1>{displayName}<BadgeCheck size={20} className="creatorVerified" aria-label="Droxion profile" /></h1>
+            {profile?.username && <span>@{profile.username}</span>}
+            {(profile?.country || profile?.language) && <small>{[profile?.country, profile?.language].filter(Boolean).join(' · ')}</small>}
+          </div>
+          <button type="button" className="creatorProfileShareIcon" onClick={shareProfile} aria-label="Share profile"><Share2 size={18} /></button>
         </div>
 
-        <div className={`creatorProfileSocialStats ${creatorMode ? '' : 'userStats'}`}>
-          <button type="button" onClick={() => setPanel('followers')} aria-label="View followers"><strong>{compact(followers)}</strong><span>Followers</span></button>
-          <button type="button" onClick={() => setPanel('following')} aria-label="View following"><strong>{compact(following)}</strong><span>Following</span></button>
-          {creatorMode && <div><strong>{compact(clipStats.clips)}</strong><span>Reels</span></div>}
+        {profile?.bio && <p className="creatorProfileBio">{profile.bio}</p>}
+
+        <div className="creatorProfileSocialStats creatorProfileSocialStatsV3">
+          <button type="button" onClick={() => setPanel('followers')}><strong>{compact(followers)}</strong><span>Followers</span></button>
+          <button type="button" onClick={() => setPanel('following')}><strong>{compact(following)}</strong><span>Following</span></button>
+          <div><strong>{compact(clipStats.clips)}</strong><span>Reels</span></div>
+          <div><strong>{compact(clipStats.likes)}</strong><span>Likes</span></div>
+        </div>
+
+        <div className="creatorProfilePrimaryActions">
+          <button type="button" className="creatorProfileEditPrimary" onClick={() => setPanel('edit')}><Edit3 size={17} /> Edit profile</button>
+          <button type="button" className="creatorStudioPrimary" onClick={() => setPanel(panel === 'studio' ? '' : 'studio')}><Sparkles size={17} /> Creator Studio</button>
         </div>
       </header>
 
-      {!creatorMode ? (
-        <ProfileActions onEdit={() => setPanel('edit')} onSettings={() => setPanel('settings')} />
+      {panel === 'studio' ? (
+        <section className="creatorStudioV3" aria-label="Private creator studio">
+          <div className="creatorStudioTitle"><div><span>PRIVATE</span><h2>Creator Studio</h2><p>Your money, performance and creator controls are visible only to you.</p></div><BarChart3 size={24} /></div>
+          <button className="creatorCenterCard" type="button" aria-label="Creator analytics">
+            <div className="creatorCenterHead"><span>Performance</span><ChevronRight size={19} /></div>
+            <div className="creatorCenterNumbers">
+              <div><strong>{money(todayEarnings)}</strong><span>Today</span></div>
+              <div><strong>{money(sevenDayEarnings)}</strong><span>7 days</span></div>
+              <div><strong>{compact(giftCount)}</strong><span>Gifts</span></div>
+              <div><strong>{compact(clipStats.views)}</strong><span>Reel views</span></div>
+            </div>
+            <EarningsSparkline series={sevenDays} />
+          </button>
+          <div className="creatorStudioMoneyGrid">
+            <button className="creatorWalletMini" type="button" onClick={onOpenWallet}><Coins size={18} /><span><strong>{coins} coins</strong><small>Wallet</small></span><ChevronRight size={18} /></button>
+            <button className="creatorWithdrawMini" type="button" onClick={() => setPanel('withdraw')}><Landmark size={19} /><span><strong>Withdraw earnings</strong><small>PayPal or secure bank payout</small></span><ChevronRight size={18} /></button>
+          </div>
+        </section>
       ) : (
         <>
-          <section className="creatorDashboardSection" aria-label="Creator dashboard">
-            <div className="creatorDashboardLabel"><BarChart3 size={18} /><strong>Creator Dashboard</strong></div>
-            <button className="creatorCenterCard" type="button" aria-label="Creator analytics">
-              <div className="creatorCenterHead"><span>Performance</span><ChevronRight size={19} /></div>
-              <div className="creatorCenterNumbers">
-                <div><strong>{money(todayEarnings)}</strong><span>Today</span></div>
-                <div><strong>{money(sevenDayEarnings)}</strong><span>7 days</span></div>
-                <div><strong>{compact(giftCount)}</strong><span>Gifts</span></div>
-                <div><strong>{compact(clipStats.views)}</strong><span>Reel views</span></div>
-              </div>
-              <EarningsSparkline series={sevenDays} />
-            </button>
-          </section>
-
-          <button className="creatorWalletMini" type="button" onClick={onOpenWallet}><Coins size={18} /><span><strong>{coins} coins</strong><small>Wallet</small></span><ChevronRight size={18} /></button>
-
-          <button className="creatorWithdrawMini" type="button" onClick={() => setPanel('withdraw')}><Landmark size={19} /><span><strong>Withdraw Earnings</strong><small>PayPal or secure bank payout</small></span><ChevronRight size={18} /></button>
-
-          <ProfileActions onEdit={() => setPanel('edit')} onSettings={() => setPanel('settings')} />
-
-          <div className="creatorProfileClipsTitle"><strong>LIVE Reels</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
+          <div className="creatorProfileContentTabs" role="tablist" aria-label="Profile content"><button type="button" className="active">Reels</button><button type="button">Live replays</button><button type="button">About</button></div>
+          <div className="creatorProfileClipsTitle"><strong>Latest</strong><span>{compact(clipStats.views)} views · {compact(clipStats.likes)} likes</span></div>
           <ProfileClipsGrid currentUserId={currentUserId} />
+          <ProfileActions onEdit={() => setPanel('edit')} onSettings={() => setPanel('settings')} onShare={shareProfile} />
         </>
       )}
     </section>
