@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Apple, Chrome } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { signInWithSocialProvider } from "./features/auth/services/socialAuthService";
 
 const TERMS_VERSION = "2026-08-29-guideline-1-2";
 
@@ -16,20 +18,22 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState("");
   const [error, setError] = useState("");
 
   const resetComplete = new URLSearchParams(location.search).get("reset") === "success";
   const legalReturnState = { from: "/login" };
 
+  const requireTerms = () => {
+    if (acceptedTerms) return true;
+    setError("You must agree to Droxion's Terms of Use and Community Guidelines before signing in.");
+    return false;
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
-
-    if (!acceptedTerms) {
-      setError("You must agree to Droxion's Terms of Use and Community Guidelines before signing in.");
-      return;
-    }
-
+    if (!requireTerms()) return;
     setLoading(true);
 
     try {
@@ -53,6 +57,20 @@ export default function Login() {
     }
   };
 
+  const handleSocialLogin = async (provider) => {
+    setError("");
+    if (!requireTerms()) return;
+    setSocialLoading(provider);
+    try {
+      await signInWithSocialProvider(provider);
+    } catch (err) {
+      setError(err?.message || `Unable to sign in with ${provider}.`);
+      setSocialLoading("");
+    }
+  };
+
+  const busy = loading || Boolean(socialLoading);
+
   return (
     <div className="min-h-screen bg-[#07070b] text-white flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md bg-[#111118] border border-white/10 rounded-3xl p-7 shadow-2xl">
@@ -69,8 +87,26 @@ export default function Login() {
         )}
 
         {error && (
-          <div className="mb-5 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl p-3 text-sm">{error}</div>
+          <div role="alert" className="mb-5 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl p-3 text-sm">{error}</div>
         )}
+
+        <label className="flex items-start gap-3 mb-5 cursor-pointer rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+          <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} className="mt-1" />
+          <span className="text-xs leading-5 text-gray-300">
+            I agree to Droxion's <Link to="/terms" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
+          </span>
+        </label>
+
+        <div className="grid gap-3">
+          <button type="button" disabled={busy || !acceptedTerms} onClick={() => handleSocialLogin('apple')} className="w-full min-h-12 rounded-xl bg-white text-black font-extrabold flex items-center justify-center gap-3 disabled:opacity-45 hover:bg-gray-100">
+            <Apple size={20} />{socialLoading === 'apple' ? 'Opening Apple…' : 'Continue with Apple'}
+          </button>
+          <button type="button" disabled={busy || !acceptedTerms} onClick={() => handleSocialLogin('google')} className="w-full min-h-12 rounded-xl border border-white/15 bg-[#191922] text-white font-extrabold flex items-center justify-center gap-3 disabled:opacity-45 hover:bg-white/[0.07]">
+            <Chrome size={19} />{socialLoading === 'google' ? 'Opening Google…' : 'Continue with Google'}
+          </button>
+        </div>
+
+        <div className="my-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-gray-600"><span className="h-px flex-1 bg-white/10" /><span>or email</span><span className="h-px flex-1 bg-white/10" /></div>
 
         <form onSubmit={handleLogin}>
           <label className="block text-sm mb-2">Email</label>
@@ -82,14 +118,7 @@ export default function Login() {
           </div>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required placeholder="Your password" className="w-full p-3 mb-5 bg-[#191922] border border-white/10 rounded-xl outline-none focus:border-purple-500" />
 
-          <label className="flex items-start gap-3 mb-6 cursor-pointer rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-            <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} className="mt-1" required />
-            <span className="text-xs leading-5 text-gray-300">
-              I agree to Droxion's <Link to="/terms" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
-            </span>
-          </label>
-
-          <button type="submit" disabled={loading || !acceptedTerms} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 py-3 rounded-xl font-bold">
+          <button type="submit" disabled={busy || !acceptedTerms} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 py-3 rounded-xl font-bold">
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
