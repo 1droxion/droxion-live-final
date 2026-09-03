@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { subscribeLiveEvents, supabase } from '../../../supabaseClient';
 import { createLiveHighlightRecorder } from '../../../livekit/liveHighlightRecorder';
+import { createExplicitLiveContentGuard } from '../services/liveExplicitContentGuard';
 
 const NOTIFICATION_ENDPOINT = 'https://www.droxion.com/api/notifications/live-start';
 
@@ -31,19 +32,22 @@ async function sendLiveStartedPush(sessionId) {
 /**
  * Release sidecars for a healthy LIVE session.
  *
- * This hook intentionally does not own or mutate LiveKit, the media stream,
- * session lifecycle, heartbeat, camera/mic state, or routing. If either
- * notification or clipping fails, the LIVE continues normally.
+ * These sidecars intentionally do not own or republish LiveKit tracks. Push,
+ * highlight scoring and explicit-content checks all observe the already-working
+ * stream. The core LIVE transport remains independent from them.
  */
 export function useLiveReleaseSidecars({
   enabled,
   creatorId,
   sessionId,
   stream,
-  title = 'Live on Droxion'
+  title = 'Live on Droxion',
+  onModerationBlock
 }) {
   const activeSessionRef = useRef('');
   const notifiedSessionsRef = useRef(new Set());
+  const moderationCallbackRef = useRef(onModerationBlock);
+  moderationCallbackRef.current = onModerationBlock;
 
   useEffect(() => {
     if (!enabled || !creatorId || !sessionId || !stream?.active) return undefined;
@@ -53,6 +57,7 @@ export function useLiveReleaseSidecars({
     let stopped = false;
     let unsubscribe = null;
     let recorder = null;
+    let explicitGuard = null;
 
     // Push is fire-and-forget and uses a server-side idempotency key equal to
     // the LIVE session ID, so native + web callers cannot create duplicates.
@@ -63,8 +68,9 @@ export function useLiveReleaseSidecars({
       }, 250);
     }
 
-    // MediaRecorder reads the existing camera/mic MediaStream as a sidecar.
-    // It never replaces or republishes the LiveKit tracks.
+    // MediaRecorder reads the existing media stream as a sidecar. It never
+    // replaces or republishes the LiveKit tracks. Server policy guarantees that
+    // only the single highest-scoring automatic short can be published.
     try {
       recorder = createLiveHighlightRecorder({
         creatorId,
@@ -76,8 +82,21 @@ export function useLiveReleaseSidecars({
       console.warn('Droxion auto-clip sidecar could not start', error);
     }
 
-    // Audience activity helps choose the best 1-2 thirty-second segments.
-    // This subscription is scoring-only; chat/gifts keep their own UI path.
+    // Creator-only, on-device explicit-content guard. It deliberately ignores
+    // the NSFW model's "Sexy" label and requires repeated very-high Porn scores.
+    try {
+      explicitGuard = createExplicitLiveContentGuard({
+        sessionId,
+        stream,
+        onBlocked: detail => moderationCallbackRef.current?.(detail)
+      });
+    } catch (error) {
+      console.warn('Droxion explicit-content guard could not start', error);
+    }
+
+    // Audience activity selects the best single 30-second segment. Gifts are a
+    // much stronger signal than ordinary chat, with deterministic tie-breaking
+    // by the earliest source position.
     if (recorder) {
       try {
         unsubscribe = subscribeLiveEvents(sessionId, event => {
@@ -91,6 +110,7 @@ export function useLiveReleaseSidecars({
     return () => {
       stopped = true;
       try { unsubscribe?.(); } catch {}
+      try { explicitGuard?.stop?.(); } catch {}
       if (activeSessionRef.current === sessionId) activeSessionRef.current = '';
       try {
         Promise.resolve(recorder?.stopAndPublish?.()).catch(error => {
