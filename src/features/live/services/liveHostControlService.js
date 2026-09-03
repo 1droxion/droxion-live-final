@@ -51,3 +51,39 @@ export async function setHostMicrophoneMuted(room, muted) {
 export async function setHostCameraMuted(room, muted) {
   return setPublicationMuted(room, Track.Source.Camera, Boolean(muted));
 }
+
+export async function switchHostCameraFacing(room, stream, facingMode, orientation = 'vertical') {
+  const publication = getPublication(room, Track.Source.Camera);
+  const localTrack = publication?.track;
+  const previousMediaTrack = mediaTrackOf(localTrack);
+
+  if (!localTrack || typeof localTrack.restartTrack !== 'function') {
+    throw new Error('Camera switching is unavailable on this device.');
+  }
+
+  const nextFacing = facingMode === 'environment' ? 'environment' : 'user';
+  const portrait = orientation !== 'horizontal';
+
+  await localTrack.restartTrack({
+    facingMode: nextFacing,
+    resolution: {
+      width: portrait ? 720 : 1280,
+      height: portrait ? 1280 : 720,
+      frameRate: 30
+    }
+  });
+
+  const nextMediaTrack = mediaTrackOf(localTrack);
+  if (!nextMediaTrack || nextMediaTrack.readyState !== 'live') {
+    throw new Error('Droxion could not switch the camera.');
+  }
+
+  // Keep the local preview on the same MediaStream object while LiveKit keeps
+  // publishing the restarted LocalVideoTrack to current viewers.
+  if (stream && previousMediaTrack !== nextMediaTrack) {
+    try { if (previousMediaTrack && stream.getTracks().includes(previousMediaTrack)) stream.removeTrack(previousMediaTrack); } catch {}
+    try { if (!stream.getTracks().includes(nextMediaTrack)) stream.addTrack(nextMediaTrack); } catch {}
+  }
+
+  return nextFacing;
+}
