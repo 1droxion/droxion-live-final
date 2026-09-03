@@ -3,8 +3,42 @@
   transform-origin:center center;
 }
 
+/*
+ * Camera-only LIVE intentionally keeps the long-standing mirrored viewer
+ * presentation above. Studio ScreenShare is different: the pixels are already
+ * in their authored orientation and must never be mirrored, cropped or scaled
+ * beyond the viewport. viewerStudioTrackRouter adds data-droxion-orientation
+ * only while the main viewer element is routed to a Studio screen track.
+ */
+.productionViewerVideo[data-droxion-orientation]{
+  left:0!important;
+  right:0!important;
+  top:0!important;
+  bottom:auto!important;
+  width:100%!important;
+  max-width:none!important;
+  transform:none!important;
+  transform-origin:center center!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  background:#000!important;
+}
+
+/* Screen-only must use the whole viewer canvas. Vertical split sizing is kept
+ * only when a real facecam element exists. */
+.productionViewerPage:not(:has(.droxionViewerFacecam)) .productionViewerVideo[data-droxion-orientation]{
+  height:100%!important;
+}
+
 @media(min-width:900px){
   .productionViewerVideo{
     transform:translateX(-50%) scaleX(-1)!important;
+  }
+
+  .productionViewerVideo[data-droxion-orientation]{
+    left:0!important;
+    right:0!important;
+    width:100%!important;
+    transform:none!important;
   }
 }
