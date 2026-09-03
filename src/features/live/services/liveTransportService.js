@@ -64,13 +64,7 @@ function publicationsOf(participant) {
 
 function decorateRemoteTrack(track, publication) {
   if (!track || !publication) return track;
-
-  // LiveKit RemoteTrack objects may be non-extensible in some builds. Keep the
-  // authoritative publication metadata in a WeakMap so screen vs facecam
-  // routing never depends on mutating a third-party track object.
   rememberRemoteTrackMetadata(track, publication);
-
-  // Best-effort compatibility for older routing code.
   try {
     track.__droxionPublicationName = publication.trackName || publication.name || track.name || '';
     track.__droxionSource = publication.source || track.source || '';
@@ -120,7 +114,10 @@ function bindRoomEvents(room, callbacks = {}) {
 async function connectRoom(sessionId, role, callbacks) {
   const auth = await getLiveKitToken(sessionId, role);
   const room = new Room({
-    adaptiveStream: role !== 'host' && role !== 'guest',
+    // Keep viewer adaptive-stream off for Studio multi-video rooms. With screen
+    // + facecam published separately, both tracks must stay subscribed even
+    // while one is a small overlay or split pane on a phone.
+    adaptiveStream: false,
     dynacast: role === 'host' || role === 'guest',
     disconnectOnPageLeave: true,
     stopLocalTrackOnUnpublish: false
@@ -150,7 +147,6 @@ async function connectRoom(sessionId, role, callbacks) {
 
 export async function connectHostTransport({ sessionId, stream, callbacks = {} }) {
   const room = await connectRoom(sessionId, 'host', callbacks);
-
   try {
     const published = await publishHostMediaV2({
       room,
