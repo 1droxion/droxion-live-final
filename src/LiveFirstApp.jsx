@@ -86,12 +86,26 @@ export default function LiveFirstApp() {
   }, [immersiveLive]);
 
   useEffect(() => {
-    if (tab !== 'live' || immersiveLive || hostStudioOpen || chatOpen || document.visibilityState === 'hidden') return undefined;
-    const timer = window.setInterval(() => {
+    if (tab !== 'live' || immersiveLive || hostStudioOpen || chatOpen) return undefined;
+
+    const refreshLiveHome = () => {
       invalidateLiveFeedCache();
       setLiveHomeVersion(version => version + 1);
-    }, 5000);
-    return () => window.clearInterval(timer);
+    };
+
+    // Capacitor/WebView visibility can report hidden while the app is visibly
+    // on screen. Do not gate Home refresh on document.visibilityState.
+    const timer = window.setInterval(refreshLiveHome, 5000);
+    window.addEventListener('focus', refreshLiveHome);
+    window.addEventListener('online', refreshLiveHome);
+    document.addEventListener('visibilitychange', refreshLiveHome);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshLiveHome);
+      window.removeEventListener('online', refreshLiveHome);
+      document.removeEventListener('visibilitychange', refreshLiveHome);
+    };
   }, [tab, immersiveLive, hostStudioOpen, chatOpen]);
 
   useEffect(() => {
