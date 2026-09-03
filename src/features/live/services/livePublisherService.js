@@ -24,9 +24,10 @@ function dimensionsFromTrack(track) {
   const settings = track?.getSettings?.() || {};
   const width = Number(settings.width || 0);
   const height = Number(settings.height || 0);
+  const frameRate = Number(settings.frameRate || 0) || 30;
   return height >= width
-    ? { width: 720, height: 1280, frameRate: 30 }
-    : { width: 1280, height: 720, frameRate: 30 };
+    ? { width: 720, height: 1280, frameRate }
+    : { width: 1280, height: 720, frameRate };
 }
 
 function localPublication(room, source) {
@@ -107,10 +108,16 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
   if (!browserVideo) throw new Error('LIVE camera track is missing.');
   if (!browserAudio) throw new Error('LIVE microphone track is missing.');
 
+  const videoSettings = browserVideo.getSettings?.() || {};
+  const motionVideo = String(browserVideo.contentHint || '').toLowerCase() === 'motion'
+    || Number(videoSettings.frameRate || 0) > 35;
+  const maxFramerate = motionVideo ? 60 : 30;
+  const maxBitrate = motionVideo ? 4_500_000 : 2_500_000;
+
   const videoPublication = await publishWithRetry(room, browserVideo, {
     source: Track.Source.Camera,
     simulcast: true,
-    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 },
+    videoEncoding: { maxBitrate, maxFramerate },
     videoCodec: undefined
   }, 'camera', logFailure);
 
@@ -125,10 +132,8 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
   }, 'microphone', logFailure);
   const confirmedAudio = await waitForPublication(room, Track.Source.Microphone);
 
-  // This is the important handoff used by the previously working LIVE path:
-  // keep the exact LocalTracks owned by LiveKit in the same MediaStream used by
-  // the local preview. It prevents the browser preview track and published
-  // track from drifting apart or one being stopped independently.
+  // Keep the exact LocalTracks owned by LiveKit in the same MediaStream used by
+  // the local preview. This preserves the existing stable LIVE handoff.
   replaceStreamTracks(stream, [confirmedVideo.track, confirmedAudio.track]);
 
   const publishedVideo = mediaTrackOf(confirmedVideo.track);
@@ -141,7 +146,8 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
     audioPublication: confirmedAudio,
     videoCapture: {
       facingMode: facingFromTrack(publishedVideo),
-      resolution: dimensionsFromTrack(publishedVideo)
+      resolution: dimensionsFromTrack(publishedVideo),
+      motionOptimized: motionVideo
     }
   };
 }
