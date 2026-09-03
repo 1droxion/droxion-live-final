@@ -5,6 +5,7 @@ import { supabase } from './supabaseClient';
 
 const ONESIGNAL_APP_ID = 'd04a1adc-eb95-486a-994a-993e41e0c178';
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
+const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 
 let initPromise = null;
 
@@ -18,9 +19,26 @@ function ensureOneSignal() {
   return initPromise;
 }
 
-function readLivePushData(event) {
+function notificationData(event) {
   const notification = event?.notification || event?.result?.notification || {};
-  const data = notification.additionalData || notification.additional_data || notification.customData || {};
+  return notification.additionalData || notification.additional_data || notification.customData || {};
+}
+
+function readPushData(event) {
+  const data = notificationData(event);
+  const type = String(data.type || '').trim();
+
+  if (type === 'chat_message') {
+    const senderId = String(data.sender_id || data.senderId || '').trim();
+    if (!senderId) return null;
+    return {
+      type: 'chat_message',
+      messageId: String(data.message_id || data.messageId || '').trim(),
+      senderId,
+      senderName: String(data.sender_name || data.senderName || '').trim()
+    };
+  }
+
   const sessionId = String(data.session_id || data.sessionId || '').trim();
   const creatorId = String(data.creator_id || data.creatorId || '').trim();
   if (!sessionId) return null;
@@ -78,19 +96,26 @@ export default function DroxionPushNotifications() {
       try {
         await ensureOneSignal();
         handler = event => {
-          const payload = readLivePushData(event);
+          const payload = readPushData(event);
           if (!payload) return;
-          try { window.localStorage.setItem(PENDING_LIVE_PUSH_KEY, JSON.stringify(payload)); } catch {}
-          try { window.dispatchEvent(new CustomEvent('droxion:live-push-open', { detail: payload })); } catch {}
+
+          if (payload.type === 'chat_message') {
+            try { window.localStorage.setItem(PENDING_CHAT_PUSH_KEY, JSON.stringify(payload)); } catch {}
+            try { window.dispatchEvent(new CustomEvent('droxion:chat-push-open', { detail: payload })); } catch {}
+          } else {
+            try { window.localStorage.setItem(PENDING_LIVE_PUSH_KEY, JSON.stringify(payload)); } catch {}
+            try { window.dispatchEvent(new CustomEvent('droxion:live-push-open', { detail: payload })); } catch {}
+          }
+
           // OneSignal already foregrounds/opens the native app on tap. Keep the
-          // user inside Droxion Home instead of launching an external browser.
+          // user inside the native Droxion shell instead of launching a browser.
           if (window.location.pathname !== '/') {
             try { window.history.replaceState({}, '', '/'); } catch {}
           }
         };
         OneSignal.Notifications.addEventListener('click', handler);
       } catch (error) {
-        console.warn('Could not register LIVE notification click handler', error);
+        console.warn('Could not register Droxion notification click handler', error);
       }
     })();
 
