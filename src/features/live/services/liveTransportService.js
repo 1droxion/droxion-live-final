@@ -1,5 +1,6 @@
 import { Room, RoomEvent } from 'livekit-client';
 import { supabase } from '../../../supabaseClient';
+import { rememberRemoteTrackMetadata, forgetRemoteTrackMetadata } from '../../../livekit/remoteTrackMetadata';
 import { publishHostMediaV2 } from './livePublisherService';
 
 const TOKEN_FUNCTION = 'livekit-token';
@@ -63,6 +64,13 @@ function publicationsOf(participant) {
 
 function decorateRemoteTrack(track, publication) {
   if (!track || !publication) return track;
+
+  // LiveKit RemoteTrack objects may be non-extensible in some builds. Keep the
+  // authoritative publication metadata in a WeakMap so screen vs facecam
+  // routing never depends on mutating a third-party track object.
+  rememberRemoteTrackMetadata(track, publication);
+
+  // Best-effort compatibility for older routing code.
   try {
     track.__droxionPublicationName = publication.trackName || publication.name || track.name || '';
     track.__droxionSource = publication.source || track.source || '';
@@ -89,6 +97,7 @@ function bindRoomEvents(room, callbacks = {}) {
   });
   room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
     callbacks.onTrackUnsubscribed?.(decorateRemoteTrack(track, publication), publication, participant);
+    forgetRemoteTrackMetadata(track);
   });
   room.on(RoomEvent.TrackPublished, publication => {
     try { publication?.setSubscribed?.(true); } catch {}
