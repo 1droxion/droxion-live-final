@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FaApple } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
@@ -14,6 +14,7 @@ function platformName() {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+  const termsRef = useRef(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +22,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState("");
   const [error, setError] = useState("");
+  const [termsAttention, setTermsAttention] = useState(false);
 
   const resetComplete = new URLSearchParams(location.search).get("reset") === "success";
   const legalReturnState = { from: "/login" };
@@ -46,7 +48,10 @@ export default function Login() {
 
   const requireTerms = () => {
     if (acceptedTerms) return true;
-    setError("You must agree to Droxion's Terms of Use and Community Guidelines before signing in.");
+    setError("Please check the Terms box first, then continue with Apple or Google.");
+    setTermsAttention(true);
+    window.setTimeout(() => setTermsAttention(false), 1800);
+    try { termsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" }); } catch {}
     return false;
   };
 
@@ -121,14 +126,15 @@ export default function Login() {
             </div>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required placeholder="Your password" className="w-full p-3 mb-5 bg-[#191922] border border-white/10 rounded-xl outline-none focus:border-purple-500" />
 
-            <label className="flex items-start gap-3 mb-5 cursor-pointer rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-              <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} className="mt-1 accent-purple-500" />
+            <label ref={termsRef} className={`flex items-start gap-3 mb-5 cursor-pointer rounded-2xl border p-3 transition-all ${termsAttention ? 'border-purple-400 bg-purple-500/10 ring-2 ring-purple-500/30' : 'border-white/10 bg-white/[0.03]'}`}>
+              <input type="checkbox" checked={acceptedTerms} onChange={(e) => { setAcceptedTerms(e.target.checked); if (e.target.checked) setError(""); }} className="mt-1 accent-purple-500" />
               <span className="text-xs leading-5 text-gray-300">
                 I agree to Droxion's <Link to="/terms" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Terms of Use (EULA)</Link> and <Link to="/community-guidelines" state={legalReturnState} className="text-purple-400 underline" onClick={(e) => e.stopPropagation()}>Community Guidelines</Link>. I understand Droxion has <strong className="text-white">zero tolerance for objectionable content and abusive users</strong>.
+                {!acceptedTerms && <strong className="mt-1 block text-purple-300">Required before any sign in.</strong>}
               </span>
             </label>
 
-            <button type="submit" disabled={busy || !acceptedTerms} className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 disabled:text-white/70 disabled:cursor-not-allowed py-3 rounded-xl font-bold transition-colors">
+            <button type="submit" disabled={busy} className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 disabled:text-white/70 disabled:cursor-not-allowed py-3 rounded-xl font-bold transition-colors">
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
@@ -136,18 +142,18 @@ export default function Login() {
           <div className="my-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-gray-500"><span className="h-px flex-1 bg-white/10" /><span>or continue with</span><span className="h-px flex-1 bg-white/10" /></div>
 
           <div className="grid gap-3">
-            <button type="button" disabled={busy || !acceptedTerms} onClick={() => handleSocialLogin('apple')} className="w-full min-h-12 rounded-xl bg-white text-black font-extrabold flex items-center justify-center gap-3 disabled:bg-[#d7d7d9] disabled:text-black/70 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors">
+            <button type="button" disabled={busy} onClick={() => handleSocialLogin('apple')} className="w-full min-h-12 rounded-xl bg-white text-black font-extrabold flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-wait hover:bg-gray-100 transition-colors">
               <FaApple aria-hidden="true" size={22} />
               {socialLoading === 'apple' ? 'Opening Apple…' : 'Continue with Apple'}
             </button>
-            <button type="button" disabled={busy || !acceptedTerms} onClick={() => handleSocialLogin('google')} className="w-full min-h-12 rounded-xl border border-[#dadce0] bg-white text-[#3c4043] font-semibold flex items-center justify-center gap-3 disabled:bg-[#e7e7e9] disabled:text-[#5f6368] disabled:cursor-not-allowed hover:bg-[#f8f9fa] transition-colors">
+            <button type="button" disabled={busy} onClick={() => handleSocialLogin('google')} className="w-full min-h-12 rounded-xl border border-[#dadce0] bg-white text-[#3c4043] font-semibold flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-wait hover:bg-[#f8f9fa] transition-colors">
               <FcGoogle aria-hidden="true" size={21} />
               {socialLoading === 'google' ? 'Opening Google…' : 'Continue with Google'}
             </button>
           </div>
 
           <p className="mt-3 text-center text-[11px] leading-4 text-gray-500">
-            If you cancel Apple or Google sign in, just return here — the buttons unlock automatically.
+            If you cancel Apple or Google sign in, return here and try again — no refresh needed.
           </p>
 
           <div className="text-center text-sm text-gray-400 mt-5">
