@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, SwitchCamera, Trophy, Users, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Camera, CameraOff, Gamepad2, LayoutGrid, Mic, MicOff, MonitorUp, MoreHorizontal, Radio, RotateCcw, SwitchCamera, Trophy, Users, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
@@ -8,15 +8,22 @@ import LiveRemoteGuestTile from './LiveRemoteGuestTile';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
 import { setHostCameraMuted, setHostMicrophoneMuted, switchHostCameraFacing } from '../services/liveHostControlService';
+import { createLiveStudioStream, LIVE_SOURCE_MODE, LIVE_STUDIO_LAYOUTS, supportsDisplayCapture } from '../services/liveStudioService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
 import '../styles/live-audience-trigger.css';
 import '../styles/live-host-minimal-redesign.css';
+import '../styles/live-studio.css';
 
 export default function ProductionLiveHost({ onClose, creatorId }) {
-  const { state, mediaStream, ensurePreview, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
+  const { state, mediaStream, ensurePreview, setPreparedMedia, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
   const [title, setTitle] = useState('Live on Droxion');
   const [orientation, setOrientation] = useState('vertical');
+  const [sourceMode, setSourceMode] = useState(LIVE_SOURCE_MODE.CAMERA);
+  const [studioLayout, setStudioLayout] = useState('pip_bottom_right');
+  const [studioPreparing, setStudioPreparing] = useState(false);
+  const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
+  const studioControllerRef = useRef(null);
   const [previewRequested, setPreviewRequested] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
@@ -29,11 +36,13 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [guestVisible, setGuestVisible] = useState(false);
   const [guestBusy, setGuestBusy] = useState(false);
 
-  const busy = isLiveBusy(state.phase);
+  const busy = isLiveBusy(state.phase) || studioPreparing;
   const live = state.phase === LIVE_PHASE.LIVE || state.phase === LIVE_PHASE.RECONNECTING;
   const connecting = state.phase === LIVE_PHASE.STARTING || state.phase === LIVE_PHASE.CONNECTING;
   const guestAccepted = guestState?.status === 'accepted' && Boolean(guestState?.invitee_id);
   const splitLive = live && guestAccepted && guestVisible;
+  const isStudioMode = sourceMode !== LIVE_SOURCE_MODE.CAMERA;
+  const hasFacecam = sourceMode === LIVE_SOURCE_MODE.SCREEN_CAMERA;
 
   useLiveReleaseSidecars({ enabled: live, creatorId, sessionId: state.sessionId, stream: mediaStream, title });
 
@@ -41,25 +50,25 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     if (live) return state.phase === LIVE_PHASE.RECONNECTING ? 'Reconnecting…' : 'You are live';
     if (connecting) return state.phase === LIVE_PHASE.STARTING ? 'Starting LIVE…' : 'Connecting video…';
     if (state.phase === LIVE_PHASE.ERROR) return state.error || 'LIVE could not start.';
-    if (mediaStream) return 'Preview ready';
+    if (mediaStream) return isStudioMode ? 'Studio preview ready' : 'Preview ready';
     return 'Ready to go LIVE';
-  }, [live, connecting, state.phase, state.error, mediaStream]);
+  }, [live, connecting, state.phase, state.error, mediaStream, isStudioMode]);
 
   useEffect(() => {
-    if (previewRequested || mediaStream || live || connecting) return;
+    if (sourceMode !== LIVE_SOURCE_MODE.CAMERA || previewRequested || mediaStream || live || connecting) return;
     setPreviewRequested(true);
     ensurePreview({ orientation, facingMode }).catch(() => {});
-  }, [previewRequested, mediaStream, live, connecting, orientation, facingMode, ensurePreview]);
+  }, [sourceMode, previewRequested, mediaStream, live, connecting, orientation, facingMode, ensurePreview]);
 
   useEffect(() => {
     if (!live) {
       setMicMuted(false);
       setCameraMuted(false);
-      setFacingMode('user');
       setControlBusy('');
       setControlError('');
       setAudienceOpen(false);
       setControlsOpen(false);
+      setLayoutPanelOpen(false);
       setGuestState({ status: 'none' });
       setGuestVisible(false);
       setGuestBusy(false);
@@ -69,7 +78,6 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   useEffect(() => {
     if (!live || !state.sessionId) return undefined;
     let stopped = false;
-
     const loadGuestState = async () => {
       try {
         const { data, error } = await supabase.rpc('droxion_host_live_guest_state', { p_session_id: state.sessionId });
@@ -79,13 +87,9 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         if (next.status !== 'accepted') setGuestVisible(false);
       } catch {}
     };
-
     loadGuestState();
     const timer = window.setInterval(loadGuestState, 1500);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
+    return () => { stopped = true; window.clearInterval(timer); };
   }, [live, state.sessionId]);
 
   useEffect(() => {
@@ -93,202 +97,185 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     const closeOutside = event => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest('.prodLiveMoreMenu') || target.closest('.prodLiveMoreButton')) return;
+      if (target.closest('.prodLiveMoreMenu') || target.closest('.prodLiveMoreButton') || target.closest('.liveStudioLayoutPanel')) return;
       setControlsOpen(false);
+      setLayoutPanelOpen(false);
     };
     document.addEventListener('pointerdown', closeOutside, true);
     return () => document.removeEventListener('pointerdown', closeOutside, true);
   }, [controlsOpen]);
 
   async function closeHost() {
-    if (live || connecting || state.sessionId) {
-      try { await endBroadcast(); } catch {}
-    } else {
-      stopPreview();
-    }
+    if (live || connecting || state.sessionId) { try { await endBroadcast(); } catch {} }
+    else stopPreview();
+    studioControllerRef.current = null;
     onClose?.();
   }
 
-  async function toggleMicrophone(event) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    if (!live || controlBusy) return;
-    const room = getRoom();
-    if (!room) return;
-    const previous = micMuted;
-    const nextMuted = !previous;
-    setMicMuted(nextMuted);
-    setControlBusy('mic');
+  async function chooseCameraSource() {
+    if (live || connecting || busy) return;
+    stopPreview();
+    studioControllerRef.current = null;
+    setSourceMode(LIVE_SOURCE_MODE.CAMERA);
+    setCameraMuted(false);
+    setPreviewRequested(true);
+    setControlError('');
+    try { await ensurePreview({ orientation, facingMode }); }
+    catch (error) { setControlError(error?.message || 'Could not open camera.'); }
+  }
+
+  async function chooseStudioSource(nextMode) {
+    if (live || connecting || busy) return;
+    if (!supportsDisplayCapture()) {
+      setControlError('Screen/Game sharing is available on supported desktop browsers. Mobile screen broadcast comes in the native build.');
+      return;
+    }
+    setStudioPreparing(true);
     setControlError('');
     try {
-      await setHostMicrophoneMuted(room, nextMuted);
+      stopPreview();
+      studioControllerRef.current = null;
+      const controller = await createLiveStudioStream({
+        mode: nextMode,
+        layout: studioLayout,
+        orientation,
+        facingMode,
+        onScreenEnded: () => {
+          if (state.sessionId) endBroadcast().catch(() => {});
+          else {
+            stopPreview();
+            studioControllerRef.current = null;
+            setSourceMode(LIVE_SOURCE_MODE.CAMERA);
+            setPreviewRequested(false);
+          }
+        }
+      });
+      studioControllerRef.current = controller;
+      setPreparedMedia(controller.stream, controller.stop);
+      setSourceMode(nextMode);
+      setCameraMuted(false);
+      setPreviewRequested(true);
     } catch (error) {
-      setMicMuted(previous);
-      setControlError(error?.message || 'Could not change microphone.');
+      setSourceMode(LIVE_SOURCE_MODE.CAMERA);
+      setPreviewRequested(false);
+      setControlError(error?.message || 'Could not start screen sharing.');
     } finally {
-      setControlBusy('');
+      setStudioPreparing(false);
     }
+  }
+
+  function chooseLayout(nextLayout) {
+    setStudioLayout(nextLayout);
+    studioControllerRef.current?.setLayout?.(nextLayout);
+    if (live) setLayoutPanelOpen(false);
+  }
+
+  async function toggleMicrophone(event) {
+    event?.preventDefault?.(); event?.stopPropagation?.();
+    if (!live || controlBusy) return;
+    const room = getRoom(); if (!room) return;
+    const previous = micMuted; const nextMuted = !previous;
+    setMicMuted(nextMuted); setControlBusy('mic'); setControlError('');
+    try { await setHostMicrophoneMuted(room, nextMuted); }
+    catch (error) { setMicMuted(previous); setControlError(error?.message || 'Could not change microphone.'); }
+    finally { setControlBusy(''); }
   }
 
   async function toggleCamera(event) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
+    event?.preventDefault?.(); event?.stopPropagation?.();
     if (!live || controlBusy) return;
-    const room = getRoom();
-    if (!room) return;
-    const previous = cameraMuted;
-    const nextMuted = !previous;
-    setCameraMuted(nextMuted);
-    setControlBusy('camera');
-    setControlError('');
+    if (sourceMode === LIVE_SOURCE_MODE.SCREEN) return;
+    const previous = cameraMuted; const nextMuted = !previous;
+    setCameraMuted(nextMuted); setControlBusy('camera'); setControlError('');
     try {
-      await setHostCameraMuted(room, nextMuted);
+      if (hasFacecam) studioControllerRef.current?.setCameraVisible?.(!nextMuted);
+      else {
+        const room = getRoom(); if (!room) return;
+        await setHostCameraMuted(room, nextMuted);
+      }
     } catch (error) {
       setCameraMuted(previous);
       setControlError(error?.message || 'Could not change camera.');
-    } finally {
-      setControlBusy('');
-    }
+    } finally { setControlBusy(''); }
   }
 
   async function switchCamera(event) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    if (!live || cameraMuted || controlBusy) return;
-    const room = getRoom();
-    if (!room) return;
-    const previous = facingMode;
-    const nextFacing = previous === 'user' ? 'environment' : 'user';
-    setControlBusy('switch-camera');
-    setControlError('');
+    event?.preventDefault?.(); event?.stopPropagation?.();
+    if (!live || cameraMuted || controlBusy || sourceMode === LIVE_SOURCE_MODE.SCREEN) return;
+    const previous = facingMode; const nextFacing = previous === 'user' ? 'environment' : 'user';
+    setControlBusy('switch-camera'); setControlError('');
     try {
-      await switchHostCameraFacing(room, mediaStream, nextFacing, orientation);
-      setFacingMode(nextFacing);
-      setControlsOpen(false);
+      if (hasFacecam) await studioControllerRef.current?.switchCameraFacing?.(nextFacing);
+      else {
+        const room = getRoom(); if (!room) return;
+        await switchHostCameraFacing(room, mediaStream, nextFacing, orientation);
+      }
+      setFacingMode(nextFacing); setControlsOpen(false);
     } catch (error) {
-      setFacingMode(previous);
-      setControlError(error?.message || 'Could not switch camera.');
-    } finally {
-      setControlBusy('');
-    }
+      setFacingMode(previous); setControlError(error?.message || 'Could not switch camera.');
+    } finally { setControlBusy(''); }
   }
 
-  function openAudience() {
-    setControlsOpen(false);
-    setAudienceOpen(true);
-  }
-
-  function openTopSupporters() {
-    setControlsOpen(false);
-    try { document.querySelector('.liveTopSupportersTrigger')?.click(); } catch {}
-  }
+  function openAudience() { setControlsOpen(false); setAudienceOpen(true); }
+  function openTopSupporters() { setControlsOpen(false); try { document.querySelector('.liveTopSupportersTrigger')?.click(); } catch {} }
 
   async function removeGuestFromMenu() {
     if (!state.sessionId || !guestState?.invitee_id || guestBusy) return;
-    setGuestBusy(true);
-    setControlError('');
+    setGuestBusy(true); setControlError('');
     try {
-      const { data, error } = await supabase.rpc('droxion_host_remove_live_guest', {
-        p_session_id: state.sessionId,
-        p_invitee_id: guestState.invitee_id
-      });
-      if (error || data?.allowed === false) {
-        throw new Error(error?.message || data?.reason || 'Could not remove guest.');
-      }
-      setGuestState({ status: 'none' });
-      setGuestVisible(false);
-      setControlsOpen(false);
-    } catch (error) {
-      setControlError(error?.message || 'Could not remove guest.');
-    } finally {
-      setGuestBusy(false);
-    }
+      const { data, error } = await supabase.rpc('droxion_host_remove_live_guest', { p_session_id: state.sessionId, p_invitee_id: guestState.invitee_id });
+      if (error || data?.allowed === false) throw new Error(error?.message || data?.reason || 'Could not remove guest.');
+      setGuestState({ status: 'none' }); setGuestVisible(false); setControlsOpen(false);
+    } catch (error) { setControlError(error?.message || 'Could not remove guest.'); }
+    finally { setGuestBusy(false); }
   }
 
-  async function endLiveFromMenu() {
-    setControlsOpen(false);
-    await endBroadcast();
-  }
+  async function endLiveFromMenu() { setControlsOpen(false); setLayoutPanelOpen(false); await endBroadcast(); studioControllerRef.current = null; }
 
   return (
-    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''} ${splitLive ? 'hasGuest' : ''}`} aria-label="Droxion LIVE studio">
-      {!live && (
-        <header className="prodLiveHostTopbar">
-          <button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back"><ArrowLeft size={24} /></button>
-          <div className="prodLiveIdentity"><strong>Go LIVE</strong><span>{statusText}</span></div>
-          <div className="prodLiveStatus"><Radio size={16} /><span>PREVIEW</span></div>
-        </header>
-      )}
+    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''} ${splitLive ? 'hasGuest' : ''} ${isStudioMode ? 'isStudioLive' : ''}`} aria-label="Droxion LIVE studio">
+      {!live && <header className="prodLiveHostTopbar"><button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back"><ArrowLeft size={24} /></button><div className="prodLiveIdentity"><strong>Go LIVE</strong><span>{statusText}</span></div><div className="prodLiveStatus"><Radio size={16} /><span>PREVIEW</span></div></header>}
 
       <div className={`prodLiveStage ${orientation === 'horizontal' ? 'horizontal' : 'vertical'}`}>
-        {mediaStream ? <LocalLiveVideo stream={mediaStream} /> : (
-          <div className="prodLiveCameraPlaceholder"><Camera size={42} /><strong>Camera preview</strong><span>Allow camera and microphone to start.</span></div>
-        )}
-
+        {mediaStream ? <LocalLiveVideo stream={mediaStream} /> : <div className="prodLiveCameraPlaceholder">{isStudioMode ? <MonitorUp size={42} /> : <Camera size={42} />}<strong>{isStudioMode ? 'Screen preview' : 'Camera preview'}</strong><span>{studioPreparing ? 'Choose the window or game you want to share…' : 'Choose a LIVE source below.'}</span></div>}
         {live && <div className="prodLiveBadge prodLiveMinimalLiveBadge">LIVE</div>}
-
-        {live && (state.sessionId ? (
-          <button type="button" className="prodLiveViewerPill liveAudienceTrigger prodLiveMinimalViewerCount" onClick={openAudience} aria-label="Open LIVE audience">
-            <Users size={16} /><span>{state.viewerCount || 0}</span>
-          </button>
-        ) : (
-          <div className="prodLiveViewerPill prodLiveMinimalViewerCount"><Users size={16} /><span>{state.viewerCount || 0}</span></div>
-        ))}
-
+        {live && (state.sessionId ? <button type="button" className="prodLiveViewerPill liveAudienceTrigger prodLiveMinimalViewerCount" onClick={openAudience} aria-label="Open LIVE audience"><Users size={16} /><span>{state.viewerCount || 0}</span></button> : <div className="prodLiveViewerPill prodLiveMinimalViewerCount"><Users size={16} /><span>{state.viewerCount || 0}</span></div>)}
         {live && guestAccepted && <LiveRemoteGuestTile room={getRoom()} onVisibilityChange={setGuestVisible} />}
         {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
 
-        {live && controlsOpen && (
-          <div className="prodLiveMoreMenu" role="menu" aria-label="LIVE controls">
-            <button type="button" onClick={toggleMicrophone} disabled={Boolean(controlBusy)} role="menuitem">
-              {micMuted ? <MicOff size={19} /> : <Mic size={19} />}
-              <span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span>
-            </button>
-            <button type="button" onClick={toggleCamera} disabled={Boolean(controlBusy)} role="menuitem">
-              {cameraMuted ? <CameraOff size={19} /> : <Camera size={19} />}
-              <span><strong>Camera</strong><small>{cameraMuted ? 'Off' : 'On'}</small></span>
-            </button>
-            <button type="button" onClick={switchCamera} disabled={Boolean(controlBusy) || cameraMuted} role="menuitem">
-              <SwitchCamera size={19} />
-              <span><strong>Switch camera</strong><small>{facingMode === 'user' ? 'Front → Back' : 'Back → Front'}</small></span>
-            </button>
-            <button type="button" onClick={openAudience} disabled={!state.sessionId} role="menuitem">
-              <Users size={19} /><span><strong>Audience / Invite</strong><small>Viewers and invite guest</small></span>
-            </button>
-            <button type="button" onClick={openTopSupporters} role="menuitem">
-              <Trophy size={19} /><span><strong>Top Supporters</strong><small>Who gave the most gifts</small></span>
-            </button>
-            {guestAccepted && (
-              <button type="button" className="prodLiveMoreRemoveGuest" onClick={removeGuestFromMenu} disabled={guestBusy} role="menuitem">
-                <X size={19} /><span><strong>Remove Guest</strong><small>{guestBusy ? 'Removing…' : `Remove ${guestState.display_name || 'guest'} from LIVE`}</small></span>
-              </button>
-            )}
-            <button type="button" className="prodLiveMoreEnd" onClick={endLiveFromMenu} disabled={state.phase === LIVE_PHASE.ENDING} role="menuitem">
-              <X size={19} /><span><strong>End LIVE</strong><small>Stop this broadcast</small></span>
-            </button>
-          </div>
-        )}
+        {live && layoutPanelOpen && hasFacecam && <div className="liveStudioLayoutPanel"><strong>Choose layout</strong><div>{LIVE_STUDIO_LAYOUTS.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div></div>}
 
-        {live && (
-          <button type="button" className={`prodLiveMoreButton ${controlsOpen ? 'isOpen' : ''}`} onClick={() => setControlsOpen(value => !value)} aria-expanded={controlsOpen} aria-label="More LIVE controls">
-            <MoreHorizontal size={27} />
-          </button>
-        )}
+        {live && controlsOpen && <div className="prodLiveMoreMenu" role="menu" aria-label="LIVE controls">
+          <button type="button" onClick={toggleMicrophone} disabled={Boolean(controlBusy)} role="menuitem">{micMuted ? <MicOff size={19} /> : <Mic size={19} />}<span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span></button>
+          <button type="button" onClick={toggleCamera} disabled={Boolean(controlBusy) || sourceMode === LIVE_SOURCE_MODE.SCREEN} role="menuitem">{cameraMuted ? <CameraOff size={19} /> : <Camera size={19} />}<span><strong>{hasFacecam ? 'Facecam' : 'Camera'}</strong><small>{sourceMode === LIVE_SOURCE_MODE.SCREEN ? 'Not used in screen-only mode' : cameraMuted ? 'Off' : 'On'}</small></span></button>
+          <button type="button" onClick={switchCamera} disabled={Boolean(controlBusy) || cameraMuted || sourceMode === LIVE_SOURCE_MODE.SCREEN} role="menuitem"><SwitchCamera size={19} /><span><strong>Switch camera</strong><small>{facingMode === 'user' ? 'Front → Back' : 'Back → Front'}</small></span></button>
+          {hasFacecam && <button type="button" onClick={() => { setLayoutPanelOpen(value => !value); setControlsOpen(false); }} role="menuitem"><LayoutGrid size={19} /><span><strong>LIVE layout</strong><small>Move facecam / split screen</small></span></button>}
+          <button type="button" onClick={openAudience} disabled={!state.sessionId} role="menuitem"><Users size={19} /><span><strong>Audience / Invite</strong><small>Viewers and invite guest</small></span></button>
+          <button type="button" onClick={openTopSupporters} role="menuitem"><Trophy size={19} /><span><strong>Top Supporters</strong><small>Who gave the most gifts</small></span></button>
+          {guestAccepted && <button type="button" className="prodLiveMoreRemoveGuest" onClick={removeGuestFromMenu} disabled={guestBusy} role="menuitem"><X size={19} /><span><strong>Remove Guest</strong><small>{guestBusy ? 'Removing…' : `Remove ${guestState.display_name || 'guest'} from LIVE`}</small></span></button>}
+          <button type="button" className="prodLiveMoreEnd" onClick={endLiveFromMenu} disabled={state.phase === LIVE_PHASE.ENDING} role="menuitem"><X size={19} /><span><strong>End LIVE</strong><small>Stop this broadcast</small></span></button>
+        </div>}
+
+        {live && <button type="button" className={`prodLiveMoreButton ${controlsOpen ? 'isOpen' : ''}`} onClick={() => { setLayoutPanelOpen(false); setControlsOpen(value => !value); }} aria-expanded={controlsOpen} aria-label="More LIVE controls"><MoreHorizontal size={27} /></button>}
       </div>
 
       {(state.error || controlError) && <div className="prodLiveError">{controlError || state.error}</div>}
 
-      {!live && !connecting && (
-        <div className="prodLiveSetup">
-          <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
-          <label><span>Orientation</span><select value={orientation} onChange={event => setOrientation(event.target.value)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></label>
-          {!mediaStream && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation, facingMode })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
-          <button type="button" className="prodLiveStart" disabled={busy || !mediaStream} onClick={() => startBroadcast({ title, orientation })}><Radio size={19} /> Start LIVE</button>
-        </div>
-      )}
+      {!live && !connecting && <div className="prodLiveSetup">
+        <div className="liveStudioSourcePicker"><span>What do you want to stream?</span><div>
+          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.CAMERA ? 'active' : ''} onClick={chooseCameraSource} disabled={busy}><Camera size={20} /><strong>Camera</strong><small>Normal LIVE</small></button>
+          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.SCREEN ? 'active' : ''} onClick={() => chooseStudioSource(LIVE_SOURCE_MODE.SCREEN)} disabled={busy}><MonitorUp size={20} /><strong>Screen / Game</strong><small>Desktop or window</small></button>
+          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.SCREEN_CAMERA ? 'active' : ''} onClick={() => chooseStudioSource(LIVE_SOURCE_MODE.SCREEN_CAMERA)} disabled={busy}><Gamepad2 size={20} /><strong>Game + Facecam</strong><small>Custom layout</small></button>
+        </div></div>
+        <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
+        <label><span>Orientation</span><select value={orientation} onChange={event => setOrientation(event.target.value)} disabled={isStudioMode && Boolean(mediaStream)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></label>
+        {hasFacecam && <div className="liveStudioPreflightLayouts"><span>Screen layout</span><div>{LIVE_STUDIO_LAYOUTS.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div></div>}
+        {!mediaStream && sourceMode === LIVE_SOURCE_MODE.CAMERA && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation, facingMode })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
+        {!mediaStream && isStudioMode && <button type="button" className="prodLiveSecondary" onClick={() => chooseStudioSource(sourceMode)} disabled={busy}><MonitorUp size={18} /> Choose screen again</button>}
+        <button type="button" className="prodLiveStart" disabled={busy || !mediaStream} onClick={() => startBroadcast({ title, orientation })}><Radio size={19} /> Start LIVE</button>
+      </div>}
 
-      {connecting && <div className="prodLiveConnecting"><span className="prodLiveSpinner" /><strong>{statusText}</strong><span>Connecting your camera and microphone securely…</span></div>}
-
+      {connecting && <div className="prodLiveConnecting"><span className="prodLiveSpinner" /><strong>{statusText}</strong><span>Connecting your {isStudioMode ? 'LIVE Studio' : 'camera and microphone'} securely…</span></div>}
       <LiveAudienceDrawer open={audienceOpen} sessionId={state.sessionId} onClose={() => setAudienceOpen(false)} />
     </section>
   );
