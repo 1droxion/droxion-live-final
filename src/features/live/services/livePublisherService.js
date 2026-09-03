@@ -132,6 +132,14 @@ function facecamTrackName(studio = {}) {
   ].join('__');
 }
 
+function screenTrackName(studio = {}) {
+  return [
+    'droxion_screen',
+    safeSegment(studio.orientation, 'horizontal'),
+    safeSegment(studio.layout, studio.orientation === 'vertical' ? 'split_70_30' : 'free_facecam')
+  ].join('__');
+}
+
 async function publishAudio(room, browserAudio, logFailure) {
   if (!browserAudio) throw new Error('LIVE microphone track is missing.');
   await publishWithRetry(room, browserAudio, {
@@ -150,7 +158,7 @@ async function publishScreenTrack(room, screenTrack, logFailure, studio = {}) {
 
   await publishWithRetry(room, screenTrack, {
     source: Track.Source.ScreenShare,
-    name: `droxion_screen__${safeSegment(studio.orientation, 'horizontal')}`,
+    name: screenTrackName(studio),
     simulcast: true,
     videoEncoding: { maxBitrate, maxFramerate },
     videoCodec: undefined
