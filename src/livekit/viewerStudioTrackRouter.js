@@ -4,6 +4,8 @@ import { remoteTrackMetadata, forgetRemoteTrackMetadata } from './remoteTrackMet
 
 const routedElements = new WeakMap();
 const viewerStates = new WeakMap();
+const activeMainVideos = new Set();
+let closeListenerBound = false;
 
 function publicationName(track) {
   const metadata = remoteTrackMetadata(track);
@@ -24,6 +26,10 @@ function isScreenTrack(track) {
   const sourceText = String(source || '').toLowerCase();
   const name = publicationName(track);
   return source === Track.Source.ScreenShare || sourceText.includes('screen') || name.startsWith('droxion_screen');
+}
+
+function isFacecamTrack(track) {
+  return publicationName(track).startsWith('droxion_facecam');
 }
 
 function isCameraTrack(track) {
@@ -52,10 +58,13 @@ function parseFacecamMeta(track) {
     ? (parts[2] === 'split_50_50' ? 'split_50_50' : 'split_70_30')
     : 'free_facecam';
   const numbers = String(parts[3] || '').split('-').map(Number);
-  const x = Number.isFinite(numbers[0]) ? numbers[0] / 1000 : 0.735;
-  const y = Number.isFinite(numbers[1]) ? numbers[1] / 1000 : 0.64;
-  const size = Number.isFinite(numbers[2]) ? numbers[2] / 1000 : 0.235;
-  return { orientation, layout, x, y, size };
+  return {
+    orientation,
+    layout,
+    x: Number.isFinite(numbers[0]) ? numbers[0] / 1000 : 0.735,
+    y: Number.isFinite(numbers[1]) ? numbers[1] / 1000 : 0.64,
+    size: Number.isFinite(numbers[2]) ? numbers[2] / 1000 : 0.235
+  };
 }
 
 function stateFor(mainVideo) {
@@ -64,12 +73,15 @@ function stateFor(mainVideo) {
     state = { screenTrack: null, cameraTrack: null, facecamElement: null, meta: null, studio: false };
     viewerStates.set(mainVideo, state);
   }
+  activeMainVideos.add(mainVideo);
+  bindCloseListener();
   return state;
 }
 
 function resetMainVideo(element) {
   if (!element) return;
   element.dataset.droxionStudioRole = 'main';
+  delete element.dataset.droxionOrientation;
   element.style.position = 'absolute';
   element.style.left = '0';
   element.style.right = 'auto';
@@ -80,6 +92,43 @@ function resetMainVideo(element) {
   element.style.transform = 'none';
   element.style.objectFit = 'contain';
   element.style.background = '#000';
+}
+
+function clearElement(element) {
+  if (!element) return;
+  try { element.pause?.(); } catch {}
+  try { element.srcObject = null; } catch {}
+}
+
+function detachKnownTrack(track) {
+  if (!track) return;
+  const routed = routedElements.get(track) || null;
+  try { detachLegacyRemoteTrack(track, routed || undefined); } catch {}
+  routedElements.delete(track);
+  forgetRemoteTrackMetadata(track);
+}
+
+function resetViewer(mainVideo) {
+  if (!mainVideo) return;
+  const state = viewerStates.get(mainVideo);
+  if (state) {
+    detachKnownTrack(state.screenTrack);
+    detachKnownTrack(state.cameraTrack);
+    clearElement(state.facecamElement);
+    try { state.facecamElement?.remove?.(); } catch {}
+  }
+  clearElement(mainVideo);
+  resetMainVideo(mainVideo);
+  viewerStates.delete(mainVideo);
+  activeMainVideos.delete(mainVideo);
+}
+
+function bindCloseListener() {
+  if (closeListenerBound || typeof window === 'undefined') return;
+  closeListenerBound = true;
+  window.addEventListener('droxion:viewer-room-closed', () => {
+    Array.from(activeMainVideos).forEach(resetViewer);
+  });
 }
 
 function applyScreenLayout(mainVideo, meta) {
@@ -97,11 +146,13 @@ function ensureFacecamElement(mainVideo) {
   if (!parent) return null;
   const state = stateFor(mainVideo);
   if (state.facecamElement?.isConnected) return state.facecamElement;
+
   const existing = parent.querySelector('.droxionViewerFacecam');
   if (existing) {
-    state.facecamElement = existing;
-    return existing;
+    clearElement(existing);
+    try { existing.remove(); } catch {}
   }
+
   const video = document.createElement('video');
   video.className = 'droxionViewerFacecam';
   video.dataset.droxionStudioRole = 'facecam';
@@ -120,10 +171,9 @@ function ensureFacecamElement(mainVideo) {
 }
 
 function applyFacecamLayout(mainVideo, meta) {
-  const state = stateFor(mainVideo);
   const video = ensureFacecamElement(mainVideo);
   if (!video) return null;
-  const safeMeta = meta || state.meta || { orientation: 'horizontal', layout: 'free_facecam', x: 0.735, y: 0.64, size: 0.235 };
+  const safeMeta = meta || { orientation: 'horizontal', layout: 'free_facecam', x: 0.735, y: 0.64, size: 0.235 };
   applyScreenLayout(mainVideo, safeMeta);
   video.dataset.droxionOrientation = safeMeta.orientation;
   video.style.left = '';
@@ -159,13 +209,15 @@ function applyFacecamLayout(mainVideo, meta) {
 }
 
 function attachScreen(track, mainVideo, state) {
+  if (state.screenTrack && state.screenTrack !== track) detachKnownTrack(state.screenTrack);
   state.studio = true;
   state.screenTrack = track;
   const screenMeta = parseScreenMeta(track);
   state.meta = state.meta
-    ? { ...screenMeta, ...state.meta, orientation: screenMeta.orientation, layout: state.meta.layout || screenMeta.layout }
+    ? { ...screenMeta, ...state.meta, orientation: screenMeta.orientation, layout: screenMeta.layout }
     : screenMeta;
 
+  // If a camera subscribed first, remove it from the main video before screen attaches.
   if (state.cameraTrack && routedElements.get(state.cameraTrack) === mainVideo) {
     try { detachLegacyRemoteTrack(state.cameraTrack, mainVideo); } catch {}
   }
@@ -173,9 +225,10 @@ function attachScreen(track, mainVideo, state) {
   applyScreenLayout(mainVideo, state.meta);
   routedElements.set(track, mainVideo);
   attachLegacyRemoteTrack(track, mainVideo);
+  mainVideo.muted = true;
   Promise.resolve(mainVideo.play?.()).catch(() => {});
 
-  if (state.cameraTrack) {
+  if (state.cameraTrack && isFacecamTrack(state.cameraTrack)) {
     const facecam = applyFacecamLayout(mainVideo, state.meta);
     if (facecam) {
       routedElements.set(state.cameraTrack, facecam);
@@ -186,14 +239,13 @@ function attachScreen(track, mainVideo, state) {
 }
 
 function attachCamera(track, mainVideo, state) {
+  if (state.cameraTrack && state.cameraTrack !== track) detachKnownTrack(state.cameraTrack);
   state.cameraTrack = track;
   const explicitMeta = parseFacecamMeta(track);
+
   if (explicitMeta) {
     state.meta = explicitMeta;
     state.studio = true;
-  }
-
-  if (explicitMeta || state.screenTrack || state.studio) {
     const facecam = applyFacecamLayout(mainVideo, state.meta);
     if (!facecam) return;
     routedElements.set(track, facecam);
@@ -202,10 +254,27 @@ function attachCamera(track, mainVideo, state) {
     return;
   }
 
-  resetMainVideo(mainVideo);
-  routedElements.set(track, mainVideo);
-  attachLegacyRemoteTrack(track, mainVideo);
-  Promise.resolve(mainVideo.play?.()).catch(() => {});
+  // Normal camera-only LIVE must start clean even after a Studio LIVE.
+  if (!state.screenTrack) {
+    state.studio = false;
+    state.meta = null;
+    clearElement(state.facecamElement);
+    try { state.facecamElement?.remove?.(); } catch {}
+    state.facecamElement = null;
+    resetMainVideo(mainVideo);
+    routedElements.set(track, mainVideo);
+    attachLegacyRemoteTrack(track, mainVideo);
+    mainVideo.muted = true;
+    Promise.resolve(mainVideo.play?.()).catch(() => {});
+    return;
+  }
+
+  // Unknown camera metadata must never replace an already visible screen.
+  const facecam = applyFacecamLayout(mainVideo, state.meta);
+  if (!facecam) return;
+  routedElements.set(track, facecam);
+  attachLegacyRemoteTrack(track, facecam);
+  Promise.resolve(facecam.play?.()).catch(() => {});
 }
 
 export function attachStudioAwareRemoteTrack(track, element) {
@@ -236,21 +305,24 @@ export function detachStudioAwareRemoteTrack(track, element) {
   const mainVideo = isVideoElement(element)
     ? element
     : (routed?.classList?.contains('droxionViewerFacecam') ? routed.parentElement?.querySelector('.productionViewerVideo') : null);
+
   if (mainVideo) {
     const state = viewerStates.get(mainVideo);
     if (state?.screenTrack === track) state.screenTrack = null;
     if (state?.cameraTrack === track) state.cameraTrack = null;
     if (!state?.cameraTrack && state?.facecamElement) {
+      clearElement(state.facecamElement);
       try { state.facecamElement.remove(); } catch {}
       state.facecamElement = null;
     }
-    if (!state?.screenTrack && !state?.cameraTrack) {
-      state.meta = null;
-      state.studio = false;
-      resetMainVideo(mainVideo);
-    }
+    if (!state?.screenTrack && !state?.cameraTrack) resetViewer(mainVideo);
   }
 
   routedElements.delete(track);
   forgetRemoteTrackMetadata(track);
+}
+
+export function resetStudioAwareViewer(element) {
+  if (element) resetViewer(element);
+  else Array.from(activeMainVideos).forEach(resetViewer);
 }
