@@ -1,15 +1,18 @@
 import { Track } from 'livekit-client';
 import { attachRemoteTrack as attachLegacyRemoteTrack, detachRemoteTrack as detachLegacyRemoteTrack } from './livekitRoomLegacy';
+import { remoteTrackMetadata, forgetRemoteTrackMetadata } from './remoteTrackMetadata';
 
 const routedElements = new WeakMap();
 const viewerStates = new WeakMap();
 
 function publicationName(track) {
-  return String(track?.__droxionPublicationName || track?.name || '').toLowerCase();
+  const metadata = remoteTrackMetadata(track);
+  return String(metadata?.name || track?.__droxionPublicationName || track?.name || '').toLowerCase();
 }
 
 function sourceOf(track) {
-  return track?.__droxionSource || track?.source || '';
+  const metadata = remoteTrackMetadata(track);
+  return metadata?.source || track?.__droxionSource || track?.source || '';
 }
 
 function isVideoElement(element) {
@@ -18,22 +21,25 @@ function isVideoElement(element) {
 
 function isScreenTrack(track) {
   const source = sourceOf(track);
+  const sourceText = String(source || '').toLowerCase();
+  const name = publicationName(track);
   return source === Track.Source.ScreenShare
-    || String(source).toLowerCase().includes('screen')
-    || publicationName(track).startsWith('droxion_screen');
+    || sourceText.includes('screen')
+    || name.startsWith('droxion_screen');
 }
 
 function isCameraTrack(track) {
   const source = sourceOf(track);
+  const sourceText = String(source || '').toLowerCase();
+  const name = publicationName(track);
   return source === Track.Source.Camera
-    || String(source).toLowerCase().includes('camera')
-    || publicationName(track).startsWith('droxion_camera')
-    || publicationName(track).startsWith('droxion_facecam');
+    || sourceText.includes('camera')
+    || name.startsWith('droxion_camera')
+    || name.startsWith('droxion_facecam');
 }
 
 function parseScreenMeta(track) {
   const name = publicationName(track);
-  if (!name.startsWith('droxion_screen')) return null;
   const parts = name.split('__');
   const orientation = parts[1] === 'vertical' ? 'vertical' : 'horizontal';
   return {
@@ -170,11 +176,8 @@ function applyFacecamLayout(mainVideo, meta) {
 function attachScreen(track, mainVideo, state) {
   state.studio = true;
   state.screenTrack = track;
-  const screenMeta = parseScreenMeta(track);
-  if (screenMeta && !state.meta) state.meta = screenMeta;
+  state.meta = { ...(state.meta || {}), ...parseScreenMeta(track) };
 
-  // If camera arrived first and was provisionally attached to the main video,
-  // detach it before attaching the real screen track.
   if (state.cameraTrack && routedElements.get(state.cameraTrack) === mainVideo) {
     try { detachLegacyRemoteTrack(state.cameraTrack, mainVideo); } catch {}
   }
@@ -200,8 +203,6 @@ function attachCamera(track, mainVideo, state) {
     state.studio = true;
   }
 
-  // Explicit Droxion facecam metadata, or an already-known screen track,
-  // means this camera is an overlay/split facecam and must never replace screen.
   if (explicitMeta || state.screenTrack || state.studio) {
     const facecam = applyFacecamLayout(mainVideo, state.meta);
     if (!facecam) return;
@@ -210,9 +211,6 @@ function attachCamera(track, mainVideo, state) {
     return;
   }
 
-  // Camera may subscribe a few milliseconds before ScreenShare. Keep it visible
-  // for a normal camera-only LIVE, but remember it so ScreenShare can reroute it
-  // to the facecam layer if a screen track arrives next.
   resetMainVideo(mainVideo);
   routedElements.set(track, mainVideo);
   attachLegacyRemoteTrack(track, mainVideo);
@@ -263,4 +261,5 @@ export function detachStudioAwareRemoteTrack(track, element) {
   }
 
   routedElements.delete(track);
+  forgetRemoteTrackMetadata(track);
 }
