@@ -21,19 +21,22 @@ function ThroneScene(){return <div className="giftSignatureScene giftSceneThrone
 function WorldCrownScene(){return <div className="giftSignatureScene giftSceneWorldCrown"><StarField/><div className="giftWorldGlobe">🌍</div><div className="giftWorldOrbit orbitA"/><div className="giftWorldOrbit orbitB"/><div className="giftWorldCrown">👑</div><div className="giftWorldShockwave"/></div>}
 
 const SIMPLE_SCENES = {
-  rose_petals:['🌹','rose'], heart_pulse:['💜','heart'], star_burst:['⭐','star'], coffee_steam:['☕','coffee'], sparkle_rain:['✨','sparkle'],
-  teddy_hug:['🧸','teddy'], crown_drop:['👑','crown'], cake_party:['🎂','cake'], fire_wave:['🔥','fire'], rocket_launch:['🚀','rocket'],
-  diamond_prism:['💎','diamond'], supercar_drive:['🏎️','supercar'], treasure_open:['🪙','treasure'], castle_reveal:['🏰','castle'], meteor_storm:['☄️','meteor']
+  rose_petals:['🌹','rose'],heart_pulse:['💜','heart'],star_burst:['⭐','star'],coffee_steam:['☕','coffee'],sparkle_rain:['✨','sparkle'],
+  teddy_hug:['🧸','teddy'],crown_drop:['👑','crown'],cake_party:['🎂','cake'],fire_wave:['🔥','fire'],rocket_launch:['🚀','rocket'],
+  diamond_prism:['💎','diamond'],supercar_drive:['🏎️','supercar'],treasure_open:['🪙','treasure'],castle_reveal:['🏰','castle'],meteor_storm:['☄️','meteor'],
+  neon_bloom:['🌺','neon'],lucky_seven:['🎰','lucky'],finger_heart:['🫰','fingerheart'],candy_pop:['🍭','candy'],soccer_strike:['⚽','soccer'],
+  hello_wave:['👋','wave'],snapshot_flash:['📸','snapshot'],game_on:['🎮','game'],chocolate_box:['🍫','chocolate'],party_drop:['🎁','party'],
+  magic_mirror:['🪞','mirror'],music_drop:['🎧','music'],angel_wings:['🪽','angel'],electric_orb:['⚡','electric'],moon_kiss:['🌙','moon']
 };
 
 function SimpleSignatureScene({ scene }) {
-  const [emoji, className] = SIMPLE_SCENES[scene] || ['🎁','gift'];
+  const [emoji,className]=SIMPLE_SCENES[scene]||['🎁','gift'];
   return <div className={`giftSignatureScene giftSceneSimple giftSceneSimple-${className}`}>
     <div className="giftSimpleBackdrop" />
     <div className="giftSimpleOrbit orbitA" />
     <div className="giftSimpleOrbit orbitB" />
     <div className="giftSimpleHero">{emoji}</div>
-    <div className="giftSimpleBurst">{Array.from({length:18},(_,i)=><i key={i} style={{'--simple-angle':`${i*20}deg`,'--simple-delay':`${(i%6)*70}ms`}}>{emoji}</i>)}</div>
+    <div className="giftSimpleBurst">{Array.from({length:18},(_,i)=><i key={i} style={{'--simple-angle':`${i*20}deg`,'--simple-delay':`${(i%6)*55}ms`}}>{emoji}</i>)}</div>
     <div className="giftSimpleFlash" />
   </div>;
 }
