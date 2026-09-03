@@ -18,12 +18,16 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value) || 0));
 }
 
+function normalizeOrientation(value) {
+  return value === 'vertical' ? 'vertical' : 'horizontal';
+}
+
 export function studioLayoutsForOrientation(orientation = 'horizontal') {
-  return LIVE_STUDIO_LAYOUTS.filter(item => item.orientations.includes(orientation));
+  return LIVE_STUDIO_LAYOUTS.filter(item => item.orientations.includes(normalizeOrientation(orientation)));
 }
 
 export function defaultStudioLayout(orientation = 'horizontal') {
-  return orientation === 'vertical' ? 'split_70_30' : 'free_facecam';
+  return normalizeOrientation(orientation) === 'vertical' ? 'split_70_30' : 'free_facecam';
 }
 
 export function normalizeFacecamPosition(position = DEFAULT_FACECAM_POSITION) {
@@ -35,12 +39,13 @@ export function normalizeFacecamPosition(position = DEFAULT_FACECAM_POSITION) {
 }
 
 function normalizeLayout(layout, orientation) {
-  const allowed = studioLayoutsForOrientation(orientation);
-  return allowed.some(item => item.id === layout) ? layout : defaultStudioLayout(orientation);
+  const normalizedOrientation = normalizeOrientation(orientation);
+  const allowed = studioLayoutsForOrientation(normalizedOrientation);
+  return allowed.some(item => item.id === layout) ? layout : defaultStudioLayout(normalizedOrientation);
 }
 
 function cameraConstraints(orientation, facingMode) {
-  const portrait = orientation !== 'horizontal';
+  const portrait = normalizeOrientation(orientation) === 'vertical';
   return {
     facingMode: { ideal: facingMode === 'environment' ? 'environment' : 'user' },
     width: { ideal: portrait ? 720 : 1280 },
@@ -115,7 +120,8 @@ export async function createLiveStudioStream({
   let outputStream = null;
   let audioContext = null;
   let disposed = false;
-  let currentLayout = normalizeLayout(layout, orientation);
+  let currentOrientation = normalizeOrientation(orientation);
+  let currentLayout = normalizeLayout(layout, currentOrientation);
   let currentFacecam = normalizeFacecamPosition(facecamPosition);
   let currentFacing = facingMode === 'environment' ? 'environment' : 'user';
   let cameraVisible = mode === LIVE_SOURCE_MODE.SCREEN_CAMERA;
@@ -153,7 +159,7 @@ export async function createLiveStudioStream({
     const tracks = [screenTrack];
     if (mode === LIVE_SOURCE_MODE.SCREEN_CAMERA) {
       cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: cameraConstraints(orientation, currentFacing),
+        video: cameraConstraints(currentOrientation, currentFacing),
         audio: false
       });
       const cameraTrack = cameraStream.getVideoTracks()[0];
@@ -167,7 +173,7 @@ export async function createLiveStudioStream({
 
     const studioMeta = {
       mode,
-      orientation,
+      orientation: currentOrientation,
       displaySurface,
       layout: currentLayout,
       facecamPosition: { ...currentFacecam }
@@ -182,17 +188,24 @@ export async function createLiveStudioStream({
     return {
       stream: outputStream,
       mode,
-      orientation,
       displaySurface,
+      getOrientation: () => currentOrientation,
+      setOrientation: nextOrientation => {
+        currentOrientation = normalizeOrientation(nextOrientation);
+        currentLayout = normalizeLayout(currentLayout, currentOrientation);
+        studioMeta.orientation = currentOrientation;
+        studioMeta.layout = currentLayout;
+        return { orientation: currentOrientation, layout: currentLayout };
+      },
       getLayout: () => currentLayout,
       setLayout: nextLayout => {
-        currentLayout = normalizeLayout(nextLayout, orientation);
+        currentLayout = normalizeLayout(nextLayout, currentOrientation);
         studioMeta.layout = currentLayout;
         return currentLayout;
       },
       getFacecamPosition: () => ({ ...currentFacecam }),
       setFacecamPosition: next => {
-        if (orientation !== 'horizontal') return { ...currentFacecam };
+        if (currentOrientation !== 'horizontal') return { ...currentFacecam };
         currentFacecam = normalizeFacecamPosition({ ...currentFacecam, ...(next || {}) });
         studioMeta.facecamPosition = { ...currentFacecam };
         return { ...currentFacecam };
@@ -208,7 +221,7 @@ export async function createLiveStudioStream({
         if (mode !== LIVE_SOURCE_MODE.SCREEN_CAMERA) throw new Error('Facecam is not active for this LIVE source.');
         const normalized = nextFacing === 'environment' ? 'environment' : 'user';
         const replacementStream = await navigator.mediaDevices.getUserMedia({
-          video: cameraConstraints(orientation, normalized),
+          video: cameraConstraints(currentOrientation, normalized),
           audio: false
         });
         const replacementTrack = replacementStream.getVideoTracks()[0];
