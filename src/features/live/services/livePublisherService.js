@@ -2,7 +2,7 @@ import { Track } from 'livekit-client';
 
 const PUBLISH_RETRY_DELAYS_MS = [0, 180, 520];
 const CONFIRM_POLL_MS = 120;
-const CONFIRM_TIMEOUT_MS = 4000;
+const CONFIRM_TIMEOUT_MS = 5000;
 
 function wait(ms) {
   return new Promise(resolve => window.setTimeout(resolve, ms));
@@ -25,9 +25,11 @@ function dimensionsFromTrack(track) {
   const width = Number(settings.width || 0);
   const height = Number(settings.height || 0);
   const frameRate = Number(settings.frameRate || 0) || 30;
-  return height >= width
-    ? { width: 720, height: 1280, frameRate }
-    : { width: 1280, height: 720, frameRate };
+  return {
+    width: width || (height > width ? 720 : 1280),
+    height: height || (height > width ? 1280 : 720),
+    frameRate
+  };
 }
 
 function localPublication(room, source) {
@@ -41,7 +43,7 @@ function localPublication(room, source) {
   ) || null;
 }
 
-async function waitForPublication(room, source) {
+async function waitForPublication(room, source, label) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < CONFIRM_TIMEOUT_MS) {
     const publication = localPublication(room, source);
@@ -49,9 +51,7 @@ async function waitForPublication(room, source) {
     if (publication?.track && mediaTrack?.readyState === 'live') return publication;
     await wait(CONFIRM_POLL_MS);
   }
-  throw new Error(source === Track.Source.Camera
-    ? 'LIVE camera publication was not stable.'
-    : 'LIVE microphone publication was not stable.');
+  throw new Error(`${label || 'LIVE video'} publication was not stable.`);
 }
 
 async function publishWithRetry(room, track, options, stage, logFailure) {
@@ -60,9 +60,7 @@ async function publishWithRetry(room, track, options, stage, logFailure) {
     if (delay) await wait(delay);
     const mediaTrack = mediaTrackOf(track);
     if (!mediaTrack || mediaTrack.readyState !== 'live') {
-      throw new Error(stage === 'camera'
-        ? 'LIVE camera track ended before publishing.'
-        : 'LIVE microphone track ended before publishing.');
+      throw new Error(`LIVE ${stage} track ended before publishing.`);
     }
 
     try {
@@ -100,52 +98,124 @@ function replaceStreamTracks(stream, localTracks) {
   });
 }
 
-export async function publishHostMediaV2({ room, stream, logFailure }) {
-  if (!room || !stream) throw new Error('LIVE room or camera stream is missing.');
+function liveTracks(stream) {
+  return {
+    videos: stream.getVideoTracks().filter(track => track.readyState === 'live'),
+    audio: stream.getAudioTracks().find(track => track.readyState === 'live') || null
+  };
+}
 
-  const browserVideo = stream.getVideoTracks().find(track => track.readyState === 'live');
-  const browserAudio = stream.getAudioTracks().find(track => track.readyState === 'live');
-  if (!browserVideo) throw new Error('LIVE camera track is missing.');
+function studioVideoTracks(stream, videos) {
+  const studio = stream?.__droxionStudio || null;
+  if (!studio) return null;
+  const screen = videos.find(track => track.__droxionSource === 'screen') || videos[0] || null;
+  const camera = studio.mode === 'screen_camera'
+    ? (videos.find(track => track.__droxionSource === 'camera') || videos.find(track => track !== screen) || null)
+    : null;
+  return { studio, screen, camera };
+}
+
+async function publishAudio(room, browserAudio, logFailure) {
   if (!browserAudio) throw new Error('LIVE microphone track is missing.');
+  await publishWithRetry(room, browserAudio, {
+    source: Track.Source.Microphone,
+    name: 'droxion_live_audio'
+  }, 'microphone', logFailure);
+  return waitForPublication(room, Track.Source.Microphone, 'LIVE microphone');
+}
 
-  const videoSettings = browserVideo.getSettings?.() || {};
-  const motionVideo = String(browserVideo.contentHint || '').toLowerCase() === 'motion'
-    || Number(videoSettings.frameRate || 0) > 35;
-  const maxFramerate = motionVideo ? 60 : 30;
-  const maxBitrate = motionVideo ? 4_500_000 : 2_500_000;
+async function publishScreenTrack(room, screenTrack, logFailure) {
+  if (!screenTrack) throw new Error('LIVE screen-share track is missing.');
+  const settings = screenTrack.getSettings?.() || {};
+  const requestedFps = Number(settings.frameRate || 0);
+  const maxFramerate = requestedFps > 35 ? 60 : 30;
+  const maxBitrate = maxFramerate > 30 ? 4_000_000 : 3_000_000;
 
-  const videoPublication = await publishWithRetry(room, browserVideo, {
-    source: Track.Source.Camera,
+  await publishWithRetry(room, screenTrack, {
+    source: Track.Source.ScreenShare,
+    name: 'droxion_screen',
     simulcast: true,
     videoEncoding: { maxBitrate, maxFramerate },
     videoCodec: undefined
-  }, 'camera', logFailure);
+  }, 'screen', logFailure);
+  return waitForPublication(room, Track.Source.ScreenShare, 'LIVE screen');
+}
 
-  const confirmedVideo = await waitForPublication(room, Track.Source.Camera);
-  const videoMediaTrack = mediaTrackOf(confirmedVideo.track || videoPublication.track);
-  if (!videoMediaTrack || videoMediaTrack.readyState !== 'live') {
-    throw new Error('LIVE camera was published but its track is not live.');
+async function publishCameraTrack(room, cameraTrack, logFailure, { facecam = false } = {}) {
+  if (!cameraTrack) throw new Error(facecam ? 'LIVE facecam track is missing.' : 'LIVE camera track is missing.');
+  await publishWithRetry(room, cameraTrack, {
+    source: Track.Source.Camera,
+    name: facecam ? 'droxion_facecam' : 'droxion_camera',
+    simulcast: true,
+    videoEncoding: {
+      maxBitrate: facecam ? 1_200_000 : 2_500_000,
+      maxFramerate: 30
+    },
+    videoCodec: undefined
+  }, facecam ? 'facecam' : 'camera', logFailure);
+  return waitForPublication(room, Track.Source.Camera, facecam ? 'LIVE facecam' : 'LIVE camera');
+}
+
+export async function publishHostMediaV2({ room, stream, logFailure }) {
+  if (!room || !stream) throw new Error('LIVE room or media stream is missing.');
+
+  const { videos, audio } = liveTracks(stream);
+  if (!videos.length) throw new Error('LIVE video track is missing.');
+  if (!audio) throw new Error('LIVE microphone track is missing.');
+
+  const studioTracks = studioVideoTracks(stream, videos);
+  if (studioTracks) {
+    const screenPublication = await publishScreenTrack(room, studioTracks.screen, logFailure);
+    const cameraPublication = studioTracks.camera
+      ? await publishCameraTrack(room, studioTracks.camera, logFailure, { facecam: true })
+      : null;
+    const audioPublication = await publishAudio(room, audio, logFailure);
+
+    const screenMediaTrack = mediaTrackOf(screenPublication.track);
+    const cameraMediaTrack = mediaTrackOf(cameraPublication?.track);
+    const audioMediaTrack = mediaTrackOf(audioPublication.track);
+    if (screenMediaTrack?.enabled === false) screenMediaTrack.enabled = true;
+    if (cameraMediaTrack?.enabled === false) cameraMediaTrack.enabled = true;
+    if (audioMediaTrack?.enabled === false) audioMediaTrack.enabled = true;
+
+    // Studio media is intentionally NOT rewritten into the original MediaStream.
+    // The native browser display-capture track remains owned by getDisplayMedia,
+    // so changing tabs/apps cannot be frozen by a canvas or preview handoff.
+    return {
+      videoPublication: screenPublication,
+      screenPublication,
+      cameraPublication,
+      audioPublication,
+      videoCapture: {
+        source: 'screen',
+        resolution: dimensionsFromTrack(screenMediaTrack),
+        motionOptimized: true,
+        hasFacecam: Boolean(cameraPublication)
+      }
+    };
   }
 
-  const audioPublication = await publishWithRetry(room, browserAudio, {
-    source: Track.Source.Microphone
-  }, 'microphone', logFailure);
-  const confirmedAudio = await waitForPublication(room, Track.Source.Microphone);
+  const browserVideo = videos[0];
+  const videoPublication = await publishCameraTrack(room, browserVideo, logFailure);
+  const audioPublication = await publishAudio(room, audio, logFailure);
 
-  replaceStreamTracks(stream, [confirmedVideo.track, confirmedAudio.track]);
+  // Preserve the previously working camera-only handoff exactly for normal LIVE.
+  replaceStreamTracks(stream, [videoPublication.track, audioPublication.track]);
 
-  const publishedVideo = mediaTrackOf(confirmedVideo.track);
-  const publishedAudio = mediaTrackOf(confirmedAudio.track);
+  const publishedVideo = mediaTrackOf(videoPublication.track);
+  const publishedAudio = mediaTrackOf(audioPublication.track);
   if (publishedVideo?.enabled === false) publishedVideo.enabled = true;
   if (publishedAudio?.enabled === false) publishedAudio.enabled = true;
 
   return {
-    videoPublication: confirmedVideo,
-    audioPublication: confirmedAudio,
+    videoPublication,
+    audioPublication,
     videoCapture: {
+      source: 'camera',
       facingMode: facingFromTrack(publishedVideo),
       resolution: dimensionsFromTrack(publishedVideo),
-      motionOptimized: motionVideo
+      motionOptimized: false,
+      hasFacecam: false
     }
   };
 }
