@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { invalidateLiveFeedCache } from './supabaseClient';
 
 const CATEGORIES = ['All', 'Trending', 'Gaming', 'Music', 'IRL', 'Talk', 'Lifestyle', 'Entertainment'];
 
@@ -31,6 +32,32 @@ export default function HomeDiscoveryControls({ query = '' }) {
     observer.observe(root, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
   }, [query, category]);
+
+  useEffect(() => {
+    // ProductionLiveBrowser deliberately keeps a short read cache to avoid
+    // hammering Postgres while the Home feed is idle. Clear that cache at the
+    // beginning of a real user refresh gesture so pull-to-refresh always reads
+    // the authoritative LIVE list instead of reusing a cached promise.
+    const prepareFreshRead = event => {
+      const target = event?.target;
+      if (!(target instanceof Element) || !target.closest('.productionLiveBrowse')) return;
+      const scrollTop = document.scrollingElement?.scrollTop || document.documentElement?.scrollTop || 0;
+      if (scrollTop <= 2) invalidateLiveFeedCache();
+    };
+
+    const refreshLifecycle = () => invalidateLiveFeedCache();
+    document.addEventListener('touchstart', prepareFreshRead, true);
+    document.addEventListener('pointerdown', prepareFreshRead, true);
+    window.addEventListener('pageshow', refreshLifecycle);
+    window.addEventListener('online', refreshLifecycle);
+
+    return () => {
+      document.removeEventListener('touchstart', prepareFreshRead, true);
+      document.removeEventListener('pointerdown', prepareFreshRead, true);
+      window.removeEventListener('pageshow', refreshLifecycle);
+      window.removeEventListener('online', refreshLifecycle);
+    };
+  }, []);
 
   return (
     <div className="dxDiscoveryControls dxDiscoveryControlsSingle">
