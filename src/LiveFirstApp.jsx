@@ -86,6 +86,15 @@ export default function LiveFirstApp() {
   }, [immersiveLive]);
 
   useEffect(() => {
+    if (tab !== 'live' || immersiveLive || hostStudioOpen || chatOpen || document.visibilityState === 'hidden') return undefined;
+    const timer = window.setInterval(() => {
+      invalidateLiveFeedCache();
+      setLiveHomeVersion(version => version + 1);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [tab, immersiveLive, hostStudioOpen, chatOpen]);
+
+  useEffect(() => {
     const openLiveHome = () => {
       setHostStudioOpen(false);
       setImmersiveLive(false);
