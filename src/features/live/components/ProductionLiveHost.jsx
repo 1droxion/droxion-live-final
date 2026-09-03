@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Mic, MicOff, MoreHorizontal, Radio, RotateCcw, SwitchCamera, Trophy, Users, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
@@ -7,7 +7,7 @@ import LiveAudienceDrawer from './LiveAudienceDrawer';
 import LiveRemoteGuestTile from './LiveRemoteGuestTile';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
-import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
+import { setHostCameraMuted, setHostMicrophoneMuted, switchHostCameraFacing } from '../services/liveHostControlService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
 import '../styles/live-audience-trigger.css';
@@ -20,6 +20,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [previewRequested, setPreviewRequested] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
+  const [facingMode, setFacingMode] = useState('user');
   const [controlBusy, setControlBusy] = useState('');
   const [controlError, setControlError] = useState('');
   const [audienceOpen, setAudienceOpen] = useState(false);
@@ -47,13 +48,14 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   useEffect(() => {
     if (previewRequested || mediaStream || live || connecting) return;
     setPreviewRequested(true);
-    ensurePreview({ orientation }).catch(() => {});
-  }, [previewRequested, mediaStream, live, connecting, orientation, ensurePreview]);
+    ensurePreview({ orientation, facingMode }).catch(() => {});
+  }, [previewRequested, mediaStream, live, connecting, orientation, facingMode, ensurePreview]);
 
   useEffect(() => {
     if (!live) {
       setMicMuted(false);
       setCameraMuted(false);
+      setFacingMode('user');
       setControlBusy('');
       setControlError('');
       setAudienceOpen(false);
@@ -149,6 +151,28 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     }
   }
 
+  async function switchCamera(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!live || cameraMuted || controlBusy) return;
+    const room = getRoom();
+    if (!room) return;
+    const previous = facingMode;
+    const nextFacing = previous === 'user' ? 'environment' : 'user';
+    setControlBusy('switch-camera');
+    setControlError('');
+    try {
+      await switchHostCameraFacing(room, mediaStream, nextFacing, orientation);
+      setFacingMode(nextFacing);
+      setControlsOpen(false);
+    } catch (error) {
+      setFacingMode(previous);
+      setControlError(error?.message || 'Could not switch camera.');
+    } finally {
+      setControlBusy('');
+    }
+  }
+
   function openAudience() {
     setControlsOpen(false);
     setAudienceOpen(true);
@@ -224,6 +248,10 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
               {cameraMuted ? <CameraOff size={19} /> : <Camera size={19} />}
               <span><strong>Camera</strong><small>{cameraMuted ? 'Off' : 'On'}</small></span>
             </button>
+            <button type="button" onClick={switchCamera} disabled={Boolean(controlBusy) || cameraMuted} role="menuitem">
+              <SwitchCamera size={19} />
+              <span><strong>Switch camera</strong><small>{facingMode === 'user' ? 'Front → Back' : 'Back → Front'}</small></span>
+            </button>
             <button type="button" onClick={openAudience} disabled={!state.sessionId} role="menuitem">
               <Users size={19} /><span><strong>Audience / Invite</strong><small>Viewers and invite guest</small></span>
             </button>
@@ -254,7 +282,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         <div className="prodLiveSetup">
           <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
           <label><span>Orientation</span><select value={orientation} onChange={event => setOrientation(event.target.value)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></label>
-          {!mediaStream && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
+          {!mediaStream && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation, facingMode })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
           <button type="button" className="prodLiveStart" disabled={busy || !mediaStream} onClick={() => startBroadcast({ title, orientation })}><Radio size={19} /> Start LIVE</button>
         </div>
       )}
