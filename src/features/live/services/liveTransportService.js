@@ -61,6 +61,15 @@ function publicationsOf(participant) {
   return [];
 }
 
+function decorateRemoteTrack(track, publication) {
+  if (!track || !publication) return track;
+  try {
+    track.__droxionPublicationName = publication.trackName || publication.name || track.name || '';
+    track.__droxionSource = publication.source || track.source || '';
+  } catch {}
+  return track;
+}
+
 function replayRemoteTracks(room, callbacks = {}) {
   if (!room || !callbacks.onTrackSubscribed) return;
   const participants = room.remoteParticipants?.values ? Array.from(room.remoteParticipants.values()) : [];
@@ -69,17 +78,17 @@ function replayRemoteTracks(room, callbacks = {}) {
       try {
         if (typeof publication?.setSubscribed === 'function' && !publication.isSubscribed) publication.setSubscribed(true);
       } catch {}
-      if (publication?.track) callbacks.onTrackSubscribed(publication.track, publication, participant);
+      if (publication?.track) callbacks.onTrackSubscribed(decorateRemoteTrack(publication.track, publication), publication, participant);
     });
   });
 }
 
 function bindRoomEvents(room, callbacks = {}) {
   room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-    callbacks.onTrackSubscribed?.(track, publication, participant);
+    callbacks.onTrackSubscribed?.(decorateRemoteTrack(track, publication), publication, participant);
   });
   room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-    callbacks.onTrackUnsubscribed?.(track, publication, participant);
+    callbacks.onTrackUnsubscribed?.(decorateRemoteTrack(track, publication), publication, participant);
   });
   room.on(RoomEvent.TrackPublished, publication => {
     try { publication?.setSubscribed?.(true); } catch {}
