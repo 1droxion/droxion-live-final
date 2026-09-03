@@ -91,7 +91,7 @@ export function useLiveBroadcast() {
     return stream;
   }, [patchState]);
 
-  const startBroadcast = useCallback(async ({ title = 'Live on Droxion', orientation = 'vertical', allowGuestRequests = false } = {}) => {
+  const startBroadcast = useCallback(async ({ title = 'Live on Droxion', tags = [], orientation = 'vertical', allowGuestRequests = false } = {}) => {
     if (operationRef.current || isLiveBusy(state.phase) || state.phase === LIVE_PHASE.LIVE) return;
     operationRef.current = true;
     patchState({ phase: LIVE_PHASE.STARTING, error: '', transportState: 'disconnected' });
@@ -106,7 +106,7 @@ export function useLiveBroadcast() {
         setMediaStream(stream);
       }
 
-      const session = await createLiveSession({ title, orientation, allowGuestRequests });
+      const session = await createLiveSession({ title, tags, orientation, allowGuestRequests });
       startedSessionId = session.sessionId;
       sessionIdRef.current = startedSessionId;
       patchState({ phase: LIVE_PHASE.CONNECTING, sessionId: startedSessionId, transportState: 'connecting' });
