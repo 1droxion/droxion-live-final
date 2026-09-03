@@ -11,8 +11,9 @@ export const LIVE_STUDIO_LAYOUTS = Object.freeze([
 ]);
 
 export const DEFAULT_FACECAM_POSITION = Object.freeze({ x: 0.735, y: 0.64, size: 0.235 });
-const MIN_FACECAM_SIZE = 0.16;
-const MAX_FACECAM_SIZE = 0.38;
+const MIN_FACECAM_SIZE = 0.14;
+const MAX_FACECAM_SIZE = 0.5;
+const HORIZONTAL_FACECAM_HEIGHT_RATIO = 4 / 3;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value) || 0));
@@ -33,7 +34,7 @@ export function defaultStudioLayout(orientation = 'horizontal') {
 export function normalizeFacecamPosition(position = DEFAULT_FACECAM_POSITION) {
   const size = clamp(position?.size ?? DEFAULT_FACECAM_POSITION.size, MIN_FACECAM_SIZE, MAX_FACECAM_SIZE);
   const x = clamp(position?.x ?? DEFAULT_FACECAM_POSITION.x, 0.012, Math.max(0.012, 0.988 - size));
-  const approximateHeight = size * 0.75;
+  const approximateHeight = size * HORIZONTAL_FACECAM_HEIGHT_RATIO;
   const y = clamp(position?.y ?? DEFAULT_FACECAM_POSITION.y, 0.018, Math.max(0.018, 0.982 - approximateHeight));
   return { x, y, size };
 }
@@ -70,10 +71,10 @@ async function createMixedAudioTrack(micStream, screenStream) {
   const micTrack = micStream?.getAudioTracks?.()[0] || null;
   const screenTrack = screenStream?.getAudioTracks?.()[0] || null;
   if (!micTrack) throw new Error('Microphone is required for LIVE.');
-  if (!screenTrack) return { track: micTrack, context: null };
+  if (!screenTrack) return { track: micTrack, context: null, hasSystemAudio: false };
 
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextCtor) return { track: micTrack, context: null };
+  if (!AudioContextCtor) return { track: micTrack, context: null, hasSystemAudio: false };
 
   let context;
   try { context = new AudioContextCtor({ latencyHint: 'interactive' }); }
@@ -89,14 +90,14 @@ async function createMixedAudioTrack(micStream, screenStream) {
     gain.connect(destination);
   };
 
-  add(micTrack, 1);
-  add(screenTrack, 0.82);
+  add(micTrack, 0.9);
+  add(screenTrack, 1);
   const mixedTrack = destination.stream.getAudioTracks()[0];
   if (!mixedTrack) {
     try { await context.close(); } catch {}
-    return { track: micTrack, context: null };
+    return { track: micTrack, context: null, hasSystemAudio: false };
   }
-  return { track: mixedTrack, context };
+  return { track: mixedTrack, context, hasSystemAudio: true };
 }
 
 export async function createLiveStudioStream({
@@ -175,6 +176,7 @@ export async function createLiveStudioStream({
       mode,
       orientation: currentOrientation,
       displaySurface,
+      hasSystemAudio: mixedAudio.hasSystemAudio,
       layout: currentLayout,
       facecamPosition: { ...currentFacecam }
     };
@@ -189,6 +191,7 @@ export async function createLiveStudioStream({
       stream: outputStream,
       mode,
       displaySurface,
+      hasSystemAudio: mixedAudio.hasSystemAudio,
       getOrientation: () => currentOrientation,
       setOrientation: nextOrientation => {
         currentOrientation = normalizeOrientation(nextOrientation);
