@@ -9,6 +9,7 @@ import GiftSignatureScene from './GiftSignatureScene';
 import LiveSupporterSpotlight from './LiveSupporterSpotlight';
 import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import LiveTopSupportersDrawer from './LiveTopSupportersDrawer';
+import LiveFloatingHearts from './LiveFloatingHearts';
 import '../styles/live-gift-cinema.css';
 import '../styles/live-gift-combo.css';
 
@@ -25,6 +26,8 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [heartBurstSignal, setHeartBurstSignal] = useState(0);
+  const [heartBurstCount, setHeartBurstCount] = useState(1);
   const lastAnimatedEventRef = useRef('');
   const { spotlights, refreshSpotlights } = useLiveSupporterSpotlights();
 
@@ -63,6 +66,12 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   }, [giftEvents, refreshSpotlights]);
 
   const particles = useMemo(() => Array.from({ length: PARTICLE_COUNT }, (_, index) => index), []);
+
+  const sendHeart = () => {
+    setHeartBurstCount(current => Math.min(4, Math.max(1, current + 1)));
+    setHeartBurstSignal(Date.now());
+    window.setTimeout(() => setHeartBurstCount(1), 380);
+  };
 
   if (typeof document === 'undefined') return null;
 
@@ -164,6 +173,12 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
       <button type="button" className="liveTopSupportersTrigger" onClick={() => setLeaderboardOpen(true)} aria-label="Open LIVE Top Supporters">
         <Trophy size={15} /> Top Supporters
       </button>
+
+      <LiveFloatingHearts
+        burstSignal={heartBurstSignal}
+        burstCount={heartBurstCount}
+        onTap={sendHeart}
+      />
 
       {cinema}
 
