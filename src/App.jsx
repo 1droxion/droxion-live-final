@@ -12,6 +12,7 @@ import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
 import ResetPassword from "./ResetPassword.jsx";
 import OAuthCallback from "./features/auth/OAuthCallback.jsx";
+import NativeOAuthBridge from "./features/auth/NativeOAuthBridge.jsx";
 import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
@@ -23,6 +24,7 @@ export default function App() {
 
   return (
     <>
+      <NativeOAuthBridge />
       {!isLiveV2 && <DroxionPushNotifications />}
       {!isLiveV2 && <DroxionLivePushBridge />}
       {!isLiveV2 && <GlobalEnhancements />}
