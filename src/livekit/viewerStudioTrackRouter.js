@@ -23,32 +23,24 @@ function isScreenTrack(track) {
   const source = sourceOf(track);
   const sourceText = String(source || '').toLowerCase();
   const name = publicationName(track);
-  return source === Track.Source.ScreenShare
-    || sourceText.includes('screen')
-    || name.startsWith('droxion_screen');
+  return source === Track.Source.ScreenShare || sourceText.includes('screen') || name.startsWith('droxion_screen');
 }
 
 function isCameraTrack(track) {
   const source = sourceOf(track);
   const sourceText = String(source || '').toLowerCase();
   const name = publicationName(track);
-  return source === Track.Source.Camera
-    || sourceText.includes('camera')
-    || name.startsWith('droxion_camera')
-    || name.startsWith('droxion_facecam');
+  return source === Track.Source.Camera || sourceText.includes('camera') || name.startsWith('droxion_camera') || name.startsWith('droxion_facecam');
 }
 
 function parseScreenMeta(track) {
-  const name = publicationName(track);
-  const parts = name.split('__');
+  const parts = publicationName(track).split('__');
   const orientation = parts[1] === 'vertical' ? 'vertical' : 'horizontal';
-  return {
-    orientation,
-    layout: orientation === 'vertical' ? 'split_70_30' : 'free_facecam',
-    x: 0.735,
-    y: 0.64,
-    size: 0.235
-  };
+  const requestedLayout = parts[2] || '';
+  const layout = orientation === 'vertical'
+    ? (requestedLayout === 'split_50_50' ? 'split_50_50' : 'split_70_30')
+    : 'free_facecam';
+  return { orientation, layout, x: 0.735, y: 0.64, size: 0.235 };
 }
 
 function parseFacecamMeta(track) {
@@ -56,7 +48,9 @@ function parseFacecamMeta(track) {
   if (!name.startsWith('droxion_facecam')) return null;
   const parts = name.split('__');
   const orientation = parts[1] === 'vertical' ? 'vertical' : 'horizontal';
-  const layout = parts[2] || (orientation === 'vertical' ? 'split_70_30' : 'free_facecam');
+  const layout = orientation === 'vertical'
+    ? (parts[2] === 'split_50_50' ? 'split_50_50' : 'split_70_30')
+    : 'free_facecam';
   const numbers = String(parts[3] || '').split('-').map(Number);
   const x = Number.isFinite(numbers[0]) ? numbers[0] / 1000 : 0.735;
   const y = Number.isFinite(numbers[1]) ? numbers[1] / 1000 : 0.64;
@@ -67,13 +61,7 @@ function parseFacecamMeta(track) {
 function stateFor(mainVideo) {
   let state = viewerStates.get(mainVideo);
   if (!state) {
-    state = {
-      screenTrack: null,
-      cameraTrack: null,
-      facecamElement: null,
-      meta: null,
-      studio: false
-    };
+    state = { screenTrack: null, cameraTrack: null, facecamElement: null, meta: null, studio: false };
     viewerStates.set(mainVideo, state);
   }
   return state;
@@ -81,6 +69,7 @@ function stateFor(mainVideo) {
 
 function resetMainVideo(element) {
   if (!element) return;
+  element.dataset.droxionStudioRole = 'main';
   element.style.position = 'absolute';
   element.style.left = '0';
   element.style.right = 'auto';
@@ -97,10 +86,9 @@ function applyScreenLayout(mainVideo, meta) {
   if (!mainVideo) return;
   const safeMeta = meta || { orientation: 'horizontal', layout: 'free_facecam' };
   resetMainVideo(mainVideo);
-
+  mainVideo.dataset.droxionOrientation = safeMeta.orientation;
   if (safeMeta.orientation === 'vertical') {
-    const split = safeMeta.layout === 'split_50_50' ? 50 : 70;
-    mainVideo.style.height = `${split}%`;
+    mainVideo.style.height = `${safeMeta.layout === 'split_50_50' ? 50 : 70}%`;
   }
 }
 
@@ -109,15 +97,14 @@ function ensureFacecamElement(mainVideo) {
   if (!parent) return null;
   const state = stateFor(mainVideo);
   if (state.facecamElement?.isConnected) return state.facecamElement;
-
   const existing = parent.querySelector('.droxionViewerFacecam');
   if (existing) {
     state.facecamElement = existing;
     return existing;
   }
-
   const video = document.createElement('video');
   video.className = 'droxionViewerFacecam';
+  video.dataset.droxionStudioRole = 'facecam';
   video.autoplay = true;
   video.playsInline = true;
   video.muted = true;
@@ -136,10 +123,9 @@ function applyFacecamLayout(mainVideo, meta) {
   const state = stateFor(mainVideo);
   const video = ensureFacecamElement(mainVideo);
   if (!video) return null;
-
   const safeMeta = meta || state.meta || { orientation: 'horizontal', layout: 'free_facecam', x: 0.735, y: 0.64, size: 0.235 };
   applyScreenLayout(mainVideo, safeMeta);
-
+  video.dataset.droxionOrientation = safeMeta.orientation;
   video.style.left = '';
   video.style.top = '';
   video.style.width = '';
@@ -169,14 +155,16 @@ function applyFacecamLayout(mainVideo, meta) {
     video.style.borderRadius = '14px';
     video.style.boxShadow = '0 10px 32px rgba(0,0,0,.38)';
   }
-
   return video;
 }
 
 function attachScreen(track, mainVideo, state) {
   state.studio = true;
   state.screenTrack = track;
-  state.meta = { ...(state.meta || {}), ...parseScreenMeta(track) };
+  const screenMeta = parseScreenMeta(track);
+  state.meta = state.meta
+    ? { ...screenMeta, ...state.meta, orientation: screenMeta.orientation, layout: state.meta.layout || screenMeta.layout }
+    : screenMeta;
 
   if (state.cameraTrack && routedElements.get(state.cameraTrack) === mainVideo) {
     try { detachLegacyRemoteTrack(state.cameraTrack, mainVideo); } catch {}
@@ -185,12 +173,14 @@ function attachScreen(track, mainVideo, state) {
   applyScreenLayout(mainVideo, state.meta);
   routedElements.set(track, mainVideo);
   attachLegacyRemoteTrack(track, mainVideo);
+  Promise.resolve(mainVideo.play?.()).catch(() => {});
 
   if (state.cameraTrack) {
     const facecam = applyFacecamLayout(mainVideo, state.meta);
     if (facecam) {
       routedElements.set(state.cameraTrack, facecam);
       attachLegacyRemoteTrack(state.cameraTrack, facecam);
+      Promise.resolve(facecam.play?.()).catch(() => {});
     }
   }
 }
@@ -208,12 +198,14 @@ function attachCamera(track, mainVideo, state) {
     if (!facecam) return;
     routedElements.set(track, facecam);
     attachLegacyRemoteTrack(track, facecam);
+    Promise.resolve(facecam.play?.()).catch(() => {});
     return;
   }
 
   resetMainVideo(mainVideo);
   routedElements.set(track, mainVideo);
   attachLegacyRemoteTrack(track, mainVideo);
+  Promise.resolve(mainVideo.play?.()).catch(() => {});
 }
 
 export function attachStudioAwareRemoteTrack(track, element) {
@@ -223,7 +215,6 @@ export function attachStudioAwareRemoteTrack(track, element) {
     attachLegacyRemoteTrack(track, element);
     return;
   }
-
   const state = stateFor(element);
   if (isScreenTrack(track)) {
     attachScreen(track, element, state);
@@ -233,7 +224,6 @@ export function attachStudioAwareRemoteTrack(track, element) {
     attachCamera(track, element, state);
     return;
   }
-
   routedElements.set(track, element);
   attachLegacyRemoteTrack(track, element);
 }
@@ -243,8 +233,11 @@ export function detachStudioAwareRemoteTrack(track, element) {
   const routed = routedElements.get(track) || element || null;
   try { detachLegacyRemoteTrack(track, routed || undefined); } catch {}
 
-  if (isVideoElement(element)) {
-    const state = viewerStates.get(element);
+  const mainVideo = isVideoElement(element)
+    ? element
+    : (routed?.classList?.contains('droxionViewerFacecam') ? routed.parentElement?.querySelector('.productionViewerVideo') : null);
+  if (mainVideo) {
+    const state = viewerStates.get(mainVideo);
     if (state?.screenTrack === track) state.screenTrack = null;
     if (state?.cameraTrack === track) state.cameraTrack = null;
     if (!state?.cameraTrack && state?.facecamElement) {
@@ -254,10 +247,8 @@ export function detachStudioAwareRemoteTrack(track, element) {
     if (!state?.screenTrack && !state?.cameraTrack) {
       state.meta = null;
       state.studio = false;
-      resetMainVideo(element);
+      resetMainVideo(mainVideo);
     }
-  } else if (routed?.classList?.contains('droxionViewerFacecam')) {
-    try { routed.remove(); } catch {}
   }
 
   routedElements.delete(track);
