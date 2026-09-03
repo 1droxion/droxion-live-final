@@ -141,6 +141,16 @@ function screenTrackName(studio = {}) {
   ].join('__');
 }
 
+function facecamPublishOptions(studio = {}) {
+  return {
+    source: Track.Source.Camera,
+    name: facecamTrackName(studio),
+    simulcast: true,
+    videoEncoding: { maxBitrate: 1_200_000, maxFramerate: 30 },
+    videoCodec: undefined
+  };
+}
+
 async function publishAudio(room, browserAudio, logFailure) {
   if (!browserAudio) throw new Error('LIVE microphone track is missing.');
   await publishWithRetry(room, browserAudio, {
@@ -180,17 +190,46 @@ async function publishScreenTrack(room, screenTrack, logFailure, studio = {}) {
 
 async function publishCameraTrack(room, cameraTrack, logFailure, { facecam = false, studio = null } = {}) {
   if (!cameraTrack) throw new Error(facecam ? 'LIVE facecam track is missing.' : 'LIVE camera track is missing.');
-  await publishWithRetry(room, cameraTrack, {
+  await publishWithRetry(room, cameraTrack, facecam ? facecamPublishOptions(studio || {}) : {
     source: Track.Source.Camera,
-    name: facecam ? facecamTrackName(studio || {}) : 'droxion_camera',
+    name: 'droxion_camera',
     simulcast: true,
-    videoEncoding: {
-      maxBitrate: facecam ? 1_200_000 : 2_500_000,
-      maxFramerate: 30
-    },
+    videoEncoding: { maxBitrate: 2_500_000, maxFramerate: 30 },
     videoCodec: undefined
   }, facecam ? 'facecam' : 'camera', logFailure);
   return waitForPublication(room, Track.Source.Camera, facecam ? 'LIVE facecam' : 'LIVE camera');
+}
+
+export async function refreshLiveFacecamLayout({ room, stream, logFailure }) {
+  if (!room || !stream?.__droxionStudio || stream.__droxionStudio.mode !== 'screen_camera') return null;
+  const { videos } = liveTracks(stream);
+  const studioTracks = studioVideoTracks(stream, videos);
+  if (!studioTracks?.camera) return null;
+
+  const current = localPublication(room, Track.Source.Camera);
+  const currentTrack = current?.track || studioTracks.camera;
+  const mediaTrack = mediaTrackOf(currentTrack);
+  if (!mediaTrack || mediaTrack.readyState !== 'live') return null;
+  const wasMuted = Boolean(current?.isMuted);
+
+  try {
+    if (current?.track) await room.localParticipant.unpublishTrack(current.track, false);
+    const publication = await publishWithRetry(
+      room,
+      currentTrack,
+      facecamPublishOptions(stream.__droxionStudio),
+      'facecam-layout-refresh',
+      logFailure
+    );
+    if (wasMuted) await publication?.mute?.();
+    return publication;
+  } catch (error) {
+    await logFailure?.('v2-facecam-layout-refresh', error, {
+      trackId: mediaTrack.id || '',
+      readyState: mediaTrack.readyState || ''
+    });
+    throw error;
+  }
 }
 
 export async function publishHostMediaV2({ room, stream, logFailure }) {
