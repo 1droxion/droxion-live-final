@@ -64,7 +64,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const availableLayouts = useMemo(() => studioLayoutsForOrientation(orientation), [orientation]);
   const tags = useMemo(() => parseTags(tagsText), [tagsText]);
 
-  useLiveReleaseSidecars({ enabled: live, creatorId, sessionId: state.sessionId, stream: mediaStream, title });
+  useLiveReleaseSidecars({ enabled: live, creatorId, sessionId: state.sessionId, stream: mediaStream, title, onModerationBlock: endBroadcast });
 
   const statusText = useMemo(() => {
     if (live) return state.phase === LIVE_PHASE.RECONNECTING ? 'Reconnecting…' : 'You are live';
