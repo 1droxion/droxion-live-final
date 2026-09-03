@@ -49,9 +49,9 @@ async function waitForPublication(room, source) {
     if (publication?.track && mediaTrack?.readyState === 'live') return publication;
     await wait(CONFIRM_POLL_MS);
   }
-  throw new Error(source === Track.Source.Camera
-    ? 'LIVE camera publication was not stable.'
-    : 'LIVE microphone publication was not stable.');
+  if (source === Track.Source.ScreenShare) throw new Error('LIVE screen share publication was not stable.');
+  if (source === Track.Source.Camera) throw new Error('LIVE camera publication was not stable.');
+  throw new Error('LIVE microphone publication was not stable.');
 }
 
 async function publishWithRetry(room, track, options, stage, logFailure) {
@@ -59,12 +59,7 @@ async function publishWithRetry(room, track, options, stage, logFailure) {
   for (const delay of PUBLISH_RETRY_DELAYS_MS) {
     if (delay) await wait(delay);
     const mediaTrack = mediaTrackOf(track);
-    if (!mediaTrack || mediaTrack.readyState !== 'live') {
-      throw new Error(stage === 'camera'
-        ? 'LIVE camera track ended before publishing.'
-        : 'LIVE microphone track ended before publishing.');
-    }
-
+    if (!mediaTrack || mediaTrack.readyState !== 'live') throw new Error(`LIVE ${stage} track ended before publishing.`);
     try {
       const publication = await room.localParticipant.publishTrack(track, options);
       if (publication?.track) return publication;
@@ -82,17 +77,13 @@ async function publishWithRetry(room, track, options, stage, logFailure) {
 }
 
 function replaceStreamTracks(stream, localTracks) {
-  const nextTracks = localTracks
-    .map(mediaTrackOf)
-    .filter(track => track && track.readyState !== 'ended');
+  const nextTracks = localTracks.map(mediaTrackOf).filter(track => track && track.readyState !== 'ended');
   const keep = new Set(nextTracks);
-
   stream.getTracks().forEach(track => {
     if (keep.has(track)) return;
     try { stream.removeTrack(track); } catch {}
     try { track.stop(); } catch {}
   });
-
   nextTracks.forEach(track => {
     if (!stream.getTracks().includes(track)) {
       try { stream.addTrack(track); } catch {}
@@ -100,54 +91,70 @@ function replaceStreamTracks(stream, localTracks) {
   });
 }
 
-export async function publishHostMediaV2({ room, stream, logFailure }) {
-  if (!room || !stream) throw new Error('LIVE room or camera stream is missing.');
+function sourceHint(track) {
+  return String(track?.__droxionSource || '').toLowerCase();
+}
 
-  const browserVideo = stream.getVideoTracks().find(track => track.readyState === 'live');
+export async function publishHostMediaV2({ room, stream, logFailure }) {
+  if (!room || !stream) throw new Error('LIVE room or media stream is missing.');
+
+  const browserVideos = stream.getVideoTracks().filter(track => track.readyState === 'live');
   const browserAudio = stream.getAudioTracks().find(track => track.readyState === 'live');
-  if (!browserVideo) throw new Error('LIVE camera track is missing.');
+  if (!browserVideos.length) throw new Error('LIVE video track is missing.');
   if (!browserAudio) throw new Error('LIVE microphone track is missing.');
 
-  const videoSettings = browserVideo.getSettings?.() || {};
-  const motionVideo = String(browserVideo.contentHint || '').toLowerCase() === 'motion'
-    || Number(videoSettings.frameRate || 0) > 35;
-  const maxFramerate = motionVideo ? 60 : 30;
-  const maxBitrate = motionVideo ? 4_500_000 : 2_500_000;
+  const studioMode = Boolean(stream.__droxionStudio);
+  const screenTrack = browserVideos.find(track => sourceHint(track) === 'screen') || (studioMode ? browserVideos[0] : null);
+  const cameraTrack = browserVideos.find(track => sourceHint(track) === 'camera') || (!studioMode ? browserVideos[0] : null);
+  const confirmedTracks = [];
+  let confirmedScreen = null;
+  let confirmedCamera = null;
 
-  const videoPublication = await publishWithRetry(room, browserVideo, {
-    source: Track.Source.Camera,
-    simulcast: true,
-    videoEncoding: { maxBitrate, maxFramerate },
-    videoCodec: undefined
-  }, 'camera', logFailure);
-
-  const confirmedVideo = await waitForPublication(room, Track.Source.Camera);
-  const videoMediaTrack = mediaTrackOf(confirmedVideo.track || videoPublication.track);
-  if (!videoMediaTrack || videoMediaTrack.readyState !== 'live') {
-    throw new Error('LIVE camera was published but its track is not live.');
+  if (screenTrack) {
+    try { screenTrack.contentHint = 'motion'; } catch {}
+    await publishWithRetry(room, screenTrack, {
+      source: Track.Source.ScreenShare,
+      simulcast: true,
+      videoEncoding: { maxBitrate: 5_500_000, maxFramerate: 60 },
+      videoCodec: undefined
+    }, 'screen', logFailure);
+    confirmedScreen = await waitForPublication(room, Track.Source.ScreenShare);
+    confirmedTracks.push(confirmedScreen.track);
   }
 
-  const audioPublication = await publishWithRetry(room, browserAudio, {
-    source: Track.Source.Microphone
-  }, 'microphone', logFailure);
+  if (cameraTrack) {
+    await publishWithRetry(room, cameraTrack, {
+      source: Track.Source.Camera,
+      simulcast: true,
+      videoEncoding: studioMode
+        ? { maxBitrate: 1_500_000, maxFramerate: 30 }
+        : { maxBitrate: 2_500_000, maxFramerate: 30 },
+      videoCodec: undefined
+    }, 'camera', logFailure);
+    confirmedCamera = await waitForPublication(room, Track.Source.Camera);
+    confirmedTracks.push(confirmedCamera.track);
+  }
+
+  await publishWithRetry(room, browserAudio, { source: Track.Source.Microphone }, 'microphone', logFailure);
   const confirmedAudio = await waitForPublication(room, Track.Source.Microphone);
+  confirmedTracks.push(confirmedAudio.track);
 
-  // Keep the exact LocalTracks owned by LiveKit in the same MediaStream used by
-  // the local preview. This preserves the existing stable LIVE handoff.
-  replaceStreamTracks(stream, [confirmedVideo.track, confirmedAudio.track]);
+  replaceStreamTracks(stream, confirmedTracks);
+  confirmedTracks.forEach(track => {
+    const mediaTrack = mediaTrackOf(track);
+    if (mediaTrack?.enabled === false) mediaTrack.enabled = true;
+  });
 
-  const publishedVideo = mediaTrackOf(confirmedVideo.track);
-  const publishedAudio = mediaTrackOf(confirmedAudio.track);
-  if (publishedVideo?.enabled === false) publishedVideo.enabled = true;
-  if (publishedAudio?.enabled === false) publishedAudio.enabled = true;
-
+  const primaryVideo = mediaTrackOf(confirmedScreen?.track || confirmedCamera?.track);
   return {
-    videoPublication: confirmedVideo,
+    videoPublication: confirmedCamera || confirmedScreen,
+    screenPublication: confirmedScreen,
+    cameraPublication: confirmedCamera,
     audioPublication: confirmedAudio,
     videoCapture: {
-      facingMode: facingFromTrack(publishedVideo),
-      resolution: dimensionsFromTrack(publishedVideo),
-      motionOptimized: motionVideo
+      facingMode: confirmedCamera ? facingFromTrack(mediaTrackOf(confirmedCamera.track)) : 'screen',
+      resolution: dimensionsFromTrack(primaryVideo),
+      motionOptimized: Boolean(confirmedScreen)
     }
   };
 }
