@@ -8,6 +8,7 @@ import LiveRemoteGuestTile from './LiveRemoteGuestTile';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
 import { setHostCameraMuted, setHostMicrophoneMuted, switchHostCameraFacing } from '../services/liveHostControlService';
+import { refreshLiveFacecamLayout } from '../services/livePublisherService';
 import { createLiveStudioStream, defaultStudioLayout, LIVE_SOURCE_MODE, studioLayoutsForOrientation, supportsDisplayCapture } from '../services/liveStudioService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import '../styles/production-live-host.css';
@@ -23,8 +24,10 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [studioLayout, setStudioLayout] = useState(defaultStudioLayout('vertical'));
   const [facecamPosition, setFacecamPosition] = useState({ x: 0.735, y: 0.64, size: 0.235 });
   const [studioPreparing, setStudioPreparing] = useState(false);
+  const [studioAudioNotice, setStudioAudioNotice] = useState('');
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
   const studioControllerRef = useRef(null);
+  const facecamPositionRef = useRef(facecamPosition);
   const stageRef = useRef(null);
   const dragRef = useRef(null);
   const screenEndShouldEndBroadcastRef = useRef(false);
@@ -131,6 +134,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     setSourceMode(LIVE_SOURCE_MODE.CAMERA);
     setCameraMuted(false);
     setPreviewRequested(true);
+    setStudioAudioNotice('');
     setControlError('');
     try { await ensurePreview({ orientation, facingMode }); }
     catch (error) { setControlError(error?.message || 'Could not open camera.'); }
@@ -144,6 +148,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     }
     setStudioPreparing(true);
     setControlError('');
+    setStudioAudioNotice('');
     const layout = defaultStudioLayout(orientation);
     setStudioLayout(layout);
     try {
@@ -154,7 +159,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         layout,
         orientation,
         facingMode,
-        facecamPosition,
+        facecamPosition: facecamPositionRef.current,
         onScreenEnded: () => {
           if (screenEndShouldEndBroadcastRef.current) endBroadcast().catch(() => {});
           else {
@@ -170,9 +175,15 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       setSourceMode(nextMode);
       setCameraMuted(false);
       setPreviewRequested(true);
+      if (!controller.hasSystemAudio) {
+        setStudioAudioNotice('Screen video is ready, but Chrome did not share system audio. Choose Entire Screen and turn on “Share system audio” in the Chrome picker to send video/game sound to viewers.');
+      } else {
+        setStudioAudioNotice('System audio + microphone are included in this LIVE.');
+      }
     } catch (error) {
       setSourceMode(LIVE_SOURCE_MODE.CAMERA);
       setPreviewRequested(false);
+      setStudioAudioNotice('');
       setControlError(error?.message || 'Could not start screen sharing.');
     } finally {
       setStudioPreparing(false);
@@ -183,6 +194,24 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     setStudioLayout(nextLayout);
     studioControllerRef.current?.setLayout?.(nextLayout);
     if (live) setLayoutPanelOpen(false);
+  }
+
+  function setFacecam(next) {
+    const normalized = studioControllerRef.current?.setFacecamPosition?.(next) || next;
+    facecamPositionRef.current = normalized;
+    setFacecamPosition(normalized);
+    return normalized;
+  }
+
+  async function commitFacecamLayout() {
+    if (!live || !hasFacecam || orientation !== 'horizontal' || studioLayout !== 'free_facecam') return;
+    const room = getRoom();
+    if (!room || !mediaStream) return;
+    try {
+      await refreshLiveFacecamLayout({ room, stream: mediaStream });
+    } catch (error) {
+      setControlError(error?.message || 'Could not update facecam layout for viewers.');
+    }
   }
 
   function beginFacecamDrag(event) {
@@ -198,17 +227,21 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   function moveFacecam(event) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const size = facecamPosition.size;
-    const normalizedHeight = size * (1280 / 720) * 0.75;
+    const size = facecamPositionRef.current.size;
+    const normalizedHeight = size * (4 / 3);
     const x = Math.min(0.988 - size, Math.max(0.012, (event.clientX - drag.rect.left) / drag.rect.width - size / 2));
     const y = Math.min(0.982 - normalizedHeight, Math.max(0.018, (event.clientY - drag.rect.top) / drag.rect.height - normalizedHeight / 2));
-    const next = { ...facecamPosition, x, y };
-    setFacecamPosition(next);
-    studioControllerRef.current?.setFacecamPosition?.(next);
+    setFacecam({ ...facecamPositionRef.current, x, y });
   }
 
   function endFacecamDrag(event) {
-    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    commitFacecamLayout().catch(() => {});
+  }
+
+  function resizeFacecam(event) {
+    setFacecam({ ...facecamPositionRef.current, size: Number(event.target.value) });
   }
 
   async function toggleMicrophone(event) {
@@ -272,6 +305,24 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
 
   async function endLiveFromMenu() { setControlsOpen(false); setLayoutPanelOpen(false); await endBroadcast(); studioControllerRef.current = null; }
 
+  const facecamSizeControl = hasFacecam && orientation === 'horizontal' && studioLayout === 'free_facecam' ? (
+    <label className="liveStudioFacecamSize">
+      <span><strong>Facecam size</strong><small>{Math.round(facecamPosition.size * 100)}%</small></span>
+      <input
+        type="range"
+        min="0.14"
+        max="0.50"
+        step="0.01"
+        value={facecamPosition.size}
+        onChange={resizeFacecam}
+        onPointerUp={() => commitFacecamLayout().catch(() => {})}
+        onKeyUp={() => commitFacecamLayout().catch(() => {})}
+        aria-label="Facecam size"
+      />
+      <small>Small ↔ Large</small>
+    </label>
+  ) : null;
+
   return (
     <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''} ${splitLive ? 'hasGuest' : ''} ${isStudioMode ? 'isStudioLive' : ''}`} aria-label="Droxion LIVE studio">
       {!live && <header className="prodLiveHostTopbar"><button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back"><ArrowLeft size={24} /></button><div className="prodLiveIdentity"><strong>Go LIVE</strong><span>{statusText}</span></div><div className="prodLiveStatus"><Radio size={16} /><span>PREVIEW</span></div></header>}
@@ -295,13 +346,13 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         {live && guestAccepted && <LiveRemoteGuestTile room={getRoom()} onVisibilityChange={setGuestVisible} />}
         {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
 
-        {live && layoutPanelOpen && hasFacecam && <div className="liveStudioLayoutPanel"><strong>{orientation === 'horizontal' ? 'Facecam layout' : 'Vertical layout'}</strong><div>{availableLayouts.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{orientation === 'horizontal' && <small>Drag the facecam directly anywhere on the stream.</small>}</div>}
+        {live && layoutPanelOpen && hasFacecam && <div className="liveStudioLayoutPanel"><strong>{orientation === 'horizontal' ? 'Facecam layout' : 'Vertical layout'}</strong><div>{availableLayouts.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{facecamSizeControl}{orientation === 'horizontal' && <small>Drag the facecam directly on the stream, then resize it here.</small>}</div>}
 
         {live && controlsOpen && <div className="prodLiveMoreMenu" role="menu" aria-label="LIVE controls">
           <button type="button" onClick={toggleMicrophone} disabled={Boolean(controlBusy)} role="menuitem">{micMuted ? <MicOff size={19} /> : <Mic size={19} />}<span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span></button>
           <button type="button" onClick={toggleCamera} disabled={Boolean(controlBusy) || sourceMode === LIVE_SOURCE_MODE.SCREEN} role="menuitem">{cameraMuted ? <CameraOff size={19} /> : <Camera size={19} />}<span><strong>{hasFacecam ? 'Facecam' : 'Camera'}</strong><small>{sourceMode === LIVE_SOURCE_MODE.SCREEN ? 'Not used in screen-only mode' : cameraMuted ? 'Off' : 'On'}</small></span></button>
           <button type="button" onClick={switchCamera} disabled={Boolean(controlBusy) || cameraMuted || sourceMode === LIVE_SOURCE_MODE.SCREEN} role="menuitem"><SwitchCamera size={19} /><span><strong>Switch camera</strong><small>{facingMode === 'user' ? 'Front → Back' : 'Back → Front'}</small></span></button>
-          {hasFacecam && <button type="button" onClick={() => { setLayoutPanelOpen(value => !value); setControlsOpen(false); }} role="menuitem"><LayoutGrid size={19} /><span><strong>LIVE layout</strong><small>{orientation === 'horizontal' ? 'Drag facecam anywhere' : '70/30 or 50/50 only'}</small></span></button>}
+          {hasFacecam && <button type="button" onClick={() => { setLayoutPanelOpen(value => !value); setControlsOpen(false); }} role="menuitem"><LayoutGrid size={19} /><span><strong>LIVE layout</strong><small>{orientation === 'horizontal' ? 'Drag + resize facecam' : '70/30 or 50/50 only'}</small></span></button>}
           <button type="button" onClick={openAudience} disabled={!state.sessionId} role="menuitem"><Users size={19} /><span><strong>Audience / Invite</strong><small>Viewers and invite guest</small></span></button>
           <button type="button" onClick={openTopSupporters} role="menuitem"><Trophy size={19} /><span><strong>Top Supporters</strong><small>Who gave the most gifts</small></span></button>
           {guestAccepted && <button type="button" className="prodLiveMoreRemoveGuest" onClick={removeGuestFromMenu} disabled={guestBusy} role="menuitem"><X size={19} /><span><strong>Remove Guest</strong><small>{guestBusy ? 'Removing…' : `Remove ${guestState.display_name || 'guest'} from LIVE`}</small></span></button>}
@@ -312,6 +363,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       </div>
 
       {(state.error || controlError) && <div className="prodLiveError">{controlError || state.error}</div>}
+      {isStudioMode && studioAudioNotice && <div className={`liveStudioAudioNotice ${mediaStream?.__droxionStudio?.hasSystemAudio ? 'isReady' : 'isWarning'}`}>{studioAudioNotice}</div>}
 
       {!live && !connecting && <div className="prodLiveSetup">
         <div className="liveStudioSourcePicker"><span>What do you want to stream?</span><div>
@@ -321,7 +373,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         </div></div>
         <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
         <label><span>Orientation</span><select value={orientation} onChange={event => setOrientation(event.target.value)} disabled={isStudioMode && Boolean(mediaStream)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></label>
-        {hasFacecam && <div className="liveStudioPreflightLayouts"><span>{orientation === 'horizontal' ? 'Facecam' : 'Vertical layout'}</span><div>{availableLayouts.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{orientation === 'horizontal' && <small>Drag the facecam on the preview to put it anywhere.</small>}</div>}
+        {hasFacecam && <div className="liveStudioPreflightLayouts"><span>{orientation === 'horizontal' ? 'Facecam' : 'Vertical layout'}</span><div>{availableLayouts.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{facecamSizeControl}{orientation === 'horizontal' && <small>Drag the facecam on the preview and choose its size before going LIVE.</small>}</div>}
         {!mediaStream && sourceMode === LIVE_SOURCE_MODE.CAMERA && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation, facingMode })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
         {!mediaStream && isStudioMode && <button type="button" className="prodLiveSecondary" onClick={() => chooseStudioSource(sourceMode)} disabled={busy}><MonitorUp size={18} /> Choose screen again</button>}
         <button type="button" className="prodLiveStart" disabled={busy || !mediaStream} onClick={() => startBroadcast({ title, orientation })}><Radio size={19} /> Start LIVE</button>
