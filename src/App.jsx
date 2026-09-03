@@ -11,6 +11,7 @@ import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
 import ResetPassword from "./ResetPassword.jsx";
+import OAuthCallback from "./features/auth/OAuthCallback.jsx";
 import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/live-v2" element={<LiveV2Page />} />
         <Route path="/live-v2/view/:sessionId" element={<LiveV2ViewerPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<OAuthCallback />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
