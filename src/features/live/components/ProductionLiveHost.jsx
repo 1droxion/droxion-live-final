@@ -16,9 +16,18 @@ import '../styles/live-audience-trigger.css';
 import '../styles/live-host-minimal-redesign.css';
 import '../styles/live-studio.css';
 
+function parseTags(value) {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim().replace(/^#/, ''))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 export default function ProductionLiveHost({ onClose, creatorId }) {
   const { state, mediaStream, ensurePreview, setPreparedMedia, stopPreview, startBroadcast, endBroadcast, getRoom } = useLiveBroadcast();
   const [title, setTitle] = useState('Live on Droxion');
+  const [tagsText, setTagsText] = useState('');
   const [orientation, setOrientation] = useState('vertical');
   const [sourceMode, setSourceMode] = useState(LIVE_SOURCE_MODE.CAMERA);
   const [studioLayout, setStudioLayout] = useState(defaultStudioLayout('vertical'));
@@ -26,7 +35,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [studioPreparing, setStudioPreparing] = useState(false);
   const [studioAudioNotice, setStudioAudioNotice] = useState('');
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
-  const [layoutLocked, setLayoutLocked] = useState(false);
+  const [setupSaved, setSetupSaved] = useState(false);
   const studioControllerRef = useRef(null);
   const facecamPositionRef = useRef(facecamPosition);
   const stageRef = useRef(null);
@@ -52,8 +61,8 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const splitLive = live && guestAccepted && guestVisible;
   const isStudioMode = sourceMode !== LIVE_SOURCE_MODE.CAMERA;
   const hasFacecam = sourceMode === LIVE_SOURCE_MODE.SCREEN_CAMERA;
-  const studioReadyToStart = !isStudioMode || layoutLocked;
   const availableLayouts = useMemo(() => studioLayoutsForOrientation(orientation), [orientation]);
+  const tags = useMemo(() => parseTags(tagsText), [tagsText]);
 
   useLiveReleaseSidecars({ enabled: live, creatorId, sessionId: state.sessionId, stream: mediaStream, title });
 
@@ -61,9 +70,10 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     if (live) return state.phase === LIVE_PHASE.RECONNECTING ? 'Reconnecting…' : 'You are live';
     if (connecting) return state.phase === LIVE_PHASE.STARTING ? 'Starting LIVE…' : 'Connecting video…';
     if (state.phase === LIVE_PHASE.ERROR) return state.error || 'LIVE could not start.';
-    if (mediaStream) return isStudioMode ? (layoutLocked ? 'Preview locked — ready to go LIVE' : 'Preview ready — adjust and lock') : 'Preview ready';
-    return 'Ready to go LIVE';
-  }, [live, connecting, state.phase, state.error, mediaStream, isStudioMode, layoutLocked]);
+    if (mediaStream && isStudioMode) return setupSaved ? 'Setup saved — ready to go LIVE' : 'Preview ready — adjust your stream';
+    if (mediaStream) return 'Preview ready';
+    return 'Choose your format and source';
+  }, [live, connecting, state.phase, state.error, mediaStream, isStudioMode, setupSaved]);
 
   useEffect(() => {
     if (sourceMode !== LIVE_SOURCE_MODE.CAMERA || previewRequested || mediaStream || live || connecting) return;
@@ -74,7 +84,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   useEffect(() => {
     const next = defaultStudioLayout(orientation);
     setStudioLayout(next);
-    setLayoutLocked(false);
+    setSetupSaved(false);
     studioControllerRef.current?.setLayout?.(next);
   }, [orientation]);
 
@@ -130,11 +140,17 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     onClose?.();
   }
 
+  function chooseFormat(nextOrientation) {
+    if (live || connecting || busy || (isStudioMode && mediaStream)) return;
+    setOrientation(nextOrientation === 'horizontal' ? 'horizontal' : 'vertical');
+    setSetupSaved(false);
+  }
+
   async function chooseCameraSource() {
     if (live || connecting || busy) return;
     stopPreview();
     studioControllerRef.current = null;
-    setLayoutLocked(false);
+    setSetupSaved(false);
     setSourceMode(LIVE_SOURCE_MODE.CAMERA);
     setCameraMuted(false);
     setPreviewRequested(true);
@@ -151,7 +167,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       return;
     }
     setStudioPreparing(true);
-    setLayoutLocked(false);
+    setSetupSaved(false);
     setControlError('');
     setStudioAudioNotice('');
     const layout = defaultStudioLayout(orientation);
@@ -171,7 +187,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
             stopPreview();
             studioControllerRef.current = null;
             setSourceMode(LIVE_SOURCE_MODE.CAMERA);
-            setLayoutLocked(false);
+            setSetupSaved(false);
             setPreviewRequested(false);
           }
         }
@@ -182,13 +198,13 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       setCameraMuted(false);
       setPreviewRequested(true);
       if (!controller.hasSystemAudio) {
-        setStudioAudioNotice('Screen video is ready, but Chrome did not share system audio. Choose Entire Screen and turn on “Share system audio” in the Chrome picker to send video/game sound to viewers.');
+        setStudioAudioNotice('Screen is ready. To include game/video sound, choose Entire Screen and enable “Share system audio” in Chrome.');
       } else {
-        setStudioAudioNotice('System audio + microphone are included in this LIVE.');
+        setStudioAudioNotice('System audio + microphone are included.');
       }
     } catch (error) {
       setSourceMode(LIVE_SOURCE_MODE.CAMERA);
-      setLayoutLocked(false);
+      setSetupSaved(false);
       setPreviewRequested(false);
       setStudioAudioNotice('');
       setControlError(error?.message || 'Could not start screen sharing.');
@@ -198,14 +214,14 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   }
 
   function chooseLayout(nextLayout) {
-    if (layoutLocked && !live) return;
+    setSetupSaved(false);
     setStudioLayout(nextLayout);
     studioControllerRef.current?.setLayout?.(nextLayout);
     if (live) setLayoutPanelOpen(false);
   }
 
   function setFacecam(next) {
-    if (layoutLocked && !live) return facecamPositionRef.current;
+    setSetupSaved(false);
     const normalized = studioControllerRef.current?.setFacecamPosition?.(next) || next;
     facecamPositionRef.current = normalized;
     setFacecamPosition(normalized);
@@ -224,7 +240,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   }
 
   function beginFacecamDrag(event) {
-    if ((layoutLocked && !live) || !hasFacecam || orientation !== 'horizontal' || studioLayout !== 'free_facecam') return;
+    if (!hasFacecam || orientation !== 'horizontal' || studioLayout !== 'free_facecam') return;
     const stage = stageRef.current;
     if (!stage) return;
     event.preventDefault();
@@ -250,8 +266,15 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   }
 
   function resizeFacecam(event) {
-    if (layoutLocked && !live) return;
     setFacecam({ ...facecamPositionRef.current, size: Number(event.target.value) });
+  }
+
+  async function startLiveNow() {
+    if (busy || !mediaStream || (isStudioMode && !setupSaved)) return;
+    if (isStudioMode) {
+      try { document.querySelector('.hostLiveMonitorTrigger')?.click(); } catch {}
+    }
+    await startBroadcast({ title, tags, orientation });
   }
 
   async function toggleMicrophone(event) {
@@ -324,7 +347,6 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         max="0.50"
         step="0.01"
         value={facecamPosition.size}
-        disabled={layoutLocked && !live}
         onChange={resizeFacecam}
         onPointerUp={() => commitFacecamLayout().catch(() => {})}
         onKeyUp={() => commitFacecamLayout().catch(() => {})}
@@ -334,28 +356,38 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     </label>
   ) : null;
 
-  return (
-    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''} ${splitLive ? 'hasGuest' : ''} ${isStudioMode ? 'isStudioLive' : ''}`} aria-label="Droxion LIVE studio">
-      {!live && <header className="prodLiveHostTopbar"><button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back"><ArrowLeft size={24} /></button><div className="prodLiveIdentity"><strong>Go LIVE</strong><span>{statusText}</span></div><div className="prodLiveStatus"><Radio size={16} /><span>{isStudioMode && layoutLocked ? 'LOCKED' : 'PREVIEW'}</span></div></header>}
+  const showCreatorHudController = (isStudioMode && mediaStream) || (live && Boolean(state.sessionId));
 
-      <div ref={stageRef} className={`prodLiveStage ${orientation === 'horizontal' ? 'horizontal' : 'vertical'} ${isStudioMode && layoutLocked && !live ? 'isLayoutLocked' : ''}`}>
-        {mediaStream ? <LocalLiveVideo stream={mediaStream} /> : <div className="prodLiveCameraPlaceholder">{isStudioMode ? <MonitorUp size={42} /> : <Camera size={42} />}<strong>{isStudioMode ? 'Screen preview' : 'Camera preview'}</strong><span>{studioPreparing ? 'Choose the window or game you want to share…' : 'Choose a LIVE source below.'}</span></div>}
+  return (
+    <section className={`prodLiveHost ${live ? 'isMinimalLive' : ''} ${splitLive ? 'hasGuest' : ''} ${isStudioMode ? 'isStudioLive isStudioComposer' : ''}`} aria-label="Droxion LIVE studio">
+      {!live && <header className="prodLiveHostTopbar"><button type="button" className="prodLiveIconButton" onClick={closeHost} aria-label="Back"><ArrowLeft size={24} /></button><div className="prodLiveIdentity"><strong>Go LIVE</strong><span>{statusText}</span></div><div className="prodLiveStatus"><Radio size={16} /><span>PREVIEW</span></div></header>}
+
+      {!live && !connecting && <div className="liveStudioFormatBar">
+        <div><strong>Choose LIVE format</strong><small>This is exactly how the viewer canvas is shaped.</small></div>
+        <div className="liveStudioFormatChoices">
+          <button type="button" className={orientation === 'vertical' ? 'active' : ''} onClick={() => chooseFormat('vertical')} disabled={isStudioMode && Boolean(mediaStream)}><b>Phone</b><span>9:16 vertical</span></button>
+          <button type="button" className={orientation === 'horizontal' ? 'active' : ''} onClick={() => chooseFormat('horizontal')} disabled={isStudioMode && Boolean(mediaStream)}><b>Desktop</b><span>16:9 horizontal</span></button>
+        </div>
+      </div>}
+
+      <div ref={stageRef} className={`prodLiveStage ${orientation === 'horizontal' ? 'horizontal' : 'vertical'} ${mediaStream ? 'hasRealPreview' : 'isExamplePreview'}`}>
+        {mediaStream ? <LocalLiveVideo stream={mediaStream} /> : <div className="prodLiveCameraPlaceholder liveStudioExamplePlaceholder">{orientation === 'horizontal' ? <MonitorUp size={46} /> : <Camera size={46} />}<strong>{orientation === 'horizontal' ? 'Desktop LIVE preview' : 'Phone LIVE preview'}</strong><span>Choose Screen / Game or Game + Facecam below to load your real preview here.</span></div>}
         {hasFacecam && orientation === 'horizontal' && studioLayout === 'free_facecam' && mediaStream && (
           <button
             type="button"
-            className={`liveStudioFacecamDrag ${layoutLocked && !live ? 'isLocked' : ''}`}
+            className="liveStudioFacecamDrag"
             style={{ left: `${facecamPosition.x * 100}%`, top: `${facecamPosition.y * 100}%`, width: `${facecamPosition.size * 100}%` }}
             onPointerDown={beginFacecamDrag}
             onPointerMove={moveFacecam}
             onPointerUp={endFacecamDrag}
             onPointerCancel={endFacecamDrag}
             aria-label="Drag facecam position"
-          ><span>{layoutLocked && !live ? 'Facecam locked' : 'Drag facecam'}</span></button>
+          ><span>Drag facecam</span></button>
         )}
         {live && <div className="prodLiveBadge prodLiveMinimalLiveBadge">LIVE</div>}
         {live && (state.sessionId ? <button type="button" className="prodLiveViewerPill liveAudienceTrigger prodLiveMinimalViewerCount" onClick={openAudience} aria-label="Open LIVE audience"><Users size={16} /><span>{state.viewerCount || 0}</span></button> : <div className="prodLiveViewerPill prodLiveMinimalViewerCount"><Users size={16} /><span>{state.viewerCount || 0}</span></div>)}
         {live && guestAccepted && <LiveRemoteGuestTile room={getRoom()} onVisibilityChange={setGuestVisible} />}
-        {live && state.sessionId && <HostLiveAudienceOverlay sessionId={state.sessionId} />}
+        {showCreatorHudController && <HostLiveAudienceOverlay sessionId={state.sessionId} showInline={live} />}
 
         {live && layoutPanelOpen && hasFacecam && <div className="liveStudioLayoutPanel"><strong>{orientation === 'horizontal' ? 'Facecam layout' : 'Vertical layout'}</strong><div>{availableLayouts.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{facecamSizeControl}{orientation === 'horizontal' && <small>Drag the facecam directly on the stream, then resize it here.</small>}</div>}
 
@@ -376,25 +408,26 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
       {(state.error || controlError) && <div className="prodLiveError">{controlError || state.error}</div>}
       {isStudioMode && studioAudioNotice && <div className={`liveStudioAudioNotice ${mediaStream?.__droxionStudio?.hasSystemAudio ? 'isReady' : 'isWarning'}`}>{studioAudioNotice}</div>}
 
-      {!live && !connecting && <div className="prodLiveSetup">
-        <div className="liveStudioSourcePicker"><span>What do you want to stream?</span><div>
+      {!live && !connecting && <div className={`prodLiveSetup ${isStudioMode ? 'liveStudioComposerPanel' : ''}`}>
+        <div className="liveStudioSourcePicker"><span>Choose source</span><div>
           <button type="button" className={sourceMode === LIVE_SOURCE_MODE.CAMERA ? 'active' : ''} onClick={chooseCameraSource} disabled={busy}><Camera size={20} /><strong>Camera</strong><small>Normal LIVE</small></button>
-          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.SCREEN ? 'active' : ''} onClick={() => chooseStudioSource(LIVE_SOURCE_MODE.SCREEN)} disabled={busy}><MonitorUp size={20} /><strong>Screen / Game</strong><small>Fast direct capture</small></button>
-          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.SCREEN_CAMERA ? 'active' : ''} onClick={() => chooseStudioSource(LIVE_SOURCE_MODE.SCREEN_CAMERA)} disabled={busy}><Gamepad2 size={20} /><strong>Game + Facecam</strong><small>Custom layout</small></button>
+          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.SCREEN ? 'active' : ''} onClick={() => chooseStudioSource(LIVE_SOURCE_MODE.SCREEN)} disabled={busy}><MonitorUp size={20} /><strong>Screen / Game</strong><small>Full screen capture</small></button>
+          <button type="button" className={sourceMode === LIVE_SOURCE_MODE.SCREEN_CAMERA ? 'active' : ''} onClick={() => chooseStudioSource(LIVE_SOURCE_MODE.SCREEN_CAMERA)} disabled={busy}><Gamepad2 size={20} /><strong>Game + Facecam</strong><small>Screen + camera</small></button>
         </div></div>
-        <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
-        <label><span>Orientation</span><select value={orientation} onChange={event => setOrientation(event.target.value)} disabled={isStudioMode && Boolean(mediaStream)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></label>
-        {hasFacecam && <div className="liveStudioPreflightLayouts"><span>{orientation === 'horizontal' ? 'Facecam' : 'Vertical layout'}</span><div>{availableLayouts.map(item => <button type="button" key={item.id} disabled={layoutLocked} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{facecamSizeControl}{orientation === 'horizontal' && <small>{layoutLocked ? 'Layout is locked. Unlock below to move or resize facecam.' : 'Drag the facecam on the preview and choose its size before going LIVE.'}</small>}</div>}
+
+        {hasFacecam && mediaStream && <div className="liveStudioPreflightLayouts"><span>{orientation === 'horizontal' ? 'Adjust facecam' : 'Vertical layout'}</span><div>{availableLayouts.map(item => <button type="button" key={item.id} className={studioLayout === item.id ? 'active' : ''} onClick={() => chooseLayout(item.id)}>{item.label}</button>)}</div>{facecamSizeControl}{orientation === 'horizontal' && <small>Drag the facecam directly on the large preview above and choose the size here.</small>}</div>}
+
         {!mediaStream && sourceMode === LIVE_SOURCE_MODE.CAMERA && <button type="button" className="prodLiveSecondary" onClick={() => ensurePreview({ orientation, facingMode })} disabled={busy}><RotateCcw size={18} /> Retry camera</button>}
         {!mediaStream && isStudioMode && <button type="button" className="prodLiveSecondary" onClick={() => chooseStudioSource(sourceMode)} disabled={busy}><MonitorUp size={18} /> Choose screen again</button>}
 
-        {isStudioMode && mediaStream && <div className={`liveStudioLockPanel ${layoutLocked ? 'isLocked' : ''}`}>
-          <div className="liveStudioLockSteps"><span className="done">1</span><i /><span className="done">2</span><i /><span className={layoutLocked ? 'done' : 'active'}>3</span></div>
-          <div className="liveStudioLockCopy"><strong>{layoutLocked ? 'Layout locked' : 'Review this exact preview'}</strong><small>{layoutLocked ? 'This composition is protected from accidental movement. You can go LIVE now.' : 'Adjust facecam/layout until it looks right, then lock it before starting LIVE.'}</small></div>
-          <button type="button" className={layoutLocked ? 'isUnlock' : ''} onClick={() => setLayoutLocked(value => !value)}>{layoutLocked ? 'Unlock & adjust' : 'Lock layout'}</button>
+        {isStudioMode && mediaStream && <button type="button" className={`liveStudioSaveSetup ${setupSaved ? 'isSaved' : ''}`} onClick={() => setSetupSaved(true)}><strong>{setupSaved ? '✓ Setup saved' : 'Save this setup'}</strong><span>{setupSaved ? 'Your screen, format and facecam position are ready.' : 'Save screen + facecam placement before adding LIVE details.'}</span></button>}
+
+        {(!isStudioMode || setupSaved) && <div className="liveStudioMetaPanel">
+          <label><span>LIVE title</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="What are you streaming?" /></label>
+          <label><span>Tags <small>{tags.length}/8</small></span><input value={tagsText} onChange={event => setTagsText(event.target.value)} maxLength={160} placeholder="gaming, reaction, music" /></label>
         </div>}
 
-        <button type="button" className="prodLiveStart" disabled={busy || !mediaStream || !studioReadyToStart} onClick={() => startBroadcast({ title, orientation })}><Radio size={19} />{isStudioMode && !layoutLocked ? ' Lock layout to go LIVE' : ' Start LIVE'}</button>
+        <button type="button" className="prodLiveStart" disabled={busy || !mediaStream || (isStudioMode && !setupSaved)} onClick={startLiveNow}><Radio size={19} />{isStudioMode && !setupSaved ? ' Save setup first' : ' Go LIVE'}</button>
       </div>}
 
       {connecting && <div className="prodLiveConnecting"><span className="prodLiveSpinner" /><strong>{statusText}</strong><span>Connecting your {isStudioMode ? 'LIVE Studio' : 'camera and microphone'} securely…</span></div>}
