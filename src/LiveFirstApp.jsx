@@ -73,7 +73,7 @@ export default function LiveFirstApp() {
   useEffect(() => {
     if (!immersiveLive) return;
     const unlockLiveAudio = () => {
-      Array.from(document.querySelectorAll('.liveRoomV4 audio')).forEach(audio => {
+      Array.from(document.querySelectorAll('.liveRoomV4 audio,.productionViewerPage audio')).forEach(audio => {
         audio.muted = false; audio.volume = 1;
         const playback = audio.play?.(); if (playback?.catch) playback.catch(() => {});
       });
@@ -84,29 +84,6 @@ export default function LiveFirstApp() {
     const retry = window.setInterval(unlockLiveAudio, 1200);
     return () => { window.clearInterval(retry); events.forEach(eventName => document.removeEventListener(eventName, unlockLiveAudio)); };
   }, [immersiveLive]);
-
-  useEffect(() => {
-    if (tab !== 'live' || immersiveLive || hostStudioOpen || chatOpen) return undefined;
-
-    const refreshLiveHome = () => {
-      invalidateLiveFeedCache();
-      setLiveHomeVersion(version => version + 1);
-    };
-
-    // Capacitor/WebView visibility can report hidden while the app is visibly
-    // on screen. Do not gate Home refresh on document.visibilityState.
-    const timer = window.setInterval(refreshLiveHome, 5000);
-    window.addEventListener('focus', refreshLiveHome);
-    window.addEventListener('online', refreshLiveHome);
-    document.addEventListener('visibilitychange', refreshLiveHome);
-
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refreshLiveHome);
-      window.removeEventListener('online', refreshLiveHome);
-      document.removeEventListener('visibilitychange', refreshLiveHome);
-    };
-  }, [tab, immersiveLive, hostStudioOpen, chatOpen]);
 
   useEffect(() => {
     const openLiveHome = () => {
@@ -127,15 +104,12 @@ export default function LiveFirstApp() {
       setSearchOpen(false);
       setNotificationsOpen(false);
       setTab('live');
-      // Do not clear the pending chat payload here. DroxionChat consumes it and
-      // opens the exact sender thread after its user/session state is ready.
       setChatOpen(true);
     };
 
     window.addEventListener('droxion:live-push-open', openLiveHome);
     window.addEventListener('droxion:chat-push-open', openChatFromPush);
 
-    // Cold-start fallback: OneSignal stores the payload before React mounts.
     try {
       const pendingLive = window.localStorage.getItem(PENDING_LIVE_PUSH_KEY);
       const pendingChat = window.localStorage.getItem(PENDING_CHAT_PUSH_KEY);
@@ -171,7 +145,7 @@ export default function LiveFirstApp() {
   function startLiveFromFeed() { openGoLiveInsideHome(); }
   function watchCreatorLive() { setTab('live'); setHostStudioOpen(false); }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><ProductionLiveBrowser key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  let content = <><HomeDiscoveryControls query={searchQuery} /><ProductionLiveBrowser currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <CreatorProfileHome currentUserId={user?.id} coins={coins} onOpenWallet={() => setWalletOpen(true)} />;
