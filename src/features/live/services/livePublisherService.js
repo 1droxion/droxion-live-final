@@ -115,6 +115,23 @@ function studioVideoTracks(stream, videos) {
   return { studio, screen, camera };
 }
 
+function safeSegment(value, fallback = '') {
+  return String(value ?? fallback).toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').slice(0, 48);
+}
+
+function facecamTrackName(studio = {}) {
+  const position = studio.facecamPosition || {};
+  const x = Math.round(Number(position.x || 0) * 1000);
+  const y = Math.round(Number(position.y || 0) * 1000);
+  const size = Math.round(Number(position.size || 0) * 1000);
+  return [
+    'droxion_facecam',
+    safeSegment(studio.orientation, 'horizontal'),
+    safeSegment(studio.layout, 'free_facecam'),
+    `${x}-${y}-${size}`
+  ].join('__');
+}
+
 async function publishAudio(room, browserAudio, logFailure) {
   if (!browserAudio) throw new Error('LIVE microphone track is missing.');
   await publishWithRetry(room, browserAudio, {
@@ -124,7 +141,7 @@ async function publishAudio(room, browserAudio, logFailure) {
   return waitForPublication(room, Track.Source.Microphone, 'LIVE microphone');
 }
 
-async function publishScreenTrack(room, screenTrack, logFailure) {
+async function publishScreenTrack(room, screenTrack, logFailure, studio = {}) {
   if (!screenTrack) throw new Error('LIVE screen-share track is missing.');
   const settings = screenTrack.getSettings?.() || {};
   const requestedFps = Number(settings.frameRate || 0);
@@ -133,7 +150,7 @@ async function publishScreenTrack(room, screenTrack, logFailure) {
 
   await publishWithRetry(room, screenTrack, {
     source: Track.Source.ScreenShare,
-    name: 'droxion_screen',
+    name: `droxion_screen__${safeSegment(studio.orientation, 'horizontal')}`,
     simulcast: true,
     videoEncoding: { maxBitrate, maxFramerate },
     videoCodec: undefined
@@ -141,11 +158,11 @@ async function publishScreenTrack(room, screenTrack, logFailure) {
   return waitForPublication(room, Track.Source.ScreenShare, 'LIVE screen');
 }
 
-async function publishCameraTrack(room, cameraTrack, logFailure, { facecam = false } = {}) {
+async function publishCameraTrack(room, cameraTrack, logFailure, { facecam = false, studio = null } = {}) {
   if (!cameraTrack) throw new Error(facecam ? 'LIVE facecam track is missing.' : 'LIVE camera track is missing.');
   await publishWithRetry(room, cameraTrack, {
     source: Track.Source.Camera,
-    name: facecam ? 'droxion_facecam' : 'droxion_camera',
+    name: facecam ? facecamTrackName(studio || {}) : 'droxion_camera',
     simulcast: true,
     videoEncoding: {
       maxBitrate: facecam ? 1_200_000 : 2_500_000,
@@ -165,9 +182,9 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
 
   const studioTracks = studioVideoTracks(stream, videos);
   if (studioTracks) {
-    const screenPublication = await publishScreenTrack(room, studioTracks.screen, logFailure);
+    const screenPublication = await publishScreenTrack(room, studioTracks.screen, logFailure, studioTracks.studio);
     const cameraPublication = studioTracks.camera
-      ? await publishCameraTrack(room, studioTracks.camera, logFailure, { facecam: true })
+      ? await publishCameraTrack(room, studioTracks.camera, logFailure, { facecam: true, studio: studioTracks.studio })
       : null;
     const audioPublication = await publishAudio(room, audio, logFailure);
 
@@ -178,9 +195,6 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
     if (cameraMediaTrack?.enabled === false) cameraMediaTrack.enabled = true;
     if (audioMediaTrack?.enabled === false) audioMediaTrack.enabled = true;
 
-    // Studio media is intentionally NOT rewritten into the original MediaStream.
-    // The native browser display-capture track remains owned by getDisplayMedia,
-    // so changing tabs/apps cannot be frozen by a canvas or preview handoff.
     return {
       videoPublication: screenPublication,
       screenPublication,
@@ -199,7 +213,6 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
   const videoPublication = await publishCameraTrack(room, browserVideo, logFailure);
   const audioPublication = await publishAudio(room, audio, logFailure);
 
-  // Preserve the previously working camera-only handoff exactly for normal LIVE.
   replaceStreamTracks(stream, [videoPublication.track, audioPublication.track]);
 
   const publishedVideo = mediaTrackOf(videoPublication.track);
