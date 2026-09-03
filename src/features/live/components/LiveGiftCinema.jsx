@@ -15,11 +15,10 @@ import '../styles/live-gift-combo.css';
 
 const PARTICLE_COUNT = 28;
 const SIGNATURE_SCENES = new Set([
-  'rose_petals','heart_pulse','star_burst','coffee_steam','sparkle_rain',
-  'teddy_hug','crown_drop','cake_party','fire_wave','rocket_launch',
-  'diamond_prism','supercar_drive','treasure_open','castle_reveal','dragon_fire',
-  'galaxy_blast','lion_roar','jet_flyby','yacht_glide','phoenix_rise',
-  'meteor_storm','universe_expand','throne_ascend','world_crown_orbit','royalty_reveal'
+  'rose_petals','heart_pulse','neon_bloom','lucky_seven','star_burst','finger_heart','candy_pop','coffee_steam','sparkle_rain','soccer_strike',
+  'teddy_hug','hello_wave','crown_drop','snapshot_flash','cake_party','game_on','fire_wave','chocolate_box','party_drop','rocket_launch',
+  'magic_mirror','diamond_prism','music_drop','supercar_drive','angel_wings','treasure_open','electric_orb','castle_reveal','moon_kiss','dragon_fire',
+  'galaxy_blast','lion_roar','jet_flyby','yacht_glide','phoenix_rise','meteor_storm','universe_expand','throne_ascend','world_crown_orbit','royalty_reveal'
 ]);
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
