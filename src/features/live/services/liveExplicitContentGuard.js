@@ -126,11 +126,15 @@ export function createExplicitLiveContentGuard({ sessionId, stream, onBlocked } 
 
   (async () => {
     try {
-      // Dynamic import keeps this several-MB ML model out of the initial app
-      // startup path. Only an active creator LIVE pays the model load cost.
-      const nsfwjs = await import('nsfwjs');
+      // Import only the small/core loader plus the single MobileNetV2 model.
+      // This prevents the Android/iOS bundle from carrying every NSFWJS model
+      // while keeping moderation completely outside the initial startup path.
+      const [{ load }, { MobileNetV2Model }] = await Promise.all([
+        import('nsfwjs/core'),
+        import('nsfwjs/models/mobilenet_v2'),
+      ]);
       if (stopped) return;
-      model = await nsfwjs.load('MobileNetV2');
+      model = await load('MobileNetV2', { modelDefinitions: [MobileNetV2Model] });
       if (stopped) {
         try { model?.dispose?.(); } catch {}
         return;
