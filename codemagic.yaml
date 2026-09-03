@@ -59,6 +59,7 @@ workflows:
           grep -E "compileSdkVersion|targetSdkVersion" android/variables.gradle || true
           grep -q "compileSdkVersion = 36" android/variables.gradle
           grep -q "targetSdkVersion = 36" android/variables.gradle
+          grep -q 'android:scheme="com.droxion.live"' android/app/src/main/AndroidManifest.xml
 
       - name: Build signed Android App Bundle
         script: |
@@ -179,7 +180,7 @@ workflows:
             --splashBackgroundColor '#08080c' \
             --splashBackgroundColorDark '#08080c'
 
-      - name: Configure iOS privacy permissions
+      - name: Configure iOS privacy permissions and OAuth return
         script: |
           set -e
           PLIST="${IOS_PROJECT_PATH}/App/Info.plist"
@@ -189,7 +190,19 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$PLIST"
+          python3 - "$PLIST" <<'PY'
+          import plistlib, sys
+          path = sys.argv[1]
+          with open(path, 'rb') as handle:
+              data = plistlib.load(handle)
+          entries = data.setdefault('CFBundleURLTypes', [])
+          scheme = 'com.droxion.live'
+          if not any(scheme in entry.get('CFBundleURLSchemes', []) for entry in entries if isinstance(entry, dict)):
+              entries.append({'CFBundleURLName': 'com.droxion.live.oauth', 'CFBundleURLSchemes': [scheme]})
+          with open(path, 'wb') as handle:
+              plistlib.dump(data, handle)
+          PY
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PLIST"
 
       - name: Install CocoaPods
         script: |
