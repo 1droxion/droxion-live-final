@@ -4,19 +4,26 @@ import { mediaTrackSnapshot, recordScreenShareDiagnostic, startVideoFrameDiagnos
 function attachVideo(video, stream) {
   if (!video) return () => {};
 
-  video.srcObject = stream || null;
-  video.style.display = stream ? 'block' : 'none';
   video.muted = true;
   video.playsInline = true;
   video.autoplay = true;
   video.setAttribute('playsinline', '');
 
-  if (!stream) return () => {
+  if (!stream) {
     video.srcObject = null;
-  };
+    video.style.display = 'none';
+    return () => { video.srcObject = null; };
+  }
 
   let stopped = false;
-  const videoTrack = stream.getVideoTracks?.()[0] || null;
+  let lastTrackId = '';
+  let blankChecks = 0;
+
+  const currentTrack = () => (
+    stream.getVideoTracks?.().find(track => track.readyState === 'live') ||
+    stream.getVideoTracks?.()[0] ||
+    null
+  );
 
   const play = () => {
     if (stopped || video.srcObject !== stream) return;
@@ -26,25 +33,46 @@ function attachVideo(video, stream) {
     } catch {}
   };
 
-  const recoverIfBlank = () => {
-    if (stopped || video.srcObject !== stream || videoTrack?.readyState !== 'live') return;
-    // WKWebView can keep a live camera track publishing while the local video
-    // surface goes black after the LIVE UI changes to fullscreen. Reattaching
-    // only this local preview does not replace, stop, or republish the track.
-    if (video.videoWidth === 0 || video.readyState < 2) {
+  const sync = ({ force = false } = {}) => {
+    if (stopped) return;
+
+    const track = currentTrack();
+    const trackId = track?.id || '';
+    const trackChanged = Boolean(trackId && trackId !== lastTrackId);
+    const blank = Boolean(track && track.readyState === 'live' && (video.videoWidth === 0 || video.readyState < 2));
+
+    blankChecks = blank ? blankChecks + 1 : 0;
+
+    if (force || trackChanged || video.srcObject !== stream || (blank && blankChecks >= 2)) {
       try {
         video.srcObject = null;
         video.srcObject = stream;
-      } catch {}
+      } catch {
+        video.srcObject = stream;
+      }
+      blankChecks = 0;
+      lastTrackId = trackId;
     }
+
+    video.style.display = track ? 'block' : 'none';
     play();
   };
 
+  const onTrackChange = () => sync({ force: true });
+  const onVisibility = () => {
+    if (document.visibilityState !== 'hidden') sync({ force: true });
+  };
+  const onPageShow = () => sync({ force: true });
+
   video.addEventListener('loadedmetadata', play);
   video.addEventListener('canplay', play);
-  videoTrack?.addEventListener?.('unmute', recoverIfBlank);
-  const animationFrame = window.requestAnimationFrame(play);
-  const recoveryTimer = window.setInterval(recoverIfBlank, 900);
+  stream.addEventListener?.('addtrack', onTrackChange);
+  stream.addEventListener?.('removetrack', onTrackChange);
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pageshow', onPageShow);
+
+  const animationFrame = window.requestAnimationFrame(() => sync({ force: true }));
+  const recoveryTimer = window.setInterval(() => sync(), 800);
 
   return () => {
     stopped = true;
@@ -52,7 +80,10 @@ function attachVideo(video, stream) {
     window.clearInterval(recoveryTimer);
     video.removeEventListener('loadedmetadata', play);
     video.removeEventListener('canplay', play);
-    videoTrack?.removeEventListener?.('unmute', recoverIfBlank);
+    stream.removeEventListener?.('addtrack', onTrackChange);
+    stream.removeEventListener?.('removetrack', onTrackChange);
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pageshow', onPageShow);
     if (video.srcObject === stream) video.srcObject = null;
   };
 }
@@ -118,19 +149,17 @@ export default function LocalLiveVideo({ stream }) {
     const wrapper = wrapperRef.current;
     if (!mainVideo) return undefined;
 
-    // Do not mirror the entire local-video wrapper. A transformed fullscreen
-    // wrapper can render black in a native WKWebView, and it also mirrors
-    // screen/game content. Camera mirroring, where wanted, belongs on a camera
-    // element only, never on the whole stage.
     if (wrapper) wrapper.style.transform = 'none';
 
     const studio = stream?.__droxionStudio || null;
     const videoTracks = stream?.getVideoTracks?.().filter(track => track.readyState === 'live') || [];
 
     if (!studio) {
-      const cameraTrack = videoTracks[0] || null;
-      const cameraStream = cameraTrack ? new MediaStream([cameraTrack]) : null;
-      const detachMain = attachVideo(mainVideo, cameraStream);
+      // Keep the host preview attached to the same MediaStream object used by
+      // the LIVE session. LiveKit/native WebView can replace the active camera
+      // track inside this stream when publishing starts; cloning the old track
+      // leaves the host preview black even though viewers still receive video.
+      const detachMain = attachVideo(mainVideo, stream || null);
       const detachFacecam = attachVideo(facecamVideo, null);
       mainVideo.style.transform = 'none';
 
