@@ -19,6 +19,44 @@ function ensureOneSignal() {
   return initPromise;
 }
 
+async function ensurePushSubscription() {
+  await ensureOneSignal();
+
+  let permission = false;
+  try {
+    permission = await OneSignal.Notifications.requestPermission(false);
+  } catch (error) {
+    console.warn('OneSignal notification permission request failed', error);
+  }
+
+  const pushSubscription = OneSignal?.User?.pushSubscription;
+  if (permission && pushSubscription?.optIn) {
+    try {
+      await pushSubscription.optIn();
+    } catch (error) {
+      console.warn('Could not opt in OneSignal push subscription', error);
+    }
+  }
+
+  try {
+    const [subscriptionId, token, optedIn] = await Promise.all([
+      pushSubscription?.getIdAsync?.() ?? Promise.resolve(null),
+      pushSubscription?.getTokenAsync?.() ?? Promise.resolve(null),
+      pushSubscription?.getOptedInAsync?.() ?? Promise.resolve(null)
+    ]);
+    console.log('Droxion OneSignal subscription state', {
+      permission,
+      optedIn,
+      hasSubscriptionId: Boolean(subscriptionId),
+      hasPushToken: Boolean(token)
+    });
+  } catch (error) {
+    console.warn('Could not read OneSignal subscription state', error);
+  }
+
+  return permission;
+}
+
 function notificationData(event) {
   const notification = event?.notification || event?.result?.notification || {};
   return notification.additionalData || notification.additional_data || notification.customData || {};
@@ -49,14 +87,9 @@ export default function DroxionPushNotifications() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform?.()) return;
 
-    (async () => {
-      try {
-        await ensureOneSignal();
-        await OneSignal.Notifications.requestPermission(false);
-      } catch (error) {
-        console.warn('OneSignal initialization or permission failed', error);
-      }
-    })();
+    ensurePushSubscription().catch(error => {
+      console.warn('OneSignal initialization or subscription failed', error);
+    });
   }, []);
 
   useEffect(() => {
@@ -65,7 +98,7 @@ export default function DroxionPushNotifications() {
 
     async function setIdentity(userId) {
       try {
-        await ensureOneSignal();
+        await ensurePushSubscription();
         if (!alive) return;
         if (userId) await OneSignal.login(userId);
         else await OneSignal.logout();
