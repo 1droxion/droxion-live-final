@@ -1,17 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
+import { Track } from 'livekit-client';
 import { LIVE_PHASE } from '../types/liveState';
 import { getLiveRoomStatus } from '../services/liveSessionService';
 import { connectViewerTransport, disconnectTransport } from '../services/liveTransportService';
 
+function publicationName(track, publication) {
+  return String(
+    publication?.trackName ||
+    publication?.name ||
+    track?.__droxionPublicationName ||
+    track?.name ||
+    ''
+  ).toLowerCase();
+}
+
+function publicationSource(track, publication) {
+  return publication?.source || track?.__droxionSource || track?.source || '';
+}
+
+function isScreenVideo(track, publication) {
+  const source = publicationSource(track, publication);
+  const sourceText = String(source || '').toLowerCase();
+  const name = publicationName(track, publication);
+  return source === Track.Source.ScreenShare || sourceText.includes('screen') || name.startsWith('droxion_screen');
+}
+
 export function useLiveViewer(sessionId) {
   const [state, setState] = useState({ phase: LIVE_PHASE.IDLE, error: '' });
-  const [videoTrack, setVideoTrack] = useState(null);
+  const [screenTrack, setScreenTrack] = useState(null);
+  const [cameraTrack, setCameraTrack] = useState(null);
   const [audioTrack, setAudioTrack] = useState(null);
   const roomRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
-    setVideoTrack(null);
+    setScreenTrack(null);
+    setCameraTrack(null);
     setAudioTrack(null);
 
     if (!sessionId) {
@@ -28,14 +52,23 @@ export function useLiveViewer(sessionId) {
         const room = await connectViewerTransport({
           sessionId,
           callbacks: {
-            onTrackSubscribed: track => {
+            onTrackSubscribed: (track, publication) => {
               if (cancelled) return;
-              if (track.kind === 'video') setVideoTrack(track);
+              if (track.kind === 'video') {
+                if (isScreenVideo(track, publication)) setScreenTrack(track);
+                else setCameraTrack(track);
+              }
               if (track.kind === 'audio') setAudioTrack(track);
             },
-            onTrackUnsubscribed: track => {
+            onTrackUnsubscribed: (track, publication) => {
               if (cancelled) return;
-              if (track.kind === 'video') setVideoTrack(current => current === track ? null : current);
+              if (track.kind === 'video') {
+                if (isScreenVideo(track, publication)) {
+                  setScreenTrack(current => current === track ? null : current);
+                } else {
+                  setCameraTrack(current => current === track ? null : current);
+                }
+              }
               if (track.kind === 'audio') setAudioTrack(current => current === track ? null : current);
             },
             onReconnecting: () => !cancelled && setState({ phase: LIVE_PHASE.RECONNECTING, error: '' }),
@@ -60,9 +93,18 @@ export function useLiveViewer(sessionId) {
       cancelled = true;
       const room = roomRef.current;
       roomRef.current = null;
+      setScreenTrack(null);
+      setCameraTrack(null);
+      setAudioTrack(null);
       disconnectTransport(room);
     };
   }, [sessionId]);
 
-  return { state, videoTrack, audioTrack };
+  return {
+    state,
+    screenTrack,
+    cameraTrack,
+    videoTrack: screenTrack || cameraTrack,
+    audioTrack
+  };
 }
