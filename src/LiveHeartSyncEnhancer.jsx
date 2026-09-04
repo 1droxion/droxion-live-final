@@ -50,11 +50,19 @@ export default function LiveHeartSyncEnhancer() {
 
     const ensureViewerButton = viewer => {
       if (!(viewer instanceof HTMLElement)) return;
-      const existing = viewer.querySelector('.liveHeartTapButton, .productionViewerHeartSyncButton');
+      const composer = viewer.querySelector('.productionViewerComposer');
+      if (!(composer instanceof HTMLElement)) return;
+
+      const existing = composer.querySelector('.productionViewerHeartSyncButton');
       if (existing) {
         if (injectedButton && injectedButton !== existing) injectedButton.remove();
-        injectedButton = existing.classList.contains('productionViewerHeartSyncButton') ? existing : null;
+        injectedButton = existing;
         return;
+      }
+
+      if (injectedButton && !composer.contains(injectedButton)) {
+        injectedButton.remove();
+        injectedButton = null;
       }
 
       const button = document.createElement('button');
@@ -62,7 +70,10 @@ export default function LiveHeartSyncEnhancer() {
       button.className = 'productionViewerHeartSyncButton';
       button.setAttribute('aria-label', 'Send heart reaction');
       button.textContent = '♥';
-      viewer.appendChild(button);
+
+      const giftButton = composer.querySelector('.productionViewerGiftButton');
+      if (giftButton) composer.insertBefore(button, giftButton);
+      else composer.appendChild(button);
       injectedButton = button;
     };
 
@@ -135,8 +146,9 @@ export default function LiveHeartSyncEnhancer() {
     };
 
     const clickHandler = event => {
-      const button = event.target?.closest?.('.liveHeartTapButton, .productionViewerHeartSyncButton');
+      const button = event.target?.closest?.('.productionViewerHeartSyncButton, .liveHeartTapButton');
       if (!button || !document.querySelector('.productionViewerPage')) return;
+      if (button.classList.contains('liveHeartTapButton') && !button.closest('.productionViewerComposer')) return;
       sendHeart();
     };
 
