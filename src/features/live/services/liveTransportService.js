@@ -123,6 +123,16 @@ function bindRoomEvents(room, callbacks = {}) {
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 30);
   });
   room.on(RoomEvent.ParticipantDisconnected, participant => callbacks.onParticipantChange?.(participant));
+  room.on(RoomEvent.DataReceived, payload => {
+    if (roomRoles.get(room) !== 'viewer') return;
+    try {
+      const text = new TextDecoder().decode(payload);
+      const message = JSON.parse(text);
+      if (message?.type === 'droxion_live_ended') {
+        emitViewerRoom('droxion:live-ended', { room, sessionId: String(message.sessionId || '') });
+      }
+    } catch {}
+  });
   room.on(RoomEvent.Reconnecting, () => callbacks.onReconnecting?.());
   room.on(RoomEvent.Reconnected, () => {
     replayRemoteTracks(room, callbacks);
@@ -203,6 +213,18 @@ export async function connectGuestTransport({ sessionId, stream, callbacks = {} 
     try { await room.disconnect(); } catch {}
     throw error;
   }
+}
+
+export async function sendLiveEndedSignal(room, sessionId) {
+  if (!room?.localParticipant?.publishData) return;
+  try {
+    const payload = new TextEncoder().encode(JSON.stringify({
+      type: 'droxion_live_ended',
+      sessionId: String(sessionId || ''),
+      endedAt: Date.now()
+    }));
+    await room.localParticipant.publishData(payload, { reliable: true });
+  } catch {}
 }
 
 export async function disconnectTransport(room) {
