@@ -237,11 +237,33 @@ workflows:
 
       - name: Build signed IPA
         script: |
-          set -e
+          set +e
           cd "$IOS_PROJECT_PATH"
           xcode-project build-ipa \
             --workspace "App.xcworkspace" \
             --scheme "App"
+          BUILD_STATUS=$?
+
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            echo ""
+            echo "========== DROXION XCODE FAILURE DETAILS =========="
+            if [ -d /tmp/xcodebuild_logs ]; then
+              find /tmp/xcodebuild_logs -type f -name '*.log' -print
+              for LOG in /tmp/xcodebuild_logs/*.log; do
+                [ -f "$LOG" ] || continue
+                echo "----- $LOG : signing / entitlement / error lines -----"
+                grep -n -E -i 'error:|provision|entitlement|codesign|signing|aps-environment|push notification|profile' "$LOG" | tail -n 180 || true
+                echo "----- $LOG : final 120 lines -----"
+                tail -n 120 "$LOG" || true
+              done
+            else
+              echo "No /tmp/xcodebuild_logs directory was produced."
+            fi
+            echo "===================================================="
+            exit "$BUILD_STATUS"
+          fi
+
+          set -e
           echo "Generated iOS artifacts:"
           find build/ios/ipa -maxdepth 2 -type f -print || true
           test -n "$(find build/ios/ipa -name '*.ipa' -print -quit)"
