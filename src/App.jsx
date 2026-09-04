@@ -3,6 +3,7 @@ import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import LiveGuestStageGuard from "./LiveGuestStageGuard.jsx";
+import LiveHeartSyncEnhancer from "./LiveHeartSyncEnhancer.jsx";
 import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
 import ShortSafetyEnhancer from "./ShortSafetyEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
@@ -30,6 +31,7 @@ export default function App() {
       {!isLiveV2 && <GlobalEnhancements />}
       {!isLiveV2 && <CreatorV11Enhancer />}
       {!isLiveV2 && <LiveGuestStageGuard />}
+      {!isLiveV2 && <LiveHeartSyncEnhancer />}
       {!isLiveV2 && <ShortNativeActionsEnhancer />}
       {!isLiveV2 && <ShortSafetyEnhancer />}
       <Routes>
