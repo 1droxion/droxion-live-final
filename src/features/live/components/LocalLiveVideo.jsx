@@ -4,6 +4,7 @@ import { mediaTrackSnapshot, recordScreenShareDiagnostic, startVideoFrameDiagnos
 function attachVideo(video, stream) {
   if (!video) return;
   video.srcObject = stream || null;
+  video.style.display = stream ? '' : 'none';
   video.muted = true;
   video.playsInline = true;
   video.autoplay = true;
