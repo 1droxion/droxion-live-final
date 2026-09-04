@@ -204,6 +204,15 @@ workflows:
           PY
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PLIST"
 
+      - name: Configure native iOS push notifications
+        script: |
+          set -e
+          node scripts/configure-ios-push.mjs
+          test -f "${IOS_PROJECT_PATH}/App/App.entitlements"
+          grep -q "aps-environment" "${IOS_PROJECT_PATH}/App/App.entitlements"
+          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "${IOS_PROJECT_PATH}/App/Info.plist"
+          grep -q "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
+
       - name: Install CocoaPods
         script: |
           set -e
