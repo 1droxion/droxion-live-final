@@ -2,14 +2,59 @@ import { useEffect, useRef } from 'react';
 import { mediaTrackSnapshot, recordScreenShareDiagnostic, startVideoFrameDiagnostics } from '../../../livekit/screenShareDiagnostics';
 
 function attachVideo(video, stream) {
-  if (!video) return;
+  if (!video) return () => {};
+
   video.srcObject = stream || null;
-  video.style.display = stream ? '' : 'none';
+  video.style.display = stream ? 'block' : 'none';
   video.muted = true;
   video.playsInline = true;
   video.autoplay = true;
   video.setAttribute('playsinline', '');
-  if (stream) video.play?.().catch?.(() => {});
+
+  if (!stream) return () => {
+    video.srcObject = null;
+  };
+
+  let stopped = false;
+  const videoTrack = stream.getVideoTracks?.()[0] || null;
+
+  const play = () => {
+    if (stopped || video.srcObject !== stream) return;
+    try {
+      const result = video.play?.();
+      if (result?.catch) result.catch(() => {});
+    } catch {}
+  };
+
+  const recoverIfBlank = () => {
+    if (stopped || video.srcObject !== stream || videoTrack?.readyState !== 'live') return;
+    // WKWebView can keep a live camera track publishing while the local video
+    // surface goes black after the LIVE UI changes to fullscreen. Reattaching
+    // only this local preview does not replace, stop, or republish the track.
+    if (video.videoWidth === 0 || video.readyState < 2) {
+      try {
+        video.srcObject = null;
+        video.srcObject = stream;
+      } catch {}
+    }
+    play();
+  };
+
+  video.addEventListener('loadedmetadata', play);
+  video.addEventListener('canplay', play);
+  videoTrack?.addEventListener?.('unmute', recoverIfBlank);
+  const animationFrame = window.requestAnimationFrame(play);
+  const recoveryTimer = window.setInterval(recoverIfBlank, 900);
+
+  return () => {
+    stopped = true;
+    window.cancelAnimationFrame(animationFrame);
+    window.clearInterval(recoveryTimer);
+    video.removeEventListener('loadedmetadata', play);
+    video.removeEventListener('canplay', play);
+    videoTrack?.removeEventListener?.('unmute', recoverIfBlank);
+    if (video.srcObject === stream) video.srcObject = null;
+  };
 }
 
 function applyStudioLayout(wrapper, screenVideo, facecamVideo, meta) {
@@ -35,7 +80,6 @@ function applyStudioLayout(wrapper, screenVideo, facecamVideo, meta) {
   facecamVideo.style.zIndex = '5';
   facecamVideo.style.objectFit = 'cover';
   facecamVideo.style.background = '#09090c';
-  facecamVideo.style.transform = 'none';
 
   if (orientation === 'vertical') {
     const split = layout === 'split_50_50' ? 50 : 70;
@@ -74,15 +118,25 @@ export default function LocalLiveVideo({ stream }) {
     const wrapper = wrapperRef.current;
     if (!mainVideo) return undefined;
 
+    // Do not mirror the entire local-video wrapper. A transformed fullscreen
+    // wrapper can render black in a native WKWebView, and it also mirrors
+    // screen/game content. Camera mirroring, where wanted, belongs on a camera
+    // element only, never on the whole stage.
+    if (wrapper) wrapper.style.transform = 'none';
+
     const studio = stream?.__droxionStudio || null;
     const videoTracks = stream?.getVideoTracks?.().filter(track => track.readyState === 'live') || [];
 
     if (!studio) {
-      attachVideo(mainVideo, stream || null);
-      if (facecamVideo) attachVideo(facecamVideo, null);
+      const cameraTrack = videoTracks[0] || null;
+      const cameraStream = cameraTrack ? new MediaStream([cameraTrack]) : null;
+      const detachMain = attachVideo(mainVideo, cameraStream);
+      const detachFacecam = attachVideo(facecamVideo, null);
+      mainVideo.style.transform = 'none';
+
       return () => {
-        if (mainVideo.srcObject === stream) mainVideo.srcObject = null;
-        if (facecamVideo) facecamVideo.srcObject = null;
+        detachMain();
+        detachFacecam();
       };
     }
 
@@ -90,8 +144,8 @@ export default function LocalLiveVideo({ stream }) {
     const cameraTrack = videoTracks.find(track => track.__droxionSource === 'camera') || videoTracks.find(track => track !== screenTrack) || null;
     const screenStream = screenTrack ? new MediaStream([screenTrack]) : null;
     const cameraStream = cameraTrack ? new MediaStream([cameraTrack]) : null;
-    attachVideo(mainVideo, screenStream);
-    attachVideo(facecamVideo, cameraStream);
+    const detachMain = attachVideo(mainVideo, screenStream);
+    const detachFacecam = attachVideo(facecamVideo, cameraStream);
 
     recordScreenShareDiagnostic('host-capture-attached', {
       track: mediaTrackSnapshot(screenTrack),
@@ -114,8 +168,8 @@ export default function LocalLiveVideo({ stream }) {
     return () => {
       stopped = true;
       stopFrameDiagnostics();
-      mainVideo.srcObject = null;
-      if (facecamVideo) facecamVideo.srcObject = null;
+      detachMain();
+      detachFacecam();
     };
   }, [stream]);
 
