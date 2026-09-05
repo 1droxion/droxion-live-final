@@ -59,6 +59,27 @@ function recoverCurrentViewer(viewer) {
   } catch {}
 }
 
+function closeEndedViewer() {
+  const viewer = currentViewer();
+  if (viewer instanceof HTMLElement) {
+    const backButton = viewer.querySelector('.productionViewerTop > button');
+    if (backButton instanceof HTMLButtonElement) {
+      backButton.click();
+      return;
+    }
+  }
+
+  const v2Viewer = document.querySelector('.liveV2ViewerPage');
+  if (v2Viewer) {
+    const homeLink = v2Viewer.querySelector('.liveV2Header a');
+    if (homeLink instanceof HTMLElement) {
+      homeLink.click();
+      return;
+    }
+    try { window.location.replace('/'); } catch {}
+  }
+}
+
 export default function LiveViewerRecoveryEnhancer() {
   useEffect(() => {
     let firstTimer = null;
@@ -122,6 +143,7 @@ export default function LiveViewerRecoveryEnhancer() {
     };
 
     inspect();
+    window.addEventListener('droxion:live-ended', closeEndedViewer);
     const observer = new MutationObserver(inspect);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     const interval = window.setInterval(inspect, 700);
@@ -129,6 +151,7 @@ export default function LiveViewerRecoveryEnhancer() {
     return () => {
       clearTimers();
       window.clearInterval(interval);
+      window.removeEventListener('droxion:live-ended', closeEndedViewer);
       observer.disconnect();
       document.querySelectorAll('.droxionLiveBlankGuard').forEach(node => node.remove());
     };
