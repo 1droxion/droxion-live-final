@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabaseClient';
 
 function compactNumber(value) {
@@ -10,7 +11,8 @@ function compactNumber(value) {
 
 function platform() {
   try {
-    const value = window.Capacitor?.getPlatform?.();
+    if (!Capacitor.isNativePlatform?.()) return '';
+    const value = Capacitor.getPlatform?.();
     if (value === 'ios' || value === 'android') return value;
   } catch {}
   return '';
@@ -104,17 +106,20 @@ async function saveClipNative(clip) {
     return;
   }
 
-  if (platform()) {
+  const nativePlatform = platform();
+  if (nativePlatform) {
     try {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const path = `Droxion/${clipFile.fileName}`;
       const data = await blobToBase64(clipFile.blob);
       await Filesystem.writeFile({
-        path: `Droxion/${clipFile.fileName}`,
+        path,
         data,
         directory: Directory.Documents,
         recursive: true
       });
-      notice(platform() === 'ios' ? 'Saved to Files on your iPhone.' : 'Saved to Documents on your phone.');
+      await Filesystem.stat({ path, directory: Directory.Documents });
+      notice(nativePlatform === 'ios' ? 'Saved to Files on your iPhone.' : 'Saved to Documents on your phone.');
       return;
     } catch (error) {
       console.warn('Native file save failed', error);
