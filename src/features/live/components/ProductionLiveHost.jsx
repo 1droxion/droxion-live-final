@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, Gamepad2, LayoutGrid, Mic, MicOff, MonitorUp, MoreHorizontal, Radio, RotateCcw, SwitchCamera, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Gamepad2, LayoutGrid, Mic, MicOff, MonitorUp, MoreHorizontal, Radio, RotateCcw, Trophy, Users, X } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import LocalLiveVideo from './LocalLiveVideo';
 import HostLiveAudienceOverlay from './HostLiveAudienceOverlay';
@@ -7,7 +7,7 @@ import LiveAudienceDrawer from './LiveAudienceDrawer';
 import LiveRemoteGuestTile from './LiveRemoteGuestTile';
 import { useLiveBroadcast } from '../hooks/useLiveBroadcast';
 import { useLiveReleaseSidecars } from '../hooks/useLiveReleaseSidecars';
-import { setHostCameraMuted, setHostMicrophoneMuted, switchHostCameraFacing } from '../services/liveHostControlService';
+import { setHostCameraMuted, setHostMicrophoneMuted } from '../services/liveHostControlService';
 import { refreshLiveFacecamLayout } from '../services/livePublisherService';
 import { createLiveStudioStream, defaultStudioLayout, LIVE_SOURCE_MODE, studioLayoutsForOrientation, supportsDisplayCapture } from '../services/liveStudioService';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
@@ -44,7 +44,7 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
   const [previewRequested, setPreviewRequested] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
-  const [facingMode, setFacingMode] = useState('user');
+  const facingMode = 'user';
   const [controlBusy, setControlBusy] = useState('');
   const [controlError, setControlError] = useState('');
   const [audienceOpen, setAudienceOpen] = useState(false);
@@ -305,23 +305,6 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
     } finally { setControlBusy(''); }
   }
 
-  async function switchCamera(event) {
-    event?.preventDefault?.(); event?.stopPropagation?.();
-    if (!live || cameraMuted || controlBusy || sourceMode === LIVE_SOURCE_MODE.SCREEN) return;
-    const previous = facingMode; const nextFacing = previous === 'user' ? 'environment' : 'user';
-    setControlBusy('switch-camera'); setControlError('');
-    try {
-      if (hasFacecam) await studioControllerRef.current?.switchCameraFacing?.(nextFacing);
-      else {
-        const room = getRoom(); if (!room) return;
-        await switchHostCameraFacing(room, mediaStream, nextFacing, orientation);
-      }
-      setFacingMode(nextFacing); setControlsOpen(false);
-    } catch (error) {
-      setFacingMode(previous); setControlError(error?.message || 'Could not switch camera.');
-    } finally { setControlBusy(''); }
-  }
-
   function openAudience() { setControlsOpen(false); setAudienceOpen(true); }
   function openTopSupporters() { setControlsOpen(false); try { document.querySelector('.liveTopSupportersTrigger')?.click(); } catch {} }
 
@@ -394,7 +377,6 @@ export default function ProductionLiveHost({ onClose, creatorId }) {
         {live && controlsOpen && <div className="prodLiveMoreMenu" role="menu" aria-label="LIVE controls">
           <button type="button" onClick={toggleMicrophone} disabled={Boolean(controlBusy)} role="menuitem">{micMuted ? <MicOff size={19} /> : <Mic size={19} />}<span><strong>Microphone</strong><small>{micMuted ? 'Off' : 'On'}</small></span></button>
           <button type="button" onClick={toggleCamera} disabled={Boolean(controlBusy) || sourceMode === LIVE_SOURCE_MODE.SCREEN} role="menuitem">{cameraMuted ? <CameraOff size={19} /> : <Camera size={19} />}<span><strong>{hasFacecam ? 'Facecam' : 'Camera'}</strong><small>{sourceMode === LIVE_SOURCE_MODE.SCREEN ? 'Not used in screen-only mode' : cameraMuted ? 'Off' : 'On'}</small></span></button>
-          <button type="button" onClick={switchCamera} disabled={Boolean(controlBusy) || cameraMuted || sourceMode === LIVE_SOURCE_MODE.SCREEN} role="menuitem"><SwitchCamera size={19} /><span><strong>Switch camera</strong><small>{facingMode === 'user' ? 'Front → Back' : 'Back → Front'}</small></span></button>
           {hasFacecam && <button type="button" onClick={() => { setLayoutPanelOpen(value => !value); setControlsOpen(false); }} role="menuitem"><LayoutGrid size={19} /><span><strong>LIVE layout</strong><small>{orientation === 'horizontal' ? 'Drag + resize facecam' : '70/30 or 50/50 only'}</small></span></button>}
           <button type="button" onClick={openAudience} disabled={!state.sessionId} role="menuitem"><Users size={19} /><span><strong>Audience / Invite</strong><small>Viewers and invite guest</small></span></button>
           <button type="button" onClick={openTopSupporters} role="menuitem"><Trophy size={19} /><span><strong>Top Supporters</strong><small>Who gave the most gifts</small></span></button>
