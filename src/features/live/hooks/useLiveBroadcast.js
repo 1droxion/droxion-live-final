@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import { isUsableMediaStream, requestBroadcastMedia, stopMediaStream } from '../services/liveMediaService';
 import { createLiveSession, endLiveSession, sendLiveHeartbeat } from '../services/liveSessionService';
-import { connectHostTransport, disconnectTransport } from '../services/liveTransportService';
+import { connectHostTransport, disconnectTransport, sendLiveEndedSignal } from '../services/liveTransportService';
 
 const HEARTBEAT_INTERVAL_MS = 12000;
 
@@ -146,9 +146,14 @@ export function useLiveBroadcast() {
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = '';
     try {
-      await disconnectTransport(room);
+      // Tell connected viewers explicitly before the host room is torn down.
+      // This lets every viewer close the LIVE screen immediately instead of
+      // waiting on a transport timeout or a later feed refresh.
+      if (room && sessionId) await sendLiveEndedSignal(room, sessionId);
       if (sessionId) await endLiveSession(sessionId);
+      await disconnectTransport(room);
     } catch (error) {
+      await disconnectTransport(room);
       patchState({ error: error?.message || 'LIVE ended locally but server cleanup failed.' });
     } finally {
       disposeCurrentMedia();
