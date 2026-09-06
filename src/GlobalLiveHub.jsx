@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Globe2, MessageCircle, Radio, RefreshCw, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
 import { rankLiveStreams, recordLiveBehavior } from './recommendationEngine';
+import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './global-live-hub.css';
 
 const EXTERNAL_PROVIDERS = [
@@ -57,7 +58,7 @@ function ChatMessageList({ provider, messages, emptyText }) {
 
 function YouTubeSourceChat({ stream }) {
   const [messages, setMessages] = useState([]);
-  const [status, setStatus] = useState('Loading YouTube chat…');
+  const [status, setStatus] = useState('Loading source chat…');
   const pageTokenRef = useRef('');
   const liveChatIdRef = useRef('');
   const timerRef = useRef(null);
@@ -77,8 +78,7 @@ function YouTubeSourceChat({ stream }) {
         if (pageTokenRef.current) params.set('pageToken', pageTokenRef.current);
         const response = await fetch(`/api/live-chat?${params.toString()}`, { headers: { Accept: 'application/json' } });
         const data = await response.json();
-        if (!response.ok) throw new Error(data?.error || 'YouTube chat unavailable');
-
+        if (!response.ok) throw new Error(data?.error || 'Source chat unavailable');
         liveChatIdRef.current = data?.liveChatId || liveChatIdRef.current;
         pageTokenRef.current = data?.nextPageToken || pageTokenRef.current;
         const incoming = Array.isArray(data?.messages) ? data.messages : [];
@@ -89,11 +89,11 @@ function YouTubeSourceChat({ stream }) {
             return Array.from(byId.values()).slice(-250);
           });
         }
-        setStatus(data?.available === false ? 'YouTube chat is unavailable for this LIVE.' : '');
+        setStatus(data?.available === false ? 'Source chat is unavailable for this LIVE.' : '');
         const delay = Math.max(3000, Math.min(15000, Number(data?.pollingIntervalMillis || 5000)));
         timerRef.current = window.setTimeout(poll, delay);
       } catch {
-        setStatus('YouTube chat temporarily unavailable.');
+        setStatus('Source chat temporarily unavailable.');
         timerRef.current = window.setTimeout(poll, 10000);
       }
     };
@@ -105,17 +105,17 @@ function YouTubeSourceChat({ stream }) {
     };
   }, [stream.externalId]);
 
-  return <ChatMessageList provider="YouTube" messages={messages} emptyText={status || 'Waiting for YouTube chat…'} />;
+  return <ChatMessageList provider="Source" messages={messages} emptyText={status || 'Waiting for source chat…'} />;
 }
 
 function TwitchSourceChat({ stream, parent }) {
   const chatSrc = `https://www.twitch.tv/embed/${encodeURIComponent(stream.channelSlug)}/chat?parent=${encodeURIComponent(parent)}&darkpopout`;
-  return <iframe className="dxTwitchChatFrame" src={chatSrc} title={`${stream.creatorName || 'Twitch'} chat`} />;
+  return <iframe className="dxTwitchChatFrame" src={chatSrc} title={`${stream.creatorName || 'Creator'} source chat`} />;
 }
 
 function KickSourceChat({ stream }) {
   const [messages, setMessages] = useState([]);
-  const [status, setStatus] = useState('Connecting Kick chat…');
+  const [status, setStatus] = useState('Connecting source chat…');
   const timerRef = useRef(null);
   const stoppedRef = useRef(false);
 
@@ -124,7 +124,7 @@ function KickSourceChat({ stream }) {
     stoppedRef.current = false;
     setMessages([]);
     if (!broadcasterUserId) {
-      setStatus('Kick chat unavailable for this LIVE.');
+      setStatus('Source chat unavailable for this LIVE.');
       return () => {};
     }
 
@@ -133,21 +133,21 @@ function KickSourceChat({ stream }) {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ broadcasterUserId })
     }).then(response => response.json()).then(data => {
-      if (!data?.ok) setStatus(data?.reason === 'missing_credentials' ? 'Kick chat will activate after Kick credentials are added.' : 'Kick chat subscription unavailable.');
+      if (!data?.ok) setStatus('Source chat subscription unavailable.');
       else setStatus('');
-    }).catch(() => setStatus('Kick chat subscription unavailable.'));
+    }).catch(() => setStatus('Source chat subscription unavailable.'));
 
     const poll = async () => {
       if (stoppedRef.current) return;
       try {
         const response = await fetch(`/api/kick/webhook?broadcasterUserId=${encodeURIComponent(broadcasterUserId)}`, { headers: { Accept: 'application/json' } });
         const data = await response.json();
-        if (!response.ok) throw new Error('Kick chat unavailable');
+        if (!response.ok) throw new Error('Source chat unavailable');
         const incoming = Array.isArray(data?.messages) ? data.messages : [];
         setMessages(incoming.slice(-250));
         if (incoming.length) setStatus('');
       } catch {
-        setStatus(current => current || 'Kick chat temporarily unavailable.');
+        setStatus(current => current || 'Source chat temporarily unavailable.');
       }
       timerRef.current = window.setTimeout(poll, 2000);
     };
@@ -159,7 +159,7 @@ function KickSourceChat({ stream }) {
     };
   }, [stream.channelId]);
 
-  return <ChatMessageList provider="Kick" messages={messages} emptyText={status || 'Waiting for Kick chat…'} />;
+  return <ChatMessageList provider="Source" messages={messages} emptyText={status || 'Waiting for source chat…'} />;
 }
 
 function SourceChat({ stream, parent }) {
@@ -169,7 +169,7 @@ function SourceChat({ stream, parent }) {
   return <div className="dxSourceChatEmpty">Source chat is unavailable for this LIVE.</div>;
 }
 
-function ExternalLivePlayer({ stream, onClose }) {
+function ExternalLivePlayer({ stream, onClose, currentUserId, coins, onCoinsChanged, onOpenWallet }) {
   const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
 
   useEffect(() => {
@@ -209,13 +209,20 @@ function ExternalLivePlayer({ stream, onClose }) {
             <div className="dxLiveModalMeta">
               <div className="dxWatchTitle"><Radio size={17} /><span>{stream?.title || 'LIVE now'}</span></div>
               <div className="dxWatchMetaChips"><span>{stream?.category || 'LIVE'}</span>{stream?.language && <span>{String(stream.language).toUpperCase()}</span>}<span><Users size={14} /> {formatViewers(stream?.viewerCount)} watching</span></div>
-              <div className="dxLiveModalActions"><span className="dxStayOnDroxion"><ShieldCheck size={15} /> Video and supported source chat stay in Droxion</span></div>
+              <div className="dxLiveModalActions"><span className="dxStayOnDroxion"><ShieldCheck size={15} /> Watch, chat and send Droxion gifts without leaving Droxion</span></div>
               <div className="dxLiveAdSlot" data-droxion-ad-placement="live_below_player" aria-hidden="true" />
             </div>
           </div>
           <aside className="dxSourceChatPanel">
-            <header><MessageCircle size={16} /><strong>{stream?.providerLabel} LIVE Chat</strong><span>Source chat</span></header>
-            <SourceChat stream={stream} parent={parent} />
+            <header><MessageCircle size={16} /><strong>Droxion LIVE Chat</strong><span>Chat + Gifts</span></header>
+            <ExternalLiveDroxionChat
+              stream={stream}
+              currentUserId={currentUserId}
+              coins={coins}
+              onCoinsChanged={onCoinsChanged}
+              onOpenWallet={onOpenWallet}
+              sourceChat={<SourceChat stream={stream} parent={parent} />}
+            />
           </aside>
         </div>
       </section>
@@ -223,7 +230,7 @@ function ExternalLivePlayer({ stream, onClose }) {
   );
 }
 
-export default function GlobalLiveHub({ query = '', nativeLive = null }) {
+export default function GlobalLiveHub({ query = '', nativeLive = null, currentUserId, coins = 0, onCoinsChanged, onOpenWallet }) {
   const [streams, setStreams] = useState([]);
   const [providers, setProviders] = useState({});
   const [loading, setLoading] = useState(true);
@@ -285,7 +292,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null }) {
   return (
     <section className="dxGlobalLiveHub">
       <div className="dxGlobalHero">
-        <div className="dxHeroCopy"><span className="dxGlobalEyebrow"><Globe2 size={15} /> DROXION LIVE NETWORK</span><h1>Live everywhere.<br /><em>Picked for you.</em></h1><p>Discover YouTube, Twitch and Kick LIVE streams in one personalized home, then watch supported streams and chat without leaving Droxion.</p><div className="dxHeroProof"><span><Sparkles size={14} /> Personalized</span><span><ShieldCheck size={14} /> Watch inside Droxion</span><span><Radio size={14} /> {totalAvailable || '—'} LIVE now</span></div></div>
+        <div className="dxHeroCopy"><span className="dxGlobalEyebrow"><Globe2 size={15} /> DROXION LIVE NETWORK</span><h1>Live everywhere.<br /><em>Picked for you.</em></h1><p>Discover YouTube, Twitch and Kick LIVE streams in one personalized home, then watch, chat and support from Droxion.</p><div className="dxHeroProof"><span><Sparkles size={14} /> Personalized</span><span><ShieldCheck size={14} /> Watch inside Droxion</span><span><Radio size={14} /> {totalAvailable || '—'} LIVE now</span></div></div>
         <button type="button" className="dxGlobalRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Refreshing' : 'Refresh LIVE'}</span></button>
       </div>
 
@@ -311,7 +318,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null }) {
       {provider !== 'droxion' && <>{loading ? <div className="dxGlobalEmpty"><div className="dxLivePulse" />Loading LIVE streams…</div> : filtered.length ? <div className="dxGlobalGrid">{filtered.map(stream => <button type="button" className="dxGlobalCard" key={stream.id} onClick={() => openStream(stream)} data-provider={stream.provider}><div className="dxGlobalThumb">{stream.thumbnailUrl ? <img src={stream.thumbnailUrl} alt="" loading="lazy" /> : <div className="dxGlobalThumbFallback"><Radio size={28} /></div>}<span className="dxGlobalLivePill">LIVE</span><span className={`dxProviderBadge ${providerClass(stream.provider)}`}>{stream.providerLabel}</span><span className="dxGlobalViewers"><Users size={13} /> {formatViewers(stream.viewerCount)}</span></div><div className="dxGlobalCardBody"><div className="dxCardCreator"><span className={`dxCreatorDot ${providerClass(stream.provider)}`}>{String(stream.creatorName || '?').slice(0, 1).toUpperCase()}</span><strong>{stream.creatorName}</strong></div><span className="dxCardTitle">{stream.title}</span><div className="dxCardMeta"><small>{stream.category || 'LIVE'}</small>{stream.language && <small>{String(stream.language).toUpperCase()}</small>}<b>Watch</b></div></div></button>)}</div> : <div className="dxGlobalEmpty"><Radio size={25} /><strong>{providerEmptyMessage(provider, providers, availableProviderCount)}</strong><button type="button" onClick={() => loadStreams({ manual: true })}>Refresh LIVE</button></div>}</>}
 
       {(provider === 'all' || provider === 'droxion') && nativeLive && <div className="dxNativeLiveSection"><div className="dxNativeLiveHeading"><div><span className="dxProviderBadge droxion">Droxion</span><strong>Native Droxion LIVE</strong></div><p>Droxion creator LIVE.</p></div>{nativeLive}</div>}
-      {selected && <ExternalLivePlayer stream={selected} onClose={() => setSelected(null)} />}
+      {selected && <ExternalLivePlayer stream={selected} onClose={() => setSelected(null)} currentUserId={currentUserId} coins={coins} onCoinsChanged={onCoinsChanged} onOpenWallet={onOpenWallet} />}
     </section>
   );
 }
