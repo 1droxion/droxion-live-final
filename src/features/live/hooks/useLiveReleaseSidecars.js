@@ -69,8 +69,8 @@ export function useLiveReleaseSidecars({
     }
 
     // MediaRecorder reads the existing media stream as a sidecar. It never
-    // replaces or republishes the LiveKit tracks. Server policy guarantees that
-    // only the single highest-scoring automatic short can be published.
+    // replaces or republishes the LiveKit tracks. The recorder ranks segments
+    // and the server enforces at most five automatic highlights per creator/day.
     try {
       recorder = createLiveHighlightRecorder({
         creatorId,
@@ -94,8 +94,8 @@ export function useLiveReleaseSidecars({
       console.warn('Droxion explicit-content guard could not start', error);
     }
 
-    // Audience activity selects the best single 30-second segment. Gifts are a
-    // much stronger signal than ordinary chat, with deterministic tie-breaking
+    // Audience activity helps rank the strongest 30-second segments. Gifts are
+    // a much stronger signal than ordinary chat, with deterministic tie-breaking
     // by the earliest source position.
     if (recorder) {
       try {
