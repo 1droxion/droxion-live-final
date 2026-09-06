@@ -31,6 +31,13 @@ function providerLabel(provider) {
   return 'Source';
 }
 
+function providerClass(provider) {
+  if (provider === 'youtube') return 'youtube';
+  if (provider === 'twitch') return 'twitch';
+  if (provider === 'kick') return 'kick';
+  return 'droxion';
+}
+
 function unescapeIrcTag(value = '') {
   return String(value)
     .replace(/\\s/g, ' ')
@@ -172,12 +179,7 @@ export default function ExternalLiveDroxionChat({
           if (!response.ok) throw new Error('Source chat unavailable');
           liveChatId = data?.liveChatId || liveChatId;
           pageToken = data?.nextPageToken || pageToken;
-          addSourceRows((data?.messages || []).map(item => ({
-            ...item,
-            source: 'source',
-            provider: 'youtube',
-            publishedAt: toMillis(item.publishedAt)
-          })));
+          addSourceRows((data?.messages || []).map(item => ({ ...item, source: 'source', provider: 'youtube', publishedAt: toMillis(item.publishedAt) })));
           if (data?.available === false) setSourceStatus('YouTube chat is unavailable for this LIVE.');
           const delay = Math.max(3000, Math.min(15000, Number(data?.pollingIntervalMillis || 5000)));
           sourceTimerRef.current = window.setTimeout(poll, delay);
@@ -200,12 +202,7 @@ export default function ExternalLiveDroxionChat({
           const response = await fetch(`/api/kick/webhook?broadcasterUserId=${encodeURIComponent(broadcasterUserId)}`, { headers: { Accept: 'application/json' } });
           const data = await response.json();
           if (!response.ok) throw new Error('Source chat unavailable');
-          addSourceRows((data?.messages || []).map(item => ({
-            ...item,
-            source: 'source',
-            provider: 'kick',
-            publishedAt: toMillis(item.publishedAt)
-          })));
+          addSourceRows((data?.messages || []).map(item => ({ ...item, source: 'source', provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
           sourceTimerRef.current = window.setTimeout(poll, 2000);
         } catch {
           setSourceStatus('Kick chat temporarily unavailable.');
@@ -258,98 +255,49 @@ export default function ExternalLiveDroxionChat({
 
   const combinedMessages = useMemo(() => {
     const sourceRows = sourceMessages.map(row => ({
-      kind: 'source',
-      key: `source:${row.provider}:${row.id}`,
-      timestamp: toMillis(row.publishedAt),
-      provider: row.provider,
-      authorName: row.authorName || `${providerLabel(row.provider)} user`,
-      avatarUrl: row.avatarUrl || '',
-      message: row.message || '',
-      color: row.color || '',
-      isModerator: Boolean(row.isModerator),
-      isVerified: Boolean(row.isVerified)
+      kind: 'source', key: `source:${row.provider}:${row.id}`, timestamp: toMillis(row.publishedAt), provider: row.provider,
+      authorName: row.authorName || `${providerLabel(row.provider)} user`, avatarUrl: row.avatarUrl || '', message: row.message || '',
+      color: row.color || '', isModerator: Boolean(row.isModerator), isVerified: Boolean(row.isVerified)
     }));
     const droxionRows = messages.map(row => ({
-      kind: row.event_type === 'gift' ? 'gift' : 'droxion',
-      key: `droxion:${row.id}`,
-      timestamp: toMillis(row.created_at),
-      authorName: row.display_name || row.username || 'Droxion user',
-      username: row.username || '',
-      avatarUrl: row.avatar_url || '',
-      message: row.body || '',
-      giftName: row.gift_name || '',
-      giftEmoji: row.emoji || '🎁',
-      costCoins: Number(row.cost_coins || 0)
+      kind: row.event_type === 'gift' ? 'gift' : 'droxion', key: `droxion:${row.id}`, timestamp: toMillis(row.created_at),
+      authorName: row.display_name || row.username || 'Droxion user', username: row.username || '', avatarUrl: row.avatar_url || '',
+      message: row.body || '', giftName: row.gift_name || '', giftEmoji: row.emoji || '🎁', costCoins: Number(row.cost_coins || 0)
     }));
     return [...sourceRows, ...droxionRows].sort((a, b) => a.timestamp - b.timestamp).slice(-220);
   }, [sourceMessages, messages]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [combinedMessages.length]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [combinedMessages.length]);
 
   async function sendChat() {
     const body = draft.trim();
     if (!body || sending) return;
-    if (!currentUserId) {
-      setNotice('Sign in to chat on Droxion.');
-      return;
-    }
-    setSending(true);
-    setNotice('');
+    if (!currentUserId) { setNotice('Sign in to chat on Droxion.'); return; }
+    setSending(true); setNotice('');
     try {
-      const { data, error } = await supabase.rpc('droxion_send_external_live_chat', {
-        p_stream_key: key,
-        p_provider: stream.provider,
-        p_body: body
-      });
+      const { data, error } = await supabase.rpc('droxion_send_external_live_chat', { p_stream_key: key, p_provider: stream.provider, p_body: body });
       if (error || data?.allowed === false) throw new Error(error?.message || data?.reason || 'Message could not be sent.');
-      setDraft('');
-      await loadMessages();
+      setDraft(''); await loadMessages();
     } catch (error) {
       setNotice(error?.message === 'rate_limited' ? 'Slow down for a moment.' : (error?.message || 'Message could not be sent.'));
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   }
 
   async function sendGift(gift) {
     if (!gift?.gift_code || busyGift) return;
-    if (!currentUserId) {
-      setGiftOpen(false);
-      setNotice('Sign in to send Droxion gifts.');
-      return;
-    }
-    if (Number(gift.cost_coins || 0) > Number(coins || 0)) {
-      setGiftOpen(false);
-      onOpenWallet?.();
-      return;
-    }
-    setBusyGift(String(gift.gift_code));
-    setNotice('');
+    if (!currentUserId) { setGiftOpen(false); setNotice('Sign in to send Droxion gifts.'); return; }
+    if (Number(gift.cost_coins || 0) > Number(coins || 0)) { setGiftOpen(false); onOpenWallet?.(); return; }
+    setBusyGift(String(gift.gift_code)); setNotice('');
     try {
-      const { data, error } = await supabase.rpc('droxion_send_external_live_gift', {
-        p_stream_key: key,
-        p_provider: stream.provider,
-        p_creator_label: stream.creatorName || '',
-        p_gift_code: gift.gift_code
-      });
-      if (data?.reason === 'insufficient_coins') {
-        setGiftOpen(false);
-        onOpenWallet?.();
-        return;
-      }
+      const { data, error } = await supabase.rpc('droxion_send_external_live_gift', { p_stream_key: key, p_provider: stream.provider, p_creator_label: stream.creatorName || '', p_gift_code: gift.gift_code });
+      if (data?.reason === 'insufficient_coins') { setGiftOpen(false); onOpenWallet?.(); return; }
       if (error || data?.allowed === false) throw new Error(error?.message || data?.reason || 'Gift could not be sent.');
       onCoinsChanged?.(Number(data?.coin_balance ?? coins));
       setActiveGift({ emoji: data?.emoji || gift.emoji || '🎁', name: data?.gift_name || gift.gift_name || 'Gift' });
       window.setTimeout(() => setActiveGift(null), 2100);
-      setGiftOpen(false);
-      await loadMessages();
-    } catch (error) {
-      setNotice(error?.message || 'Gift could not be sent.');
-    } finally {
-      setBusyGift('');
-    }
+      setGiftOpen(false); await loadMessages();
+    } catch (error) { setNotice(error?.message || 'Gift could not be sent.'); }
+    finally { setBusyGift(''); }
   }
 
   const sourceFrame = sourceChatFrameUrl(stream);
@@ -367,11 +315,7 @@ export default function ExternalLiveDroxionChat({
         {combinedMessages.map(message => <div className={`dxUnifiedMessage ${message.kind}`} key={message.key}>
           {message.avatarUrl ? <img src={message.avatarUrl} alt="" /> : <span className={`dxUnifiedAvatar ${message.kind}`} />}
           <div className="dxUnifiedMessageBody">
-            <div className="dxUnifiedNameRow">
-              <strong style={message.color ? { color: message.color } : undefined}>{message.authorName}</strong>
-              {message.kind === 'source' ? <span className={`dxChatSourceBadge ${providerClass(message.provider)}`}>{providerLabel(message.provider)}</span> : <span className="dxChatSourceBadge droxion">Droxion</span>}
-              {message.isModerator && <i>MOD</i>}{message.isVerified && <i>✓</i>}
-            </div>
+            <div className="dxUnifiedNameRow"><strong style={message.color ? { color: message.color } : undefined}>{message.authorName}</strong>{message.kind === 'source' ? <span className={`dxChatSourceBadge ${providerClass(message.provider)}`}>{providerLabel(message.provider)}</span> : <span className="dxChatSourceBadge droxion">Droxion</span>}{message.isModerator && <i>MOD</i>}{message.isVerified && <i>✓</i>}</div>
             {message.kind === 'gift' ? <p className="dxGiftLine"><b>{message.giftEmoji} {message.giftName}</b><span> sent a Droxion gift{message.costCoins ? ` · ${message.costCoins} coins` : ''}</span></p> : <p>{message.message}</p>}
           </div>
         </div>)}
@@ -392,20 +336,9 @@ export default function ExternalLiveDroxionChat({
         <button type="button" className="dxSendButton" disabled={!draft.trim() || sending} onClick={sendChat}><Send size={17} /></button>
       </div>
 
-      {sourceComposerOpen && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}>
-        <section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}>
-          <header><div><strong>{providerLabel(stream?.provider)} chat</strong><small>Use your {providerLabel(stream?.provider)} account here; Droxion chat remains the default.</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header>
-          <iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} />
-        </section>
-      </div>}
+      {sourceComposerOpen && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}><section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}><header><div><strong>{providerLabel(stream?.provider)} chat</strong><small>Use your {providerLabel(stream?.provider)} account here; Droxion chat remains the default.</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header><iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} /></section></div>}
 
-      {giftOpen && <div className="dxGiftBackdrop" onClick={() => setGiftOpen(false)}>
-        <section className="dxGiftSheet" onClick={event => event.stopPropagation()}>
-          <header><div><span>DROXION GIFTS</span><strong>Send a gift</strong><small>Balance · 🪙 {Number(coins || 0)}</small></div><button type="button" onClick={() => setGiftOpen(false)}><X size={18} /></button></header>
-          <div className="dxGiftGrid">{giftOptions.map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><strong>{gift.gift_name}</strong><small>🪙 {gift.cost_coins}</small></button>)}</div>
-          <button type="button" className="dxBuyCoinsWide" onClick={() => { setGiftOpen(false); onOpenWallet?.(); }}>+ Buy Coins</button>
-        </section>
-      </div>}
+      {giftOpen && <div className="dxGiftBackdrop" onClick={() => setGiftOpen(false)}><section className="dxGiftSheet" onClick={event => event.stopPropagation()}><header><div><span>DROXION GIFTS</span><strong>Send a gift</strong><small>Balance · 🪙 {Number(coins || 0)}</small></div><button type="button" onClick={() => setGiftOpen(false)}><X size={18} /></button></header><div className="dxGiftGrid">{giftOptions.map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><strong>{gift.gift_name}</strong><small>🪙 {gift.cost_coins}</small></button>)}</div><button type="button" className="dxBuyCoinsWide" onClick={() => { setGiftOpen(false); onOpenWallet?.(); }}>+ Buy Coins</button></section></div>}
 
       {activeGift && <div className="dxExternalGiftBurst" aria-hidden="true"><span>{activeGift.emoji}</span><strong>{activeGift.name}</strong><small>DROXION GIFT</small></div>}
     </div>
