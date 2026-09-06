@@ -99,6 +99,13 @@ async function getCreatorName(userId) {
   return cleanText(profile?.display_name || profile?.username, 'A creator', 60);
 }
 
+function oneSignalError(payload) {
+  const errors = Array.isArray(payload?.errors)
+    ? payload.errors.map(String).filter(Boolean)
+    : (payload?.errors ? [String(payload.errors)] : []);
+  return errors[0] || String(payload?.message || '').trim() || '';
+}
+
 export default async function handler(req, res) {
   setCorsHeaders(res);
 
@@ -159,22 +166,37 @@ export default async function handler(req, res) {
     });
 
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.errors?.[0] || payload?.errors || payload?.message || 'OneSignal push failed.');
-    }
+    const recipients = Number(payload?.recipients || 0);
+    const providerError = oneSignalError(payload);
 
-    console.log('OneSignal LIVE push accepted', {
+    console.log('OneSignal LIVE push result', {
       appId,
       messageId: payload?.id || null,
-      recipients: Number(payload?.recipients || 0),
+      recipients,
       externalId: payload?.external_id || null,
       errors: payload?.errors || null
     });
 
+    if (!response.ok) {
+      throw new Error(providerError || 'OneSignal push failed.');
+    }
+
+    // OneSignal can return HTTP 200 even when every device is unsubscribed.
+    // Treat that as a delivery failure so the native bridge can retry after
+    // device registration recovers instead of permanently marking the session sent.
+    if (recipients <= 0 || providerError) {
+      res.status(503).json({
+        error: providerError || 'No subscribed Droxion devices are available yet.',
+        recipients,
+        retryable: true
+      });
+      return;
+    }
+
     res.status(200).json({
       ok: true,
       messageId: payload?.id || null,
-      recipients: Number(payload?.recipients || 0)
+      recipients
     });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Could not send LIVE notification.' });
