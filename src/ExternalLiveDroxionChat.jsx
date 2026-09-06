@@ -3,9 +3,9 @@ import { Coins, Gift, MessageCircle, Send, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './external-live-droxion-chat.css';
 
-const DROXION_POLL_MS = 6000;
-const SOURCE_LIMIT = 140;
-const SOURCE_BATCH_MS = 400;
+const DROXION_POLL_MS = 4000;
+const SOURCE_LIMIT = 180;
+const SOURCE_BATCH_MS = 300;
 const CHAT_BOTTOM_THRESHOLD = 84;
 
 function streamKey(stream) {
@@ -14,23 +14,20 @@ function streamKey(stream) {
   return `${provider}:${external}`.slice(0, 220);
 }
 
-function dedupe(rows, keyOf = row => String(row.id)) {
-  const map = new Map();
-  (rows || []).forEach(row => map.set(keyOf(row), row));
-  return Array.from(map.values()).slice(-200);
-}
-
-function mergeIfChanged(current, incoming, keyOf, limit) {
+function mergeRows(current, incoming, keyOf, limit) {
   if (!incoming?.length) return current;
-  const known = new Set(current.map(keyOf));
-  const fresh = incoming.filter(row => {
+  const map = new Map();
+  (current || []).forEach(row => {
     const key = keyOf(row);
-    if (!key || known.has(key)) return false;
-    known.add(key);
-    return true;
+    if (key) map.set(key, row);
   });
-  if (!fresh.length) return current;
-  return [...current, ...fresh].slice(-limit);
+  incoming.forEach(row => {
+    const key = keyOf(row);
+    if (!key) return;
+    const existing = map.get(key);
+    map.set(key, existing ? { ...existing, ...row } : row);
+  });
+  return Array.from(map.values()).slice(-limit);
 }
 
 function toMillis(value) {
@@ -127,10 +124,16 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const stickToBottomRef = useRef(true);
   const twitchSequenceRef = useRef(0);
   const loadingMessagesRef = useRef(false);
+  const pendingRefreshRef = useRef(false);
   const key = useMemo(() => streamKey(stream), [stream]);
 
-  const loadMessages = useCallback(async () => {
-    if (!key || loadingMessagesRef.current || document.visibilityState === 'hidden') return;
+  const loadMessages = useCallback(async ({ force = false } = {}) => {
+    if (!key) return;
+    if (!force && document.visibilityState === 'hidden') return;
+    if (loadingMessagesRef.current) {
+      if (force) pendingRefreshRef.current = true;
+      return;
+    }
     loadingMessagesRef.current = true;
     try {
       const { data, error } = await supabase.rpc('droxion_external_live_messages', {
@@ -141,9 +144,13 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       const rows = Array.isArray(data) ? data : [];
       if (!rows.length) return;
       lastIdRef.current = Math.max(lastIdRef.current, ...rows.map(row => Number(row.id || 0)));
-      setMessages(current => mergeIfChanged(current, rows, row => String(row.id), 180));
+      setMessages(current => mergeRows(current, rows, row => String(row.id), 180));
     } finally {
       loadingMessagesRef.current = false;
+      if (pendingRefreshRef.current) {
+        pendingRefreshRef.current = false;
+        window.setTimeout(() => loadMessages({ force: true }), 50);
+      }
     }
   }, [key]);
 
@@ -159,14 +166,15 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     stickToBottomRef.current = true;
     lastIdRef.current = 0;
     loadingMessagesRef.current = false;
+    pendingRefreshRef.current = false;
 
     const poll = async () => {
       if (stopped) return;
       await loadMessages();
-      if (!stopped) pollRef.current = window.setTimeout(poll, document.visibilityState === 'hidden' ? 15000 : DROXION_POLL_MS);
+      if (!stopped) pollRef.current = window.setTimeout(poll, document.visibilityState === 'hidden' ? 12000 : DROXION_POLL_MS);
     };
     poll();
-    const wake = () => { if (document.visibilityState === 'visible') loadMessages(); };
+    const wake = () => { if (document.visibilityState === 'visible') loadMessages({ force: true }); };
     document.addEventListener('visibilitychange', wake);
     return () => {
       stopped = true;
@@ -200,7 +208,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       if (stopped) return;
       const incoming = sourceBatchRef.current.splice(0);
       if (!incoming.length) return;
-      setSourceMessages(current => mergeIfChanged(current, incoming, row => `${row.provider}:${row.id}`, SOURCE_LIMIT));
+      setSourceMessages(current => mergeRows(current, incoming, row => `${row.provider}:${row.id}`, SOURCE_LIMIT));
       setSourceStatus('');
     };
 
@@ -216,7 +224,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       const poll = async () => {
         if (stopped) return;
         if (document.visibilityState === 'hidden') {
-          sourceTimerRef.current = window.setTimeout(poll, 15000);
+          sourceTimerRef.current = window.setTimeout(poll, 12000);
           return;
         }
         try {
@@ -253,7 +261,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       const poll = async () => {
         if (stopped) return;
         if (document.visibilityState === 'hidden') {
-          sourceTimerRef.current = window.setTimeout(poll, 15000);
+          sourceTimerRef.current = window.setTimeout(poll, 12000);
           return;
         }
         try {
@@ -344,14 +352,44 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     const body = draft.trim();
     if (!body || sending) return;
     if (!currentUserId) { setNotice('Sign in to chat on Droxion.'); return; }
-    setSending(true); setNotice('');
+    setSending(true);
+    setNotice('');
     try {
-      const { data, error } = await supabase.rpc('droxion_send_external_live_chat', { p_stream_key: key, p_provider: stream.provider, p_body: body });
+      const { data, error } = await supabase.rpc('droxion_send_external_live_chat', {
+        p_stream_key: key,
+        p_provider: stream.provider,
+        p_body: body
+      });
       if (error || data?.allowed === false) throw new Error(error?.message || data?.reason || 'Message could not be sent.');
-      setDraft(''); await loadMessages();
+
+      const eventId = Number(data?.event_id || 0);
+      if (eventId > 0) {
+        stickToBottomRef.current = true;
+        setMessages(current => mergeRows(current, [{
+          id: eventId,
+          event_type: 'chat',
+          user_id: currentUserId,
+          display_name: 'You',
+          username: '',
+          avatar_url: '',
+          creator_label: null,
+          body,
+          gift_code: null,
+          gift_name: null,
+          emoji: null,
+          cost_coins: 0,
+          created_at: new Date().toISOString()
+        }], row => String(row.id), 180));
+      }
+
+      setDraft('');
+      window.setTimeout(() => loadMessages({ force: true }), 80);
     } catch (error) {
-      setNotice(error?.message === 'rate_limited' ? 'Slow down for a moment.' : (error?.message || 'Message could not be sent.'));
-    } finally { setSending(false); }
+      const message = error?.message || 'Message could not be sent.';
+      setNotice(message === 'rate_limited' ? 'Slow down for a moment.' : message);
+    } finally {
+      setSending(false);
+    }
   }
 
   async function sendGift(gift) {
@@ -366,7 +404,8 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       onCoinsChanged?.(Number(data?.coin_balance ?? coins));
       setActiveGift({ emoji: data?.emoji || gift.emoji || '🎁', name: data?.gift_name || gift.gift_name || 'Gift' });
       window.setTimeout(() => setActiveGift(null), 2100);
-      setGiftOpen(false); await loadMessages();
+      setGiftOpen(false);
+      await loadMessages({ force: true });
     } catch (error) { setNotice(error?.message || 'Gift could not be sent.'); }
     finally { setBusyGift(''); }
   }
