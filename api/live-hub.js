@@ -91,6 +91,7 @@ async function loadYouTube(limit) {
   search.searchParams.set('part', 'snippet');
   search.searchParams.set('type', 'video');
   search.searchParams.set('eventType', 'live');
+  search.searchParams.set('q', 'live|gaming|music|sports|news|irl|podcast|stream');
   search.searchParams.set('videoEmbeddable', 'true');
   search.searchParams.set('order', 'viewCount');
   search.searchParams.set('maxResults', String(Math.min(50, limit)));
