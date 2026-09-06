@@ -25,7 +25,6 @@ export default function ExternalLiveDroxionChat({
   onOpenWallet,
   sourceChat
 }) {
-  const [mode, setMode] = useState('droxion');
   const [messages, setMessages] = useState([]);
   const [giftOptions, setGiftOptions] = useState([]);
   const [draft, setDraft] = useState('');
@@ -53,7 +52,6 @@ export default function ExternalLiveDroxionChat({
   }, [key]);
 
   useEffect(() => {
-    setMode('droxion');
     setMessages([]);
     setDraft('');
     setNotice('');
@@ -72,7 +70,7 @@ export default function ExternalLiveDroxionChat({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages, mode]);
+  }, [messages]);
 
   async function sendChat() {
     const body = draft.trim();
@@ -140,15 +138,16 @@ export default function ExternalLiveDroxionChat({
   }
 
   return (
-    <div className="dxDroxionChat">
-      <div className="dxChatTabs" role="tablist" aria-label="LIVE chat options">
-        <button type="button" className={mode === 'droxion' ? 'active' : ''} onClick={() => setMode('droxion')}><MessageCircle size={14} /> Droxion Chat</button>
-        <button type="button" className={mode === 'source' ? 'active' : ''} onClick={() => setMode('source')}>Source</button>
-      </div>
+    <div className="dxDroxionChat dxMixedChat">
+      <section className="dxMixedSource">
+        <header><span>LIVE CHAT</span><strong>{stream?.providerLabel || 'Source'} community</strong></header>
+        <div className="dxSourceChatHost">{sourceChat}</div>
+      </section>
 
-      {mode === 'source' ? <div className="dxSourceChatHost">{sourceChat}</div> : <>
+      <section className="dxMixedDroxion">
+        <header><MessageCircle size={14} /><strong>Droxion Chat</strong><span>Gifts + Droxion users</span></header>
         <div className="dxDroxionChatStream">
-          {messages.length === 0 && <div className="dxDroxionChatEmpty"><strong>Chat on Droxion</strong><span>Messages and Droxion gifts for this LIVE appear here.</span></div>}
+          {messages.length === 0 && <div className="dxDroxionChatEmpty"><strong>Start the Droxion chat</strong><span>Chat with Droxion viewers or send a gift while the source chat stays visible above.</span></div>}
           {messages.map(message => <div className={`dxDroxionMessage ${message.event_type === 'gift' ? 'gift' : ''}`} key={message.id}>
             {message.avatar_url ? <img src={message.avatar_url} alt="" /> : <span className="dxDroxionAvatar" />}
             <div><strong>{message.display_name || message.username || 'Droxion user'}{message.username ? <small>@{message.username}</small> : null}</strong><p>{message.event_type === 'gift' ? <><b>{message.emoji || '🎁'} {message.gift_name}</b> <span>sent on Droxion</span></> : message.body}</p></div>
@@ -164,7 +163,7 @@ export default function ExternalLiveDroxionChat({
           <input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendChat(); } }} maxLength={500} placeholder="Message on Droxion" />
           <button type="button" className="dxSendButton" disabled={!draft.trim() || sending} onClick={sendChat}><Send size={17} /></button>
         </div>
-      </>}
+      </section>
 
       {giftOpen && <div className="dxGiftBackdrop" onClick={() => setGiftOpen(false)}>
         <section className="dxGiftSheet" onClick={event => event.stopPropagation()}>
