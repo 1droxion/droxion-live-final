@@ -57,22 +57,33 @@ async function waitForSubscriptionReady(timeoutMs = SUBSCRIPTION_WAIT_MS) {
   return latest;
 }
 
+async function currentNotificationPermission() {
+  try {
+    if (OneSignal?.Notifications?.getPermissionAsync) {
+      return Boolean(await OneSignal.Notifications.getPermissionAsync());
+    }
+  } catch (error) {
+    console.warn('Could not read OneSignal notification permission', error);
+  }
+  return false;
+}
+
 async function ensurePushSubscription({ requestPermission = true } = {}) {
   if (subscriptionPromise) return subscriptionPromise;
 
   subscriptionPromise = (async () => {
     await ensureOneSignal();
 
-    let permission = false;
-    try {
-      if (OneSignal?.Notifications?.hasPermission) {
-        permission = Boolean(await OneSignal.Notifications.hasPermission());
-      }
-    } catch {}
-
+    let permission = await currentNotificationPermission();
     if (!permission && requestPermission) {
       try {
-        permission = Boolean(await OneSignal.Notifications.requestPermission(false));
+        let canRequest = true;
+        if (OneSignal?.Notifications?.canRequestPermissionAsync) {
+          canRequest = Boolean(await OneSignal.Notifications.canRequestPermissionAsync());
+        }
+        if (canRequest) {
+          permission = Boolean(await OneSignal.Notifications.requestPermission(false));
+        }
       } catch (error) {
         console.warn('OneSignal notification permission request failed', error);
       }
@@ -89,9 +100,6 @@ async function ensurePushSubscription({ requestPermission = true } = {}) {
 
     let state = await waitForSubscriptionReady();
 
-    // Native registration can lag behind the permission result immediately
-    // after install/update. One extra opt-in + wait recovers that state without
-    // repeatedly prompting the user.
     if (permission && !state.ready && pushSubscription?.optIn) {
       try { await pushSubscription.optIn(); } catch {}
       state = await waitForSubscriptionReady(6000);
@@ -174,7 +182,7 @@ export default function DroxionPushNotifications() {
     if (!pushSubscription?.addEventListener) return undefined;
 
     const handleChange = event => {
-      const current = event?.current || event?.state || {};
+      const current = event?.current || event?.state?.current || event?.state || {};
       console.log('Droxion OneSignal subscription changed', {
         optedIn: Boolean(current.optedIn),
         hasSubscriptionId: Boolean(current.id),
@@ -204,8 +212,6 @@ export default function DroxionPushNotifications() {
         if (userId) await OneSignal.login(userId);
         else await OneSignal.logout();
 
-        // Login can merge/create a OneSignal user. Verify the actual device
-        // subscription again after identity is attached.
         if (userId && state.permission) {
           await ensurePushSubscription({ requestPermission: false });
         }
@@ -247,8 +253,6 @@ export default function DroxionPushNotifications() {
             try { window.dispatchEvent(new CustomEvent('droxion:live-push-open', { detail: payload })); } catch {}
           }
 
-          // OneSignal already foregrounds/opens the native app on tap. Keep the
-          // user inside the native Droxion shell instead of launching a browser.
           if (window.location.pathname !== '/') {
             try { window.history.replaceState({}, '', '/'); } catch {}
           }
