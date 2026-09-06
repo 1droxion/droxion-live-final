@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Globe2, MessageCircle, Radio, RefreshCw, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
+import { Compass, Filter, Globe2, Heart, MessageCircle, Radio, RefreshCw, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
 import { rankLiveStreams, recordLiveBehavior } from './recommendationEngine';
+import { supabase } from './supabaseClient';
 import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './global-live-hub.css';
+import './explore-following.css';
 
 const EXTERNAL_PROVIDERS = [
   { id: 'all', label: 'All LIVE' },
@@ -29,6 +31,12 @@ function providerClass(provider) {
   return 'droxion';
 }
 
+function creatorKey(stream) {
+  const provider = String(stream?.provider || '').toLowerCase();
+  const identity = String(stream?.channelId || stream?.channelSlug || stream?.creatorName || '').trim().toLowerCase();
+  return `${provider}:${identity}`.slice(0, 220);
+}
+
 function providerEmptyMessage(provider, providers, availableProviderCount) {
   if (provider !== 'all' && provider !== 'droxion') {
     const state = providers?.[provider] || {};
@@ -46,9 +54,9 @@ function ChatMessageList({ provider, messages, emptyText }) {
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
   return <div className="dxSourceChatMessages">
     {messages.length ? messages.map(message => <div className="dxSourceChatMessage" key={`${provider}:${message.id}`}>
-      {message.avatarUrl ? <img src={message.avatarUrl} alt="" loading="lazy" /> : <span className="dxSourceChatAvatar">{String(message.authorName || '?').slice(0, 1).toUpperCase()}</span>}
+      {message.avatarUrl ? <img src={message.avatarUrl} alt="" loading="lazy" /> : <span className="dxSourceChatAvatar" />}
       <div>
-        <strong>{message.authorName || `${provider} user`}{message.isOwner ? <i>HOST</i> : message.isModerator ? <i>MOD</i> : message.isVerified ? <i>✓</i> : null}</strong>
+        <strong>{message.authorName || 'Source user'}{message.isOwner ? <i>HOST</i> : message.isModerator ? <i>MOD</i> : message.isVerified ? <i>✓</i> : null}</strong>
         <p>{message.amountDisplayString ? <b>{message.amountDisplayString} </b> : null}{message.message}</p>
       </div>
     </div>) : <div className="dxSourceChatEmpty">{emptyText}</div>}
@@ -169,7 +177,7 @@ function SourceChat({ stream, parent }) {
   return <div className="dxSourceChatEmpty">Source chat is unavailable for this LIVE.</div>;
 }
 
-function ExternalLivePlayer({ stream, onClose, currentUserId, coins, onCoinsChanged, onOpenWallet }) {
+function ExternalLivePlayer({ stream, onClose, currentUserId, coins, onCoinsChanged, onOpenWallet, isFollowing, onToggleFollow }) {
   const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
 
   useEffect(() => {
@@ -198,6 +206,7 @@ function ExternalLivePlayer({ stream, onClose, currentUserId, coins, onCoinsChan
       <section className="dxLiveModalSheet dxLiveWithChat">
         <div className="dxLiveModalTop">
           <div><span className={`dxProviderBadge ${providerClass(stream?.provider)}`}>{stream?.providerLabel || 'LIVE'}</span><strong>{stream?.creatorName || 'Creator'}</strong></div>
+          <button type="button" className={`dxModalFollow ${isFollowing ? 'following' : ''}`} onClick={() => onToggleFollow?.(stream)}><Heart size={14} fill={isFollowing ? 'currentColor' : 'none'} />{isFollowing ? 'Following' : 'Follow'}</button>
           <div className="dxWatchSafe"><ShieldCheck size={14} /><span>Inside Droxion</span></div>
           <button type="button" onClick={onClose} aria-label="Close LIVE"><X size={22} /></button>
         </div>
@@ -209,12 +218,12 @@ function ExternalLivePlayer({ stream, onClose, currentUserId, coins, onCoinsChan
             <div className="dxLiveModalMeta">
               <div className="dxWatchTitle"><Radio size={17} /><span>{stream?.title || 'LIVE now'}</span></div>
               <div className="dxWatchMetaChips"><span>{stream?.category || 'LIVE'}</span>{stream?.language && <span>{String(stream.language).toUpperCase()}</span>}<span><Users size={14} /> {formatViewers(stream?.viewerCount)} watching</span></div>
-              <div className="dxLiveModalActions"><span className="dxStayOnDroxion"><ShieldCheck size={15} /> Watch, chat and send Droxion gifts without leaving Droxion</span></div>
+              <div className="dxLiveModalActions"><span className="dxStayOnDroxion"><ShieldCheck size={15} /> Source chat + Droxion chat + gifts stay together here</span></div>
               <div className="dxLiveAdSlot" data-droxion-ad-placement="live_below_player" aria-hidden="true" />
             </div>
           </div>
           <aside className="dxSourceChatPanel">
-            <header><MessageCircle size={16} /><strong>Droxion LIVE Chat</strong><span>Chat + Gifts</span></header>
+            <header><MessageCircle size={16} /><strong>Droxion LIVE Chat</strong><span>Source + Droxion</span></header>
             <ExternalLiveDroxionChat
               stream={stream}
               currentUserId={currentUserId}
@@ -230,7 +239,7 @@ function ExternalLivePlayer({ stream, onClose, currentUserId, coins, onCoinsChan
   );
 }
 
-export default function GlobalLiveHub({ query = '', nativeLive = null, currentUserId, coins = 0, onCoinsChanged, onOpenWallet }) {
+export default function GlobalLiveHub({ query = '', nativeLive = null, currentUserId, coins = 0, onCoinsChanged, onOpenWallet, mode = 'home' }) {
   const [streams, setStreams] = useState([]);
   const [providers, setProviders] = useState({});
   const [loading, setLoading] = useState(true);
@@ -238,10 +247,18 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
   const [notice, setNotice] = useState('');
   const [provider, setProvider] = useState('all');
   const [category, setCategory] = useState('All');
+  const [language, setLanguage] = useState('All');
   const [selected, setSelected] = useState(null);
+  const [followingKeys, setFollowingKeys] = useState(new Set());
   const refreshTimerRef = useRef(null);
 
   const providerOptions = useMemo(() => nativeLive ? [...EXTERNAL_PROVIDERS, { id: 'droxion', label: 'Droxion' }] : EXTERNAL_PROVIDERS, [nativeLive]);
+
+  const loadFollowing = useCallback(async () => {
+    if (!currentUserId) { setFollowingKeys(new Set()); return; }
+    const { data } = await supabase.from('droxion_external_follows').select('creator_key').eq('user_id', currentUserId).limit(1000);
+    setFollowingKeys(new Set((data || []).map(row => row.creator_key)));
+  }, [currentUserId]);
 
   const loadStreams = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
@@ -260,6 +277,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
     }
   }, []);
 
+  useEffect(() => { loadFollowing(); }, [loadFollowing]);
   useEffect(() => {
     loadStreams();
     refreshTimerRef.current = window.setInterval(() => {
@@ -268,33 +286,70 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
     return () => window.clearInterval(refreshTimerRef.current);
   }, [loadStreams]);
 
+  const languages = useMemo(() => {
+    const values = [...new Set(streams.map(stream => String(stream.language || '').trim().toUpperCase()).filter(Boolean))];
+    return ['All', ...values.slice(0, 8)];
+  }, [streams]);
+
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
     const matching = streams.filter(stream => {
+      if (mode === 'following' && !followingKeys.has(creatorKey(stream))) return false;
       if (provider !== 'all' && stream.provider !== provider) return false;
       if (category !== 'All' && String(stream.category || '').toLowerCase() !== category.toLowerCase()) return false;
+      if (language !== 'All' && String(stream.language || '').toUpperCase() !== language) return false;
       if (!q) return true;
       const haystack = `${stream.creatorName || ''} ${stream.title || ''} ${stream.category || ''} ${stream.providerLabel || ''} ${stream.language || ''}`.toLowerCase();
       return haystack.includes(q);
     });
     return rankLiveStreams(matching);
-  }, [streams, query, provider, category]);
+  }, [streams, query, provider, category, language, mode, followingKeys]);
 
   const availableProviderCount = Object.values(providers).filter(value => value?.enabled && Number(value?.available || 0) > 0).length;
   const missingProviders = Object.entries(providers).filter(([, value]) => value?.reason === 'missing_credentials').map(([key]) => key);
   const totalAvailable = Object.values(providers).reduce((sum, value) => sum + Number(value?.available || 0), 0);
+
+  async function toggleFollow(stream) {
+    if (!currentUserId) { setNotice('Sign in to follow creators on Droxion.'); return; }
+    const key = creatorKey(stream);
+    const already = followingKeys.has(key);
+    if (already) {
+      const { error } = await supabase.from('droxion_external_follows').delete().eq('user_id', currentUserId).eq('creator_key', key);
+      if (error) return setNotice('Could not update your followed creators.');
+      setFollowingKeys(current => { const next = new Set(current); next.delete(key); return next; });
+    } else {
+      const { error } = await supabase.from('droxion_external_follows').insert({
+        user_id: currentUserId,
+        creator_key: key,
+        provider: stream.provider,
+        external_creator_id: stream.channelId || stream.externalId || null,
+        channel_slug: stream.channelSlug || null,
+        creator_name: stream.creatorName || 'Creator',
+        avatar_url: null
+      });
+      if (error) return setNotice('Could not follow this creator.');
+      setFollowingKeys(current => new Set([...current, key]));
+      recordLiveBehavior(stream, 'follow');
+    }
+  }
 
   function openStream(stream) {
     recordLiveBehavior(stream, 'open');
     setSelected(stream);
   }
 
+  const pageTitle = mode === 'explore' ? 'Explore LIVE' : mode === 'following' ? 'Following' : 'Recommended for you';
+  const pageKicker = mode === 'explore' ? 'DISCOVER' : mode === 'following' ? 'YOUR CREATORS' : 'LIVE NOW';
+
   return (
-    <section className="dxGlobalLiveHub">
-      <div className="dxGlobalHero">
+    <section className={`dxGlobalLiveHub dxHubMode-${mode}`}>
+      {mode === 'home' ? <div className="dxGlobalHero">
         <div className="dxHeroCopy"><span className="dxGlobalEyebrow"><Globe2 size={15} /> DROXION LIVE NETWORK</span><h1>Live everywhere.<br /><em>Picked for you.</em></h1><p>Discover YouTube, Twitch and Kick LIVE streams in one personalized home, then watch, chat and support from Droxion.</p><div className="dxHeroProof"><span><Sparkles size={14} /> Personalized</span><span><ShieldCheck size={14} /> Watch inside Droxion</span><span><Radio size={14} /> {totalAvailable || '—'} LIVE now</span></div></div>
         <button type="button" className="dxGlobalRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Refreshing' : 'Refresh LIVE'}</span></button>
-      </div>
+      </div> : <div className="dxExploreHeader">
+        <div><span><Compass size={15} /> {pageKicker}</span><h1>{pageTitle}</h1><p>{mode === 'explore' ? 'Find the right LIVE by platform, category and language — with Droxion’s own personalized ranking.' : 'Your followed creators across YouTube, Twitch and Kick, together in one place.'}</p></div>
+        <button type="button" onClick={() => loadStreams({ manual: true })}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> Refresh</button>
+      </div>}
 
       <div className="dxControlDeck">
         <div className="dxGlobalProviderRail" aria-label="LIVE sources">
@@ -306,19 +361,26 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
             return <button type="button" key={item.id} className={`${active ? 'active' : ''} ${enabled ? '' : 'disabled'} ${providerClass(item.id)}`} onClick={() => setProvider(item.id)} disabled={!enabled && external}><span>{item.label}</span>{count > 0 && <small>{count}</small>}</button>;
           })}
         </div>
-
-        <div className="dxGlobalCategoryRail" aria-label="LIVE categories">{CATEGORIES.map(item => <button type="button" key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        <div className="dxGlobalCategoryRail" aria-label="LIVE categories"><span className="dxFilterLabel"><Filter size={13} /></span>{CATEGORIES.map(item => <button type="button" key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        {mode === 'explore' && <div className="dxLanguageRail" aria-label="LIVE languages">{languages.map(item => <button type="button" key={item} className={language === item ? 'active' : ''} onClick={() => setLanguage(item)}>{item === 'All' ? 'Any language' : item}</button>)}</div>}
       </div>
 
       {notice && <div className="dxGlobalNotice">{notice}</div>}
       {!notice && !loading && missingProviders.length > 0 && <div className="dxGlobalSetupNotice"><Search size={16} /><span>{missingProviders.map(item => item[0].toUpperCase() + item.slice(1)).join(', ')} discovery will turn on automatically after its server credentials are added.</span></div>}
 
-      <div className="dxSectionHead"><div><span>LIVE NOW</span><strong>{provider === 'all' ? 'Recommended for you' : `${providerOptions.find(item => item.id === provider)?.label || 'LIVE'} streams`}</strong></div><small>{filtered.length ? `${filtered.length} showing` : 'Fresh results every refresh'}</small></div>
+      <div className="dxSectionHead"><div><span>{pageKicker}</span><strong>{mode === 'home' && provider !== 'all' ? `${providerOptions.find(item => item.id === provider)?.label || 'LIVE'} streams` : pageTitle}</strong></div><small>{filtered.length ? `${filtered.length} showing` : 'Fresh results every refresh'}</small></div>
 
-      {provider !== 'droxion' && <>{loading ? <div className="dxGlobalEmpty"><div className="dxLivePulse" />Loading LIVE streams…</div> : filtered.length ? <div className="dxGlobalGrid">{filtered.map(stream => <button type="button" className="dxGlobalCard" key={stream.id} onClick={() => openStream(stream)} data-provider={stream.provider}><div className="dxGlobalThumb">{stream.thumbnailUrl ? <img src={stream.thumbnailUrl} alt="" loading="lazy" /> : <div className="dxGlobalThumbFallback"><Radio size={28} /></div>}<span className="dxGlobalLivePill">LIVE</span><span className={`dxProviderBadge ${providerClass(stream.provider)}`}>{stream.providerLabel}</span><span className="dxGlobalViewers"><Users size={13} /> {formatViewers(stream.viewerCount)}</span></div><div className="dxGlobalCardBody"><div className="dxCardCreator"><span className={`dxCreatorDot ${providerClass(stream.provider)}`}>{String(stream.creatorName || '?').slice(0, 1).toUpperCase()}</span><strong>{stream.creatorName}</strong></div><span className="dxCardTitle">{stream.title}</span><div className="dxCardMeta"><small>{stream.category || 'LIVE'}</small>{stream.language && <small>{String(stream.language).toUpperCase()}</small>}<b>Watch</b></div></div></button>)}</div> : <div className="dxGlobalEmpty"><Radio size={25} /><strong>{providerEmptyMessage(provider, providers, availableProviderCount)}</strong><button type="button" onClick={() => loadStreams({ manual: true })}>Refresh LIVE</button></div>}</>}
+      {mode === 'following' && !currentUserId ? <div className="dxGlobalEmpty"><Heart size={26} /><strong>Sign in to build your followed LIVE list on Droxion.</strong></div> : provider !== 'droxion' && <>{loading ? <div className="dxGlobalEmpty"><div className="dxLivePulse" />Loading LIVE streams…</div> : filtered.length ? <div className="dxGlobalGrid">{filtered.map(stream => {
+        const key = creatorKey(stream);
+        const isFollowing = followingKeys.has(key);
+        return <article className="dxGlobalCard" key={stream.id} onClick={() => openStream(stream)} data-provider={stream.provider} role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') openStream(stream); }}>
+          <div className="dxGlobalThumb">{stream.thumbnailUrl ? <img src={stream.thumbnailUrl} alt="" loading="lazy" /> : <div className="dxGlobalThumbFallback"><Radio size={28} /></div>}<span className="dxGlobalLivePill">LIVE</span><span className={`dxProviderBadge ${providerClass(stream.provider)}`}>{stream.providerLabel}</span><span className="dxGlobalViewers"><Users size={13} /> {formatViewers(stream.viewerCount)}</span></div>
+          <div className="dxGlobalCardBody"><div className="dxCardCreator"><span className={`dxCreatorDot ${providerClass(stream.provider)}`} /><strong>{stream.creatorName}</strong><button type="button" className={`dxQuickFollow ${isFollowing ? 'following' : ''}`} onClick={event => { event.stopPropagation(); toggleFollow(stream); }} aria-label={isFollowing ? 'Unfollow creator' : 'Follow creator'}><Heart size={14} fill={isFollowing ? 'currentColor' : 'none'} /></button></div><span className="dxCardTitle">{stream.title}</span><div className="dxCardMeta"><small>{stream.category || 'LIVE'}</small>{stream.language && <small>{String(stream.language).toUpperCase()}</small>}<b>Watch</b></div></div>
+        </article>;
+      })}</div> : <div className="dxGlobalEmpty">{mode === 'following' ? <Heart size={25} /> : <Radio size={25} />}<strong>{mode === 'following' ? 'None of your followed creators are LIVE in this refresh. Follow more creators from Home or Explore.' : providerEmptyMessage(provider, providers, availableProviderCount)}</strong><button type="button" onClick={() => loadStreams({ manual: true })}>Refresh LIVE</button></div>}</>}
 
-      {(provider === 'all' || provider === 'droxion') && nativeLive && <div className="dxNativeLiveSection"><div className="dxNativeLiveHeading"><div><span className="dxProviderBadge droxion">Droxion</span><strong>Native Droxion LIVE</strong></div><p>Droxion creator LIVE.</p></div>{nativeLive}</div>}
-      {selected && <ExternalLivePlayer stream={selected} onClose={() => setSelected(null)} currentUserId={currentUserId} coins={coins} onCoinsChanged={onCoinsChanged} onOpenWallet={onOpenWallet} />}
+      {(provider === 'all' || provider === 'droxion') && nativeLive && mode === 'home' && <div className="dxNativeLiveSection"><div className="dxNativeLiveHeading"><div><span className="dxProviderBadge droxion">Droxion</span><strong>Native Droxion LIVE</strong></div><p>Droxion creator LIVE.</p></div>{nativeLive}</div>}
+      {selected && <ExternalLivePlayer stream={selected} onClose={() => setSelected(null)} currentUserId={currentUserId} coins={coins} onCoinsChanged={onCoinsChanged} onOpenWallet={onOpenWallet} isFollowing={followingKeys.has(creatorKey(selected))} onToggleFollow={toggleFollow} />}
     </section>
   );
 }
