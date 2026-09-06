@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, Coins, Compass, Heart, Home, Inbox, Search, User, Play } from 'lucide-react';
+import { ArrowLeft, Bell, Coins, Compass, Heart, Home, Inbox, Search, User, Play, X } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
 import DroxionChat from './DroxionChat';
@@ -18,10 +18,12 @@ import CreatorProfileHome from './features/profile/CreatorProfileHome';
 import './real-home.css';
 import './live-first-app.css';
 import './product-shell.css';
+import './search-overlay-v2.css';
 
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
 const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 const PUBLIC_NATIVE_LIVE_ENABLED = false;
+const SEARCH_SHORTCUTS = ['All LIVE', 'YouTube', 'Twitch', 'Kick', 'Gaming', 'Sports', 'Music', 'Just Chatting', 'News'];
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
@@ -73,6 +75,13 @@ export default function LiveFirstApp() {
   }, []);
 
   useEffect(() => {
+    if (!searchOpen) return undefined;
+    const closeOnEscape = event => { if (event.key === 'Escape') setSearchOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [searchOpen]);
+
+  useEffect(() => {
     if (!immersiveLive) return;
     const unlockLiveAudio = () => {
       Array.from(document.querySelectorAll('.liveRoomV4 audio,.productionViewerPage audio')).forEach(audio => {
@@ -122,6 +131,15 @@ export default function LiveFirstApp() {
     setChatOpen(false); setTab(nextTab);
   }
 
+  function applySearchShortcut(value) {
+    setSearchQuery(value === 'All LIVE' ? '' : value);
+  }
+
+  function openSearchResults() {
+    setTab('explore');
+    setSearchOpen(false);
+  }
+
   function startLiveFromFeed() { openGoLiveInsideHome(); }
   function watchCreatorLive() { setTab('live'); setHostStudioOpen(false); }
 
@@ -149,15 +167,23 @@ export default function LiveFirstApp() {
       <LiveGuestViewerBridge enabled={immersiveLive} currentUserId={user?.id} />
 
       {!immersiveLive && !chatOpen && tab !== 'feed' && <header className={`lfTopbar ${discoveryTab ? 'lfHomeTopbar' : ''}`}>
-        <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE EVERYWHERE</small></span></button>
+        <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE</small></span></button>
         {discoveryTab ? <div className="lfHomeActions">
-          <button className="lfSearchButton" type="button" onClick={() => setSearchOpen(value => !value)} aria-label="Search LIVE creators"><Search size={19} /></button>
+          <button className="lfSearchButton" type="button" onClick={() => setSearchOpen(true)} aria-label="Search LIVE creators"><Search size={19} /></button>
           <button className="lfSearchButton" type="button" onClick={() => setWalletOpen(true)} aria-label={`Wallet ${coins} coins`}><Coins size={19} /></button>
           <button className="lfSearchButton" type="button" onClick={() => setChatOpen(true)} aria-label="Inbox"><Inbox size={19} /></button>
           <button className="lfNotificationButton" type="button" onClick={() => setNotificationsOpen(true)} aria-label="Notifications"><Bell size={19} />{unreadNotifications > 0 && <i />}</button>
         </div> : <div className="lfSectionLabel">{TABS.find(item => item.id === tab)?.label}</div>}
-        {discoveryTab && searchOpen && <label className="lfSearchOverlay"><Search size={17} /><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search creators, games, categories or platforms" /><button type="button" onClick={() => { setSearchQuery(''); setSearchOpen(false); }}>×</button></label>}
       </header>}
+
+      {discoveryTab && searchOpen && <div className="lfSearchDialogBackdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSearchOpen(false); }}>
+        <section className="lfSearchDialog" role="dialog" aria-modal="true" aria-label="Search Droxion LIVE">
+          <div className="lfSearchDialogTop"><div className="lfSearchDialogTitle"><span><Search size={18} /></span><div><strong>Search Droxion LIVE</strong><small>CREATORS · GAMES · TOPICS · PLATFORMS</small></div></div><button type="button" className="lfSearchClose" onClick={() => setSearchOpen(false)} aria-label="Close search"><X size={18} /></button></div>
+          <label className="lfSearchBoxV2"><Search size={19} /><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') openSearchResults(); }} placeholder="Search live streams" />{searchQuery && <button type="button" className="lfSearchClear" onClick={() => setSearchQuery('')}>Clear</button>}</label>
+          <div className="lfSearchQuick"><span>QUICK FILTERS</span><div className="lfSearchQuickRow">{SEARCH_SHORTCUTS.map(item => <button type="button" key={item} className={(item === 'All LIVE' ? !searchQuery : searchQuery.toLowerCase() === item.toLowerCase()) ? 'active' : ''} onClick={() => applySearchShortcut(item)}>{item}</button>)}</div></div>
+          <div className="lfSearchDialogFooter"><small>Press Enter or tap Show LIVE to open results.</small><button type="button" className="lfSearchAction" onClick={openSearchResults}>Show LIVE</button></div>
+        </section>
+      </div>}
 
       {chatOpen && !immersiveLive && <header className="lfTopbar"><button className="lfBrand" type="button" onClick={() => setChatOpen(false)} aria-label="Back to Droxion Home"><ArrowLeft size={22} /><span><strong>DROXION</strong><small>INBOX</small></span></button><div className="lfSectionLabel">Messages</div></header>}
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{chatOpen ? <DroxionChat /> : content}</div>
