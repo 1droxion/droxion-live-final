@@ -5,7 +5,7 @@ import './external-live-droxion-chat.css';
 
 const DROXION_POLL_MS = 3500;
 const SOURCE_LIMIT = 180;
-const CHAT_LIMIT = 180;
+const CHAT_LIMIT = 1000;
 const CHAT_CACHE_PREFIX = 'droxion.live.chat.v2:';
 
 function streamKey(stream) {
@@ -184,6 +184,35 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   }, [key, loadMessages]);
 
   useEffect(() => {
+    if (!key) return undefined;
+    const channel = supabase
+      .channel(`external-live-chat:${key}:${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'droxion_external_live_events', filter: `stream_key=eq.${key}` },
+        payload => {
+          const row = payload?.new;
+          if (!row?.id) return;
+          stickBottomRef.current = true;
+          setMessages(current => mergeRows(current, [{
+            ...row,
+            display_name: row.user_id === currentUserId ? 'You' : 'Droxion user',
+            username: '',
+            avatar_url: ''
+          }], item => String(item.id), CHAT_LIMIT));
+          window.setTimeout(() => loadMessages({ force: true, full: true }), 40);
+        }
+      )
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') loadMessages({ force: true, full: true });
+      });
+
+    return () => {
+      supabase.removeChannel(channel).catch(() => {});
+    };
+  }, [key, currentUserId, loadMessages]);
+
+  useEffect(() => {
     supabase.rpc('droxion_gift_options').then(({ data, error }) => {
       if (!error) setGiftOptions(Array.isArray(data) ? data : []);
     }).catch(() => {});
@@ -297,7 +326,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       authorName: row.display_name || row.username || 'Droxion user', avatarUrl: row.avatar_url || '', message: row.body || '',
       giftName: row.gift_name || '', giftEmoji: row.emoji || '🎁', costCoins: Number(row.cost_coins || 0)
     }));
-    return [...source, ...droxion].sort((a, b) => a.timestamp - b.timestamp).slice(-CHAT_LIMIT);
+    return [...source, ...droxion].sort((a, b) => a.timestamp - b.timestamp);
   }, [sourceMessages, messages]);
 
   useEffect(() => {
