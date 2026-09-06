@@ -1,11 +1,11 @@
 import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
 
 const DEFAULT_LIMIT = 90;
-const MAX_LIMIT = 200;
+const MAX_LIMIT = 150;
 const REQUEST_TIMEOUT_MS = 9000;
 const LIVE_HUB_CACHE_SECONDS = 120;
 const LIVE_HUB_STALE_SECONDS = 3600;
-const YOUTUBE_TARGET_LIMIT = 100;
+const YOUTUBE_TARGET_LIMIT = 50;
 const TWITCH_TARGET_LIMIT = 50;
 const KICK_TARGET_LIMIT = 50;
 const YOUTUBE_SEARCH_COOLDOWN_MS = 60 * 60 * 1000;
@@ -21,7 +21,7 @@ const YOUTUBE_CATEGORY_BY_ID = {
 
 const YOUTUBE_WEB_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36',
-  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
   Cookie: 'PREF=hl=en&gl=US; CONSENT=YES+cb; SOCS=CAI'
 };
 
@@ -42,6 +42,11 @@ function text(value, fallback = '') {
 function number(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function timeoutSignal(ms = REQUEST_TIMEOUT_MS) {
@@ -87,11 +92,11 @@ function normalizeCategory(value) {
   if (YOUTUBE_CATEGORY_BY_ID[raw]) return YOUTUBE_CATEGORY_BY_ID[raw];
   const source = raw.toLowerCase();
   if (!source) return 'Live';
-  if (/game|gaming|esport|fortnite|minecraft|valorant|league|gta|call of duty/.test(source)) return 'Gaming';
-  if (/music|dj|concert|song/.test(source)) return 'Music';
-  if (/sport|football|soccer|basketball|baseball|cricket|mma|boxing|racing|f1/.test(source)) return 'Sports';
-  if (/talk|chat|podcast|news|education|science|technology|howto/.test(source)) return 'Talk';
-  if (/irl|travel|outdoor|people|blog|lifestyle|walking/.test(source)) return 'IRL';
+  if (/game|gaming|esport|fortnite|minecraft|valorant|league|gta|call of duty|गेम/.test(source)) return 'Gaming';
+  if (/music|dj|concert|song|भजन|संगीत/.test(source)) return 'Music';
+  if (/sport|football|soccer|basketball|baseball|cricket|mma|boxing|racing|f1|क्रिकेट|खेल/.test(source)) return 'Sports';
+  if (/talk|chat|podcast|news|education|science|technology|howto|समाचार|न्यूज़|खबर/.test(source)) return 'Talk';
+  if (/irl|travel|outdoor|people|blog|lifestyle|walking|यात्रा/.test(source)) return 'IRL';
   return raw || 'Live';
 }
 
@@ -129,7 +134,7 @@ function selectBalancedStreams(results, limit) {
   return sortStreams(selected).slice(0, limit);
 }
 
-function normalizeYouTubeStream(videoId, snippet = {}, live = {}, status = {}) {
+function normalizeYouTubeStream(videoId, snippet = {}, live = {}, status = {}, languageHint = '') {
   if (!videoId || status?.embeddable === false || live?.actualEndTime || !live?.actualStartTime) return null;
   return {
     id: `youtube:${videoId}`,
@@ -141,7 +146,7 @@ function normalizeYouTubeStream(videoId, snippet = {}, live = {}, status = {}) {
     creatorName: text(snippet?.channelTitle, 'YouTube creator'),
     title: text(snippet?.title, 'LIVE on YouTube'),
     category: normalizeCategory(snippet?.categoryId || `${snippet?.title || ''} ${snippet?.channelTitle || ''}`),
-    language: text(snippet?.defaultAudioLanguage || snippet?.defaultLanguage),
+    language: text(snippet?.defaultAudioLanguage || snippet?.defaultLanguage || languageHint),
     viewerCount: number(live?.concurrentViewers),
     startedAt: text(live?.actualStartTime),
     thumbnailUrl: text(snippet?.thumbnails?.maxres?.url || snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url || snippet?.thumbnails?.default?.url),
@@ -151,7 +156,7 @@ function normalizeYouTubeStream(videoId, snippet = {}, live = {}, status = {}) {
   };
 }
 
-function normalizeYouTubeSearchItem(item = {}) {
+function normalizeYouTubeSearchItem(item = {}, languageHint = '') {
   const videoId = text(item?.id?.videoId || item?.id);
   const snippet = item?.snippet || {};
   if (!videoId) return null;
@@ -165,7 +170,7 @@ function normalizeYouTubeSearchItem(item = {}) {
     creatorName: text(snippet?.channelTitle, 'YouTube creator'),
     title: text(snippet?.title, 'LIVE on YouTube'),
     category: normalizeCategory(`${snippet?.title || ''} ${snippet?.channelTitle || ''}`),
-    language: '',
+    language: languageHint,
     viewerCount: 0,
     startedAt: text(snippet?.publishedAt),
     thumbnailUrl: text(snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url || snippet?.thumbnails?.default?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
@@ -181,46 +186,83 @@ function isSpeedStream(stream) {
   return text(stream.creatorName).toLowerCase().replace(/[^a-z0-9]/g, '') === 'ishowspeed';
 }
 
-function mergeYouTubeStreams(streams, limit = YOUTUBE_TARGET_LIMIT) {
+function youtubeLanguageGroup(stream) {
+  const language = text(stream?.language).toLowerCase();
+  const words = `${text(stream?.title)} ${text(stream?.creatorName)}`;
+  if (language.startsWith('hi') || /[\u0900-\u097F]/.test(words)) return 'hi';
+  if (language.startsWith('en')) return 'en';
+  return 'other';
+}
+
+function mergeYouTubeStreams(streams) {
   const byId = new Map();
   for (const stream of streams || []) {
     if (!stream?.id || stream.provider !== 'youtube') continue;
     const existing = byId.get(stream.id);
-    const streamScore = (stream.channelId ? 2 : 0) + (stream.viewerCount ? 2 : 0) + (stream.title && stream.title !== 'LIVE on YouTube' ? 1 : 0);
-    const existingScore = existing ? ((existing.channelId ? 2 : 0) + (existing.viewerCount ? 2 : 0) + (existing.title && existing.title !== 'LIVE on YouTube' ? 1 : 0)) : -1;
-    if (!existing || streamScore >= existingScore) byId.set(stream.id, stream);
+    const score = (stream.channelId ? 2 : 0) + (stream.viewerCount ? 2 : 0) + (stream.language ? 1 : 0) + (stream.title && stream.title !== 'LIVE on YouTube' ? 1 : 0);
+    const existingScore = existing ? ((existing.channelId ? 2 : 0) + (existing.viewerCount ? 2 : 0) + (existing.language ? 1 : 0) + (existing.title && existing.title !== 'LIVE on YouTube' ? 1 : 0)) : -1;
+    if (!existing || score >= existingScore) byId.set(stream.id, { ...existing, ...stream, language: stream.language || existing?.language || '' });
+  }
+  return sortStreams([...byId.values()]);
+}
+
+function selectYouTubeLanguageMix(streams, limit = YOUTUBE_TARGET_LIMIT) {
+  const all = mergeYouTubeStreams(streams);
+  const hindi = all.filter(stream => youtubeLanguageGroup(stream) === 'hi');
+  const english = all.filter(stream => youtubeLanguageGroup(stream) === 'en');
+  const other = all.filter(stream => youtubeLanguageGroup(stream) === 'other');
+  const targetHindi = Math.min(hindi.length, Math.floor(limit / 2));
+  const targetEnglish = Math.min(english.length, Math.floor(limit / 2));
+  const selected = [...hindi.slice(0, targetHindi), ...english.slice(0, targetEnglish)];
+  const ids = new Set(selected.map(stream => stream.id));
+  const remainder = all.filter(stream => !ids.has(stream.id));
+  for (const stream of remainder) {
+    if (selected.length >= limit) break;
+    ids.add(stream.id);
+    selected.push(stream);
   }
 
-  const all = sortStreams([...byId.values()]);
-  const speed = all.find(isSpeedStream) || null;
-  const withoutSpeed = all.filter(stream => !isSpeedStream(stream)).slice(0, Math.max(0, limit - (speed ? 1 : 0)));
-  const selected = speed ? [speed, ...withoutSpeed] : withoutSpeed;
+  const speed = all.find(isSpeedStream);
+  if (speed && !ids.has(speed.id)) {
+    if (selected.length >= limit) {
+      let replaceIndex = -1;
+      for (let index = selected.length - 1; index >= 0; index -= 1) {
+        if (youtubeLanguageGroup(selected[index]) !== 'hi') { replaceIndex = index; break; }
+      }
+      if (replaceIndex < 0) replaceIndex = selected.length - 1;
+      selected.splice(replaceIndex, 1, speed);
+    } else {
+      selected.push(speed);
+    }
+  }
+
   return sortStreams(selected).slice(0, limit);
 }
 
-async function youtubeDetails(apiKey, ids) {
-  const unique = [...new Set((ids || []).map(text).filter(Boolean))].slice(0, 100);
-  if (!apiKey || !unique.length) return [];
-  const chunks = [];
-  for (let index = 0; index < unique.length; index += 50) chunks.push(unique.slice(index, index + 50));
-
-  const groups = [];
-  for (const chunk of chunks) {
-    try {
-      const url = new URL('https://www.googleapis.com/youtube/v3/videos');
-      url.searchParams.set('part', 'snippet,liveStreamingDetails,statistics,status');
-      url.searchParams.set('id', chunk.join(','));
-      url.searchParams.set('key', apiKey);
-      const data = await fetchJson(url);
-      groups.push((data?.items || []).map(item => normalizeYouTubeStream(text(item?.id), item?.snippet || {}, item?.liveStreamingDetails || {}, item?.status || {})).filter(Boolean));
-    } catch {
-      groups.push([]);
-    }
-  }
-  return groups.flat();
+function hasHindiAndEnglish(streams) {
+  const groups = new Set((streams || []).map(youtubeLanguageGroup));
+  return groups.has('hi') && groups.has('en');
 }
 
-function youtubeSearchUrl(apiKey, { pageToken = '', channelId = '', maxResults = 50 } = {}) {
+async function youtubeDetails(apiKey, searchStreams) {
+  const candidates = mergeYouTubeStreams(searchStreams).slice(0, 50);
+  if (!apiKey || !candidates.length) return [];
+  const hintById = new Map(candidates.map(stream => [stream.externalId, stream.language || '']));
+  const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+  url.searchParams.set('part', 'snippet,liveStreamingDetails,statistics,status');
+  url.searchParams.set('id', candidates.map(stream => stream.externalId).join(','));
+  url.searchParams.set('key', apiKey);
+  const data = await fetchJson(url);
+  return (data?.items || []).map(item => normalizeYouTubeStream(
+    text(item?.id),
+    item?.snippet || {},
+    item?.liveStreamingDetails || {},
+    item?.status || {},
+    hintById.get(text(item?.id)) || ''
+  )).filter(Boolean);
+}
+
+function youtubeSearchUrl(apiKey, { maxResults = 25, regionCode = '', relevanceLanguage = '', query = '', channelId = '' } = {}) {
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('part', 'snippet');
   url.searchParams.set('type', 'video');
@@ -229,36 +271,27 @@ function youtubeSearchUrl(apiKey, { pageToken = '', channelId = '', maxResults =
   url.searchParams.set('order', 'viewCount');
   url.searchParams.set('maxResults', String(Math.min(50, Math.max(1, maxResults))));
   url.searchParams.set('key', apiKey);
-  if (pageToken) url.searchParams.set('pageToken', pageToken);
+  if (regionCode) url.searchParams.set('regionCode', regionCode);
+  if (relevanceLanguage) url.searchParams.set('relevanceLanguage', relevanceLanguage);
+  if (query) url.searchParams.set('q', query);
   if (channelId) url.searchParams.set('channelId', channelId);
   return url;
 }
 
-async function loadYouTubeApi(apiKey, limit) {
-  const target = Math.min(YOUTUBE_TARGET_LIMIT, Math.max(1, limit));
-  const first = await fetchJson(youtubeSearchUrl(apiKey, { maxResults: Math.min(50, target) }));
-  const items = [...(first?.items || [])];
+async function loadYouTubeApi(apiKey) {
+  const bucketSize = Math.ceil(YOUTUBE_TARGET_LIMIT / 2);
+  const [englishData, hindiData] = await Promise.all([
+    fetchJson(youtubeSearchUrl(apiKey, { maxResults: bucketSize, regionCode: 'US', relevanceLanguage: 'en' })),
+    fetchJson(youtubeSearchUrl(apiKey, { maxResults: bucketSize, regionCode: 'IN', relevanceLanguage: 'hi', query: 'हिंदी live' }))
+  ]);
 
-  if (items.length < target && first?.nextPageToken) {
-    try {
-      const second = await fetchJson(youtubeSearchUrl(apiKey, {
-        pageToken: text(first.nextPageToken),
-        maxResults: Math.min(50, target - items.length)
-      }));
-      items.push(...(second?.items || []));
-    } catch {}
-  }
+  const searchStreams = [
+    ...(englishData?.items || []).map(item => normalizeYouTubeSearchItem(item, 'en')),
+    ...(hindiData?.items || []).map(item => normalizeYouTubeSearchItem(item, 'hi'))
+  ].filter(Boolean);
 
-  const searchStreams = items.map(normalizeYouTubeSearchItem).filter(Boolean);
-  if (!searchStreams.some(isSpeedStream)) {
-    try {
-      const speedSearch = await fetchJson(youtubeSearchUrl(apiKey, { channelId: ISHOWSPEED_CHANNEL_ID, maxResults: 1 }));
-      searchStreams.push(...(speedSearch?.items || []).map(normalizeYouTubeSearchItem).filter(Boolean));
-    } catch {}
-  }
-
-  const details = await youtubeDetails(apiKey, searchStreams.map(stream => stream.externalId));
-  return mergeYouTubeStreams([...searchStreams, ...details], target);
+  const details = await youtubeDetails(apiKey, searchStreams);
+  return selectYouTubeLanguageMix([...searchStreams, ...details], YOUTUBE_TARGET_LIMIT);
 }
 
 function youtubeText(value) {
@@ -320,7 +353,7 @@ function youtubeRendererIsLive(renderer = {}) {
   });
 }
 
-function normalizeYouTubeWebRenderer(renderer = {}) {
+function normalizeYouTubeWebRenderer(renderer = {}, languageHint = '') {
   const videoId = text(renderer.videoId);
   if (!videoId || !youtubeRendererIsLive(renderer)) return null;
   const byline = renderer.ownerText || renderer.shortBylineText || renderer.longBylineText || {};
@@ -340,7 +373,7 @@ function normalizeYouTubeWebRenderer(renderer = {}) {
     creatorName,
     title,
     category: normalizeCategory(`${title} ${creatorName}`),
-    language: '',
+    language: languageHint,
     viewerCount: parseCompactCount(viewerText),
     startedAt: '',
     thumbnailUrl: text(thumbnails[thumbnails.length - 1]?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
@@ -350,7 +383,7 @@ function normalizeYouTubeWebRenderer(renderer = {}) {
   };
 }
 
-function collectYouTubeWebStreams(initialData, limit = 40) {
+function collectYouTubeWebStreams(initialData, limit = 30, languageHint = '') {
   if (!initialData || typeof initialData !== 'object') return [];
   const found = [];
   const seen = new Set();
@@ -362,7 +395,7 @@ function collectYouTubeWebStreams(initialData, limit = 40) {
     if (!node || typeof node !== 'object') continue;
     const renderer = node.videoRenderer || node.gridVideoRenderer || node.compactVideoRenderer || null;
     if (renderer) {
-      const stream = normalizeYouTubeWebRenderer(renderer);
+      const stream = normalizeYouTubeWebRenderer(renderer, languageHint);
       if (stream && !seen.has(stream.id)) {
         seen.add(stream.id);
         found.push(stream);
@@ -396,7 +429,7 @@ function speedWatchStream(html, finalUrl) {
     creatorName: 'IShowSpeed',
     title: text(titleMatch?.[1], 'IShowSpeed LIVE').replace(/&amp;/g, '&').replace(/&quot;/g, '"'),
     category: 'IRL',
-    language: '',
+    language: 'en',
     viewerCount: number(source.match(/"viewCount"\s*:\s*"([0-9]+)"/)?.[1]),
     startedAt: '',
     thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
@@ -406,9 +439,11 @@ function speedWatchStream(html, finalUrl) {
   };
 }
 
-async function youtubeWebPageStreams(url, limit, { speed = false } = {}) {
-  const { body, finalUrl } = await fetchTextWithUrl(url, { headers: YOUTUBE_WEB_HEADERS });
-  const streams = collectYouTubeWebStreams(extractInitialData(body), limit);
+async function youtubeWebPageStreams(url, limit, languageHint = '', { speed = false } = {}) {
+  const headers = { ...YOUTUBE_WEB_HEADERS };
+  if (languageHint === 'hi') headers['Accept-Language'] = 'hi-IN,hi;q=0.95,en;q=0.7';
+  const { body, finalUrl } = await fetchTextWithUrl(url, { headers });
+  const streams = collectYouTubeWebStreams(extractInitialData(body), limit, languageHint);
   if (speed) {
     const speedStream = speedWatchStream(body, finalUrl);
     if (speedStream) streams.unshift(speedStream);
@@ -416,31 +451,35 @@ async function youtubeWebPageStreams(url, limit, { speed = false } = {}) {
   return streams;
 }
 
-async function loadYouTubeWeb(limit) {
-  const target = Math.min(YOUTUBE_TARGET_LIMIT, Math.max(1, limit));
-  const queries = [
+async function loadYouTubeWeb() {
+  const englishUrls = [
     'https://www.youtube.com/live?hl=en&gl=US',
     'https://www.youtube.com/results?search_query=live&hl=en&gl=US',
     'https://www.youtube.com/results?search_query=gaming+live&hl=en&gl=US',
-    'https://www.youtube.com/results?search_query=music+live&hl=en&gl=US',
-    'https://www.youtube.com/results?search_query=sports+live&hl=en&gl=US',
-    'https://www.youtube.com/results?search_query=news+live&hl=en&gl=US',
-    'https://www.youtube.com/results?search_query=irl+live&hl=en&gl=US',
-    'https://www.youtube.com/results?search_query=podcast+live&hl=en&gl=US'
+    'https://www.youtube.com/results?search_query=news+live&hl=en&gl=US'
+  ];
+  const hindiUrls = [
+    'https://www.youtube.com/results?search_query=%E0%A4%B9%E0%A4%BF%E0%A4%82%E0%A4%A6%E0%A5%80+live&hl=hi&gl=IN',
+    'https://www.youtube.com/results?search_query=%E0%A4%AD%E0%A4%BE%E0%A4%B0%E0%A4%A4+live&hl=hi&gl=IN',
+    'https://www.youtube.com/results?search_query=%E0%A4%B9%E0%A4%BF%E0%A4%82%E0%A4%A6%E0%A5%80+%E0%A4%A8%E0%A5%8D%E0%A4%AF%E0%A5%82%E0%A4%9C%E0%A4%BC+live&hl=hi&gl=IN',
+    'https://www.youtube.com/results?search_query=%E0%A4%B9%E0%A4%BF%E0%A4%82%E0%A4%A6%E0%A5%80+gaming+live&hl=hi&gl=IN'
   ];
 
-  const groups = await Promise.all(queries.map(url => youtubeWebPageStreams(url, 35).catch(() => [])));
-  const speed = await youtubeWebPageStreams(`https://www.youtube.com/channel/${ISHOWSPEED_CHANNEL_ID}/live?hl=en&gl=US`, 10, { speed: true }).catch(() => []);
-  return mergeYouTubeStreams([...speed, ...groups.flat()], target);
+  const [englishGroups, hindiGroups, speed] = await Promise.all([
+    Promise.all(englishUrls.map(url => youtubeWebPageStreams(url, 30, 'en').catch(() => []))),
+    Promise.all(hindiUrls.map(url => youtubeWebPageStreams(url, 30, 'hi').catch(() => []))),
+    youtubeWebPageStreams(`https://www.youtube.com/channel/${ISHOWSPEED_CHANNEL_ID}/live?hl=en&gl=US`, 8, 'en', { speed: true }).catch(() => [])
+  ]);
+
+  return selectYouTubeLanguageMix([...speed, ...englishGroups.flat(), ...hindiGroups.flat()], YOUTUBE_TARGET_LIMIT);
 }
 
-function cachedYouTubeStreams(cached, limit) {
+function cachedYouTubeStreams(cached) {
   if (!Array.isArray(cached?.payload)) return [];
-  return mergeYouTubeStreams(cached.payload, limit);
+  return selectYouTubeLanguageMix(cached.payload, YOUTUBE_TARGET_LIMIT);
 }
 
-async function loadYouTubeFresh(limit) {
-  const target = Math.min(YOUTUBE_TARGET_LIMIT, Math.max(1, limit));
+async function loadYouTubeFresh() {
   const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
   const [cached, attempt] = await Promise.all([
     readProviderCache('youtube').catch(() => null),
@@ -448,9 +487,9 @@ async function loadYouTubeFresh(limit) {
   ]);
   const cacheAge = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
   const attemptAge = attempt?.updatedAt ? Date.now() - Date.parse(attempt.updatedAt) : Infinity;
-  const cachedStreams = cacheAge <= YOUTUBE_CACHE_MAX_STALE_MS ? cachedYouTubeStreams(cached, target) : [];
+  const cachedStreams = cacheAge <= YOUTUBE_CACHE_MAX_STALE_MS ? cachedYouTubeStreams(cached) : [];
 
-  if (cachedStreams.length && cacheAge < YOUTUBE_CACHE_FRESH_MS) {
+  if (cachedStreams.length >= YOUTUBE_TARGET_LIMIT && cacheAge < YOUTUBE_CACHE_FRESH_MS && hasHindiAndEnglish(cachedStreams)) {
     return { provider: 'youtube', enabled: true, streams: cachedStreams, reason: '', cacheUsed: true };
   }
 
@@ -458,10 +497,14 @@ async function loadYouTubeFresh(limit) {
   if (apiKey && attemptAge >= YOUTUBE_SEARCH_COOLDOWN_MS) {
     await writeProviderCache('youtube_search_attempt', []).catch(() => {});
     try {
-      const streams = await loadYouTubeApi(apiKey, target);
-      if (streams.length) {
-        await writeProviderCache('youtube', streams).catch(() => {});
-        return { provider: 'youtube', enabled: true, streams, reason: '', cacheUsed: false };
+      const apiStreams = await loadYouTubeApi(apiKey);
+      if (apiStreams.length) {
+        const webStreams = hasHindiAndEnglish(apiStreams) && apiStreams.length >= YOUTUBE_TARGET_LIMIT ? [] : await loadYouTubeWeb().catch(() => []);
+        const streams = selectYouTubeLanguageMix([...apiStreams, ...webStreams], YOUTUBE_TARGET_LIMIT);
+        if (streams.length) {
+          await writeProviderCache('youtube', streams).catch(() => {});
+          return { provider: 'youtube', enabled: true, streams, reason: '', cacheUsed: false, fallbackUsed: webStreams.length > 0 };
+        }
       }
     } catch (error) {
       apiError = error;
@@ -469,21 +512,21 @@ async function loadYouTubeFresh(limit) {
     }
   }
 
-  if (cachedStreams.length) {
-    return { provider: 'youtube', enabled: true, streams: cachedStreams, reason: '', cacheUsed: true, fallbackUsed: true };
-  }
-
   try {
-    const webStreams = await loadYouTubeWeb(target);
-    if (webStreams.length) {
-      await writeProviderCache('youtube', webStreams).catch(() => {});
-      return { provider: 'youtube', enabled: true, streams: webStreams, reason: '', cacheUsed: false, fallbackUsed: true };
+    const webStreams = await loadYouTubeWeb();
+    const combined = selectYouTubeLanguageMix([...webStreams, ...cachedStreams], YOUTUBE_TARGET_LIMIT);
+    if (combined.length) {
+      await writeProviderCache('youtube', combined).catch(() => {});
+      return { provider: 'youtube', enabled: true, streams: combined, reason: '', cacheUsed: cachedStreams.length > 0, fallbackUsed: true };
     }
   } catch (error) {
     if (!apiError) apiError = error;
   }
 
-  if (!apiKey) return { provider: 'youtube', enabled: true, streams: [], reason: 'provider_error', error: 'YouTube LIVE discovery is temporarily unavailable.', fallbackUsed: true };
+  if (cachedStreams.length) {
+    return { provider: 'youtube', enabled: true, streams: cachedStreams, reason: '', cacheUsed: true, fallbackUsed: true };
+  }
+
   return {
     provider: 'youtube',
     enabled: true,
@@ -494,9 +537,9 @@ async function loadYouTubeFresh(limit) {
   };
 }
 
-async function loadYouTube(limit) {
+async function loadYouTube() {
   if (youtubeRequest) return youtubeRequest;
-  youtubeRequest = loadYouTubeFresh(limit).finally(() => { youtubeRequest = null; });
+  youtubeRequest = loadYouTubeFresh().finally(() => { youtubeRequest = null; });
   return youtubeRequest;
 }
 
@@ -558,7 +601,7 @@ async function getKickToken() {
   const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
   const data = await fetchJson('https://id.kick.com/oauth/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: body.toString()
   });
   const token = text(data?.access_token);
@@ -568,6 +611,24 @@ async function getKickToken() {
 
 function kickSlug(item) {
   return text(item?.slug || item?.broadcaster?.slug || item?.broadcaster?.username || item?.broadcaster_user_name || item?.channel?.slug || item?.channel?.username);
+}
+
+function kickBroadcasterId(item) {
+  const candidates = [
+    item?.broadcaster_user_id,
+    item?.broadcaster?.user_id,
+    item?.broadcaster?.id,
+    item?.channel?.broadcaster_user_id,
+    item?.channel?.user_id,
+    item?.channel?.user?.id,
+    item?.channel_id,
+    item?.user_id
+  ];
+  for (const candidate of candidates) {
+    const id = positiveInteger(candidate);
+    if (id) return String(id);
+  }
+  return '';
 }
 
 async function loadKick(limit) {
@@ -590,7 +651,7 @@ async function loadKick(limit) {
   const streams = (data?.data || []).map(item => {
     const slug = kickSlug(item);
     const category = item?.category || item?.categories?.[0] || {};
-    const broadcasterId = text(item?.broadcaster_user_id || item?.channel_id || item?.broadcaster?.id || item?.channel?.user_id || item?.channel?.user?.id);
+    const broadcasterId = kickBroadcasterId(item);
     const thumbnail = typeof item?.thumbnail === 'string'
       ? text(item.thumbnail)
       : text(item?.thumbnail?.url || item?.thumbnail_url || item?.channel?.livestream?.thumbnail?.url || item?.channel?.livestream?.thumbnail_url);
