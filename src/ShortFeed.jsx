@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Heart, MessageCircle, MoreVertical, Radio, Share2, Trash2, UserPlus, Volume2, VolumeX, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { rankClips, recordClipBehavior } from './recommendationEngine';
 import './short-feed.css';
 
 function compactNumber(value) {
@@ -23,7 +24,7 @@ function safePlay(video) {
   } catch {}
 }
 
-export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
+export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nativeLiveEnabled = false }) {
   const [clips, setClips] = useState([]);
   const [profiles, setProfiles] = useState({});
   const [liveCreators, setLiveCreators] = useState({});
@@ -40,8 +41,12 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   const [deletingClipId, setDeletingClipId] = useState('');
   const videoRefs = useRef(new Map());
   const viewed = useRef(new Set());
+  const watched = useRef(new Set());
+  const longWatched = useRef(new Set());
+  const watchTimers = useRef(new Map());
   const lastTap = useRef({ clipId: '', at: 0 });
 
+  const rankedClips = useMemo(() => rankClips(clips), [clips]);
   const creatorIds = useMemo(() => [...new Set(clips.map(clip => clip.creator_id).filter(Boolean))], [clips]);
 
   useEffect(() => {
@@ -54,7 +59,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
         .eq('status', 'ready')
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('highlight_score', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (!alive) return;
       if (error) {
@@ -63,7 +68,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
         setLoading(false);
         return;
       }
-      setClips(clipRows || []);
+      setClips(rankClips(clipRows || []));
       setLoading(false);
     }
     load();
@@ -74,10 +79,9 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
     if (!creatorIds.length) { setProfiles({}); setLiveCreators({}); return; }
     let alive = true;
     (async () => {
-      const [profileResult, liveResult] = await Promise.all([
-        supabase.from('droxion_profiles').select('user_id,display_name,username,avatar_url').in('user_id', creatorIds),
-        supabase.rpc('droxion_live_feed')
-      ]);
+      const profilePromise = supabase.from('droxion_profiles').select('user_id,display_name,username,avatar_url').in('user_id', creatorIds);
+      const livePromise = nativeLiveEnabled ? supabase.rpc('droxion_live_feed') : Promise.resolve({ data: [] });
+      const [profileResult, liveResult] = await Promise.all([profilePromise, livePromise]);
       if (!alive) return;
       const profileMap = {};
       (profileResult.data || []).forEach(row => { profileMap[row.user_id] = row; });
@@ -87,7 +91,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       setLiveCreators(liveMap);
     })();
     return () => { alive = false; };
-  }, [creatorIds.join('|')]);
+  }, [creatorIds.join('|'), nativeLiveEnabled]);
 
   useEffect(() => {
     if (!currentUserId || !clips.length) { setLiked(new Set()); setFollowing(new Set()); return; }
@@ -109,14 +113,46 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
 
   useEffect(() => {
     if (!clips.length) return;
+
+    const clearWatchTimers = clipId => {
+      const timers = watchTimers.current.get(clipId);
+      if (!timers) return;
+      window.clearTimeout(timers.watch);
+      window.clearTimeout(timers.long);
+      watchTimers.current.delete(clipId);
+    };
+
+    const beginWatchTimers = clipId => {
+      if (!clipId || watchTimers.current.has(clipId)) return;
+      const clip = clips.find(item => item.id === clipId);
+      if (!clip) return;
+      const watch = window.setTimeout(() => {
+        if (!watched.current.has(clipId)) {
+          watched.current.add(clipId);
+          recordClipBehavior(clip, 'watch');
+        }
+      }, 8000);
+      const long = window.setTimeout(() => {
+        if (!longWatched.current.has(clipId)) {
+          longWatched.current.add(clipId);
+          recordClipBehavior(clip, 'watchLong');
+          setClips(current => [...current]);
+        }
+      }, 25000);
+      watchTimers.current.set(clipId, { watch, long });
+    };
+
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         const video = entry.target;
         const clipId = video.dataset.clipId;
         if (entry.isIntersecting && entry.intersectionRatio >= 0.62) {
           safePlay(video);
+          beginWatchTimers(clipId);
           if (clipId && !viewed.current.has(clipId)) {
             viewed.current.add(clipId);
+            const clip = clips.find(item => item.id === clipId);
+            if (clip) recordClipBehavior(clip, 'view');
             supabase.rpc('droxion_record_clip_view', { p_clip_id: clipId }).then(({ data }) => {
               if (data == null) return;
               setClips(current => current.map(item => item.id === clipId ? { ...item, views_count: Number(data) } : item));
@@ -124,6 +160,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
           }
         } else if (entry.intersectionRatio < 0.3) {
           video.pause?.();
+          if (clipId) clearWatchTimers(clipId);
         }
       });
     }, { threshold: [0, 0.3, 0.62, 0.85, 1] });
@@ -144,6 +181,11 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
     return () => {
       observer.disconnect();
       window.clearInterval(retry);
+      watchTimers.current.forEach(timers => {
+        window.clearTimeout(timers.watch);
+        window.clearTimeout(timers.long);
+      });
+      watchTimers.current.clear();
     };
   }, [clips.length]);
 
@@ -156,6 +198,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
 
   async function toggleLike(clipId) {
     if (!currentUserId) { setNotice('Sign in to like highlights.'); return; }
+    const clip = clips.find(item => item.id === clipId);
     const { data, error } = await supabase.rpc('droxion_toggle_clip_like', { p_clip_id: clipId });
     if (error || !data) { setNotice(error?.message || 'Could not update like.'); return; }
     setLiked(current => {
@@ -163,6 +206,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       if (data.liked) next.add(clipId); else next.delete(clipId);
       return next;
     });
+    if (data.liked && clip) recordClipBehavior(clip, 'like');
     setClips(current => current.map(item => item.id === clipId ? { ...item, likes_count: Number(data.likes_count || 0) } : item));
   }
 
@@ -179,6 +223,11 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       if (isFollowing) next.delete(creatorId); else next.add(creatorId);
       return next;
     });
+    if (!isFollowing) {
+      const clip = clips.find(item => item.creator_id === creatorId);
+      if (clip) recordClipBehavior(clip, 'follow');
+    }
+    setClips(current => [...current]);
   }
 
   async function loadLikes(clip) {
@@ -221,6 +270,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
     if (!body || !clip?.id || !currentUserId) return;
     const { data, error } = await supabase.rpc('droxion_add_clip_comment', { p_clip_id: clip.id, p_body: body });
     if (error) { setNotice(error.message || 'Could not add comment.'); return; }
+    recordClipBehavior(clip, 'comment');
     setCommentDraft('');
     setClips(current => current.map(item => item.id === clip.id ? { ...item, comments_count: Number(data?.comments_count || item.comments_count || 0) } : item));
     await loadComments({ ...clip, comments_count: Number(data?.comments_count || 0) });
@@ -238,6 +288,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       if (navigator.share) await navigator.share(shareData);
       else if (navigator.clipboard) await navigator.clipboard.writeText(shareData.url);
       else return setNotice('Sharing is not available on this device.');
+      recordClipBehavior(clip, 'share');
       const { data } = await supabase.rpc('droxion_record_clip_share', { p_clip_id: clip.id });
       if (data != null) setClips(current => current.map(item => item.id === clip.id ? { ...item, shares_count: Number(data) } : item));
       if (!navigator.share) setNotice('Highlight link copied.');
@@ -263,8 +314,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
       window.setTimeout(() => URL.revokeObjectURL(url), 1500);
       setNotice('Highlight download started.');
     } catch {
-      window.open(clip.video_url, '_blank', 'noopener,noreferrer');
-      setNotice('Opened the highlight so you can save it.');
+      setNotice('Could not download this highlight right now.');
     }
   }
 
@@ -308,14 +358,14 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   }
 
   function handleVideoTap(clip) {
-    const now = Date.now();
+    const tapAt = Date.now();
     const previous = lastTap.current;
-    if (previous.clipId === clip.id && now - previous.at < 300) {
+    if (previous.clipId === clip.id && tapAt - previous.at < 300) {
       if (!liked.has(clip.id)) toggleLike(clip.id);
       lastTap.current = { clipId: '', at: 0 };
       return;
     }
-    lastTap.current = { clipId: clip.id, at: now };
+    lastTap.current = { clipId: clip.id, at: tapAt };
   }
 
   function toggleSound(clipId) {
@@ -333,17 +383,17 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
   if (!clips.length) return (
     <section className="sfPage sfEmpty">
       <div className="sfEmptyMark"><Radio size={30} /></div>
-      <h2>Your LIVE highlights will appear here</h2>
-      <p>After creators finish qualifying LIVEs, Droxion will publish the strongest short moments into this feed.</p>
-      <button type="button" onClick={onStartLive}>Start a LIVE</button>
+      <h2>LIVE highlights will appear here</h2>
+      <p>Droxion turns the strongest LIVE moments into a personalized Reel feed.</p>
+      {nativeLiveEnabled && onStartLive && <button type="button" onClick={onStartLive}>Start a LIVE</button>}
     </section>
   );
 
   return (
-    <section className="sfPage" aria-label="Droxion highlight feed">
-      {clips.map(clip => {
+    <section className="sfPage" aria-label="Droxion personalized highlight feed">
+      {rankedClips.map(clip => {
         const profile = profiles[clip.creator_id] || {};
-        const live = liveCreators[clip.creator_id];
+        const live = nativeLiveEnabled ? liveCreators[clip.creator_id] : null;
         const isLiked = liked.has(clip.id);
         const isFollowing = following.has(clip.creator_id);
         const isOwner = clip.creator_id === currentUserId;
@@ -371,7 +421,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
             <div className="sfTopLine">
               <span>LIVE HIGHLIGHT</span>
               <div className="sfTopActions">
-                {live && <button type="button" className="sfLiveNow" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={14} /> LIVE NOW</button>}
+                {nativeLiveEnabled && live && <button type="button" className="sfLiveNow" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={14} /> LIVE NOW</button>}
                 <button type="button" className="sfMoreButton" onClick={() => setActionClip(clip)} aria-label="Highlight options"><MoreVertical size={20} /></button>
               </div>
             </div>
@@ -383,7 +433,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive }) {
                 {!isOwner && <button className={isFollowing ? 'following' : ''} type="button" onClick={() => toggleFollow(clip.creator_id)}>{isFollowing ? 'Following' : 'Follow'}</button>}
               </div>
               <p>{clip.caption || 'A highlight from LIVE on Droxion.'}</p>
-              {live && <button className="sfWatchLive" type="button" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={15} /> Watch LIVE</button>}
+              {nativeLiveEnabled && live && <button className="sfWatchLive" type="button" onClick={() => onWatchLive?.(clip.creator_id)}><Radio size={15} /> Watch LIVE</button>}
             </div>
 
             <div className="sfRail">
