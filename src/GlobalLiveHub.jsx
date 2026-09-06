@@ -30,7 +30,7 @@ const EXPLORE_TOPICS = [
   { id: 'fortnite', label: 'Fortnite', tone: 'purple' }
 ];
 const REFRESH_MS = 120000;
-const LIVE_DISCOVERY_LIMIT = 120;
+const LIVE_DISCOVERY_LIMIT = 150;
 const RECENT_LIVE_KEY = 'droxion.live.recent.v1';
 
 function formatViewers(value) {
@@ -112,7 +112,7 @@ function relatedLiveStreams(stream, streams) {
       return { item, score };
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
+    .slice(0, 16)
     .map(entry => entry.item);
 }
 
@@ -127,7 +127,7 @@ function RelatedLiveRail({ stream, streams, onSelect }) {
   const related = useMemo(() => relatedLiveStreams(stream, streams), [stream, streams]);
   if (!related.length) return null;
   return <section className="dxRelatedLive">
-    <div className="dxRelatedHead"><div><span>KEEP WATCHING</span><strong>Related LIVE</strong></div><small>Picked from the current Droxion LIVE network</small></div>
+    <div className="dxRelatedHead"><div><span>KEEP WATCHING</span><strong>Recommended Streams</strong></div><small>More LIVE picked from Droxion</small></div>
     <div className="dxRelatedRail">{related.map(item => <button type="button" key={item.id} className="dxRelatedCard" onClick={() => onSelect(item)}>
       <div className="dxRelatedThumb">{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" loading="lazy" /> : <span />}<i>LIVE</i><b><Users size={11} /> {formatViewers(item.viewerCount)}</b></div>
       <strong>{item.title || 'LIVE now'}</strong>
@@ -298,7 +298,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
 
   if (mode === 'explore') {
     const selectedTopicLabel = exploreTopic === 'all' ? 'Recommended LIVE' : (EXPLORE_TOPICS.find(item => item.id === exploreTopic)?.label || 'LIVE');
-    const visibleExploreStreams = filtered.slice(0, exploreTopic === 'all' ? 16 : 32);
+    const visibleExploreStreams = filtered;
     return <section className="dxGlobalLiveHub dxHubMode-explore dxExploreV2">
       <div className="dxExploreHeroV2"><div className="dxExploreHeroCopy"><span><Compass size={15} /> DROXION EXPLORE</span><h1>Find your next LIVE.</h1><p>Search creators, games and communities across YouTube, Twitch and Kick — all inside Droxion.</p></div><button type="button" className="dxExploreRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} />{refreshing ? 'Refreshing' : 'Refresh'}</button><label className="dxExploreSearchV2"><Search size={19} /><input value={exploreQuery} onChange={event => { setExploreQuery(event.target.value); setExploreTopic('all'); }} placeholder="Search creators, games, topics or platforms" />{exploreQuery && <button type="button" onClick={() => setExploreQuery('')} aria-label="Clear search"><X size={16} /></button>}</label></div>
       <div className="dxExploreFiltersV2"><div className="dxGlobalProviderRail" aria-label="LIVE sources">{providerOptions.filter(item => item.id !== 'droxion').map(item => { const external = item.id !== 'all'; const enabled = external ? providers?.[item.id]?.enabled !== false : true; const active = provider === item.id; const count = external ? Number(providers?.[item.id]?.available || 0) : totalAvailable; return <button type="button" key={item.id} className={`${active ? 'active' : ''} ${enabled ? '' : 'disabled'} ${providerClass(item.id)}`} onClick={() => { setProvider(item.id); setExploreTopic('all'); }} disabled={!enabled && external}><span>{item.label}</span>{count > 0 && <small>{count}</small>}</button>; })}</div><div className="dxExploreLanguageBar"><Filter size={13} />{languages.map(item => <button type="button" key={item} className={language === item ? 'active' : ''} onClick={() => { setLanguage(item); setExploreTopic('all'); }}>{item === 'All' ? 'Any language' : item}</button>)}</div></div>
