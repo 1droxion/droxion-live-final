@@ -1,6 +1,25 @@
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 60;
 const REQUEST_TIMEOUT_MS = 8000;
+const LIVE_HUB_CACHE_SECONDS = 1800;
+const LIVE_HUB_STALE_SECONDS = 7200;
+
+const YOUTUBE_CATEGORY_BY_ID = {
+  '1': 'Entertainment',
+  '2': 'Entertainment',
+  '10': 'Music',
+  '15': 'Entertainment',
+  '17': 'Sports',
+  '19': 'IRL',
+  '20': 'Gaming',
+  '22': 'IRL',
+  '23': 'Entertainment',
+  '24': 'Entertainment',
+  '25': 'Talk',
+  '26': 'Lifestyle',
+  '27': 'Talk',
+  '28': 'Talk'
+};
 
 let twitchTokenCache = { token: '', expiresAt: 0 };
 let kickTokenCache = { token: '', expiresAt: 0 };
@@ -31,8 +50,9 @@ async function fetchJson(url, init = {}) {
   try {
     const response = await fetch(url, { ...init, signal: timeout.signal });
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`HTTP ${response.status}${body ? `: ${body.slice(0, 180)}` : ''}`);
+      let hostname = 'provider';
+      try { hostname = new URL(url).hostname; } catch {}
+      throw new Error(`HTTP ${response.status} from ${hostname}`);
     }
     return await response.json();
   } finally {
@@ -41,14 +61,18 @@ async function fetchJson(url, init = {}) {
 }
 
 function normalizeCategory(value) {
-  const source = text(value).toLowerCase();
+  const raw = text(value);
+  const mappedYouTubeCategory = YOUTUBE_CATEGORY_BY_ID[raw];
+  if (mappedYouTubeCategory) return mappedYouTubeCategory;
+
+  const source = raw.toLowerCase();
   if (!source) return 'Live';
   if (/game|gaming|esport|fortnite|minecraft|valorant|league|gta|call of duty/.test(source)) return 'Gaming';
   if (/music|dj|concert|song/.test(source)) return 'Music';
   if (/sport|football|soccer|basketball|baseball|cricket|mma|boxing/.test(source)) return 'Sports';
-  if (/talk|chat|podcast|just chatting/.test(source)) return 'Talk';
-  if (/irl|travel|outdoor|lifestyle/.test(source)) return 'IRL';
-  return text(value, 'Live');
+  if (/talk|chat|podcast|news|education|science|technology|howto/.test(source)) return 'Talk';
+  if (/irl|travel|outdoor|people|blog|lifestyle/.test(source)) return 'IRL';
+  return raw || 'Live';
 }
 
 function sortStreams(streams) {
@@ -288,12 +312,13 @@ async function loadKick(limit) {
 }
 
 function providerFailure(provider, error) {
+  console.error(`[live-hub] ${provider} request failed`, text(error?.message, 'Provider request failed'));
   return {
     provider,
     enabled: true,
     streams: [],
     reason: 'provider_error',
-    error: text(error?.message, 'Provider request failed')
+    error: 'Provider temporarily unavailable'
   };
 }
 
@@ -320,7 +345,10 @@ export default async function handler(req, res) {
     error: result.error || ''
   }]));
 
-  res.setHeader('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
+  res.setHeader(
+    'Cache-Control',
+    `public, s-maxage=${LIVE_HUB_CACHE_SECONDS}, stale-while-revalidate=${LIVE_HUB_STALE_SECONDS}`
+  );
   return res.status(200).json({
     streams,
     providers,
