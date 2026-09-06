@@ -5,7 +5,9 @@ import { mediaTrackSnapshot, publicationSnapshot, recordScreenShareDiagnostic } 
 import { publishHostMediaV2 } from './livePublisherService';
 
 const TOKEN_FUNCTION = 'livekit-token';
-const CONNECT_TIMEOUT_MS = 10000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 10000;
+const VIEWER_CONNECT_TIMEOUT_MS = 18000;
+const VIEWER_CONNECT_RETRY_DELAYS_MS = [0, 900];
 const roomRoles = new WeakMap();
 const CLIENT_INSTANCE_ID = (() => {
   try {
@@ -13,9 +15,14 @@ const CLIENT_INSTANCE_ID = (() => {
   } catch {}
   return `v2${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 24);
 })();
+let viewerConnectionSequence = 0;
 
 function emitViewerRoom(eventName, detail) {
   try { window.dispatchEvent(new CustomEvent(eventName, { detail })); } catch {}
+}
+
+function wait(ms) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
 function withTimeout(promise, timeoutMs, message) {
@@ -31,6 +38,22 @@ function withTimeout(promise, timeoutMs, message) {
   });
 }
 
+function nextViewerClientInstanceId() {
+  viewerConnectionSequence += 1;
+  return `${CLIENT_INSTANCE_ID.slice(0, 20)}${viewerConnectionSequence.toString(36)}${Date.now().toString(36).slice(-5)}`.slice(0, 32);
+}
+
+function retryableViewerConnectError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  if (!message) return false;
+  if (message.includes('sign in') || message.includes('authorize') || message.includes('not active') || message.includes('ended')) return false;
+  return message.includes('timed out')
+    || message.includes('network')
+    || message.includes('websocket')
+    || message.includes('signal')
+    || message.includes('connect');
+}
+
 async function logTransportFailure(stage, error, context = {}) {
   try {
     await supabase.rpc('droxion_log_live_client_error', {
@@ -42,12 +65,12 @@ async function logTransportFailure(stage, error, context = {}) {
   } catch {}
 }
 
-async function getLiveKitToken(sessionId, role) {
+async function getLiveKitToken(sessionId, role, clientInstanceId = CLIENT_INSTANCE_ID) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error('Sign in before using LIVE.');
 
   const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
-    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
+    body: { sessionId, role, clientInstanceId },
     headers: { Authorization: `Bearer ${session.access_token}` }
   });
 
@@ -140,13 +163,18 @@ function bindRoomEvents(room, callbacks = {}) {
     callbacks.onReconnected?.();
   });
   room.on(RoomEvent.Disconnected, reason => {
-    if (roomRoles.get(room) === 'viewer') emitViewerRoom('droxion:viewer-room-closed', { room, reason, unexpected: true });
+    const role = roomRoles.get(room);
+    if (!role) return;
+    if (role === 'viewer') emitViewerRoom('droxion:viewer-room-closed', { room, reason, unexpected: true });
     callbacks.onDisconnected?.(reason);
   });
 }
 
-async function connectRoom(sessionId, role, callbacks) {
-  const auth = await getLiveKitToken(sessionId, role);
+async function connectRoom(sessionId, role, callbacks, {
+  timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
+  clientInstanceId = CLIENT_INSTANCE_ID
+} = {}) {
+  const auth = await getLiveKitToken(sessionId, role, clientInstanceId);
   const room = new Room({
     // Keep viewer adaptive-stream off for Studio multi-video rooms. With screen
     // + facecam published separately, both tracks must stay subscribed even
@@ -162,18 +190,19 @@ async function connectRoom(sessionId, role, callbacks) {
   try {
     await withTimeout(
       room.connect(auth.url, auth.token, { autoSubscribe: true }),
-      CONNECT_TIMEOUT_MS,
+      timeoutMs,
       'LIVE video connection timed out.'
     );
     replayRemoteTracks(room, callbacks);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 100);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 400);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 1000);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 2500);
     if (role === 'viewer') emitViewerRoom('droxion:viewer-room-ready', { room, sessionId });
     return room;
   } catch (error) {
     roomRoles.delete(room);
-    await logTransportFailure('v2-room-connect', error, { sessionId, role });
+    await logTransportFailure('v2-room-connect', error, { sessionId, role, clientInstanceId, timeoutMs });
     try { await room.disconnect(); } catch {}
     throw error;
   }
@@ -196,7 +225,33 @@ export async function connectHostTransport({ sessionId, stream, callbacks = {} }
 }
 
 export async function connectViewerTransport({ sessionId, callbacks = {} }) {
-  return connectRoom(sessionId, 'viewer', callbacks);
+  let lastError = null;
+
+  for (let index = 0; index < VIEWER_CONNECT_RETRY_DELAYS_MS.length; index += 1) {
+    const delay = VIEWER_CONNECT_RETRY_DELAYS_MS[index];
+    if (delay) await wait(delay);
+
+    const clientInstanceId = nextViewerClientInstanceId();
+    try {
+      return await connectRoom(sessionId, 'viewer', callbacks, {
+        timeoutMs: VIEWER_CONNECT_TIMEOUT_MS,
+        clientInstanceId
+      });
+    } catch (error) {
+      lastError = error;
+      const hasNextAttempt = index + 1 < VIEWER_CONNECT_RETRY_DELAYS_MS.length;
+      if (!hasNextAttempt || !retryableViewerConnectError(error)) throw error;
+      await logTransportFailure('v2-viewer-connect-retry', error, {
+        sessionId,
+        attempt: index + 1,
+        nextAttempt: index + 2,
+        clientInstanceId
+      });
+      callbacks.onReconnecting?.();
+    }
+  }
+
+  throw lastError || new Error('Could not connect to this LIVE.');
 }
 
 export async function connectGuestTransport({ sessionId, stream, callbacks = {} }) {
