@@ -10,7 +10,7 @@ workflows:
       vars:
         APP_NAME: Droxion Live
         PACKAGE_NAME: com.droxion.live
-        ANDROID_VERSION_NAME: "1.2"
+        ANDROID_VERSION_NAME: "1.3"
         ANDROID_VERSION_CODE_BASE: "120000"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
@@ -59,6 +59,7 @@ workflows:
           grep -E "compileSdkVersion|targetSdkVersion" android/variables.gradle || true
           grep -q "compileSdkVersion = 36" android/variables.gradle
           grep -q "targetSdkVersion = 36" android/variables.gradle
+          grep -q 'android:scheme="com.droxion.live"' android/app/src/main/AndroidManifest.xml
 
       - name: Build signed Android App Bundle
         script: |
@@ -94,7 +95,7 @@ workflows:
         APP_NAME: Droxion Live
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
-        IOS_MARKETING_VERSION: "1.2"
+        IOS_MARKETING_VERSION: "1.4"
         IOS_BUILD_NUMBER_BASE: "120000"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
@@ -179,7 +180,7 @@ workflows:
             --splashBackgroundColor '#08080c' \
             --splashBackgroundColorDark '#08080c'
 
-      - name: Configure iOS privacy permissions
+      - name: Configure iOS privacy permissions and OAuth return
         script: |
           set -e
           PLIST="${IOS_PROJECT_PATH}/App/Info.plist"
@@ -189,7 +190,28 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$PLIST"
+          python3 - "$PLIST" <<'PY'
+          import plistlib, sys
+          path = sys.argv[1]
+          with open(path, 'rb') as handle:
+              data = plistlib.load(handle)
+          entries = data.setdefault('CFBundleURLTypes', [])
+          scheme = 'com.droxion.live'
+          if not any(scheme in entry.get('CFBundleURLSchemes', []) for entry in entries if isinstance(entry, dict)):
+              entries.append({'CFBundleURLName': 'com.droxion.live.oauth', 'CFBundleURLSchemes': [scheme]})
+          with open(path, 'wb') as handle:
+              plistlib.dump(data, handle)
+          PY
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PLIST"
+
+      - name: Configure native iOS push notifications
+        script: |
+          set -e
+          node scripts/configure-ios-push.mjs
+          test -f "${IOS_PROJECT_PATH}/App/App.entitlements"
+          grep -q "aps-environment" "${IOS_PROJECT_PATH}/App/App.entitlements"
+          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "${IOS_PROJECT_PATH}/App/Info.plist"
+          grep -q "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
 
       - name: Install CocoaPods
         script: |
@@ -215,11 +237,33 @@ workflows:
 
       - name: Build signed IPA
         script: |
-          set -e
+          set +e
           cd "$IOS_PROJECT_PATH"
           xcode-project build-ipa \
             --workspace "App.xcworkspace" \
             --scheme "App"
+          BUILD_STATUS=$?
+
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            echo ""
+            echo "========== DROXION XCODE FAILURE DETAILS =========="
+            if [ -d /tmp/xcodebuild_logs ]; then
+              find /tmp/xcodebuild_logs -type f -name '*.log' -print
+              for LOG in /tmp/xcodebuild_logs/*.log; do
+                [ -f "$LOG" ] || continue
+                echo "----- $LOG : signing / entitlement / error lines -----"
+                grep -n -E -i 'error:|provision|entitlement|codesign|signing|aps-environment|push notification|profile' "$LOG" | tail -n 180 || true
+                echo "----- $LOG : final 120 lines -----"
+                tail -n 120 "$LOG" || true
+              done
+            else
+              echo "No /tmp/xcodebuild_logs directory was produced."
+            fi
+            echo "===================================================="
+            exit "$BUILD_STATUS"
+          fi
+
+          set -e
           echo "Generated iOS artifacts:"
           find build/ios/ipa -maxdepth 2 -type f -print || true
           test -n "$(find build/ios/ipa -name '*.ipa' -print -quit)"

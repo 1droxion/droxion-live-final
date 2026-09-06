@@ -7,6 +7,9 @@ import LiveCameraStartupEnhancer from "./LiveCameraStartupEnhancer.jsx";
 import AdReadyEnhancer from "./AdReadyEnhancer.jsx";
 import "./index.css";
 import "./responsive-overrides.css";
+import "./profile-polish.css";
+import "./navigation-v2.css";
+import "./creator-auto-video.css";
 
 const isLiveV2Path = window.location.pathname.startsWith('/live-v2');
 

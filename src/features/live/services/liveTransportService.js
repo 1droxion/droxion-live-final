@@ -1,9 +1,13 @@
-import { Room, RoomEvent } from 'livekit-client';
+import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../../../supabaseClient';
+import { rememberRemoteTrackMetadata, forgetRemoteTrackMetadata } from '../../../livekit/remoteTrackMetadata';
+import { mediaTrackSnapshot, publicationSnapshot, recordScreenShareDiagnostic } from '../../../livekit/screenShareDiagnostics';
 import { publishHostMediaV2 } from './livePublisherService';
 
 const TOKEN_FUNCTION = 'livekit-token';
-const CONNECT_TIMEOUT_MS = 10000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 10000;
+const VIEWER_CONNECT_TIMEOUT_MS = 18000;
+const VIEWER_CONNECT_RETRY_DELAYS_MS = [0, 900];
 const roomRoles = new WeakMap();
 const CLIENT_INSTANCE_ID = (() => {
   try {
@@ -11,9 +15,14 @@ const CLIENT_INSTANCE_ID = (() => {
   } catch {}
   return `v2${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 24);
 })();
+let viewerConnectionSequence = 0;
 
 function emitViewerRoom(eventName, detail) {
   try { window.dispatchEvent(new CustomEvent(eventName, { detail })); } catch {}
+}
+
+function wait(ms) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
 function withTimeout(promise, timeoutMs, message) {
@@ -29,6 +38,22 @@ function withTimeout(promise, timeoutMs, message) {
   });
 }
 
+function nextViewerClientInstanceId() {
+  viewerConnectionSequence += 1;
+  return `${CLIENT_INSTANCE_ID.slice(0, 20)}${viewerConnectionSequence.toString(36)}${Date.now().toString(36).slice(-5)}`.slice(0, 32);
+}
+
+function retryableViewerConnectError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  if (!message) return false;
+  if (message.includes('sign in') || message.includes('authorize') || message.includes('not active') || message.includes('ended')) return false;
+  return message.includes('timed out')
+    || message.includes('network')
+    || message.includes('websocket')
+    || message.includes('signal')
+    || message.includes('connect');
+}
+
 async function logTransportFailure(stage, error, context = {}) {
   try {
     await supabase.rpc('droxion_log_live_client_error', {
@@ -40,12 +65,12 @@ async function logTransportFailure(stage, error, context = {}) {
   } catch {}
 }
 
-async function getLiveKitToken(sessionId, role) {
+async function getLiveKitToken(sessionId, role, clientInstanceId = CLIENT_INSTANCE_ID) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error('Sign in before using LIVE.');
 
   const { data, error } = await supabase.functions.invoke(TOKEN_FUNCTION, {
-    body: { sessionId, role, clientInstanceId: CLIENT_INSTANCE_ID },
+    body: { sessionId, role, clientInstanceId },
     headers: { Authorization: `Bearer ${session.access_token}` }
   });
 
@@ -61,6 +86,32 @@ function publicationsOf(participant) {
   return [];
 }
 
+function decorateRemoteTrack(track, publication) {
+  if (!track || !publication) return track;
+  rememberRemoteTrackMetadata(track, publication);
+  try {
+    track.__droxionPublicationName = publication.trackName || publication.name || track.name || '';
+    track.__droxionSource = publication.source || track.source || '';
+  } catch {}
+  return track;
+}
+
+function isScreenPublication(track, publication) {
+  const source = publication?.source || track?.source || track?.__droxionSource || '';
+  const sourceText = String(source || '').toLowerCase();
+  const name = String(publication?.trackName || publication?.name || track?.__droxionPublicationName || track?.name || '').toLowerCase();
+  return source === Track.Source.ScreenShare || sourceText.includes('screen') || name.startsWith('droxion_screen');
+}
+
+function recordViewerScreen(room, stage, track, publication, participant) {
+  if (roomRoles.get(room) !== 'viewer' || !isScreenPublication(track, publication)) return;
+  recordScreenShareDiagnostic(stage, {
+    participantIdentity: String(participant?.identity || ''),
+    track: mediaTrackSnapshot(track),
+    publication: publicationSnapshot(publication)
+  });
+}
+
 function replayRemoteTracks(room, callbacks = {}) {
   if (!room || !callbacks.onTrackSubscribed) return;
   const participants = room.remoteParticipants?.values ? Array.from(room.remoteParticipants.values()) : [];
@@ -69,17 +120,22 @@ function replayRemoteTracks(room, callbacks = {}) {
       try {
         if (typeof publication?.setSubscribed === 'function' && !publication.isSubscribed) publication.setSubscribed(true);
       } catch {}
-      if (publication?.track) callbacks.onTrackSubscribed(publication.track, publication, participant);
+      if (publication?.track) callbacks.onTrackSubscribed(decorateRemoteTrack(publication.track, publication), publication, participant);
     });
   });
 }
 
 function bindRoomEvents(room, callbacks = {}) {
   room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-    callbacks.onTrackSubscribed?.(track, publication, participant);
+    const decorated = decorateRemoteTrack(track, publication);
+    recordViewerScreen(room, 'viewer-subscribed', decorated, publication, participant);
+    callbacks.onTrackSubscribed?.(decorated, publication, participant);
   });
   room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-    callbacks.onTrackUnsubscribed?.(track, publication, participant);
+    const decorated = decorateRemoteTrack(track, publication);
+    recordViewerScreen(room, 'viewer-unsubscribed', decorated, publication, participant);
+    callbacks.onTrackUnsubscribed?.(decorated, publication, participant);
+    forgetRemoteTrackMetadata(track);
   });
   room.on(RoomEvent.TrackPublished, publication => {
     try { publication?.setSubscribed?.(true); } catch {}
@@ -90,19 +146,40 @@ function bindRoomEvents(room, callbacks = {}) {
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 30);
   });
   room.on(RoomEvent.ParticipantDisconnected, participant => callbacks.onParticipantChange?.(participant));
+  room.on(RoomEvent.DataReceived, payload => {
+    if (roomRoles.get(room) !== 'viewer') return;
+    try {
+      const text = new TextDecoder().decode(payload);
+      const message = JSON.parse(text);
+      if (message?.type === 'droxion_live_ended') {
+        emitViewerRoom('droxion:live-ended', { room, sessionId: String(message.sessionId || '') });
+      }
+    } catch {}
+  });
   room.on(RoomEvent.Reconnecting, () => callbacks.onReconnecting?.());
   room.on(RoomEvent.Reconnected, () => {
     replayRemoteTracks(room, callbacks);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 150);
     callbacks.onReconnected?.();
   });
-  room.on(RoomEvent.Disconnected, reason => callbacks.onDisconnected?.(reason));
+  room.on(RoomEvent.Disconnected, reason => {
+    const role = roomRoles.get(room);
+    if (!role) return;
+    if (role === 'viewer') emitViewerRoom('droxion:viewer-room-closed', { room, reason, unexpected: true });
+    callbacks.onDisconnected?.(reason);
+  });
 }
 
-async function connectRoom(sessionId, role, callbacks) {
-  const auth = await getLiveKitToken(sessionId, role);
+async function connectRoom(sessionId, role, callbacks, {
+  timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS,
+  clientInstanceId = CLIENT_INSTANCE_ID
+} = {}) {
+  const auth = await getLiveKitToken(sessionId, role, clientInstanceId);
   const room = new Room({
-    adaptiveStream: role !== 'host' && role !== 'guest',
+    // Keep viewer adaptive-stream off for Studio multi-video rooms. With screen
+    // + facecam published separately, both tracks must stay subscribed even
+    // while one is a small overlay or split pane on a phone.
+    adaptiveStream: false,
     dynacast: role === 'host' || role === 'guest',
     disconnectOnPageLeave: true,
     stopLocalTrackOnUnpublish: false
@@ -113,18 +190,19 @@ async function connectRoom(sessionId, role, callbacks) {
   try {
     await withTimeout(
       room.connect(auth.url, auth.token, { autoSubscribe: true }),
-      CONNECT_TIMEOUT_MS,
+      timeoutMs,
       'LIVE video connection timed out.'
     );
     replayRemoteTracks(room, callbacks);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 100);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 400);
     window.setTimeout(() => replayRemoteTracks(room, callbacks), 1000);
+    window.setTimeout(() => replayRemoteTracks(room, callbacks), 2500);
     if (role === 'viewer') emitViewerRoom('droxion:viewer-room-ready', { room, sessionId });
     return room;
   } catch (error) {
     roomRoles.delete(room);
-    await logTransportFailure('v2-room-connect', error, { sessionId, role });
+    await logTransportFailure('v2-room-connect', error, { sessionId, role, clientInstanceId, timeoutMs });
     try { await room.disconnect(); } catch {}
     throw error;
   }
@@ -132,7 +210,6 @@ async function connectRoom(sessionId, role, callbacks) {
 
 export async function connectHostTransport({ sessionId, stream, callbacks = {} }) {
   const room = await connectRoom(sessionId, 'host', callbacks);
-
   try {
     const published = await publishHostMediaV2({
       room,
@@ -148,7 +225,33 @@ export async function connectHostTransport({ sessionId, stream, callbacks = {} }
 }
 
 export async function connectViewerTransport({ sessionId, callbacks = {} }) {
-  return connectRoom(sessionId, 'viewer', callbacks);
+  let lastError = null;
+
+  for (let index = 0; index < VIEWER_CONNECT_RETRY_DELAYS_MS.length; index += 1) {
+    const delay = VIEWER_CONNECT_RETRY_DELAYS_MS[index];
+    if (delay) await wait(delay);
+
+    const clientInstanceId = nextViewerClientInstanceId();
+    try {
+      return await connectRoom(sessionId, 'viewer', callbacks, {
+        timeoutMs: VIEWER_CONNECT_TIMEOUT_MS,
+        clientInstanceId
+      });
+    } catch (error) {
+      lastError = error;
+      const hasNextAttempt = index + 1 < VIEWER_CONNECT_RETRY_DELAYS_MS.length;
+      if (!hasNextAttempt || !retryableViewerConnectError(error)) throw error;
+      await logTransportFailure('v2-viewer-connect-retry', error, {
+        sessionId,
+        attempt: index + 1,
+        nextAttempt: index + 2,
+        clientInstanceId
+      });
+      callbacks.onReconnecting?.();
+    }
+  }
+
+  throw lastError || new Error('Could not connect to this LIVE.');
 }
 
 export async function connectGuestTransport({ sessionId, stream, callbacks = {} }) {
@@ -165,6 +268,18 @@ export async function connectGuestTransport({ sessionId, stream, callbacks = {} 
     try { await room.disconnect(); } catch {}
     throw error;
   }
+}
+
+export async function sendLiveEndedSignal(room, sessionId) {
+  if (!room?.localParticipant?.publishData) return;
+  try {
+    const payload = new TextEncoder().encode(JSON.stringify({
+      type: 'droxion_live_ended',
+      sessionId: String(sessionId || ''),
+      endedAt: Date.now()
+    }));
+    await room.localParticipant.publishData(payload, { reliable: true });
+  } catch {}
 }
 
 export async function disconnectTransport(room) {

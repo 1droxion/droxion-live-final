@@ -51,7 +51,21 @@ if (missing.length) {
     '    <application',
     `${missing.map(permission => `    <uses-permission android:name="android.permission.${permission}" />`).join('\n')}\n\n    <application`
   );
-  fs.writeFileSync(manifestPath, manifest);
 }
 
-console.log(`Android package=${capacitor.appId} targetSdk=36 versionName=${versionName} versionCode=${versionCodeBase + buildNumber}`);
+if (!manifest.includes('android:scheme="com.droxion.live"')) {
+  const activityClose = '        </activity>';
+  if (!manifest.includes(activityClose)) throw new Error('Could not find Android MainActivity closing tag for OAuth deep link.');
+  const oauthIntent = `            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.droxion.live" android:host="auth" android:pathPrefix="/callback" />
+            </intent-filter>
+`;
+  manifest = manifest.replace(activityClose, oauthIntent + activityClose);
+}
+
+fs.writeFileSync(manifestPath, manifest);
+
+console.log(`Android package=${capacitor.appId} targetSdk=36 versionName=${versionName} versionCode=${versionCodeBase + buildNumber} oauthScheme=com.droxion.live`);

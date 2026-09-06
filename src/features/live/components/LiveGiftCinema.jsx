@@ -9,22 +9,24 @@ import GiftSignatureScene from './GiftSignatureScene';
 import LiveSupporterSpotlight from './LiveSupporterSpotlight';
 import LiveMiniProfileSheet from './LiveMiniProfileSheet';
 import LiveTopSupportersDrawer from './LiveTopSupportersDrawer';
+import LiveFloatingHearts from './LiveFloatingHearts';
 import '../styles/live-gift-cinema.css';
 import '../styles/live-gift-combo.css';
 
 const PARTICLE_COUNT = 28;
 const SIGNATURE_SCENES = new Set([
-  'rose_petals','heart_pulse','star_burst','coffee_steam','sparkle_rain',
-  'teddy_hug','crown_drop','cake_party','fire_wave','rocket_launch',
-  'diamond_prism','supercar_drive','treasure_open','castle_reveal','dragon_fire',
-  'galaxy_blast','lion_roar','jet_flyby','yacht_glide','phoenix_rise',
-  'meteor_storm','universe_expand','throne_ascend','world_crown_orbit','royalty_reveal'
+  'rose_petals','heart_pulse','neon_bloom','lucky_seven','star_burst','finger_heart','candy_pop','coffee_steam','sparkle_rain','soccer_strike',
+  'teddy_hug','hello_wave','crown_drop','snapshot_flash','cake_party','game_on','fire_wave','chocolate_box','party_drop','rocket_launch',
+  'magic_mirror','diamond_prism','music_drop','supercar_drive','angel_wings','treasure_open','electric_orb','castle_reveal','moon_kiss','dragon_fire',
+  'galaxy_blast','lion_roar','jet_flyby','yacht_glide','phoenix_rise','meteor_storm','universe_expand','throne_ascend','world_crown_orbit','royalty_reveal'
 ]);
 
 export default function LiveGiftCinema({ giftEvents = [] }) {
   const [activeGift, setActiveGift] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [heartBurstSignal, setHeartBurstSignal] = useState(0);
+  const [heartBurstCount, setHeartBurstCount] = useState(1);
   const lastAnimatedEventRef = useRef('');
   const { spotlights, refreshSpotlights } = useLiveSupporterSpotlights();
 
@@ -63,6 +65,12 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
   }, [giftEvents, refreshSpotlights]);
 
   const particles = useMemo(() => Array.from({ length: PARTICLE_COUNT }, (_, index) => index), []);
+
+  const sendHeart = () => {
+    setHeartBurstCount(current => Math.min(4, Math.max(1, current + 1)));
+    setHeartBurstSignal(Date.now());
+    window.setTimeout(() => setHeartBurstCount(1), 380);
+  };
 
   if (typeof document === 'undefined') return null;
 
@@ -164,6 +172,12 @@ export default function LiveGiftCinema({ giftEvents = [] }) {
       <button type="button" className="liveTopSupportersTrigger" onClick={() => setLeaderboardOpen(true)} aria-label="Open LIVE Top Supporters">
         <Trophy size={15} /> Top Supporters
       </button>
+
+      <LiveFloatingHearts
+        burstSignal={heartBurstSignal}
+        burstCount={heartBurstCount}
+        onTap={sendHeart}
+      />
 
       {cinema}
 

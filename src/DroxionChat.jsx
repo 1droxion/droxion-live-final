@@ -1,13 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MessageCircle, Radio, Search, Send, UserRound, Users } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { queueDirectMessagePush } from './features/chat/services/chatPushService';
 import './droxion-chat.css';
 
 const TABS = ['messages', 'following', 'requests'];
+const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 
 function avatar(person) {
   if (person?.avatar_url) return <img src={person.avatar_url} alt="" />;
   return <div className="dcAvatar dcAvatarEmpty"><UserRound size={22} /></div>;
+}
+
+function normalizeChatPush(raw) {
+  const senderId = String(raw?.senderId || raw?.sender_id || '').trim();
+  if (!senderId) return null;
+  return {
+    type: 'chat_message',
+    messageId: String(raw?.messageId || raw?.message_id || '').trim(),
+    senderId,
+    senderName: String(raw?.senderName || raw?.sender_name || '').trim()
+  };
 }
 
 export default function DroxionChat() {
@@ -100,6 +113,7 @@ export default function DroxionChat() {
     setDraft('');
     setNotice('');
     setBlockedByMe(false);
+    setTab('messages');
     setActive(person);
     if (user?.id && person?.user_id) {
       const [{ data: ownBlock }, readResult] = await Promise.all([
@@ -111,6 +125,50 @@ export default function DroxionChat() {
       await load();
     }
   }
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let consuming = false;
+
+    const consumePush = async payloadLike => {
+      if (consuming) return;
+      const payload = normalizeChatPush(payloadLike);
+      if (!payload || payload.senderId === user.id) return;
+      consuming = true;
+      try {
+        const known = people.find(person => String(person.user_id) === payload.senderId);
+        let person = known || null;
+        if (!person) {
+          const { data } = await supabase
+            .from('droxion_profiles')
+            .select('user_id,display_name,username,avatar_url,country,allow_messages')
+            .eq('user_id', payload.senderId)
+            .maybeSingle();
+          person = data || {
+            user_id: payload.senderId,
+            display_name: payload.senderName || 'Droxion member'
+          };
+        }
+        if (person?.user_id) await openThread(person);
+        try { window.localStorage.removeItem(PENDING_CHAT_PUSH_KEY); } catch {}
+      } finally {
+        consuming = false;
+      }
+    };
+
+    const handlePushOpen = event => { consumePush(event?.detail).catch(() => {}); };
+    window.addEventListener('droxion:chat-push-open', handlePushOpen);
+
+    try {
+      const raw = window.localStorage.getItem(PENDING_CHAT_PUSH_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        window.setTimeout(() => consumePush(parsed).catch(() => {}), 0);
+      }
+    } catch {}
+
+    return () => window.removeEventListener('droxion:chat-push-open', handlePushOpen);
+  }, [user?.id, people]);
 
   function closeThread() { setActive(null); setBlockedByMe(false); setDraft(''); setNotice(''); }
 
@@ -134,6 +192,8 @@ export default function DroxionChat() {
       else setNotice(message);
       return;
     }
+    const messageId = data?.message?.id;
+    if (messageId) queueDirectMessagePush(messageId).catch(() => {});
     setDraft(''); setNotice(''); await load();
   }
 

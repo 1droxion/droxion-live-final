@@ -1,20 +1,211 @@
 import { useEffect, useRef } from 'react';
+import { mediaTrackSnapshot, recordScreenShareDiagnostic, startVideoFrameDiagnostics } from '../../../livekit/screenShareDiagnostics';
+
+function attachVideo(video, stream) {
+  if (!video) return () => {};
+
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.setAttribute('playsinline', '');
+
+  if (!stream) {
+    video.srcObject = null;
+    video.style.display = 'none';
+    return () => { video.srcObject = null; };
+  }
+
+  let stopped = false;
+  let lastTrackId = '';
+  let blankChecks = 0;
+
+  const currentTrack = () => (
+    stream.getVideoTracks?.().find(track => track.readyState === 'live') ||
+    stream.getVideoTracks?.()[0] ||
+    null
+  );
+
+  const play = () => {
+    if (stopped || video.srcObject !== stream) return;
+    try {
+      const result = video.play?.();
+      if (result?.catch) result.catch(() => {});
+    } catch {}
+  };
+
+  const sync = ({ force = false } = {}) => {
+    if (stopped) return;
+
+    const track = currentTrack();
+    const trackId = track?.id || '';
+    const trackChanged = Boolean(trackId && trackId !== lastTrackId);
+    const blank = Boolean(track && track.readyState === 'live' && (video.videoWidth === 0 || video.readyState < 2));
+
+    blankChecks = blank ? blankChecks + 1 : 0;
+
+    if (force || trackChanged || video.srcObject !== stream || (blank && blankChecks >= 2)) {
+      try {
+        video.srcObject = null;
+        video.srcObject = stream;
+      } catch {
+        video.srcObject = stream;
+      }
+      blankChecks = 0;
+      lastTrackId = trackId;
+    }
+
+    video.style.display = track ? 'block' : 'none';
+    play();
+  };
+
+  const onTrackChange = () => sync({ force: true });
+  const onVisibility = () => {
+    if (document.visibilityState !== 'hidden') sync({ force: true });
+  };
+  const onPageShow = () => sync({ force: true });
+
+  video.addEventListener('loadedmetadata', play);
+  video.addEventListener('canplay', play);
+  stream.addEventListener?.('addtrack', onTrackChange);
+  stream.addEventListener?.('removetrack', onTrackChange);
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pageshow', onPageShow);
+
+  const animationFrame = window.requestAnimationFrame(() => sync({ force: true }));
+  const recoveryTimer = window.setInterval(() => sync(), 800);
+
+  return () => {
+    stopped = true;
+    window.cancelAnimationFrame(animationFrame);
+    window.clearInterval(recoveryTimer);
+    video.removeEventListener('loadedmetadata', play);
+    video.removeEventListener('canplay', play);
+    stream.removeEventListener?.('addtrack', onTrackChange);
+    stream.removeEventListener?.('removetrack', onTrackChange);
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pageshow', onPageShow);
+    if (video.srcObject === stream) video.srcObject = null;
+  };
+}
+
+function applyStudioLayout(wrapper, screenVideo, facecamVideo, meta) {
+  if (!wrapper || !screenVideo || !meta) return;
+  const orientation = String(meta.orientation || 'horizontal');
+  const layout = String(meta.layout || (orientation === 'vertical' ? 'split_70_30' : 'free_facecam'));
+  const position = meta.facecamPosition || { x: 0.735, y: 0.64, size: 0.235 };
+
+  screenVideo.style.position = 'absolute';
+  screenVideo.style.left = '0';
+  screenVideo.style.top = '0';
+  screenVideo.style.width = '100%';
+  screenVideo.style.background = '#000';
+  screenVideo.style.objectFit = 'contain';
+  screenVideo.style.transform = 'none';
+
+  if (!facecamVideo) {
+    screenVideo.style.height = '100%';
+    return;
+  }
+
+  facecamVideo.style.position = 'absolute';
+  facecamVideo.style.zIndex = '5';
+  facecamVideo.style.objectFit = 'cover';
+  facecamVideo.style.background = '#09090c';
+
+  if (orientation === 'vertical') {
+    const split = layout === 'split_50_50' ? 50 : 70;
+    screenVideo.style.height = `${split}%`;
+    facecamVideo.style.left = '0';
+    facecamVideo.style.top = `${split}%`;
+    facecamVideo.style.width = '100%';
+    facecamVideo.style.height = `${100 - split}%`;
+    facecamVideo.style.border = '0';
+    facecamVideo.style.borderRadius = '0';
+    return;
+  }
+
+  screenVideo.style.height = '100%';
+  const size = Math.min(0.38, Math.max(0.16, Number(position.size) || 0.235));
+  const x = Math.min(0.988 - size, Math.max(0.012, Number(position.x) || 0.735));
+  const y = Math.min(0.82, Math.max(0.018, Number(position.y) || 0.64));
+  facecamVideo.style.left = `${x * 100}%`;
+  facecamVideo.style.top = `${y * 100}%`;
+  facecamVideo.style.width = `${size * 100}%`;
+  facecamVideo.style.height = 'auto';
+  facecamVideo.style.aspectRatio = '4 / 3';
+  facecamVideo.style.border = '2px solid rgba(255,255,255,.94)';
+  facecamVideo.style.borderRadius = '14px';
+  facecamVideo.style.boxShadow = '0 10px 30px rgba(0,0,0,.36)';
+}
 
 export default function LocalLiveVideo({ stream }) {
-  const videoRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const mainVideoRef = useRef(null);
+  const facecamVideoRef = useRef(null);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return undefined;
-    video.srcObject = stream || null;
-    video.muted = true;
-    video.playsInline = true;
-    video.autoplay = true;
-    if (stream) video.play?.().catch?.(() => {});
+    const mainVideo = mainVideoRef.current;
+    const facecamVideo = facecamVideoRef.current;
+    const wrapper = wrapperRef.current;
+    if (!mainVideo) return undefined;
+
+    if (wrapper) wrapper.style.transform = 'none';
+
+    const studio = stream?.__droxionStudio || null;
+    const videoTracks = stream?.getVideoTracks?.().filter(track => track.readyState === 'live') || [];
+
+    if (!studio) {
+      // Keep the host preview attached to the same MediaStream object used by
+      // the LIVE session. LiveKit/native WebView can replace the active camera
+      // track inside this stream when publishing starts; cloning the old track
+      // leaves the host preview black even though viewers still receive video.
+      const detachMain = attachVideo(mainVideo, stream || null);
+      const detachFacecam = attachVideo(facecamVideo, null);
+      mainVideo.style.transform = 'none';
+
+      return () => {
+        detachMain();
+        detachFacecam();
+      };
+    }
+
+    const screenTrack = videoTracks.find(track => track.__droxionSource === 'screen') || videoTracks[0] || null;
+    const cameraTrack = videoTracks.find(track => track.__droxionSource === 'camera') || videoTracks.find(track => track !== screenTrack) || null;
+    const screenStream = screenTrack ? new MediaStream([screenTrack]) : null;
+    const cameraStream = cameraTrack ? new MediaStream([cameraTrack]) : null;
+    const detachMain = attachVideo(mainVideo, screenStream);
+    const detachFacecam = attachVideo(facecamVideo, cameraStream);
+
+    recordScreenShareDiagnostic('host-capture-attached', {
+      track: mediaTrackSnapshot(screenTrack),
+      mode: String(studio.mode || ''),
+      orientation: String(studio.orientation || ''),
+      displaySurface: String(studio.displaySurface || '')
+    });
+    const stopFrameDiagnostics = screenTrack
+      ? startVideoFrameDiagnostics(mainVideo, { stage: 'host-capture-frames', track: screenTrack })
+      : () => {};
+
+    let stopped = false;
+    const refreshLayout = () => {
+      if (stopped) return;
+      applyStudioLayout(wrapper, mainVideo, cameraTrack ? facecamVideo : null, stream.__droxionStudio || studio);
+      window.setTimeout(refreshLayout, 80);
+    };
+    refreshLayout();
+
     return () => {
-      if (video.srcObject === stream) video.srcObject = null;
+      stopped = true;
+      stopFrameDiagnostics();
+      detachMain();
+      detachFacecam();
     };
   }, [stream]);
 
-  return <video ref={videoRef} className="liveV2Video liveV2LocalVideo" muted playsInline autoPlay />;
+  return (
+    <div ref={wrapperRef} className="liveV2LocalVideo liveStudioNativePreview">
+      <video ref={mainVideoRef} className="liveV2Video liveStudioScreenPreview" muted playsInline autoPlay />
+      <video ref={facecamVideoRef} className="liveV2Video liveStudioFacecamPreview" muted playsInline autoPlay />
+    </div>
+  );
 }

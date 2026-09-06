@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { LIVE_PHASE, isLiveBusy } from '../types/liveState';
 import { isUsableMediaStream, requestBroadcastMedia, stopMediaStream } from '../services/liveMediaService';
 import { createLiveSession, endLiveSession, sendLiveHeartbeat } from '../services/liveSessionService';
-import { connectHostTransport, disconnectTransport } from '../services/liveTransportService';
+import { connectHostTransport, disconnectTransport, sendLiveEndedSignal } from '../services/liveTransportService';
 
 const HEARTBEAT_INTERVAL_MS = 12000;
 
@@ -19,6 +19,7 @@ export function useLiveBroadcast() {
   const [mediaStream, setMediaStream] = useState(null);
   const roomRef = useRef(null);
   const streamRef = useRef(null);
+  const streamCleanupRef = useRef(null);
   const sessionIdRef = useRef('');
   const heartbeatRef = useRef(null);
   const operationRef = useRef(false);
@@ -27,6 +28,18 @@ export function useLiveBroadcast() {
   const patchState = useCallback(patch => {
     if (!mountedRef.current) return;
     setState(current => ({ ...current, ...patch }));
+  }, []);
+
+  const disposeCurrentMedia = useCallback(() => {
+    const cleanup = streamCleanupRef.current;
+    streamCleanupRef.current = null;
+    if (cleanup) {
+      try { cleanup(); } catch {}
+    } else {
+      stopMediaStream(streamRef.current);
+    }
+    streamRef.current = null;
+    setMediaStream(null);
   }, []);
 
   const clearHeartbeat = useCallback(() => {
@@ -43,47 +56,42 @@ export function useLiveBroadcast() {
         const status = await sendLiveHeartbeat(sessionId);
         if (!status.isLive) {
           if (status.reason === 'session_mismatch') {
-            patchState({
-              phase: LIVE_PHASE.ERROR,
-              transportState: 'disconnected',
-              error: 'A newer LIVE session is active on another device.'
-            });
+            patchState({ phase: LIVE_PHASE.ERROR, transportState: 'disconnected', error: 'A newer LIVE session is active on another device.' });
             clearHeartbeat();
             return;
           }
-          patchState({
-            phase: LIVE_PHASE.ERROR,
-            transportState: 'disconnected',
-            error: 'This LIVE session is no longer active.'
-          });
+          patchState({ phase: LIVE_PHASE.ERROR, transportState: 'disconnected', error: 'This LIVE session is no longer active.' });
           clearHeartbeat();
         }
-      } catch {
-        // A transient heartbeat failure should not kill a healthy LiveKit room.
-      }
+      } catch {}
     };
     beat();
     heartbeatRef.current = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
   }, [clearHeartbeat, patchState]);
+
+  const setPreparedMedia = useCallback((stream, cleanup) => {
+    if (sessionIdRef.current) throw new Error('Cannot replace LIVE media after the broadcast starts.');
+    disposeCurrentMedia();
+    streamRef.current = stream;
+    streamCleanupRef.current = typeof cleanup === 'function' ? cleanup : null;
+    setMediaStream(stream || null);
+    patchState({ phase: stream ? LIVE_PHASE.PREVIEW : LIVE_PHASE.IDLE, error: '' });
+  }, [disposeCurrentMedia, patchState]);
 
   const ensurePreview = useCallback(async ({ orientation = 'vertical', facingMode = 'user' } = {}) => {
     if (isUsableMediaStream(streamRef.current)) {
       patchState({ phase: LIVE_PHASE.PREVIEW, error: '' });
       return streamRef.current;
     }
-
     const stream = await requestBroadcastMedia({ orientation, facingMode });
     streamRef.current = stream;
+    streamCleanupRef.current = null;
     setMediaStream(stream);
     patchState({ phase: LIVE_PHASE.PREVIEW, error: '' });
     return stream;
   }, [patchState]);
 
-  const startBroadcast = useCallback(async ({
-    title = 'Live on Droxion',
-    orientation = 'vertical',
-    allowGuestRequests = false
-  } = {}) => {
+  const startBroadcast = useCallback(async ({ title = 'Live on Droxion', tags = [], orientation = 'vertical', allowGuestRequests = false } = {}) => {
     if (operationRef.current || isLiveBusy(state.phase) || state.phase === LIVE_PHASE.LIVE) return;
     operationRef.current = true;
     patchState({ phase: LIVE_PHASE.STARTING, error: '', transportState: 'disconnected' });
@@ -94,56 +102,35 @@ export function useLiveBroadcast() {
       if (!isUsableMediaStream(stream)) {
         stream = await requestBroadcastMedia({ orientation });
         streamRef.current = stream;
+        streamCleanupRef.current = null;
         setMediaStream(stream);
       }
 
-      const session = await createLiveSession({ title, orientation, allowGuestRequests });
+      const session = await createLiveSession({ title, tags, orientation, allowGuestRequests });
       startedSessionId = session.sessionId;
       sessionIdRef.current = startedSessionId;
-      patchState({
-        phase: LIVE_PHASE.CONNECTING,
-        sessionId: startedSessionId,
-        transportState: 'connecting'
-      });
+      patchState({ phase: LIVE_PHASE.CONNECTING, sessionId: startedSessionId, transportState: 'connecting' });
 
       const transport = await connectHostTransport({
         sessionId: startedSessionId,
         stream,
         callbacks: {
-          onParticipantChange: () => {
-            const room = roomRef.current;
-            patchState({ viewerCount: room?.remoteParticipants?.size || 0 });
-          },
+          onParticipantChange: () => patchState({ viewerCount: roomRef.current?.remoteParticipants?.size || 0 }),
           onReconnecting: () => patchState({ phase: LIVE_PHASE.RECONNECTING, transportState: 'reconnecting' }),
           onReconnected: () => patchState({ phase: LIVE_PHASE.LIVE, transportState: 'connected' }),
-          onDisconnected: () => patchState({
-            phase: LIVE_PHASE.ERROR,
-            transportState: 'disconnected',
-            error: 'LIVE video disconnected. End LIVE and try again.'
-          })
+          onDisconnected: () => patchState({ phase: LIVE_PHASE.ERROR, transportState: 'disconnected', error: 'LIVE video disconnected. End LIVE and try again.' })
         }
       });
 
       roomRef.current = transport.room;
-      patchState({
-        phase: LIVE_PHASE.LIVE,
-        transportState: 'connected',
-        viewerCount: transport.room.remoteParticipants?.size || 0
-      });
+      patchState({ phase: LIVE_PHASE.LIVE, transportState: 'connected', viewerCount: transport.room.remoteParticipants?.size || 0 });
       runHeartbeat();
     } catch (error) {
-      if (startedSessionId) {
-        try { await endLiveSession(startedSessionId); } catch {}
-      }
+      if (startedSessionId) { try { await endLiveSession(startedSessionId); } catch {} }
       if (roomRef.current) await disconnectTransport(roomRef.current);
       roomRef.current = null;
       sessionIdRef.current = '';
-      patchState({
-        phase: LIVE_PHASE.ERROR,
-        sessionId: '',
-        transportState: 'disconnected',
-        error: error?.message || 'LIVE could not start.'
-      });
+      patchState({ phase: LIVE_PHASE.ERROR, sessionId: '', transportState: 'disconnected', error: error?.message || 'LIVE could not start.' });
     } finally {
       operationRef.current = false;
     }
@@ -154,34 +141,32 @@ export function useLiveBroadcast() {
     operationRef.current = true;
     patchState({ phase: LIVE_PHASE.ENDING, error: '' });
     clearHeartbeat();
-
     const room = roomRef.current;
     roomRef.current = null;
-    const stream = streamRef.current;
-    streamRef.current = null;
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = '';
-
     try {
-      await disconnectTransport(room);
+      // Tell connected viewers explicitly before the host room is torn down.
+      // This lets every viewer close the LIVE screen immediately instead of
+      // waiting on a transport timeout or a later feed refresh.
+      if (room && sessionId) await sendLiveEndedSignal(room, sessionId);
       if (sessionId) await endLiveSession(sessionId);
+      await disconnectTransport(room);
     } catch (error) {
+      await disconnectTransport(room);
       patchState({ error: error?.message || 'LIVE ended locally but server cleanup failed.' });
     } finally {
-      stopMediaStream(stream);
-      setMediaStream(null);
+      disposeCurrentMedia();
       patchState({ ...initialState });
       operationRef.current = false;
     }
-  }, [clearHeartbeat, patchState]);
+  }, [clearHeartbeat, disposeCurrentMedia, patchState]);
 
   const stopPreview = useCallback(() => {
     if (sessionIdRef.current) return;
-    stopMediaStream(streamRef.current);
-    streamRef.current = null;
-    setMediaStream(null);
+    disposeCurrentMedia();
     patchState({ ...initialState });
-  }, [patchState]);
+  }, [disposeCurrentMedia, patchState]);
 
   const getRoom = useCallback(() => roomRef.current, []);
 
@@ -191,24 +176,17 @@ export function useLiveBroadcast() {
       mountedRef.current = false;
       clearHeartbeat();
       const room = roomRef.current;
-      const stream = streamRef.current;
       const sessionId = sessionIdRef.current;
       roomRef.current = null;
-      streamRef.current = null;
       sessionIdRef.current = '';
       disconnectTransport(room);
-      stopMediaStream(stream);
+      const cleanup = streamCleanupRef.current;
+      streamCleanupRef.current = null;
+      if (cleanup) { try { cleanup(); } catch {} } else stopMediaStream(streamRef.current);
+      streamRef.current = null;
       if (sessionId) endLiveSession(sessionId).catch(() => {});
     };
   }, [clearHeartbeat]);
 
-  return {
-    state,
-    mediaStream,
-    ensurePreview,
-    stopPreview,
-    startBroadcast,
-    endBroadcast,
-    getRoom
-  };
+  return { state, mediaStream, ensurePreview, setPreparedMedia, stopPreview, startBroadcast, endBroadcast, getRoom };
 }

@@ -1,3 +1,40 @@
-.productionLiveBrowse{max-width:1180px;margin:0 auto;padding-top:10px}.productionLiveGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-items:start}.productionLiveCard{max-width:360px;justify-self:center}.productionLiveCardMedia{min-height:0!important;aspect-ratio:9/14;border-radius:16px}.productionLiveCard.isHorizontal{grid-column:span 2;max-width:620px}.productionLiveCard.isHorizontal .productionLiveCardMedia{aspect-ratio:16/9}.productionLiveCardInfo{left:14px;right:14px;bottom:14px;gap:4px}.productionLiveCardInfo strong{font-size:17px}.productionLiveCardInfo b{font-size:13px}.productionLiveCardInfo small,.productionLiveCardInfo em{font-size:11px}.productionLiveBadge{top:11px;left:11px;padding:6px 8px;border-radius:8px;font-size:11px}.productionLiveViewers{top:11px;right:11px;padding:6px 8px;font-size:11px}.productionLiveAvatarPlaceholder{width:92px;height:92px;box-shadow:0 118px 0 48px #666870}
+.productionLiveBrowse{max-width:1180px;margin:0 auto;padding-top:10px}.productionLiveGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-items:start}.productionLiveCard{max-width:360px;justify-self:center}.productionLiveCardMedia{min-height:0!important;aspect-ratio:9/14;border-radius:16px}.productionLiveCard.isHorizontal{grid-column:span 2;max-width:620px}.productionLiveCard.isHorizontal .productionLiveCardMedia{aspect-ratio:16/9}.productionLiveCardInfo{left:14px;right:14px;bottom:14px;gap:4px}.productionLiveCardInfo strong{font-size:17px}.productionLiveCardInfo b{font-size:13px}.productionLiveCardInfo small,.productionLiveCardInfo em{font-size:11px}.productionLiveBadge{top:11px;left:11px;padding:6px 8px;border-radius:8px;font-size:11px}.productionLiveViewers{top:11px;right:11px;padding:6px 8px;font-size:11px}.productionLiveAvatarPlaceholder{width:92px;height:92px;box-shadow:0 118px 0 48px #666870}.productionLiveRefreshHint{display:none!important}.productionLiveBrowse .livePullRefresh{display:flex!important}.productionViewerVideo{object-fit:contain!important;background:#000!important}
 @media(max-width:680px){.productionLiveBrowse{padding-left:10px;padding-right:10px}.productionLiveGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.productionLiveCard{width:100%;max-width:none}.productionLiveCardMedia{min-height:0!important;aspect-ratio:9/14;border-radius:14px}.productionLiveCard.isHorizontal{grid-column:1/-1;max-width:none}.productionLiveCard.isHorizontal .productionLiveCardMedia{aspect-ratio:16/9}.productionLiveCardInfo{left:10px;right:10px;bottom:10px;gap:3px}.productionLiveCardInfo strong{font-size:14px}.productionLiveCardInfo b{font-size:11px}.productionLiveCardInfo small{font-size:9.5px}.productionLiveCardInfo em{display:none}.productionLiveBadge{top:8px;left:8px;padding:5px 7px;font-size:9px}.productionLiveViewers{top:8px;right:8px;padding:5px 7px;font-size:9px}.productionLiveAvatarPlaceholder{width:64px;height:64px;box-shadow:0 84px 0 34px #666870}}
 @media(max-width:390px){.productionLiveGrid{gap:7px}.productionLiveCardInfo strong{font-size:13px}.productionLiveCardInfo b{font-size:10px}}
+
+/* Studio Screen/Game is a remote desktop surface, never a selfie camera.
+ * Keep every authored pixel in its original orientation and fit the complete
+ * source frame inside the viewer. The data attribute is added only by the
+ * Studio screen-track router, so normal camera-only LIVE stays unchanged. */
+.productionViewerPage .productionViewerVideo[data-droxion-orientation]{
+  inset:0!important;
+  left:0!important;
+  right:0!important;
+  top:0!important;
+  bottom:auto!important;
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  max-height:100%!important;
+  transform:none!important;
+  transform-origin:center center!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  background:#000!important;
+}
+
+/* Screen-only uses the entire viewer canvas. A later facecam track may
+ * intentionally resize the screen into its split layout. */
+.productionViewerPage:not(:has(.droxionViewerFacecam)) .productionViewerVideo[data-droxion-orientation]{
+  height:100%!important;
+  min-height:0!important;
+}
+
+/* The desktop webcam used by Studio is arriving reversed relative to the
+ * creator's real left/right orientation. Correct it once on the dedicated
+ * Studio facecam element. This never touches camera-only LIVE. */
+.productionViewerPage .droxionViewerFacecam{
+  transform:scaleX(-1)!important;
+  -webkit-transform:scaleX(-1)!important;
+  transform-origin:center center!important;
+}

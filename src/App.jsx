@@ -3,6 +3,9 @@ import LiveFirstApp from "./LiveFirstApp.jsx";
 import GlobalEnhancements from "./GlobalEnhancements.jsx";
 import CreatorV11Enhancer from "./CreatorV11Enhancer.jsx";
 import LiveGuestStageGuard from "./LiveGuestStageGuard.jsx";
+import LiveHeartSyncEnhancer from "./LiveHeartSyncEnhancer.jsx";
+import LiveViewerRecoveryEnhancer from "./LiveViewerRecoveryEnhancer.jsx";
+import ProfileContentTabsEnhancer from "./ProfileContentTabsEnhancer.jsx";
 import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
 import ShortSafetyEnhancer from "./ShortSafetyEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
@@ -11,6 +14,8 @@ import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
 import ResetPassword from "./ResetPassword.jsx";
+import OAuthCallback from "./features/auth/OAuthCallback.jsx";
+import NativeOAuthBridge from "./features/auth/NativeOAuthBridge.jsx";
 import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
@@ -22,11 +27,15 @@ export default function App() {
 
   return (
     <>
+      <NativeOAuthBridge />
       {!isLiveV2 && <DroxionPushNotifications />}
       {!isLiveV2 && <DroxionLivePushBridge />}
       {!isLiveV2 && <GlobalEnhancements />}
       {!isLiveV2 && <CreatorV11Enhancer />}
       {!isLiveV2 && <LiveGuestStageGuard />}
+      {!isLiveV2 && <LiveHeartSyncEnhancer />}
+      {!isLiveV2 && <LiveViewerRecoveryEnhancer />}
+      {!isLiveV2 && <ProfileContentTabsEnhancer />}
       {!isLiveV2 && <ShortNativeActionsEnhancer />}
       {!isLiveV2 && <ShortSafetyEnhancer />}
       <Routes>
@@ -34,6 +43,7 @@ export default function App() {
         <Route path="/live-v2" element={<LiveV2Page />} />
         <Route path="/live-v2/view/:sessionId" element={<LiveV2ViewerPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<OAuthCallback />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />

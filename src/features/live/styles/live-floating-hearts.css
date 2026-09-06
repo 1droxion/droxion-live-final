@@ -1,0 +1,80 @@
+.liveFloatingHeartsLayer {
+  position: absolute;
+  right: 12px;
+  bottom: 92px;
+  width: 130px;
+  height: 260px;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 38;
+}
+
+.liveFloatingHeart {
+  position: absolute;
+  left: var(--heart-x);
+  bottom: 0;
+  width: var(--heart-size);
+  height: var(--heart-size);
+  color: var(--heart-color);
+  filter: drop-shadow(0 7px 16px rgba(0, 0, 0, 0.35));
+  opacity: 0;
+  transform: translate3d(0, 8px, 0) rotate(var(--heart-rotate)) scale(0.72);
+  animation: droxionHeartFloat var(--heart-duration) cubic-bezier(.16,.84,.34,1) var(--heart-delay) forwards;
+  will-change: transform, opacity;
+}
+
+.liveHeartTapButton {
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(10,10,16,.62);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #ff4f91;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0,0,0,.28), inset 0 0 20px rgba(255,255,255,.025);
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.liveHeartTapButton:hover {
+  transform: translateY(-1px) scale(1.04);
+  background: rgba(255,79,145,.14);
+  border-color: rgba(255,79,145,.35);
+}
+
+.liveHeartTapButton:active {
+  transform: scale(.91);
+}
+
+@keyframes droxionHeartFloat {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) rotate(var(--heart-rotate)) scale(.68);
+  }
+  12% {
+    opacity: 1;
+    transform: translate3d(0, -10px, 0) rotate(calc(var(--heart-rotate) * .55)) scale(1.08);
+  }
+  42% {
+    opacity: .98;
+    transform: translate3d(calc(var(--heart-drift) * .45), -90px, 0) rotate(8deg) scale(.96);
+  }
+  74% {
+    opacity: .78;
+    transform: translate3d(var(--heart-drift), -175px, 0) rotate(-7deg) scale(.84);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc(var(--heart-drift) * .62), -250px, 0) rotate(14deg) scale(.62);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveFloatingHeart {
+    animation-duration: 500ms;
+  }
+}
