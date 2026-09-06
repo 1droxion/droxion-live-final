@@ -11,6 +11,14 @@ function platformName() {
   try { return window.Capacitor?.getPlatform?.() || "web"; } catch { return "web"; }
 }
 
+function friendlyAuthError(error) {
+  const message = String(error?.message || "").trim();
+  if (/invalid login credentials/i.test(message)) return "Email or password is incorrect.";
+  if (/email not confirmed/i.test(message)) return "Confirm your email first, then try again.";
+  if (/rate limit|too many requests/i.test(message)) return "Too many attempts. Wait a moment and try again.";
+  return message || "Unable to sign in. Please try again.";
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,7 +84,7 @@ export default function Login() {
 
       navigate("/", { replace: true });
     } catch (err) {
-      setError(err?.message || "Unable to sign in.");
+      setError(friendlyAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -89,7 +97,7 @@ export default function Login() {
     try {
       await signInWithSocialProvider(provider);
     } catch (err) {
-      setError(err?.message || `Unable to sign in with ${provider}.`);
+      setError(friendlyAuthError(err));
       setSocialLoading("");
     }
   };
