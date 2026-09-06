@@ -386,8 +386,11 @@ export default function ProductionLiveBrowser({
     }).then(({ data, error }) => {
       if (stopped || error) return;
       const rows = Array.isArray(data) ? data : [];
-      setMessages(dedupeById(rows));
-      lastChatIdRef.current = rows.reduce((max, row) => Math.max(max, Number(row?.id || 0)), 0);
+      // Never let an older history response erase a first message that arrived
+      // through realtime while this request was still in flight.
+      setMessages(current => dedupeById([...current, ...rows]));
+      const latestRowId = rows.reduce((max, row) => Math.max(max, Number(row?.id || 0)), 0);
+      lastChatIdRef.current = Math.max(lastChatIdRef.current, latestRowId);
     }).catch(() => {});
 
     let unsubscribe = null;
