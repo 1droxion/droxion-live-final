@@ -5,6 +5,8 @@ import './external-live-droxion-chat.css';
 
 const DROXION_POLL_MS = 2200;
 const SOURCE_LIMIT = 180;
+const SOURCE_BATCH_MS = 80;
+const CHAT_BOTTOM_THRESHOLD = 84;
 
 function streamKey(stream) {
   const provider = String(stream?.provider || 'live').toLowerCase();
@@ -110,9 +112,12 @@ export default function ExternalLiveDroxionChat({
   const [activeGift, setActiveGift] = useState(null);
   const pollRef = useRef(null);
   const sourceTimerRef = useRef(null);
+  const sourceFlushRef = useRef(null);
+  const sourceBatchRef = useRef([]);
   const socketRef = useRef(null);
   const lastIdRef = useRef(0);
-  const bottomRef = useRef(null);
+  const chatStreamRef = useRef(null);
+  const stickToBottomRef = useRef(true);
   const twitchSequenceRef = useRef(0);
   const key = useMemo(() => streamKey(stream), [stream]);
 
@@ -137,6 +142,7 @@ export default function ExternalLiveDroxionChat({
     setNotice('');
     setGiftOpen(false);
     setSourceComposerOpen(false);
+    stickToBottomRef.current = true;
     lastIdRef.current = 0;
     loadMessages();
     pollRef.current = window.setInterval(loadMessages, DROXION_POLL_MS);
@@ -153,16 +159,29 @@ export default function ExternalLiveDroxionChat({
     let stopped = false;
     setSourceMessages([]);
     setSourceStatus('Connecting source chat…');
+    sourceBatchRef.current = [];
     if (sourceTimerRef.current) window.clearTimeout(sourceTimerRef.current);
+    if (sourceFlushRef.current) window.clearTimeout(sourceFlushRef.current);
+    sourceTimerRef.current = null;
+    sourceFlushRef.current = null;
     if (socketRef.current) {
       try { socketRef.current.close(); } catch {}
       socketRef.current = null;
     }
 
-    const addSourceRows = incoming => {
-      if (stopped || !incoming?.length) return;
+    const flushSourceRows = () => {
+      sourceFlushRef.current = null;
+      if (stopped) return;
+      const incoming = sourceBatchRef.current.splice(0);
+      if (!incoming.length) return;
       setSourceMessages(current => dedupe([...current, ...incoming], row => `${row.provider}:${row.id}`).slice(-SOURCE_LIMIT));
       setSourceStatus('');
+    };
+
+    const addSourceRows = incoming => {
+      if (stopped || !incoming?.length) return;
+      sourceBatchRef.current.push(...incoming);
+      if (!sourceFlushRef.current) sourceFlushRef.current = window.setTimeout(flushSourceRows, SOURCE_BATCH_MS);
     };
 
     if (stream?.provider === 'youtube' && stream?.externalId) {
@@ -245,7 +264,11 @@ export default function ExternalLiveDroxionChat({
 
     return () => {
       stopped = true;
+      sourceBatchRef.current = [];
       if (sourceTimerRef.current) window.clearTimeout(sourceTimerRef.current);
+      if (sourceFlushRef.current) window.clearTimeout(sourceFlushRef.current);
+      sourceTimerRef.current = null;
+      sourceFlushRef.current = null;
       if (socketRef.current) {
         try { socketRef.current.close(); } catch {}
         socketRef.current = null;
@@ -267,7 +290,11 @@ export default function ExternalLiveDroxionChat({
     return [...sourceRows, ...droxionRows].sort((a, b) => a.timestamp - b.timestamp).slice(-220);
   }, [sourceMessages, messages]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [combinedMessages.length]);
+  useEffect(() => {
+    const container = chatStreamRef.current;
+    if (!container || !stickToBottomRef.current) return;
+    container.scrollTop = container.scrollHeight;
+  }, [combinedMessages.length]);
 
   async function sendChat() {
     const body = draft.trim();
@@ -309,7 +336,10 @@ export default function ExternalLiveDroxionChat({
         {sourceFrame ? <button type="button" className="dxSourceComposerButton" onClick={() => setSourceComposerOpen(true)}>Chat on {providerLabel(stream?.provider)}</button> : <span className="dxSourceReadOnly">{providerLabel(stream?.provider)} read-only</span>}
       </div>
 
-      <div className="dxUnifiedChatStream">
+      <div ref={chatStreamRef} className="dxUnifiedChatStream" onScroll={event => {
+        const node = event.currentTarget;
+        stickToBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight <= CHAT_BOTTOM_THRESHOLD;
+      }}>
         {combinedMessages.length === 0 && <div className="dxDroxionChatEmpty"><strong>LIVE chat is connecting</strong><span>{sourceStatus || 'Source messages and Droxion messages will appear together here.'}</span></div>}
         {sourceStatus && combinedMessages.length > 0 && <div className="dxSourceStatus">{sourceStatus}</div>}
         {combinedMessages.map(message => <div className={`dxUnifiedMessage ${message.kind}`} key={message.key}>
@@ -319,7 +349,6 @@ export default function ExternalLiveDroxionChat({
             {message.kind === 'gift' ? <p className="dxGiftLine"><b>{message.giftEmoji} {message.giftName}</b><span> sent a Droxion gift{message.costCoins ? ` · ${message.costCoins} coins` : ''}</span></p> : <p>{message.message}</p>}
           </div>
         </div>)}
-        <div ref={bottomRef} />
       </div>
 
       {notice && <div className="dxDroxionChatNotice">{notice}</div>}
