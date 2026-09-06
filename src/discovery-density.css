@@ -1,67 +1,68 @@
 /* Dense discovery pass: use the viewport for content instead of oversized marketing hero blocks. */
-.dxHubMode-home.dxGlobalLiveHub,.dxHubMode-explore.dxGlobalLiveHub{width:100%;max-width:none;padding:14px 16px 120px}
+.dxHubMode-home.dxGlobalLiveHub,.dxHubMode-explore.dxGlobalLiveHub{width:100%;max-width:none;padding:12px 14px 120px}
 
-/* Home is a discovery surface now: start with controls and LIVE cards, not the old marketing hero. */
+/* Home is a discovery surface now: start with controls and LIVE cards, not marketing hero copy. */
 .dxHubMode-home .dxGlobalHero{display:none}
-.dxHubMode-home .dxControlDeck{margin-top:0;margin-bottom:10px;padding-top:8px}
+.dxHubMode-home .dxControlDeck{margin-top:0;margin-bottom:8px;padding-top:7px}
 .dxHubMode-home .dxSectionHead{margin-top:0}
 
-/* Explore keeps search, but removes the large empty banner around it. */
-.dxExploreV2{padding-top:8px}
-.dxExploreHeroV2{display:block;min-height:50px;margin:0 0 6px;padding:0;border:0;border-radius:0;overflow:visible;background:none;box-shadow:none}
-.dxExploreHeroV2:after{display:none}
-.dxExploreHeroCopy{display:none}
-.dxExploreSearchV2{position:relative;left:auto;right:auto;bottom:auto;min-height:48px;padding:0 112px 0 14px;border-radius:13px;background:#0a111c;box-shadow:none}
-.dxExploreSearchV2 input{height:46px}
-.dxExploreRefresh{position:absolute;z-index:5;right:6px;top:6px;min-height:36px;height:36px;padding:0 11px;border-radius:9px}
-.dxExploreFiltersV2{margin-bottom:8px;padding:8px 0 7px}
-.dxExploreLanguageBar{margin-top:6px}
-.dxExploreSection{margin-top:14px}
-.dxExploreSection:first-of-type{margin-top:7px}
+/* Explore keeps content first. Search lives in the global Droxion header dialog. */
+.dxExploreV2{padding-top:5px}
+.dxExploreHeroV2{display:none}
+.dxExploreFiltersV2{margin-bottom:7px;padding:7px 0 6px}
+.dxExploreLanguageBar{margin-top:5px}
+.dxExploreSection{margin-top:12px}
+.dxExploreSection:first-of-type{margin-top:6px}
 .dxExploreSectionHeader{margin-bottom:8px}
 .dxExploreSectionHeader h2{font-size:18px}
 
-/* WhosLive-style density: more browse choices visible without wasting horizontal space. */
-.dxExploreTopicGrid{grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
-.dxExploreTopicCard{border-radius:13px;aspect-ratio:.76/1}
-.dxExploreTopicLive{left:8px;top:8px;min-height:22px;padding:0 6px;font-size:7px}
-.dxExploreTopicCard>strong{left:9px;right:9px;bottom:25px;font-size:15px}
-.dxExploreTopicCard>small{left:9px;right:9px;bottom:9px;font-size:7px}
+/* Thumbnail-first category wall. */
+.dxExploreTopicGrid{grid-template-columns:repeat(9,minmax(0,1fr));gap:7px}
+.dxExploreTopicCard{border-radius:12px;aspect-ratio:.74/1;min-height:0}
+.dxExploreTopicLive{left:7px;top:7px;min-height:21px;padding:0 6px;font-size:7px}
+.dxExploreTopicCard>strong{left:9px;right:9px;bottom:24px;font-size:14px}
+.dxExploreTopicCard>small{left:9px;right:9px;bottom:8px;font-size:7px}
 
-.dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
-.dxHubMode-home .dxGlobalCard,.dxHubMode-explore .dxGlobalCard{border-radius:13px}
-.dxHubMode-home .dxGlobalCardBody,.dxHubMode-explore .dxGlobalCardBody{gap:5px;padding:8px 9px 10px}
-.dxHubMode-home .dxCreatorDot,.dxHubMode-explore .dxCreatorDot{width:23px;height:23px;flex-basis:23px}
+/* Dense LIVE result wall. */
+.dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}
+.dxHubMode-home .dxGlobalCard,.dxHubMode-explore .dxGlobalCard{border-radius:12px}
+.dxHubMode-home .dxGlobalCardBody,.dxHubMode-explore .dxGlobalCardBody{gap:5px;padding:8px 9px 9px}
+.dxHubMode-home .dxCreatorDot,.dxHubMode-explore .dxCreatorDot{width:22px;height:22px;flex-basis:22px}
 .dxHubMode-home .dxCardCreator strong,.dxHubMode-explore .dxCardCreator strong{font-size:10px}
 .dxHubMode-home .dxCardTitle,.dxHubMode-explore .dxCardTitle{font-size:10px;min-height:27px}
-.dxHubMode-home .dxQuickFollow,.dxHubMode-explore .dxQuickFollow{width:27px;height:27px;flex-basis:27px}
+.dxHubMode-home .dxQuickFollow,.dxHubMode-explore .dxQuickFollow{width:26px;height:26px;flex-basis:26px}
 .dxHubMode-home .dxGlobalLivePill,.dxHubMode-explore .dxGlobalLivePill,.dxHubMode-home .dxProviderBadge,.dxHubMode-explore .dxProviderBadge{top:7px;padding:5px 6px;font-size:8px}
 .dxHubMode-home .dxGlobalLivePill,.dxHubMode-explore .dxGlobalLivePill{left:7px}
 .dxHubMode-home .dxProviderBadge,.dxHubMode-explore .dxProviderBadge{right:7px}
 .dxHubMode-home .dxGlobalViewers,.dxHubMode-explore .dxGlobalViewers{left:7px;bottom:7px;font-size:8px}
 
-/* Keep the player focused, then make related LIVE unmistakably available underneath. */
-.dxRelatedLive{padding-top:13px;margin-top:2px}
-.dxRelatedRail{grid-auto-columns:minmax(205px,1fr)}
+/* Watch page can scroll to recommendations instead of trapping them below the fold. */
+.dxLiveModal{align-items:start;overflow-y:auto;overscroll-behavior:contain}
+.dxLiveModalSheet{max-height:none!important;overflow:visible!important;margin:auto 0}
+.dxExternalLiveLayout{align-items:start}
+.dxExternalVideoColumn{min-width:0}
+.dxSourceChatPanel{position:sticky;top:0;height:calc(100dvh - 110px);max-height:830px;align-self:start}
+.dxRelatedLive{padding:16px 16px 24px!important;margin-top:3px!important;border-top:1px solid rgba(255,255,255,.07)}
+.dxRelatedRail{grid-auto-columns:minmax(230px,300px)!important;gap:10px}
+.dxRelatedHead strong{font-size:19px}
 
-@media(max-width:1400px){
-  .dxExploreTopicGrid{grid-template-columns:repeat(7,minmax(0,1fr))}
+@media(max-width:1500px){
+  .dxExploreTopicGrid{grid-template-columns:repeat(8,minmax(0,1fr))}
+  .dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:repeat(5,minmax(0,1fr))}
 }
-@media(max-width:1200px){
+@media(max-width:1250px){
   .dxExploreTopicGrid{grid-template-columns:repeat(6,minmax(0,1fr))}
   .dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 @media(max-width:980px){
   .dxExploreTopicGrid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .dxSourceChatPanel{position:static;height:470px;max-height:none}
 }
 @media(max-width:700px){
-  .dxHubMode-home.dxGlobalLiveHub,.dxHubMode-explore.dxGlobalLiveHub{padding:7px 10px 105px}
-  .dxExploreSearchV2{padding-right:52px}
-  .dxExploreRefresh{width:36px;padding:0;font-size:0}
+  .dxHubMode-home.dxGlobalLiveHub,.dxHubMode-explore.dxGlobalLiveHub{padding:6px 9px 105px}
   .dxExploreTopicGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
   .dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-}
-@media(max-width:420px){
-  .dxHubMode-home .dxGlobalGrid,.dxHubMode-explore .dxGlobalGrid{grid-template-columns:1fr}
+  .dxRelatedLive{padding-left:10px!important;padding-right:10px!important}
+  .dxRelatedRail{grid-auto-columns:minmax(180px,72vw)!important}
 }
