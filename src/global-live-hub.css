@@ -51,11 +51,14 @@
 .dxLiveModal { position:fixed; z-index:10040; inset:0; display:grid; place-items:center; padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); }
 .dxLiveModalBackdrop { position:absolute; inset:0; background:rgba(0,0,0,.78); backdrop-filter:blur(8px); }
 .dxLiveModalSheet { position:relative; z-index:1; width:min(960px,100%); max-height:calc(100dvh - 24px); background:#09090d; border:1px solid rgba(255,255,255,.12); border-radius:20px; overflow:hidden; box-shadow:0 24px 90px rgba(0,0,0,.52); }
-.dxLiveModalTop { min-height:54px; padding:9px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.dxLiveModalSheet.dxLiveWithChat { width:min(1260px,100%); }
+.dxLiveModalTop { min-height:54px; padding:9px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid rgba(255,255,255,.07); }
 .dxLiveModalTop>div { display:flex; align-items:center; gap:9px; min-width:0; }
 .dxLiveModalTop .dxProviderBadge { position:static; }
 .dxLiveModalTop strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; }
 .dxLiveModalTop button { width:38px; height:38px; display:grid; place-items:center; border:0; border-radius:12px; background:rgba(255,255,255,.07); color:#fff; }
+.dxExternalLiveLayout { display:grid; grid-template-columns:minmax(0,1fr) 340px; min-height:0; }
+.dxExternalVideoColumn { min-width:0; }
 .dxLivePlayerFrame { aspect-ratio:16/9; width:100%; background:#000; }
 .dxLivePlayerFrame iframe { width:100%; height:100%; border:0; display:block; }
 .dxLivePlayerFallback { width:100%; height:100%; display:grid; place-items:center; color:rgba(255,255,255,.6); }
@@ -64,5 +67,21 @@
 .dxLiveModalActions { margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; color:rgba(255,255,255,.5); font-size:12px; }
 .dxLiveModalActions span,.dxLiveModalActions a { display:inline-flex; align-items:center; gap:6px; }
 .dxLiveModalActions a { color:#fff; font-weight:800; text-decoration:none; }
+.dxSourceChatPanel { min-width:0; border-left:1px solid rgba(255,255,255,.08); background:#0c0c11; display:flex; flex-direction:column; height:min(72vh,720px); }
+.dxSourceChatPanel>header { min-height:48px; padding:0 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid rgba(255,255,255,.07); }
+.dxSourceChatPanel>header strong { font-size:13px; }
+.dxSourceChatPanel>header span { margin-left:auto; color:rgba(255,255,255,.4); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.dxTwitchChatFrame { width:100%; flex:1; min-height:0; border:0; background:#0e0e10; }
+.dxSourceChatMessages { flex:1; min-height:0; overflow-y:auto; padding:10px 10px 14px; overscroll-behavior:contain; }
+.dxSourceChatMessage { display:grid; grid-template-columns:30px minmax(0,1fr); gap:8px; padding:7px 2px; }
+.dxSourceChatMessage img,.dxSourceChatAvatar { width:30px; height:30px; border-radius:50%; object-fit:cover; background:rgba(255,255,255,.08); }
+.dxSourceChatAvatar { display:grid; place-items:center; font-size:11px; font-weight:900; }
+.dxSourceChatMessage>div { min-width:0; }
+.dxSourceChatMessage strong { display:flex; align-items:center; gap:5px; font-size:11px; line-height:1.2; color:#fff; }
+.dxSourceChatMessage strong i { font-style:normal; font-size:8px; padding:2px 4px; border-radius:4px; background:rgba(255,255,255,.1); color:rgba(255,255,255,.75); }
+.dxSourceChatMessage p { margin:3px 0 0; color:rgba(255,255,255,.78); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.dxSourceChatMessage p b { color:#fff; }
+.dxSourceChatEmpty { flex:1; min-height:140px; display:grid; place-items:center; padding:20px; text-align:center; color:rgba(255,255,255,.42); font-size:12px; }
+@media (max-width:1000px) { .dxExternalLiveLayout{grid-template-columns:1fr;} .dxSourceChatPanel{height:340px;border-left:0;border-top:1px solid rgba(255,255,255,.08);} }
 @media (max-width:820px) { .dxGlobalLiveHub{padding-inline:10px;} .dxGlobalHero{align-items:flex-start;} .dxGlobalHero p{max-width:520px;} .dxGlobalGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;} }
-@media (max-width:560px) { .dxGlobalLiveHub{padding:6px 8px 108px;} .dxGlobalHero{padding:10px 2px 13px;} .dxGlobalHero h1{font-size:27px;} .dxGlobalHero p{font-size:12px;} .dxGlobalRefresh span{display:none;} .dxGlobalRefresh{width:42px;padding:0;} .dxGlobalProviderRail{margin-inline:-2px;} .dxGlobalGrid{grid-template-columns:1fr;gap:11px;} .dxGlobalCard{border-radius:16px;} .dxGlobalCardBody span{min-height:0;} .dxLiveModal{padding:0;} .dxLiveModalSheet{width:100%;max-height:100dvh;border-radius:0;border-inline:0;} }
+@media (max-width:560px) { .dxGlobalLiveHub{padding:6px 8px 108px;} .dxGlobalHero{padding:10px 2px 13px;} .dxGlobalHero h1{font-size:27px;} .dxGlobalHero p{font-size:12px;} .dxGlobalRefresh span{display:none;} .dxGlobalRefresh{width:42px;padding:0;} .dxGlobalProviderRail{margin-inline:-2px;} .dxGlobalGrid{grid-template-columns:1fr;gap:11px;} .dxGlobalCard{border-radius:16px;} .dxGlobalCardBody span{min-height:0;} .dxLiveModal{padding:0;} .dxLiveModalSheet{width:100%;max-height:100dvh;border-radius:0;border-inline:0;} .dxLiveModalSheet.dxLiveWithChat{width:100%;} .dxSourceChatPanel{height:38dvh;} }
