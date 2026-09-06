@@ -3,9 +3,11 @@ import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabaseClient';
 
 const API_ORIGIN = 'https://www.droxion.com';
+const PUSH_RETRY_MS = 15000;
 
 export default function DroxionLivePushBridge() {
   const lastSentSession = useRef('');
+  const lastAttemptAt = useRef(0);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform?.()) return;
@@ -24,7 +26,10 @@ export default function DroxionLivePushBridge() {
 
         const sessionId = String(data.session_id);
         if (lastSentSession.current === sessionId) return;
-        lastSentSession.current = sessionId;
+
+        const now = Date.now();
+        if (now - lastAttemptAt.current < PUSH_RETRY_MS - 500) return;
+        lastAttemptAt.current = now;
 
         const response = await fetch(`${API_ORIGIN}/api/notifications/live-start`, {
           method: 'POST',
@@ -34,11 +39,25 @@ export default function DroxionLivePushBridge() {
           },
           body: JSON.stringify({ sessionId })
         });
+        const payload = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          console.warn('LIVE push broadcast failed', payload?.error || response.status);
+        if (!response.ok || payload?.ok !== true || Number(payload?.recipients || 0) <= 0) {
+          console.warn('LIVE push broadcast not delivered yet', payload?.error || response.status, {
+            recipients: Number(payload?.recipients || 0),
+            retryable: payload?.retryable !== false
+          });
+          return;
         }
+
+        // Mark a session sent only after OneSignal confirms at least one
+        // subscribed recipient. This prevents a false 200/zero-recipient result
+        // from suppressing all retries for the rest of the LIVE.
+        lastSentSession.current = sessionId;
+        console.log('LIVE push delivered', {
+          sessionId,
+          recipients: Number(payload.recipients || 0),
+          messageId: payload?.messageId || null
+        });
       } catch (error) {
         console.warn('LIVE push bridge failed', error);
       } finally {
@@ -51,13 +70,15 @@ export default function DroxionLivePushBridge() {
     };
 
     checkLive();
-    const timer = window.setInterval(checkLive, 15000);
+    const timer = window.setInterval(checkLive, PUSH_RETRY_MS);
     window.addEventListener('focus', wake);
+    window.addEventListener('online', wake);
     document.addEventListener('visibilitychange', wake);
     return () => {
       alive = false;
       window.clearInterval(timer);
       window.removeEventListener('focus', wake);
+      window.removeEventListener('online', wake);
       document.removeEventListener('visibilitychange', wake);
     };
   }, []);
