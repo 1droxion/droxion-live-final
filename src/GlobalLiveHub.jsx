@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Globe2, Radio, RefreshCw, Search, Users, X } from 'lucide-react';
+import { ExternalLink, Globe2, MessageCircle, Radio, RefreshCw, Search, Users, X } from 'lucide-react';
 import './global-live-hub.css';
 
 const PROVIDERS = [
@@ -27,6 +27,135 @@ function providerClass(provider) {
   return 'droxion';
 }
 
+function ChatMessageList({ provider, messages, emptyText }) {
+  const bottomRef = useRef(null);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
+  return <div className="dxSourceChatMessages">
+    {messages.length ? messages.map(message => <div className="dxSourceChatMessage" key={`${provider}:${message.id}`}>
+      {message.avatarUrl ? <img src={message.avatarUrl} alt="" loading="lazy" /> : <span className="dxSourceChatAvatar">{String(message.authorName || '?').slice(0, 1).toUpperCase()}</span>}
+      <div>
+        <strong>{message.authorName || `${provider} user`}{message.isOwner ? <i>HOST</i> : message.isModerator ? <i>MOD</i> : message.isVerified ? <i>✓</i> : null}</strong>
+        <p>{message.amountDisplayString ? <b>{message.amountDisplayString} </b> : null}{message.message}</p>
+      </div>
+    </div>) : <div className="dxSourceChatEmpty">{emptyText}</div>}
+    <div ref={bottomRef} />
+  </div>;
+}
+
+function YouTubeSourceChat({ stream }) {
+  const [messages, setMessages] = useState([]);
+  const [status, setStatus] = useState('Loading YouTube chat…');
+  const pageTokenRef = useRef('');
+  const liveChatIdRef = useRef('');
+  const timerRef = useRef(null);
+  const stoppedRef = useRef(false);
+
+  useEffect(() => {
+    stoppedRef.current = false;
+    setMessages([]);
+    pageTokenRef.current = '';
+    liveChatIdRef.current = '';
+
+    const poll = async () => {
+      if (stoppedRef.current) return;
+      try {
+        const params = new URLSearchParams({ provider: 'youtube', videoId: stream.externalId });
+        if (liveChatIdRef.current) params.set('liveChatId', liveChatIdRef.current);
+        if (pageTokenRef.current) params.set('pageToken', pageTokenRef.current);
+        const response = await fetch(`/api/live-chat?${params.toString()}`, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'YouTube chat unavailable');
+
+        liveChatIdRef.current = data?.liveChatId || liveChatIdRef.current;
+        pageTokenRef.current = data?.nextPageToken || pageTokenRef.current;
+        const incoming = Array.isArray(data?.messages) ? data.messages : [];
+        if (incoming.length) {
+          setMessages(current => {
+            const byId = new Map(current.map(item => [item.id, item]));
+            incoming.forEach(item => byId.set(item.id, item));
+            return Array.from(byId.values()).slice(-250);
+          });
+        }
+        setStatus(data?.available === false ? 'YouTube chat is unavailable for this LIVE.' : '');
+        const delay = Math.max(3000, Math.min(15000, Number(data?.pollingIntervalMillis || 5000)));
+        timerRef.current = window.setTimeout(poll, delay);
+      } catch {
+        setStatus('YouTube chat temporarily unavailable.');
+        timerRef.current = window.setTimeout(poll, 10000);
+      }
+    };
+
+    poll();
+    return () => {
+      stoppedRef.current = true;
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, [stream.externalId]);
+
+  return <ChatMessageList provider="YouTube" messages={messages} emptyText={status || 'Waiting for YouTube chat…'} />;
+}
+
+function TwitchSourceChat({ stream, parent }) {
+  const chatSrc = `https://www.twitch.tv/embed/${encodeURIComponent(stream.channelSlug)}/chat?parent=${encodeURIComponent(parent)}&darkpopout`;
+  return <iframe className="dxTwitchChatFrame" src={chatSrc} title={`${stream.creatorName || 'Twitch'} chat`} />;
+}
+
+function KickSourceChat({ stream }) {
+  const [messages, setMessages] = useState([]);
+  const [status, setStatus] = useState('Connecting Kick chat…');
+  const timerRef = useRef(null);
+  const stoppedRef = useRef(false);
+
+  useEffect(() => {
+    const broadcasterUserId = Number(stream.channelId || 0);
+    stoppedRef.current = false;
+    setMessages([]);
+    if (!broadcasterUserId) {
+      setStatus('Kick chat unavailable for this LIVE.');
+      return () => {};
+    }
+
+    fetch('/api/kick/subscribe-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ broadcasterUserId })
+    }).then(response => response.json()).then(data => {
+      if (!data?.ok) setStatus(data?.reason === 'missing_credentials' ? 'Kick chat will activate after Kick credentials are added.' : 'Kick chat subscription unavailable.');
+      else setStatus('');
+    }).catch(() => setStatus('Kick chat subscription unavailable.'));
+
+    const poll = async () => {
+      if (stoppedRef.current) return;
+      try {
+        const response = await fetch(`/api/kick/webhook?broadcasterUserId=${encodeURIComponent(broadcasterUserId)}`, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok) throw new Error('Kick chat unavailable');
+        const incoming = Array.isArray(data?.messages) ? data.messages : [];
+        setMessages(incoming.slice(-250));
+        if (incoming.length) setStatus('');
+      } catch {
+        if (!messages.length) setStatus('Kick chat temporarily unavailable.');
+      }
+      timerRef.current = window.setTimeout(poll, 2000);
+    };
+
+    poll();
+    return () => {
+      stoppedRef.current = true;
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, [stream.channelId]);
+
+  return <ChatMessageList provider="Kick" messages={messages} emptyText={status || 'Waiting for Kick chat…'} />;
+}
+
+function SourceChat({ stream, parent }) {
+  if (stream?.provider === 'youtube' && stream.externalId) return <YouTubeSourceChat stream={stream} />;
+  if (stream?.provider === 'twitch' && stream.channelSlug) return <TwitchSourceChat stream={stream} parent={parent} />;
+  if (stream?.provider === 'kick' && stream.channelId) return <KickSourceChat stream={stream} />;
+  return <div className="dxSourceChatEmpty">Source chat is unavailable for this LIVE.</div>;
+}
+
 function ExternalLivePlayer({ stream, onClose }) {
   const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   let src = '';
@@ -37,20 +166,29 @@ function ExternalLivePlayer({ stream, onClose }) {
   } else if (stream?.embedType === 'kick' && stream.channelSlug) {
     src = `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}`;
   }
+
   return (
     <div className="dxLiveModal" role="dialog" aria-modal="true" aria-label={`${stream?.creatorName || 'Creator'} LIVE`}>
       <div className="dxLiveModalBackdrop" onClick={onClose} />
-      <section className="dxLiveModalSheet">
+      <section className="dxLiveModalSheet dxLiveWithChat">
         <div className="dxLiveModalTop">
           <div><span className={`dxProviderBadge ${providerClass(stream?.provider)}`}>{stream?.providerLabel || 'LIVE'}</span><strong>{stream?.creatorName || 'Creator'}</strong></div>
           <button type="button" onClick={onClose} aria-label="Close LIVE"><X size={22} /></button>
         </div>
-        <div className="dxLivePlayerFrame">
-          {src ? <iframe src={src} title={`${stream?.creatorName || 'Creator'} LIVE`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /> : <div className="dxLivePlayerFallback">This LIVE opens on {stream?.providerLabel || 'the source platform'}.</div>}
-        </div>
-        <div className="dxLiveModalMeta">
-          <div><Radio size={17} /><span>{stream?.title || 'LIVE now'}</span></div>
-          <div className="dxLiveModalActions"><span><Users size={16} /> {formatViewers(stream?.viewerCount)} watching</span><a href={stream?.watchUrl} target="_blank" rel="noreferrer">Open source <ExternalLink size={15} /></a></div>
+        <div className="dxExternalLiveLayout">
+          <div className="dxExternalVideoColumn">
+            <div className="dxLivePlayerFrame">
+              {src ? <iframe src={src} title={`${stream?.creatorName || 'Creator'} LIVE`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /> : <div className="dxLivePlayerFallback">This LIVE opens on {stream?.providerLabel || 'the source platform'}.</div>}
+            </div>
+            <div className="dxLiveModalMeta">
+              <div><Radio size={17} /><span>{stream?.title || 'LIVE now'}</span></div>
+              <div className="dxLiveModalActions"><span><Users size={16} /> {formatViewers(stream?.viewerCount)} watching</span><a href={stream?.watchUrl} target="_blank" rel="noreferrer">Open source <ExternalLink size={15} /></a></div>
+            </div>
+          </div>
+          <aside className="dxSourceChatPanel">
+            <header><MessageCircle size={16} /><strong>{stream?.providerLabel} LIVE Chat</strong><span>Source chat</span></header>
+            <SourceChat stream={stream} parent={parent} />
+          </aside>
         </div>
       </section>
     </div>
