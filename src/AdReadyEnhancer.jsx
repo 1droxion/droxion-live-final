@@ -49,7 +49,7 @@ export default function AdReadyEnhancer() {
     if (typeof window === 'undefined') return undefined;
 
     window.__droxionAdReady = {
-      version: 2,
+      version: 3,
       ...config,
       providerConnected: false
     };
@@ -77,7 +77,7 @@ export default function AdReadyEnhancer() {
         }
       });
 
-      const liveCards = Array.from(document.querySelectorAll('.productionLiveGrid > .productionLiveCard'));
+      const liveCards = Array.from(document.querySelectorAll('.productionLiveGrid > .productionLiveCard, .dxGlobalGrid > .dxGlobalCard'));
       liveCards.forEach((card, index) => {
         const breakAfter = config.homeAdsEnabled && providerReady && (index + 1) % config.homeInterval === 0;
         if (breakAfter) {
@@ -87,6 +87,12 @@ export default function AdReadyEnhancer() {
           delete card.dataset.droxionAdBreakAfter;
           delete card.dataset.droxionAdPlacement;
         }
+      });
+
+      const belowPlayerSlots = Array.from(document.querySelectorAll('.dxLiveAdSlot[data-droxion-ad-placement="live_below_player"]'));
+      belowPlayerSlots.forEach(slot => {
+        if (providerReady && config.homeAdsEnabled) slot.dataset.adActive = 'true';
+        else delete slot.dataset.adActive;
       });
     };
 
@@ -141,13 +147,16 @@ export default function AdReadyEnhancer() {
       }
     };
 
+    const refreshPlacements = () => markOrganicAdBreaks();
     window.addEventListener('droxion:request-live-entry-ad', requestLiveAd);
     window.addEventListener('droxion:ad-slot-complete', rememberShownAd);
+    window.addEventListener('droxion:ad-provider-changed', refreshPlacements);
 
     return () => {
       observer.disconnect();
       window.removeEventListener('droxion:request-live-entry-ad', requestLiveAd);
       window.removeEventListener('droxion:ad-slot-complete', rememberShownAd);
+      window.removeEventListener('droxion:ad-provider-changed', refreshPlacements);
       try { delete window.__droxionAdReady; } catch {}
     };
   }, []);

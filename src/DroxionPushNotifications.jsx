@@ -98,7 +98,9 @@ async function ensurePushSubscription({ requestPermission = true } = {}) {
       }
     }
 
-    let state = await waitForSubscriptionReady();
+    let state = permission
+      ? await waitForSubscriptionReady()
+      : await readSubscriptionState().catch(() => ({ subscriptionId: null, token: null, optedIn: false, ready: false }));
 
     if (permission && !state.ready && pushSubscription?.optIn) {
       try { await pushSubscription.optIn(); } catch {}
@@ -156,10 +158,13 @@ export default function DroxionPushNotifications() {
     if (!Capacitor.isNativePlatform?.()) return undefined;
     let stopped = false;
 
+    // Initialize the native SDK without starting a permission/subscription wait.
+    // The authenticated identity effect below owns the permission prompt so it
+    // cannot be blocked by an earlier signed-out initialization attempt.
     const recover = () => {
       if (stopped || document.visibilityState === 'hidden') return;
-      ensurePushSubscription({ requestPermission: true }).catch(error => {
-        console.warn('OneSignal initialization or subscription failed', error);
+      ensureOneSignal().catch(error => {
+        console.warn('OneSignal initialization failed', error);
       });
     };
 
@@ -207,12 +212,21 @@ export default function DroxionPushNotifications() {
 
     async function setIdentity(userId) {
       try {
+        await ensureOneSignal();
+        if (!alive) return;
+
+        if (!userId) {
+          await OneSignal.logout();
+          return;
+        }
+
+        // Bind this native device to the authenticated Droxion user first. The
+        // server can then target follower user IDs through OneSignal external IDs.
+        await OneSignal.login(userId);
         const state = await ensurePushSubscription({ requestPermission: true });
         if (!alive) return;
-        if (userId) await OneSignal.login(userId);
-        else await OneSignal.logout();
 
-        if (userId && state.permission) {
+        if (state.permission) {
           await ensurePushSubscription({ requestPermission: false });
         }
       } catch (error) {

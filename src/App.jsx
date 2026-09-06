@@ -6,6 +6,8 @@ import LiveGuestStageGuard from "./LiveGuestStageGuard.jsx";
 import LiveHeartSyncEnhancer from "./LiveHeartSyncEnhancer.jsx";
 import LiveViewerRecoveryEnhancer from "./LiveViewerRecoveryEnhancer.jsx";
 import ProfileContentTabsEnhancer from "./ProfileContentTabsEnhancer.jsx";
+import ProfileDiscoveryEnhancer from "./ProfileDiscoveryEnhancer.jsx";
+import ProviderBrandEnhancer from "./ProviderBrandEnhancer.jsx";
 import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
 import ShortSafetyEnhancer from "./ShortSafetyEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
@@ -36,6 +38,8 @@ export default function App() {
       {!isLiveV2 && <LiveHeartSyncEnhancer />}
       {!isLiveV2 && <LiveViewerRecoveryEnhancer />}
       {!isLiveV2 && <ProfileContentTabsEnhancer />}
+      {!isLiveV2 && <ProfileDiscoveryEnhancer />}
+      {!isLiveV2 && <ProviderBrandEnhancer />}
       {!isLiveV2 && <ShortNativeActionsEnhancer />}
       {!isLiveV2 && <ShortSafetyEnhancer />}
       <Routes>

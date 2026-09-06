@@ -41,22 +41,21 @@ export default function DroxionLivePushBridge() {
         });
         const payload = await response.json().catch(() => ({}));
 
-        if (!response.ok || payload?.ok !== true || Number(payload?.recipients || 0) <= 0) {
-          console.warn('LIVE push broadcast not delivered yet', payload?.error || response.status, {
-            recipients: Number(payload?.recipients || 0),
-            retryable: payload?.retryable !== false
+        if (!response.ok || payload?.ok !== true) {
+          console.warn('LIVE follower push not delivered yet', payload?.error || response.status, {
+            followers: Number(payload?.followers || 0),
+            recipients: Number(payload?.recipients || 0)
           });
           return;
         }
 
-        // Mark a session sent only after OneSignal confirms at least one
-        // subscribed recipient. This prevents a false 200/zero-recipient result
-        // from suppressing all retries for the rest of the LIVE.
         lastSentSession.current = sessionId;
-        console.log('LIVE push delivered', {
+        console.log('LIVE follower push processed', {
           sessionId,
-          recipients: Number(payload.recipients || 0),
-          messageId: payload?.messageId || null
+          followers: Number(payload?.followers || 0),
+          recipients: Number(payload?.recipients || 0),
+          deliveryAccepted: payload?.deliveryAccepted !== false,
+          messageIds: Array.isArray(payload?.messageIds) ? payload.messageIds : []
         });
       } catch (error) {
         console.warn('LIVE push bridge failed', error);

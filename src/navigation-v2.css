@@ -1,0 +1,55 @@
+/* Droxion navigation v2: full discovery rail on desktop, five tabs on tablets, four primary destinations on phones. */
+@media(min-width:1100px){
+  .lfNav{gap:4px!important;padding-top:18px!important}
+  .lfNav button{min-height:44px!important}
+}
+@media(min-width:700px) and (max-width:1099px){
+  .lfNav{grid-template-columns:repeat(5,minmax(0,1fr))!important;width:min(720px,calc(100% - 20px))!important}
+  .lfNav button[data-tab="wallet"],.lfNav button[data-tab="inbox"]{display:none!important}
+}
+@media(max-width:699px){
+  .lfNav{
+    left:0!important;
+    right:0!important;
+    bottom:0!important;
+    transform:none!important;
+    width:100%!important;
+    max-width:none!important;
+    min-height:67px!important;
+    border-radius:0!important;
+    margin:0!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:0!important;
+    padding:5px max(4px,env(safe-area-inset-right)) max(5px,env(safe-area-inset-bottom)) max(4px,env(safe-area-inset-left))!important;
+  }
+  .lfNav button[data-tab="following"],.lfNav button[data-tab="wallet"],.lfNav button[data-tab="inbox"]{display:none!important}
+  .lfNav button[data-tab="live"]{order:1}
+  .lfNav button[data-tab="feed"]{order:2}
+  .lfNav button[data-tab="explore"]{order:3}
+  .lfNav button[data-tab="profile"]{order:4}
+  .lfNav button{
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    min-height:54px!important;
+    padding:3px 1px!important;
+    gap:3px!important;
+    overflow:hidden!important;
+    font-size:9px!important;
+    line-height:1.05!important;
+  }
+  .lfNav button>span:last-child{
+    display:block!important;
+    width:100%!important;
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    text-align:center!important;
+  }
+  .lfNavIcon{width:32px!important;height:29px!important;flex:0 0 auto!important}
+}
+@media(max-width:360px){
+  .lfNav button{font-size:8px!important}
+  .lfNavIcon{width:29px!important;height:27px!important}
+}
