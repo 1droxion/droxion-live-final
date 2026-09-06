@@ -83,6 +83,42 @@ function sortStreams(streams) {
   });
 }
 
+function selectBalancedStreams(results, limit) {
+  const groups = results
+    .map(result => ({
+      provider: result.provider,
+      streams: sortStreams(result.streams || [])
+    }))
+    .filter(group => group.streams.length > 0);
+
+  if (!groups.length) return [];
+
+  const selected = [];
+  const selectedIds = new Set();
+  const baseQuota = Math.max(1, Math.floor(limit / groups.length));
+
+  for (const group of groups) {
+    for (const stream of group.streams.slice(0, baseQuota)) {
+      if (selectedIds.has(stream.id)) continue;
+      selected.push(stream);
+      selectedIds.add(stream.id);
+    }
+  }
+
+  if (selected.length < limit) {
+    const remaining = sortStreams(
+      groups.flatMap(group => group.streams).filter(stream => !selectedIds.has(stream.id))
+    );
+    for (const stream of remaining) {
+      if (selected.length >= limit) break;
+      selected.push(stream);
+      selectedIds.add(stream.id);
+    }
+  }
+
+  return sortStreams(selected).slice(0, limit);
+}
+
 async function loadYouTube(limit) {
   const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
   if (!apiKey) return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
@@ -338,10 +374,15 @@ export default async function handler(req, res) {
     loadKick(perProvider).catch(error => providerFailure('kick', error))
   ]);
 
-  const streams = sortStreams(results.flatMap(result => result.streams || [])).slice(0, limit);
+  const streams = selectBalancedStreams(results, limit);
+  const visibleCounts = streams.reduce((counts, stream) => {
+    counts[stream.provider] = (counts[stream.provider] || 0) + 1;
+    return counts;
+  }, {});
   const providers = Object.fromEntries(results.map(result => [result.provider, {
     enabled: Boolean(result.enabled),
-    available: (result.streams || []).length,
+    available: visibleCounts[result.provider] || 0,
+    fetched: (result.streams || []).length,
     reason: result.reason || '',
     error: result.error || ''
   }]));
