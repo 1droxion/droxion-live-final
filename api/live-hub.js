@@ -1,5 +1,5 @@
-const DEFAULT_LIMIT = 24;
-const MAX_LIMIT = 60;
+const DEFAULT_LIMIT = 90;
+const MAX_LIMIT = 150;
 const REQUEST_TIMEOUT_MS = 8000;
 const LIVE_HUB_CACHE_SECONDS = 1800;
 const LIVE_HUB_STALE_SECONDS = 7200;
@@ -85,10 +85,7 @@ function sortStreams(streams) {
 
 function selectBalancedStreams(results, limit) {
   const groups = results
-    .map(result => ({
-      provider: result.provider,
-      streams: sortStreams(result.streams || [])
-    }))
+    .map(result => ({ provider: result.provider, streams: sortStreams(result.streams || []) }))
     .filter(group => group.streams.length > 0);
 
   if (!groups.length) return [];
@@ -106,9 +103,7 @@ function selectBalancedStreams(results, limit) {
   }
 
   if (selected.length < limit) {
-    const remaining = sortStreams(
-      groups.flatMap(group => group.streams).filter(stream => !selectedIds.has(stream.id))
-    );
+    const remaining = sortStreams(groups.flatMap(group => group.streams).filter(stream => !selectedIds.has(stream.id)));
     for (const stream of remaining) {
       if (selected.length >= limit) break;
       selected.push(stream);
@@ -127,7 +122,6 @@ async function loadYouTube(limit) {
   search.searchParams.set('part', 'snippet');
   search.searchParams.set('type', 'video');
   search.searchParams.set('eventType', 'live');
-  search.searchParams.set('q', 'live|gaming|music|sports|news|irl|podcast|stream');
   search.searchParams.set('videoEmbeddable', 'true');
   search.searchParams.set('order', 'viewCount');
   search.searchParams.set('maxResults', String(Math.min(50, limit)));
@@ -189,10 +183,7 @@ async function getTwitchToken() {
   const data = await fetchJson(tokenUrl, { method: 'POST' });
   const token = text(data?.access_token);
   if (token) {
-    twitchTokenCache = {
-      token,
-      expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000
-    };
+    twitchTokenCache = { token, expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000 };
   }
   return token;
 }
@@ -208,17 +199,12 @@ async function loadTwitch(limit) {
   const url = new URL('https://api.twitch.tv/helix/streams');
   url.searchParams.set('first', String(Math.min(100, limit)));
   const data = await fetchJson(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Client-Id': clientId
-    }
+    headers: { Authorization: `Bearer ${token}`, 'Client-Id': clientId }
   });
 
   const streams = (Array.isArray(data?.data) ? data.data : []).map(item => {
     const login = text(item?.user_login);
-    const thumbnail = text(item?.thumbnail_url)
-      .replace('{width}', '1280')
-      .replace('{height}', '720');
+    const thumbnail = text(item?.thumbnail_url).replace('{width}', '1280').replace('{height}', '720');
     return {
       id: `twitch:${text(item?.id) || login}`,
       provider: 'twitch',
@@ -249,11 +235,7 @@ async function getKickToken() {
   const clientSecret = text(process.env.KICK_CLIENT_SECRET);
   if (!clientId || !clientSecret) return '';
 
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: clientId,
-    client_secret: clientSecret
-  });
+  const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
   const data = await fetchJson('https://id.kick.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -261,44 +243,23 @@ async function getKickToken() {
   });
   const token = text(data?.access_token);
   if (token) {
-    kickTokenCache = {
-      token,
-      expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000
-    };
+    kickTokenCache = { token, expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000 };
   }
   return token;
 }
 
 function kickSlug(item) {
-  return text(
-    item?.slug ||
-    item?.broadcaster?.slug ||
-    item?.broadcaster?.username ||
-    item?.broadcaster_user_name ||
-    item?.channel?.slug ||
-    item?.channel?.username
-  );
+  return text(item?.slug || item?.broadcaster?.slug || item?.broadcaster?.username || item?.broadcaster_user_name || item?.channel?.slug || item?.channel?.username);
 }
 
 function kickCreatorName(item, slug) {
-  return text(
-    item?.broadcaster?.username ||
-    item?.broadcaster_user_name ||
-    item?.channel?.username ||
-    item?.channel?.user?.username,
-    slug || 'Kick creator'
-  );
+  return text(item?.broadcaster?.username || item?.broadcaster_user_name || item?.channel?.username || item?.channel?.user?.username, slug || 'Kick creator');
 }
 
 function kickThumbnail(item) {
   const value = item?.thumbnail;
   if (typeof value === 'string') return text(value);
-  return text(
-    value?.url ||
-    item?.thumbnail_url ||
-    item?.channel?.livestream?.thumbnail?.url ||
-    item?.channel?.livestream?.thumbnail_url
-  );
+  return text(value?.url || item?.thumbnail_url || item?.channel?.livestream?.thumbnail?.url || item?.channel?.livestream?.thumbnail_url);
 }
 
 async function loadKick(limit) {
@@ -316,11 +277,8 @@ async function loadKick(limit) {
   };
 
   let data;
-  try {
-    data = await request('v2');
-  } catch {
-    data = await request('v1');
-  }
+  try { data = await request('v2'); }
+  catch { data = await request('v1'); }
 
   const rows = Array.isArray(data?.data) ? data.data : [];
   const streams = rows.map(item => {
@@ -350,13 +308,7 @@ async function loadKick(limit) {
 
 function providerFailure(provider, error) {
   console.error(`[live-hub] ${provider} request failed`, text(error?.message, 'Provider request failed'));
-  return {
-    provider,
-    enabled: true,
-    streams: [],
-    reason: 'provider_error',
-    error: 'Provider temporarily unavailable'
-  };
+  return { provider, enabled: true, streams: [], reason: 'provider_error', error: 'Provider temporarily unavailable' };
 }
 
 export default async function handler(req, res) {
@@ -366,7 +318,9 @@ export default async function handler(req, res) {
   }
 
   const limit = clampLimit(req.query?.limit);
-  const perProvider = Math.max(8, Math.ceil(limit / 2));
+  // Fetch a broad pool once on the server/CDN. The client ranks this shared pool
+  // for each viewer instead of spending provider quota per viewer.
+  const perProvider = Math.min(50, Math.max(16, Math.ceil(limit / 3) + 12));
 
   const results = await Promise.all([
     loadYouTube(perProvider).catch(error => providerFailure('youtube', error)),
@@ -387,13 +341,6 @@ export default async function handler(req, res) {
     error: result.error || ''
   }]));
 
-  res.setHeader(
-    'Cache-Control',
-    `public, s-maxage=${LIVE_HUB_CACHE_SECONDS}, stale-while-revalidate=${LIVE_HUB_STALE_SECONDS}`
-  );
-  return res.status(200).json({
-    streams,
-    providers,
-    generatedAt: new Date().toISOString()
-  });
+  res.setHeader('Cache-Control', `public, s-maxage=${LIVE_HUB_CACHE_SECONDS}, stale-while-revalidate=${LIVE_HUB_STALE_SECONDS}`);
+  return res.status(200).json({ streams, providers, generatedAt: new Date().toISOString() });
 }

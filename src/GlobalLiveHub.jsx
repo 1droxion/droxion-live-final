@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Globe2, MessageCircle, Radio, RefreshCw, Search, Users, X } from 'lucide-react';
+import { Globe2, MessageCircle, Radio, RefreshCw, Search, Users, X } from 'lucide-react';
+import { rankLiveStreams, recordLiveBehavior } from './recommendationEngine';
 import './global-live-hub.css';
 
-const PROVIDERS = [
+const EXTERNAL_PROVIDERS = [
   { id: 'all', label: 'All LIVE' },
   { id: 'youtube', label: 'YouTube' },
   { id: 'twitch', label: 'Twitch' },
-  { id: 'kick', label: 'Kick' },
-  { id: 'droxion', label: 'Droxion' }
+  { id: 'kick', label: 'Kick' }
 ];
 
 const CATEGORIES = ['All', 'Gaming', 'IRL', 'Music', 'Sports', 'Talk'];
 const REFRESH_MS = 120000;
+const LIVE_DISCOVERY_LIMIT = 120;
 
 function formatViewers(value) {
   const count = Number(value || 0);
@@ -134,7 +135,7 @@ function KickSourceChat({ stream }) {
         setMessages(incoming.slice(-250));
         if (incoming.length) setStatus('');
       } catch {
-        if (!messages.length) setStatus('Kick chat temporarily unavailable.');
+        setStatus(current => current || 'Kick chat temporarily unavailable.');
       }
       timerRef.current = window.setTimeout(poll, 2000);
     };
@@ -158,6 +159,18 @@ function SourceChat({ stream, parent }) {
 
 function ExternalLivePlayer({ stream, onClose }) {
   const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+
+  useEffect(() => {
+    if (!stream) return undefined;
+    recordLiveBehavior(stream, 'open');
+    const watchTimer = window.setTimeout(() => recordLiveBehavior(stream, 'watch'), 30000);
+    const longWatchTimer = window.setTimeout(() => recordLiveBehavior(stream, 'watchLong'), 120000);
+    return () => {
+      window.clearTimeout(watchTimer);
+      window.clearTimeout(longWatchTimer);
+    };
+  }, [stream]);
+
   let src = '';
   if (stream?.embedType === 'youtube' && stream.externalId) {
     src = `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&playsinline=1&rel=0`;
@@ -178,11 +191,11 @@ function ExternalLivePlayer({ stream, onClose }) {
         <div className="dxExternalLiveLayout">
           <div className="dxExternalVideoColumn">
             <div className="dxLivePlayerFrame">
-              {src ? <iframe src={src} title={`${stream?.creatorName || 'Creator'} LIVE`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /> : <div className="dxLivePlayerFallback">This LIVE opens on {stream?.providerLabel || 'the source platform'}.</div>}
+              {src ? <iframe src={src} title={`${stream?.creatorName || 'Creator'} LIVE`} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /> : <div className="dxLivePlayerFallback">This LIVE is temporarily unavailable inside Droxion.</div>}
             </div>
             <div className="dxLiveModalMeta">
               <div><Radio size={17} /><span>{stream?.title || 'LIVE now'}</span></div>
-              <div className="dxLiveModalActions"><span><Users size={16} /> {formatViewers(stream?.viewerCount)} watching</span><a href={stream?.watchUrl} target="_blank" rel="noreferrer">Open source <ExternalLink size={15} /></a></div>
+              <div className="dxLiveModalActions"><span><Users size={16} /> {formatViewers(stream?.viewerCount)} watching</span><span className="dxStayOnDroxion">Watching on Droxion</span></div>
             </div>
           </div>
           <aside className="dxSourceChatPanel">
@@ -206,10 +219,12 @@ export default function GlobalLiveHub({ query = '', nativeLive = null }) {
   const [selected, setSelected] = useState(null);
   const refreshTimerRef = useRef(null);
 
+  const providerOptions = useMemo(() => nativeLive ? [...EXTERNAL_PROVIDERS, { id: 'droxion', label: 'Droxion' }] : EXTERNAL_PROVIDERS, [nativeLive]);
+
   const loadStreams = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
     try {
-      const response = await fetch('/api/live-hub?limit=48', { headers: { Accept: 'application/json' } });
+      const response = await fetch(`/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}`, { headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
       const data = await response.json();
       setStreams(Array.isArray(data?.streams) ? data.streams : []);
@@ -233,27 +248,33 @@ export default function GlobalLiveHub({ query = '', nativeLive = null }) {
 
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
-    return streams.filter(stream => {
+    const matching = streams.filter(stream => {
       if (provider !== 'all' && stream.provider !== provider) return false;
       if (category !== 'All' && String(stream.category || '').toLowerCase() !== category.toLowerCase()) return false;
       if (!q) return true;
       const haystack = `${stream.creatorName || ''} ${stream.title || ''} ${stream.category || ''} ${stream.providerLabel || ''}`.toLowerCase();
       return haystack.includes(q);
     });
+    return rankLiveStreams(matching);
   }, [streams, query, provider, category]);
 
   const availableProviderCount = Object.values(providers).filter(value => value?.enabled && Number(value?.available || 0) > 0).length;
   const missingProviders = Object.entries(providers).filter(([, value]) => value?.reason === 'missing_credentials').map(([key]) => key);
 
+  function openStream(stream) {
+    recordLiveBehavior(stream, 'open');
+    setSelected(stream);
+  }
+
   return (
     <section className="dxGlobalLiveHub">
       <div className="dxGlobalHero">
-        <div><span className="dxGlobalEyebrow"><Globe2 size={15} /> LIVE across the internet</span><h1>One place for everything LIVE.</h1><p>Discover creators live right now across supported platforms without jumping between apps.</p></div>
+        <div><span className="dxGlobalEyebrow"><Globe2 size={15} /> LIVE across the internet</span><h1>Everything LIVE. One place.</h1><p>YouTube, Twitch and Kick LIVE streams ranked for you and watched inside Droxion.</p></div>
         <button type="button" className="dxGlobalRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Refreshing' : 'Refresh'}</span></button>
       </div>
 
       <div className="dxGlobalProviderRail" aria-label="LIVE sources">
-        {PROVIDERS.map(item => {
+        {providerOptions.map(item => {
           const external = item.id !== 'all' && item.id !== 'droxion';
           const enabled = external ? providers?.[item.id]?.enabled !== false : true;
           const active = provider === item.id;
@@ -266,9 +287,9 @@ export default function GlobalLiveHub({ query = '', nativeLive = null }) {
       {notice && <div className="dxGlobalNotice">{notice}</div>}
       {!notice && !loading && missingProviders.length > 0 && <div className="dxGlobalSetupNotice"><Search size={16} /><span>{missingProviders.map(item => item[0].toUpperCase() + item.slice(1)).join(', ')} discovery will turn on automatically after its server credentials are added.</span></div>}
 
-      {provider !== 'droxion' && <>{loading ? <div className="dxGlobalEmpty">Loading LIVE streams…</div> : filtered.length ? <div className="dxGlobalGrid">{filtered.map(stream => <button type="button" className="dxGlobalCard" key={stream.id} onClick={() => setSelected(stream)}><div className="dxGlobalThumb">{stream.thumbnailUrl ? <img src={stream.thumbnailUrl} alt="" loading="lazy" /> : <div className="dxGlobalThumbFallback"><Radio size={28} /></div>}<span className="dxGlobalLivePill">LIVE</span><span className={`dxProviderBadge ${providerClass(stream.provider)}`}>{stream.providerLabel}</span><span className="dxGlobalViewers"><Users size={13} /> {formatViewers(stream.viewerCount)}</span></div><div className="dxGlobalCardBody"><strong>{stream.creatorName}</strong><span>{stream.title}</span><small>{stream.category || 'LIVE'}</small></div></button>)}</div> : <div className="dxGlobalEmpty">{availableProviderCount === 0 ? 'Connect the first LIVE source to populate Droxion.' : 'No matching LIVE streams right now.'}</div>}</>}
+      {provider !== 'droxion' && <>{loading ? <div className="dxGlobalEmpty">Loading LIVE streams…</div> : filtered.length ? <div className="dxGlobalGrid">{filtered.map(stream => <button type="button" className="dxGlobalCard" key={stream.id} onClick={() => openStream(stream)}><div className="dxGlobalThumb">{stream.thumbnailUrl ? <img src={stream.thumbnailUrl} alt="" loading="lazy" /> : <div className="dxGlobalThumbFallback"><Radio size={28} /></div>}<span className="dxGlobalLivePill">LIVE</span><span className={`dxProviderBadge ${providerClass(stream.provider)}`}>{stream.providerLabel}</span><span className="dxGlobalViewers"><Users size={13} /> {formatViewers(stream.viewerCount)}</span></div><div className="dxGlobalCardBody"><strong>{stream.creatorName}</strong><span>{stream.title}</span><small>{stream.category || 'LIVE'}</small></div></button>)}</div> : <div className="dxGlobalEmpty">{availableProviderCount === 0 ? 'LIVE discovery is temporarily unavailable.' : 'No matching LIVE streams right now.'}</div>}</>}
 
-      {(provider === 'all' || provider === 'droxion') && nativeLive && <div className="dxNativeLiveSection"><div className="dxNativeLiveHeading"><div><span className="dxProviderBadge droxion">Droxion</span><strong>Native Droxion LIVE</strong></div><p>Existing Droxion LIVE stays available while global discovery grows.</p></div>{nativeLive}</div>}
+      {(provider === 'all' || provider === 'droxion') && nativeLive && <div className="dxNativeLiveSection"><div className="dxNativeLiveHeading"><div><span className="dxProviderBadge droxion">Droxion</span><strong>Native Droxion LIVE</strong></div><p>Droxion creator LIVE.</p></div>{nativeLive}</div>}
       {selected && <ExternalLivePlayer stream={selected} onClose={() => setSelected(null)} />}
     </section>
   );

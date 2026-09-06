@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
+import { ArrowLeft, Bell, Home, Inbox, Search, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
-import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
 import ShortFeed from './ShortFeed';
 import GlobalLiveHub from './GlobalLiveHub';
@@ -23,11 +22,14 @@ import './product-shell.css';
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
 const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 
+// Keep the proven native LIVE stack intact behind the public product shell.
+// Turn this back on when Droxion has enough native creator activity to make the
+// public LIVE entry useful again; do not delete the underlying host/viewer code.
+const PUBLIC_NATIVE_LIVE_ENABLED = false;
+
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'feed', label: 'Feed', icon: Play },
-  { id: 'go-live', label: 'LIVE', icon: Plus },
-  { id: 'rankings', label: 'Ranking', icon: Trophy },
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
@@ -124,6 +126,7 @@ export default function LiveFirstApp() {
   }, []);
 
   function openGoLiveInsideHome() {
+    if (!PUBLIC_NATIVE_LIVE_ENABLED) return;
     setTab('live');
     setImmersiveLive(false);
     setSearchOpen(false);
@@ -133,7 +136,6 @@ export default function LiveFirstApp() {
   }
 
   function chooseTab(nextTab) {
-    if (nextTab === 'go-live') { openGoLiveInsideHome(); return; }
     setHostStudioOpen(false);
     setImmersiveLive(false);
     setSearchOpen(false);
@@ -154,9 +156,8 @@ export default function LiveFirstApp() {
     onImmersiveChange={setImmersiveLive}
   />;
 
-  let content = <GlobalLiveHub query={searchQuery} nativeLive={nativeLiveBrowser} />;
-  if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
-  if (tab === 'rankings') content = <Rankings />;
+  let content = <GlobalLiveHub query={searchQuery} nativeLive={PUBLIC_NATIVE_LIVE_ENABLED ? nativeLiveBrowser : null} />;
+  if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={PUBLIC_NATIVE_LIVE_ENABLED ? watchCreatorLive : undefined} onStartLive={PUBLIC_NATIVE_LIVE_ENABLED ? startLiveFromFeed : undefined} nativeLiveEnabled={PUBLIC_NATIVE_LIVE_ENABLED} />;
   if (tab === 'profile') content = <CreatorProfileHome currentUserId={user?.id} coins={coins} onOpenWallet={() => setWalletOpen(true)} />;
 
   return (
@@ -179,7 +180,7 @@ export default function LiveFirstApp() {
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{chatOpen ? <DroxionChat /> : content}</div>
       {!immersiveLive && !chatOpen && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" key={item.id} onClick={() => chooseTab(item.id)} className={active ? 'active' : ''}><span className="lfNavIcon"><Icon size={20} /></span><span>{item.label}</span></button>; })}</nav>}
 
-      {hostStudioOpen && <ProductionLiveHost creatorId={user?.id} onClose={() => { setHostStudioOpen(false); invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }} />}
+      {PUBLIC_NATIVE_LIVE_ENABLED && hostStudioOpen && <ProductionLiveHost creatorId={user?.id} onClose={() => { setHostStudioOpen(false); invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }} />}
       {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={knownBalance => refreshWallet(user, knownBalance)} />}
       {user && <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} onUnreadChange={setUnreadNotifications} />}
     </main>
