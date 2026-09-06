@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, Home, Inbox, Search, User, Play } from 'lucide-react';
+import { ArrowLeft, Bell, Coins, Home, Inbox, Search, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
 import DroxionChat from './DroxionChat';
@@ -30,6 +30,8 @@ const PUBLIC_NATIVE_LIVE_ENABLED = false;
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'feed', label: 'Feed', icon: Play },
+  { id: 'wallet', label: 'Wallet', icon: Coins },
+  { id: 'inbox', label: 'Inbox', icon: Inbox },
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
@@ -140,6 +142,17 @@ export default function LiveFirstApp() {
     setImmersiveLive(false);
     setSearchOpen(false);
     setNotificationsOpen(false);
+
+    if (nextTab === 'wallet') {
+      setChatOpen(false);
+      setWalletOpen(true);
+      return;
+    }
+    if (nextTab === 'inbox') {
+      setChatOpen(true);
+      return;
+    }
+
     setChatOpen(false);
     setTab(nextTab);
   }
@@ -156,7 +169,14 @@ export default function LiveFirstApp() {
     onImmersiveChange={setImmersiveLive}
   />;
 
-  let content = <GlobalLiveHub query={searchQuery} nativeLive={PUBLIC_NATIVE_LIVE_ENABLED ? nativeLiveBrowser : null} />;
+  let content = <GlobalLiveHub
+    query={searchQuery}
+    nativeLive={PUBLIC_NATIVE_LIVE_ENABLED ? nativeLiveBrowser : null}
+    currentUserId={user?.id}
+    coins={coins}
+    onCoinsChanged={value => setCoins(Number(value || 0))}
+    onOpenWallet={() => setWalletOpen(true)}
+  />;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={PUBLIC_NATIVE_LIVE_ENABLED ? watchCreatorLive : undefined} onStartLive={PUBLIC_NATIVE_LIVE_ENABLED ? startLiveFromFeed : undefined} nativeLiveEnabled={PUBLIC_NATIVE_LIVE_ENABLED} />;
   if (tab === 'profile') content = <CreatorProfileHome currentUserId={user?.id} coins={coins} onOpenWallet={() => setWalletOpen(true)} />;
 
