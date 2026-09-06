@@ -1,8 +1,8 @@
 const DEFAULT_LIMIT = 90;
 const MAX_LIMIT = 150;
 const REQUEST_TIMEOUT_MS = 8000;
-const LIVE_HUB_CACHE_SECONDS = 1800;
-const LIVE_HUB_STALE_SECONDS = 7200;
+const LIVE_HUB_CACHE_SECONDS = 3600;
+const LIVE_HUB_STALE_SECONDS = 21600;
 
 const YOUTUBE_CATEGORY_BY_ID = {
   '1': 'Entertainment',
@@ -23,6 +23,7 @@ const YOUTUBE_CATEGORY_BY_ID = {
 
 let twitchTokenCache = { token: '', expiresAt: 0 };
 let kickTokenCache = { token: '', expiresAt: 0 };
+let youtubeRequest = null;
 
 function clampLimit(value) {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -123,9 +124,6 @@ function youtubeSearchUrl(apiKey, limit, { fallback = false } = {}) {
   search.searchParams.set('key', apiKey);
 
   if (fallback) {
-    // A second, quota-bounded path is only used when YouTube returns a valid
-    // but empty response for the stricter embeddable + view-count query. We
-    // validate embeddability from videos.list before exposing a result.
     search.searchParams.set('order', 'relevance');
     search.searchParams.set('q', 'live');
   } else {
@@ -135,18 +133,72 @@ function youtubeSearchUrl(apiKey, limit, { fallback = false } = {}) {
   return search;
 }
 
-async function loadYouTube(limit) {
+function normalizeYouTubeStream(videoId, snippet = {}, live = {}, status = {}) {
+  if (!videoId || status?.embeddable === false || live?.actualEndTime) return null;
+  return {
+    id: `youtube:${videoId}`,
+    provider: 'youtube',
+    providerLabel: 'YouTube',
+    externalId: videoId,
+    channelId: text(snippet?.channelId),
+    channelSlug: '',
+    creatorName: text(snippet?.channelTitle, 'YouTube creator'),
+    title: text(snippet?.title, 'LIVE on YouTube'),
+    category: normalizeCategory(snippet?.categoryId || 'Live'),
+    language: text(snippet?.defaultAudioLanguage || snippet?.defaultLanguage),
+    viewerCount: number(live?.concurrentViewers),
+    startedAt: text(live?.actualStartTime),
+    thumbnailUrl: text(snippet?.thumbnails?.maxres?.url || snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url),
+    watchUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    embedType: 'youtube',
+    isMature: false
+  };
+}
+
+async function loadYouTubeLowQuota(apiKey, limit) {
+  const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+  url.searchParams.set('part', 'snippet,liveStreamingDetails,status');
+  url.searchParams.set('chart', 'mostPopular');
+  url.searchParams.set('maxResults', String(Math.min(50, limit)));
+  url.searchParams.set('key', apiKey);
+  const data = await fetchJson(url);
+  const streams = (Array.isArray(data?.items) ? data.items : [])
+    .filter(item => item?.liveStreamingDetails?.actualStartTime && !item?.liveStreamingDetails?.actualEndTime)
+    .map(item => normalizeYouTubeStream(text(item?.id), item?.snippet || {}, item?.liveStreamingDetails || {}, item?.status || {}))
+    .filter(Boolean);
+  return streams;
+}
+
+async function loadYouTubeFresh(limit) {
   const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
   if (!apiKey) return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
 
-  let searchData = await fetchJson(youtubeSearchUrl(apiKey, limit));
-  let items = Array.isArray(searchData?.items) ? searchData.items : [];
+  let searchData;
+  let items = [];
   let usedFallback = false;
+  let lowQuotaFallback = false;
 
-  if (!items.length) {
-    searchData = await fetchJson(youtubeSearchUrl(apiKey, limit, { fallback: true }));
+  try {
+    searchData = await fetchJson(youtubeSearchUrl(apiKey, limit));
     items = Array.isArray(searchData?.items) ? searchData.items : [];
-    usedFallback = true;
+
+    if (!items.length) {
+      searchData = await fetchJson(youtubeSearchUrl(apiKey, limit, { fallback: true }));
+      items = Array.isArray(searchData?.items) ? searchData.items : [];
+      usedFallback = true;
+    }
+  } catch (error) {
+    if (!/HTTP 429/.test(String(error?.message || ''))) throw error;
+    const streams = await loadYouTubeLowQuota(apiKey, limit);
+    return {
+      provider: 'youtube',
+      enabled: true,
+      streams,
+      reason: streams.length ? '' : 'provider_error',
+      error: streams.length ? '' : 'YouTube is rate-limiting discovery; retrying from cache.',
+      fallbackUsed: true,
+      lowQuotaFallback: true
+    };
   }
 
   const ids = [...new Set(items.map(item => text(item?.id?.videoId)).filter(Boolean))];
@@ -167,36 +219,25 @@ async function loadYouTube(limit) {
     const snippet = detail?.snippet || item?.snippet || {};
     const live = detail?.liveStreamingDetails || {};
     const status = detail?.status || {};
-    if (detail?.id && status?.embeddable === false) return null;
-    if (live?.actualEndTime) return null;
-
-    return {
-      id: `youtube:${videoId}`,
-      provider: 'youtube',
-      providerLabel: 'YouTube',
-      externalId: videoId,
-      channelId: text(snippet?.channelId),
-      channelSlug: '',
-      creatorName: text(snippet?.channelTitle, 'YouTube creator'),
-      title: text(snippet?.title, 'LIVE on YouTube'),
-      category: normalizeCategory(snippet?.categoryId || 'Live'),
-      language: text(snippet?.defaultAudioLanguage || snippet?.defaultLanguage),
-      viewerCount: number(live?.concurrentViewers),
-      startedAt: text(live?.actualStartTime),
-      thumbnailUrl: text(snippet?.thumbnails?.maxres?.url || snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url),
-      watchUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
-      embedType: 'youtube',
-      isMature: false
-    };
-  }).filter(Boolean).filter(stream => stream.externalId);
+    return normalizeYouTubeStream(videoId, snippet, live, status);
+  }).filter(Boolean);
 
   return {
     provider: 'youtube',
     enabled: true,
     streams,
     reason: streams.length ? '' : 'empty_result',
-    fallbackUsed: usedFallback
+    fallbackUsed: usedFallback,
+    lowQuotaFallback
   };
+}
+
+async function loadYouTube(limit) {
+  if (youtubeRequest) return youtubeRequest;
+  youtubeRequest = loadYouTubeFresh(limit).finally(() => {
+    youtubeRequest = null;
+  });
+  return youtubeRequest;
 }
 
 async function getTwitchToken() {
@@ -351,8 +392,6 @@ export default async function handler(req, res) {
   }
 
   const limit = clampLimit(req.query?.limit);
-  // Fetch a broad pool once on the server/CDN. The client ranks this shared pool
-  // for each viewer instead of spending provider quota per viewer.
   const perProvider = Math.min(50, Math.max(16, Math.ceil(limit / 3) + 12));
 
   const results = await Promise.all([
@@ -372,7 +411,8 @@ export default async function handler(req, res) {
     fetched: (result.streams || []).length,
     reason: result.reason || '',
     error: result.error || '',
-    fallbackUsed: Boolean(result.fallbackUsed)
+    fallbackUsed: Boolean(result.fallbackUsed),
+    lowQuotaFallback: Boolean(result.lowQuotaFallback)
   }]));
 
   res.setHeader('Cache-Control', `public, s-maxage=${LIVE_HUB_CACHE_SECONDS}, stale-while-revalidate=${LIVE_HUB_STALE_SECONDS}`);
