@@ -114,27 +114,47 @@ function selectBalancedStreams(results, limit) {
   return sortStreams(selected).slice(0, limit);
 }
 
-async function loadYouTube(limit) {
-  const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
-  if (!apiKey) return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
-
+function youtubeSearchUrl(apiKey, limit, { fallback = false } = {}) {
   const search = new URL('https://www.googleapis.com/youtube/v3/search');
   search.searchParams.set('part', 'snippet');
   search.searchParams.set('type', 'video');
   search.searchParams.set('eventType', 'live');
-  search.searchParams.set('videoEmbeddable', 'true');
-  search.searchParams.set('order', 'viewCount');
   search.searchParams.set('maxResults', String(Math.min(50, limit)));
   search.searchParams.set('key', apiKey);
 
-  const searchData = await fetchJson(search);
-  const items = Array.isArray(searchData?.items) ? searchData.items : [];
-  const ids = items.map(item => text(item?.id?.videoId)).filter(Boolean);
+  if (fallback) {
+    // A second, quota-bounded path is only used when YouTube returns a valid
+    // but empty response for the stricter embeddable + view-count query. We
+    // validate embeddability from videos.list before exposing a result.
+    search.searchParams.set('order', 'relevance');
+    search.searchParams.set('q', 'live');
+  } else {
+    search.searchParams.set('videoEmbeddable', 'true');
+    search.searchParams.set('order', 'viewCount');
+  }
+  return search;
+}
 
+async function loadYouTube(limit) {
+  const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
+  if (!apiKey) return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
+
+  let searchData = await fetchJson(youtubeSearchUrl(apiKey, limit));
+  let items = Array.isArray(searchData?.items) ? searchData.items : [];
+  let usedFallback = false;
+
+  if (!items.length) {
+    searchData = await fetchJson(youtubeSearchUrl(apiKey, limit, { fallback: true }));
+    items = Array.isArray(searchData?.items) ? searchData.items : [];
+    usedFallback = true;
+  }
+
+  const ids = [...new Set(items.map(item => text(item?.id?.videoId)).filter(Boolean))];
   let videoDetails = new Map();
+
   if (ids.length) {
     const details = new URL('https://www.googleapis.com/youtube/v3/videos');
-    details.searchParams.set('part', 'snippet,liveStreamingDetails,statistics');
+    details.searchParams.set('part', 'snippet,liveStreamingDetails,statistics,status');
     details.searchParams.set('id', ids.join(','));
     details.searchParams.set('key', apiKey);
     const detailsData = await fetchJson(details);
@@ -146,6 +166,10 @@ async function loadYouTube(limit) {
     const detail = videoDetails.get(videoId) || {};
     const snippet = detail?.snippet || item?.snippet || {};
     const live = detail?.liveStreamingDetails || {};
+    const status = detail?.status || {};
+    if (detail?.id && status?.embeddable === false) return null;
+    if (live?.actualEndTime) return null;
+
     return {
       id: `youtube:${videoId}`,
       provider: 'youtube',
@@ -156,6 +180,7 @@ async function loadYouTube(limit) {
       creatorName: text(snippet?.channelTitle, 'YouTube creator'),
       title: text(snippet?.title, 'LIVE on YouTube'),
       category: normalizeCategory(snippet?.categoryId || 'Live'),
+      language: text(snippet?.defaultAudioLanguage || snippet?.defaultLanguage),
       viewerCount: number(live?.concurrentViewers),
       startedAt: text(live?.actualStartTime),
       thumbnailUrl: text(snippet?.thumbnails?.maxres?.url || snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url),
@@ -163,9 +188,15 @@ async function loadYouTube(limit) {
       embedType: 'youtube',
       isMature: false
     };
-  }).filter(stream => stream.externalId);
+  }).filter(Boolean).filter(stream => stream.externalId);
 
-  return { provider: 'youtube', enabled: true, streams, reason: '' };
+  return {
+    provider: 'youtube',
+    enabled: true,
+    streams,
+    reason: streams.length ? '' : 'empty_result',
+    fallbackUsed: usedFallback
+  };
 }
 
 async function getTwitchToken() {
@@ -215,6 +246,7 @@ async function loadTwitch(limit) {
       creatorName: text(item?.user_name, login || 'Twitch creator'),
       title: text(item?.title, 'LIVE on Twitch'),
       category: normalizeCategory(item?.game_name || 'Gaming'),
+      language: text(item?.language),
       viewerCount: number(item?.viewer_count),
       startedAt: text(item?.started_at),
       thumbnailUrl: thumbnail,
@@ -224,7 +256,7 @@ async function loadTwitch(limit) {
     };
   }).filter(stream => stream.channelSlug);
 
-  return { provider: 'twitch', enabled: true, streams, reason: '' };
+  return { provider: 'twitch', enabled: true, streams, reason: streams.length ? '' : 'empty_result' };
 }
 
 async function getKickToken() {
@@ -294,6 +326,7 @@ async function loadKick(limit) {
       creatorName: kickCreatorName(item, slug),
       title: text(item?.stream_title || item?.title, 'LIVE on Kick'),
       category: normalizeCategory(category?.name || item?.category_name || 'Live'),
+      language: text(item?.language || item?.language_code || item?.channel?.language),
       viewerCount: number(item?.viewer_count || item?.viewers),
       startedAt: text(item?.started_at || item?.created_at),
       thumbnailUrl: kickThumbnail(item),
@@ -303,7 +336,7 @@ async function loadKick(limit) {
     };
   }).filter(stream => stream.channelSlug);
 
-  return { provider: 'kick', enabled: true, streams, reason: '' };
+  return { provider: 'kick', enabled: true, streams, reason: streams.length ? '' : 'empty_result' };
 }
 
 function providerFailure(provider, error) {
@@ -338,7 +371,8 @@ export default async function handler(req, res) {
     available: visibleCounts[result.provider] || 0,
     fetched: (result.streams || []).length,
     reason: result.reason || '',
-    error: result.error || ''
+    error: result.error || '',
+    fallbackUsed: Boolean(result.fallbackUsed)
   }]));
 
   res.setHeader('Cache-Control', `public, s-maxage=${LIVE_HUB_CACHE_SECONDS}, stale-while-revalidate=${LIVE_HUB_STALE_SECONDS}`);
