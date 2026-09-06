@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { readKickSourceMessages, saveKickSourceMessage } from '../../server/external-live-cache.js';
 
 const KICK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq/+l1WnlRrGSolDMA+A8
@@ -11,23 +12,17 @@ twIDAQAB
 -----END PUBLIC KEY-----`;
 
 const recentMessageIds = new Map();
-const channelMessages = new Map();
-const MAX_MESSAGES_PER_CHANNEL = 250;
 const MESSAGE_TTL_MS = 10 * 60 * 1000;
 
 function text(value, fallback = '') {
-  return typeof value === 'string' ? value.trim() : fallback;
+  if (value === null || value === undefined) return fallback;
+  return String(value).trim();
 }
 
 function cleanup() {
   const cutoff = Date.now() - MESSAGE_TTL_MS;
   for (const [id, createdAt] of recentMessageIds.entries()) {
     if (createdAt < cutoff) recentMessageIds.delete(id);
-  }
-  for (const [channelId, rows] of channelMessages.entries()) {
-    const fresh = rows.filter(row => Number(row.receivedAt || 0) >= cutoff);
-    if (fresh.length) channelMessages.set(channelId, fresh.slice(-MAX_MESSAGES_PER_CHANNEL));
-    else channelMessages.delete(channelId);
   }
 }
 
@@ -61,14 +56,13 @@ function normalizeChat(payload, eventMessageId) {
     provider: 'kick',
     broadcasterUserId: Number(payload?.broadcaster?.user_id || 0),
     broadcasterSlug: text(payload?.broadcaster?.channel_slug),
-    authorId: String(payload?.sender?.user_id || ''),
+    authorId: text(payload?.sender?.user_id),
     authorName: text(payload?.sender?.username, 'Kick user'),
     avatarUrl: text(payload?.sender?.profile_picture),
     message: text(payload?.content),
     publishedAt: text(payload?.created_at, new Date().toISOString()),
     isVerified: Boolean(payload?.sender?.is_verified),
     badges: Array.isArray(payload?.sender?.identity?.badges) ? payload.sender.identity.badges : [],
-    receivedAt: Date.now(),
   };
 }
 
@@ -79,14 +73,20 @@ export default async function handler(req, res) {
     if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
       return res.status(400).json({ error: 'Invalid broadcaster user ID' });
     }
-    cleanup();
-    const rows = channelMessages.get(String(broadcasterUserId)) || [];
-    return res.status(200).json({
-      provider: 'kick',
-      available: true,
-      messages: rows.map(({ receivedAt, ...row }) => row),
-      pollingIntervalMillis: 2000,
-    });
+    try {
+      const after = text(req.query?.after);
+      const rows = await readKickSourceMessages(broadcasterUserId, { after, limit: 120 });
+      return res.status(200).json({
+        provider: 'kick',
+        available: true,
+        messages: rows,
+        nextAfter: rows.length ? rows[rows.length - 1].publishedAt : after,
+        pollingIntervalMillis: 5000,
+      });
+    } catch (error) {
+      console.error('[kick-chat] read failed', text(error?.message, 'read_failed'));
+      return res.status(502).json({ provider: 'kick', available: false, messages: [], pollingIntervalMillis: 10000 });
+    }
   }
 
   if (req.method !== 'POST') {
@@ -117,10 +117,12 @@ export default async function handler(req, res) {
   const row = normalizeChat(payload, messageId);
   if (!row.broadcasterUserId || !row.id || !row.message) return res.status(200).json({ ok: true, ignored: true });
 
-  const key = String(row.broadcasterUserId);
-  const rows = channelMessages.get(key) || [];
-  if (!rows.some(item => item.id === row.id)) rows.push(row);
-  channelMessages.set(key, rows.slice(-MAX_MESSAGES_PER_CHANNEL));
+  try {
+    await saveKickSourceMessage(row);
+  } catch (error) {
+    console.error('[kick-chat] persist failed', text(error?.message, 'persist_failed'));
+    return res.status(502).json({ ok: false, error: 'Could not persist Kick chat message' });
+  }
 
   return res.status(200).json({ ok: true });
 }

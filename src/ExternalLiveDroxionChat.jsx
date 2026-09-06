@@ -3,9 +3,9 @@ import { Coins, Gift, MessageCircle, Send, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './external-live-droxion-chat.css';
 
-const DROXION_POLL_MS = 2200;
-const SOURCE_LIMIT = 180;
-const SOURCE_BATCH_MS = 80;
+const DROXION_POLL_MS = 6000;
+const SOURCE_LIMIT = 140;
+const SOURCE_BATCH_MS = 400;
 const CHAT_BOTTOM_THRESHOLD = 84;
 
 function streamKey(stream) {
@@ -18,6 +18,19 @@ function dedupe(rows, keyOf = row => String(row.id)) {
   const map = new Map();
   (rows || []).forEach(row => map.set(keyOf(row), row));
   return Array.from(map.values()).slice(-200);
+}
+
+function mergeIfChanged(current, incoming, keyOf, limit) {
+  if (!incoming?.length) return current;
+  const known = new Set(current.map(keyOf));
+  const fresh = incoming.filter(row => {
+    const key = keyOf(row);
+    if (!key || known.has(key)) return false;
+    known.add(key);
+    return true;
+  });
+  if (!fresh.length) return current;
+  return [...current, ...fresh].slice(-limit);
 }
 
 function toMillis(value) {
@@ -92,13 +105,7 @@ function sourceChatFrameUrl(stream) {
   return '';
 }
 
-export default function ExternalLiveDroxionChat({
-  stream,
-  currentUserId,
-  coins = 0,
-  onCoinsChanged,
-  onOpenWallet
-}) {
+export default function ExternalLiveDroxionChat({ stream, currentUserId, coins = 0, onCoinsChanged, onOpenWallet }) {
   const [messages, setMessages] = useState([]);
   const [sourceMessages, setSourceMessages] = useState([]);
   const [sourceStatus, setSourceStatus] = useState('Connecting source chat…');
@@ -119,22 +126,29 @@ export default function ExternalLiveDroxionChat({
   const chatStreamRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const twitchSequenceRef = useRef(0);
+  const loadingMessagesRef = useRef(false);
   const key = useMemo(() => streamKey(stream), [stream]);
 
   const loadMessages = useCallback(async () => {
-    if (!key) return;
-    const { data, error } = await supabase.rpc('droxion_external_live_messages', {
-      p_stream_key: key,
-      p_after_id: lastIdRef.current
-    });
-    if (error) return;
-    const rows = Array.isArray(data) ? data : [];
-    if (!rows.length) return;
-    lastIdRef.current = Math.max(lastIdRef.current, ...rows.map(row => Number(row.id || 0)));
-    setMessages(current => dedupe([...current, ...rows]));
+    if (!key || loadingMessagesRef.current || document.visibilityState === 'hidden') return;
+    loadingMessagesRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc('droxion_external_live_messages', {
+        p_stream_key: key,
+        p_after_id: lastIdRef.current
+      });
+      if (error) return;
+      const rows = Array.isArray(data) ? data : [];
+      if (!rows.length) return;
+      lastIdRef.current = Math.max(lastIdRef.current, ...rows.map(row => Number(row.id || 0)));
+      setMessages(current => mergeIfChanged(current, rows, row => String(row.id), 180));
+    } finally {
+      loadingMessagesRef.current = false;
+    }
   }, [key]);
 
   useEffect(() => {
+    let stopped = false;
     setMessages([]);
     setSourceMessages([]);
     setSourceStatus('Connecting source chat…');
@@ -144,9 +158,21 @@ export default function ExternalLiveDroxionChat({
     setSourceComposerOpen(false);
     stickToBottomRef.current = true;
     lastIdRef.current = 0;
-    loadMessages();
-    pollRef.current = window.setInterval(loadMessages, DROXION_POLL_MS);
-    return () => window.clearInterval(pollRef.current);
+    loadingMessagesRef.current = false;
+
+    const poll = async () => {
+      if (stopped) return;
+      await loadMessages();
+      if (!stopped) pollRef.current = window.setTimeout(poll, document.visibilityState === 'hidden' ? 15000 : DROXION_POLL_MS);
+    };
+    poll();
+    const wake = () => { if (document.visibilityState === 'visible') loadMessages(); };
+    document.addEventListener('visibilitychange', wake);
+    return () => {
+      stopped = true;
+      if (pollRef.current) window.clearTimeout(pollRef.current);
+      document.removeEventListener('visibilitychange', wake);
+    };
   }, [key, loadMessages]);
 
   useEffect(() => {
@@ -174,7 +200,7 @@ export default function ExternalLiveDroxionChat({
       if (stopped) return;
       const incoming = sourceBatchRef.current.splice(0);
       if (!incoming.length) return;
-      setSourceMessages(current => dedupe([...current, ...incoming], row => `${row.provider}:${row.id}`).slice(-SOURCE_LIMIT));
+      setSourceMessages(current => mergeIfChanged(current, incoming, row => `${row.provider}:${row.id}`, SOURCE_LIMIT));
       setSourceStatus('');
     };
 
@@ -189,6 +215,10 @@ export default function ExternalLiveDroxionChat({
       let liveChatId = '';
       const poll = async () => {
         if (stopped) return;
+        if (document.visibilityState === 'hidden') {
+          sourceTimerRef.current = window.setTimeout(poll, 15000);
+          return;
+        }
         try {
           const params = new URLSearchParams({ provider: 'youtube', videoId: stream.externalId });
           if (liveChatId) params.set('liveChatId', liveChatId);
@@ -200,32 +230,45 @@ export default function ExternalLiveDroxionChat({
           pageToken = data?.nextPageToken || pageToken;
           addSourceRows((data?.messages || []).map(item => ({ ...item, source: 'source', provider: 'youtube', publishedAt: toMillis(item.publishedAt) })));
           if (data?.available === false) setSourceStatus('YouTube chat is unavailable for this LIVE.');
-          const delay = Math.max(3000, Math.min(15000, Number(data?.pollingIntervalMillis || 5000)));
+          const delay = Math.max(4000, Math.min(15000, Number(data?.pollingIntervalMillis || 6000)));
           sourceTimerRef.current = window.setTimeout(poll, delay);
         } catch {
           setSourceStatus('YouTube chat temporarily unavailable.');
-          sourceTimerRef.current = window.setTimeout(poll, 10000);
+          sourceTimerRef.current = window.setTimeout(poll, 12000);
         }
       };
       poll();
     } else if (stream?.provider === 'kick' && Number(stream?.channelId || 0) > 0) {
       const broadcasterUserId = Number(stream.channelId);
+      let after = '';
       fetch('/api/kick/subscribe-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ broadcasterUserId })
-      }).catch(() => {});
+      }).then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.ok === false) setSourceStatus('Kick chat connection is unavailable for this LIVE.');
+      }).catch(() => setSourceStatus('Kick chat connection is unavailable for this LIVE.'));
+
       const poll = async () => {
         if (stopped) return;
+        if (document.visibilityState === 'hidden') {
+          sourceTimerRef.current = window.setTimeout(poll, 15000);
+          return;
+        }
         try {
-          const response = await fetch(`/api/kick/webhook?broadcasterUserId=${encodeURIComponent(broadcasterUserId)}`, { headers: { Accept: 'application/json' } });
+          const params = new URLSearchParams({ broadcasterUserId: String(broadcasterUserId) });
+          if (after) params.set('after', after);
+          const response = await fetch(`/api/kick/webhook?${params.toString()}`, { headers: { Accept: 'application/json' } });
           const data = await response.json();
           if (!response.ok) throw new Error('Source chat unavailable');
           addSourceRows((data?.messages || []).map(item => ({ ...item, source: 'source', provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
-          sourceTimerRef.current = window.setTimeout(poll, 2000);
+          after = data?.nextAfter || after;
+          const delay = Math.max(4500, Math.min(15000, Number(data?.pollingIntervalMillis || 5000)));
+          sourceTimerRef.current = window.setTimeout(poll, delay);
         } catch {
           setSourceStatus('Kick chat temporarily unavailable.');
-          sourceTimerRef.current = window.setTimeout(poll, 7000);
+          sourceTimerRef.current = window.setTimeout(poll, 12000);
         }
       };
       poll();
@@ -243,6 +286,7 @@ export default function ExternalLiveDroxionChat({
           setSourceStatus('Waiting for Twitch chat…');
         };
         socket.onmessage = event => {
+          if (document.visibilityState === 'hidden') return;
           String(event.data || '').split(/\r?\n/).filter(Boolean).forEach(line => {
             if (line.startsWith('PING')) {
               try { socket.send(line.replace('PING', 'PONG')); } catch {}
@@ -287,7 +331,7 @@ export default function ExternalLiveDroxionChat({
       authorName: row.display_name || row.username || 'Droxion user', username: row.username || '', avatarUrl: row.avatar_url || '',
       message: row.body || '', giftName: row.gift_name || '', giftEmoji: row.emoji || '🎁', costCoins: Number(row.cost_coins || 0)
     }));
-    return [...sourceRows, ...droxionRows].sort((a, b) => a.timestamp - b.timestamp).slice(-220);
+    return [...sourceRows, ...droxionRows].sort((a, b) => a.timestamp - b.timestamp).slice(-180);
   }, [sourceMessages, messages]);
 
   useEffect(() => {
@@ -335,7 +379,6 @@ export default function ExternalLiveDroxionChat({
         <div><MessageCircle size={15} /><span><strong>One LIVE chat</strong><small>{providerLabel(stream?.provider)} + Droxion together</small></span></div>
         {sourceFrame ? <button type="button" className="dxSourceComposerButton" onClick={() => setSourceComposerOpen(true)}>Chat on {providerLabel(stream?.provider)}</button> : <span className="dxSourceReadOnly">{providerLabel(stream?.provider)} read-only</span>}
       </div>
-
       <div ref={chatStreamRef} className="dxUnifiedChatStream" onScroll={event => {
         const node = event.currentTarget;
         stickToBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight <= CHAT_BOTTOM_THRESHOLD;
@@ -350,25 +393,19 @@ export default function ExternalLiveDroxionChat({
           </div>
         </div>)}
       </div>
-
       {notice && <div className="dxDroxionChatNotice">{notice}</div>}
-
       <div className="dxQuickGiftRail" aria-label="Quick Droxion gifts">
         {giftOptions.slice(0, 5).map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><small>{gift.cost_coins}</small></button>)}
         <button type="button" className="dxMoreGifts" onClick={() => setGiftOpen(true)}><Gift size={16} /><small>More</small></button>
       </div>
-
       <div className="dxDroxionComposer">
         <button type="button" className="dxCoinsButton" onClick={() => onOpenWallet?.()} aria-label="Buy Droxion coins"><Coins size={16} /><span>{Number(coins || 0)}</span></button>
         <button type="button" className="dxGiftButton" onClick={() => setGiftOpen(true)} aria-label="Send Droxion gift"><Gift size={18} /></button>
         <input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendChat(); } }} maxLength={500} placeholder="Message on Droxion" />
         <button type="button" className="dxSendButton" disabled={!draft.trim() || sending} onClick={sendChat}><Send size={17} /></button>
       </div>
-
       {sourceComposerOpen && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}><section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}><header><div><strong>{providerLabel(stream?.provider)} chat</strong><small>Use your {providerLabel(stream?.provider)} account here; Droxion chat remains the default.</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header><iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} /></section></div>}
-
       {giftOpen && <div className="dxGiftBackdrop" onClick={() => setGiftOpen(false)}><section className="dxGiftSheet" onClick={event => event.stopPropagation()}><header><div><span>DROXION GIFTS</span><strong>Send a gift</strong><small>Balance · 🪙 {Number(coins || 0)}</small></div><button type="button" onClick={() => setGiftOpen(false)}><X size={18} /></button></header><div className="dxGiftGrid">{giftOptions.map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><strong>{gift.gift_name}</strong><small>🪙 {gift.cost_coins}</small></button>)}</div><button type="button" className="dxBuyCoinsWide" onClick={() => { setGiftOpen(false); onOpenWallet?.(); }}>+ Buy Coins</button></section></div>}
-
       {activeGift && <div className="dxExternalGiftBurst" aria-hidden="true"><span>{activeGift.emoji}</span><strong>{activeGift.name}</strong><small>DROXION GIFT</small></div>}
     </div>
   );
