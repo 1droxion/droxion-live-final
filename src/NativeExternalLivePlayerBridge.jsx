@@ -28,7 +28,20 @@ export default function NativeExternalLivePlayerBridge() {
         const current = frame.getAttribute('src') || '';
         if (!current || current.startsWith(HOSTED_PLAYER)) return;
         const next = hostedUrlFor(current);
-        if (next) frame.setAttribute('src', next);
+        if (!next) return;
+
+        if (next.includes('provider=twitch')) {
+          const container = frame.parentElement;
+          if (container) {
+            container.style.aspectRatio = 'auto';
+            container.style.height = '300px';
+            container.style.minHeight = '300px';
+          }
+          frame.style.height = '300px';
+          frame.style.minHeight = '300px';
+        }
+
+        frame.setAttribute('src', next);
       });
     };
 
