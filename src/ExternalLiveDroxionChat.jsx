@@ -142,6 +142,8 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const pollTimerRef = useRef(null);
   const sourceTimerRef = useRef(null);
   const socketRef = useRef(null);
+  const twitchPendingRef = useRef([]);
+  const twitchFlushTimerRef = useRef(null);
   const lastIdRef = useRef(0);
   const loadingRef = useRef(false);
   const loadingEpochRef = useRef(-1);
@@ -272,6 +274,9 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     setSourceMessages([]);
     setSourceStatus('Connecting source chat…');
     if (sourceTimerRef.current) window.clearTimeout(sourceTimerRef.current);
+    if (twitchFlushTimerRef.current) window.clearTimeout(twitchFlushTimerRef.current);
+    twitchFlushTimerRef.current = null;
+    twitchPendingRef.current = [];
     if (socketRef.current) { try { socketRef.current.close(); } catch {} socketRef.current = null; }
 
     const addSource = rows => {
@@ -323,6 +328,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           if (stopped) return;
           if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
             setSourceStatus('Kick chat temporarily unavailable.');
+            sourceTimerRef.current = window.setTimeout(startKick, 12000);
             return;
           }
 
@@ -356,7 +362,10 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           };
           poll();
         } catch {
-          if (!stopped) setSourceStatus('Kick chat temporarily unavailable.');
+          if (!stopped) {
+            setSourceStatus('Kick chat temporarily unavailable.');
+            sourceTimerRef.current = window.setTimeout(startKick, 12000);
+          }
         }
       };
       startKick();
@@ -381,7 +390,15 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
             const parsed = parseTwitchLine(line, twitchSequenceRef.current);
             if (parsed) batch.push(parsed);
           });
-          if (batch.length) addSource(batch);
+          if (!batch.length) return;
+          twitchPendingRef.current.push(...batch);
+          if (!twitchFlushTimerRef.current) {
+            twitchFlushTimerRef.current = window.setTimeout(() => {
+              twitchFlushTimerRef.current = null;
+              const pending = twitchPendingRef.current.splice(0, twitchPendingRef.current.length);
+              addSource(pending);
+            }, 60);
+          }
         };
         socket.onerror = () => setSourceStatus('Twitch chat temporarily unavailable.');
       } catch {
@@ -394,6 +411,9 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     return () => {
       stopped = true;
       if (sourceTimerRef.current) window.clearTimeout(sourceTimerRef.current);
+      if (twitchFlushTimerRef.current) window.clearTimeout(twitchFlushTimerRef.current);
+      twitchFlushTimerRef.current = null;
+      twitchPendingRef.current = [];
       if (socketRef.current) { try { socketRef.current.close(); } catch {} socketRef.current = null; }
     };
   }, [stream?.provider, stream?.externalId, stream?.channelId, stream?.channelSlug]);
@@ -411,6 +431,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     }));
     return [...source, ...droxion].sort((a, b) => a.timestamp - b.timestamp);
   }, [sourceMessages, messages]);
+  const latestMessageKey = combinedMessages.length ? combinedMessages[combinedMessages.length - 1].key : '';
 
   useEffect(() => {
     const node = chatStreamRef.current;
@@ -423,7 +444,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
-  }, [combinedMessages.length, sourceStatus]);
+  }, [latestMessageKey, sourceStatus]);
 
   async function sendChat() {
     const body = draft.trim();
