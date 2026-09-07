@@ -22,28 +22,31 @@ import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
 import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
+import NativeLivePlayer from "./NativeLivePlayer.jsx";
 
 export default function App() {
   const location = useLocation();
   const isLiveV2 = location.pathname.startsWith('/live-v2');
+  const isNativeLivePlayer = location.pathname === '/native-live-player';
 
   return (
     <>
-      <NativeOAuthBridge />
-      {!isLiveV2 && <DroxionPushNotifications />}
-      {!isLiveV2 && <DroxionLivePushBridge />}
-      {!isLiveV2 && <GlobalEnhancements />}
-      {!isLiveV2 && <CreatorV11Enhancer />}
-      {!isLiveV2 && <LiveGuestStageGuard />}
-      {!isLiveV2 && <LiveHeartSyncEnhancer />}
-      {!isLiveV2 && <LiveViewerRecoveryEnhancer />}
-      {!isLiveV2 && <ProfileContentTabsEnhancer />}
-      {!isLiveV2 && <ProfileDiscoveryEnhancer />}
-      {!isLiveV2 && <ProviderBrandEnhancer />}
-      {!isLiveV2 && <ShortNativeActionsEnhancer />}
-      {!isLiveV2 && <ShortSafetyEnhancer />}
+      {!isNativeLivePlayer && <NativeOAuthBridge />}
+      {!isLiveV2 && !isNativeLivePlayer && <DroxionPushNotifications />}
+      {!isLiveV2 && !isNativeLivePlayer && <DroxionLivePushBridge />}
+      {!isLiveV2 && !isNativeLivePlayer && <GlobalEnhancements />}
+      {!isLiveV2 && !isNativeLivePlayer && <CreatorV11Enhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <LiveGuestStageGuard />}
+      {!isLiveV2 && !isNativeLivePlayer && <LiveHeartSyncEnhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <LiveViewerRecoveryEnhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <ProfileContentTabsEnhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <ProfileDiscoveryEnhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <ProviderBrandEnhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <ShortNativeActionsEnhancer />}
+      {!isLiveV2 && !isNativeLivePlayer && <ShortSafetyEnhancer />}
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
+        <Route path="/native-live-player" element={<NativeLivePlayer />} />
         <Route path="/live-v2" element={<LiveV2Page />} />
         <Route path="/live-v2/view/:sessionId" element={<LiveV2ViewerPage />} />
         <Route path="/login" element={<Login />} />
