@@ -7,11 +7,12 @@ export default function NativeLivePlayer() {
   const provider = String(params.get('provider') || '').toLowerCase();
   const id = String(params.get('id') || '').trim();
   const slug = String(params.get('slug') || '').trim();
+  const isTwitch = provider === 'twitch' && Boolean(slug);
 
   let src = '';
   if (provider === 'youtube' && id) {
     src = `https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1&playsinline=1&rel=0&origin=${encodeURIComponent(window.location.origin)}`;
-  } else if (provider === 'twitch' && slug) {
+  } else if (isTwitch) {
     const parents = new Set([window.location.hostname, 'localhost']);
     try {
       Array.from(window.location.ancestorOrigins || []).forEach(origin => {
@@ -23,9 +24,31 @@ export default function NativeLivePlayer() {
     src = `https://player.twitch.tv/?channel=${encodeURIComponent(slug)}${parentQuery}&autoplay=true&muted=true`;
   }
 
+  const playerStyle = isTwitch
+    ? {
+        display: 'block',
+        width: '100%',
+        minWidth: 400,
+        height: '100%',
+        minHeight: 300,
+        position: 'relative',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        border: 0,
+        background: '#000'
+      }
+    : {
+        display: 'block',
+        width: '100%',
+        height: '100%',
+        minHeight: 300,
+        border: 0,
+        background: '#000'
+      };
+
   return (
     <main style={{ margin: 0, width: '100vw', height: '100vh', minHeight: 300, background: '#000', overflow: 'hidden' }}>
-      {src ? <iframe src={src} title="Droxion LIVE" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" style={{ display: 'block', width: '100%', height: '100%', minHeight: 300, border: 0, background: '#000' }} /> : null}
+      {src ? <iframe src={src} title="Droxion LIVE" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" style={playerStyle} /> : null}
     </main>
   );
 }
