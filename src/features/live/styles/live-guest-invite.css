@@ -330,7 +330,6 @@ body:has(.liveGuestSelfTile.isGuestLive) .productionViewerVideo{
   border:1px solid rgba(34,197,94,.28);
 }
 
-/* Explicit guest-live state: do not depend on :has() support on the invited phone. */
 body.droxionGuestCohostLive .productionViewerPage{
   z-index:2147483350!important;
   background:#000!important;
@@ -349,7 +348,6 @@ body.droxionGuestCohostLive .productionViewerVideo{
   transform:none!important;
 }
 
-/* Bottom participant framing: show the whole portrait instead of zooming/cropping the face. */
 .liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
 .prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video,
 .liveGuestSelfTile.isGuestLive video{
@@ -358,11 +356,12 @@ body.droxionGuestCohostLive .productionViewerVideo{
   background:#000!important;
 }
 
-/* Keep the already-correct top video unchanged. Bottom uses the same unmirrored orientation. */
+/* Do not touch either top tile. Correct only the bottom co-host tile on every phone. */
 .liveGuestGlobalLayer.isGuestVisible .liveRemoteGuestTile video,
 .prodLiveHost.isMinimalLive.hasGuest .prodLiveStage .liveRemoteGuestTile video,
 .liveGuestSelfTile.isGuestLive video{
-  transform:none!important;
+  transform:scaleX(-1)!important;
+  transform-origin:center center!important;
 }
 
 .liveGuestSelfControls{
