@@ -274,6 +274,21 @@ function kickBroadcasterId(item) {
   return '';
 }
 
+async function resolveKickBroadcasterIds(token, slugs) {
+  const unique = [...new Set((slugs || []).map(slug => text(slug).toLowerCase()).filter(Boolean))].slice(0, 50);
+  if (!unique.length) return new Map();
+  const url = new URL('https://api.kick.com/public/v1/channels');
+  unique.forEach(slug => url.searchParams.append('slug', slug));
+  const data = await fetchJson(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  const result = new Map();
+  for (const row of Array.isArray(data?.data) ? data.data : []) {
+    const slug = text(row?.slug).toLowerCase();
+    const broadcasterUserId = Number(row?.broadcaster_user_id || 0);
+    if (slug && Number.isInteger(broadcasterUserId) && broadcasterUserId > 0) result.set(slug, String(broadcasterUserId));
+  }
+  return result;
+}
+
 async function loadKick(limit) {
   const clientId = text(process.env.KICK_CLIENT_ID);
   const clientSecret = text(process.env.KICK_CLIENT_SECRET);
@@ -287,7 +302,7 @@ async function loadKick(limit) {
   };
   let data;
   try { data = await request('v2'); } catch { data = await request('v1'); }
-  const streams = (data?.data || []).map(item => {
+  let streams = (data?.data || []).map(item => {
     const slug = kickSlug(item);
     const cat = item?.category || item?.categories?.[0] || {};
     const thumbnail = typeof item?.thumbnail === 'string' ? text(item.thumbnail) : text(item?.thumbnail?.url || item?.thumbnail_url || item?.channel?.livestream?.thumbnail?.url || item?.channel?.livestream?.thumbnail_url);
@@ -301,6 +316,20 @@ async function loadKick(limit) {
       watchUrl: slug ? `https://kick.com/${encodeURIComponent(slug)}` : 'https://kick.com', embedType: 'kick', isMature: Boolean(item?.has_mature_content || item?.is_mature)
     };
   }).filter(stream => stream.channelSlug);
+
+  const missingIds = streams.filter(stream => !stream.channelId).map(stream => stream.channelSlug);
+  if (missingIds.length) {
+    try {
+      const idsBySlug = await resolveKickBroadcasterIds(token, missingIds);
+      streams = streams.map(stream => stream.channelId ? stream : {
+        ...stream,
+        channelId: idsBySlug.get(text(stream.channelSlug).toLowerCase()) || ''
+      });
+    } catch (error) {
+      console.error('[live-hub] Kick channel ID lookup failed', text(error?.message, 'unknown'));
+    }
+  }
+
   return { provider: 'kick', enabled: true, streams, reason: streams.length ? '' : 'empty_result' };
 }
 
