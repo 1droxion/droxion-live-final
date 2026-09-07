@@ -308,27 +308,58 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         }
       };
       poll();
-    } else if (stream?.provider === 'kick' && Number(stream?.channelId || 0) > 0) {
-      const broadcasterUserId = Number(stream.channelId);
+    } else if (stream?.provider === 'kick' && stream?.channelSlug) {
       let after = '';
-      fetch('/api/kick/subscribe-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ broadcasterUserId }) }).catch(() => {});
-      const poll = async () => {
-        if (stopped) return;
+      let broadcasterUserId = Number(stream?.channelId || 0);
+
+      const startKick = async () => {
         try {
-          const params = new URLSearchParams({ broadcasterUserId: String(broadcasterUserId) });
-          if (after) params.set('after', after);
-          const response = await fetch(`/api/kick/webhook?${params.toString()}`);
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error('unavailable');
-          addSource((data?.messages || []).map(item => ({ ...item, provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
-          after = data?.nextAfter || after;
-          sourceTimerRef.current = window.setTimeout(poll, 5000);
+          if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
+            const resolveResponse = await fetch(`/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`);
+            const resolved = await resolveResponse.json().catch(() => ({}));
+            if (!resolveResponse.ok) throw new Error('resolve_failed');
+            broadcasterUserId = Number(resolved?.broadcasterUserId || 0);
+          }
+          if (stopped) return;
+          if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
+            setSourceStatus('Kick chat temporarily unavailable.');
+            return;
+          }
+
+          const subscribeResponse = await fetch('/api/kick/subscribe-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ broadcasterUserId })
+          });
+          const subscribed = await subscribeResponse.json().catch(() => ({}));
+          if (!subscribeResponse.ok || subscribed?.enabled === false || subscribed?.ok === false) {
+            throw new Error(subscribed?.reason || 'subscribe_failed');
+          }
+          if (stopped) return;
+          setSourceStatus('Waiting for Kick chat…');
+
+          const poll = async () => {
+            if (stopped) return;
+            try {
+              const params = new URLSearchParams({ broadcasterUserId: String(broadcasterUserId) });
+              if (after) params.set('after', after);
+              const response = await fetch(`/api/kick/webhook?${params.toString()}`);
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error('unavailable');
+              addSource((data?.messages || []).map(item => ({ ...item, provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
+              after = data?.nextAfter || after;
+              sourceTimerRef.current = window.setTimeout(poll, 5000);
+            } catch {
+              setSourceStatus('Kick chat temporarily unavailable.');
+              sourceTimerRef.current = window.setTimeout(poll, 12000);
+            }
+          };
+          poll();
         } catch {
-          setSourceStatus('Kick chat temporarily unavailable.');
-          sourceTimerRef.current = window.setTimeout(poll, 12000);
+          if (!stopped) setSourceStatus('Kick chat temporarily unavailable.');
         }
       };
-      poll();
+      startKick();
     } else if (stream?.provider === 'twitch' && stream?.channelSlug) {
       const channel = String(stream.channelSlug).toLowerCase().replace(/[^a-z0-9_]/g, '');
       try {
@@ -343,12 +374,14 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           setSourceStatus('Waiting for Twitch chat…');
         };
         socket.onmessage = event => {
+          const batch = [];
           String(event.data || '').split(/\r?\n/).filter(Boolean).forEach(line => {
             if (line.startsWith('PING')) { try { socket.send(line.replace('PING', 'PONG')); } catch {} return; }
             twitchSequenceRef.current += 1;
             const parsed = parseTwitchLine(line, twitchSequenceRef.current);
-            if (parsed) addSource([parsed]);
+            if (parsed) batch.push(parsed);
           });
+          if (batch.length) addSource(batch);
         };
         socket.onerror = () => setSourceStatus('Twitch chat temporarily unavailable.');
       } catch {
