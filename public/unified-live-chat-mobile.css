@@ -94,6 +94,27 @@
   .dxLiveModalSheet .dxDroxionComposer .dxSendButton {
     min-width: 54px !important;
   }
+
+  /* The opened gift/source sheet must render above the pinned gift rail and composer. */
+  .dxLiveModalSheet .dxGiftBackdrop,
+  .dxLiveModalSheet .dxSourceComposerBackdrop {
+    z-index: 10070 !important;
+  }
+
+  /* If chat cannot send (for example the preview has no Droxion session), show the reason above the fixed controls. */
+  .dxLiveModalSheet .dxDroxionChatNotice {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: calc(220px + env(safe-area-inset-bottom)) !important;
+    z-index: 10061 !important;
+    margin: 0 !important;
+  }
+
+  /* Coin button opens the existing Droxion Wallet / plans above the LIVE modal. */
+  .walletOverlay {
+    z-index: 10100 !important;
+  }
 }
 
 @media (max-width: 430px) {
@@ -115,5 +136,9 @@
 
   .dxLiveModalSheet .dxQuickGiftRail {
     bottom: calc(68px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .dxLiveModalSheet .dxDroxionChatNotice {
+    bottom: calc(124px + env(safe-area-inset-bottom)) !important;
   }
 }
