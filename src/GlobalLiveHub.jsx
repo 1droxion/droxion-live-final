@@ -199,7 +199,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
   const loadFollowing = useCallback(async () => {
     if (!currentUserId) { setFollowingKeys(new Set()); return; }
     const { data } = await supabase.from('droxion_external_follows').select('creator_key').eq('user_id', currentUserId).limit(1000);
-    setFollowingKeys(new Set((data || []).map(row => row.creator_key));
+    setFollowingKeys(new Set((data || []).map(row => row.creator_key)));
   }, [currentUserId]);
 
   const loadStreams = useCallback(async ({ manual = false } = {}) => {
