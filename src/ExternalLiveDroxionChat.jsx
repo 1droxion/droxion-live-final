@@ -28,6 +28,26 @@ function mergeRows(current, incoming, keyOf, limit = CHAT_LIMIT) {
   return [...map.values()].sort((a, b) => Number(a?.id || 0) - Number(b?.id || 0)).slice(-limit);
 }
 
+function sameChatRows(current, next) {
+  if (current === next) return true;
+  if (!Array.isArray(current) || !Array.isArray(next) || current.length !== next.length) return false;
+  return current.every((row, index) => {
+    const other = next[index];
+    return row?.id === other?.id
+      && row?.event_type === other?.event_type
+      && row?.user_id === other?.user_id
+      && row?.display_name === other?.display_name
+      && row?.username === other?.username
+      && row?.avatar_url === other?.avatar_url
+      && row?.body === other?.body
+      && row?.gift_code === other?.gift_code
+      && row?.gift_name === other?.gift_name
+      && row?.emoji === other?.emoji
+      && Number(row?.cost_coins || 0) === Number(other?.cost_coins || 0)
+      && row?.created_at === other?.created_at;
+  });
+}
+
 function readCachedMessages(key) {
   if (!key || typeof window === 'undefined') return [];
   try {
@@ -123,48 +143,67 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const socketRef = useRef(null);
   const lastIdRef = useRef(0);
   const loadingRef = useRef(false);
+  const loadingEpochRef = useRef(-1);
   const queuedRefreshRef = useRef(false);
   const twitchSequenceRef = useRef(0);
   const chatStreamRef = useRef(null);
   const stickBottomRef = useRef(true);
+  const activeKeyRef = useRef(key);
+  const keyEpochRef = useRef(0);
 
-  useEffect(() => { writeCachedMessages(key, messages); }, [key, messages]);
+  useEffect(() => {
+    if (activeKeyRef.current === key) writeCachedMessages(key, messages);
+  }, [key, messages]);
 
   const loadMessages = useCallback(async ({ force = false, full = false } = {}) => {
-    if (!key) return;
+    if (!key || activeKeyRef.current !== key) return;
     if (!force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    if (loadingRef.current) {
+    const requestKey = key;
+    const requestEpoch = keyEpochRef.current;
+    if (loadingRef.current && loadingEpochRef.current === requestEpoch) {
       if (force) queuedRefreshRef.current = true;
       return;
     }
     loadingRef.current = true;
+    loadingEpochRef.current = requestEpoch;
     try {
       const { data, error } = await supabase.rpc('droxion_external_live_messages', {
-        p_stream_key: key,
+        p_stream_key: requestKey,
         p_after_id: full ? 0 : lastIdRef.current
       });
+      if (activeKeyRef.current !== requestKey || keyEpochRef.current !== requestEpoch) return;
       if (!error && Array.isArray(data) && data.length) {
         lastIdRef.current = Math.max(lastIdRef.current, ...data.map(row => Number(row.id || 0)));
-        setMessages(current => mergeRows(current, data, row => String(row.id), CHAT_LIMIT));
+        setMessages(current => {
+          const next = mergeRows(current, data, row => String(row.id), CHAT_LIMIT);
+          return sameChatRows(current, next) ? current : next;
+        });
       }
     } finally {
-      loadingRef.current = false;
-      if (queuedRefreshRef.current) {
-        queuedRefreshRef.current = false;
-        window.setTimeout(() => loadMessages({ force: true }), 50);
+      if (activeKeyRef.current === requestKey && keyEpochRef.current === requestEpoch && loadingEpochRef.current === requestEpoch) {
+        loadingRef.current = false;
+        loadingEpochRef.current = -1;
+        if (queuedRefreshRef.current) {
+          queuedRefreshRef.current = false;
+          window.setTimeout(() => loadMessages({ force: true }), 50);
+        }
       }
     }
   }, [key]);
 
   useEffect(() => {
     let stopped = false;
+    activeKeyRef.current = key;
+    keyEpochRef.current += 1;
     const cached = readCachedMessages(key);
-    setMessages(cached);
+    setMessages(current => sameChatRows(current, cached) ? current : cached);
     writeCachedMessages(key, cached);
     lastIdRef.current = 0;
     loadingRef.current = false;
+    loadingEpochRef.current = -1;
     queuedRefreshRef.current = false;
     setDraft('');
+    setSending(false);
     setNotice('');
     stickBottomRef.current = true;
 
@@ -185,26 +224,34 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
 
   useEffect(() => {
     if (!key) return undefined;
+    const subscriptionKey = key;
+    const subscriptionEpoch = keyEpochRef.current;
     const channel = supabase
       .channel(`external-live-chat:${key}:${Math.random().toString(36).slice(2)}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'droxion_external_live_events', filter: `stream_key=eq.${key}` },
         payload => {
+          if (activeKeyRef.current !== subscriptionKey || keyEpochRef.current !== subscriptionEpoch) return;
           const row = payload?.new;
-          if (!row?.id) return;
+          if (!row?.id || row?.stream_key !== subscriptionKey) return;
           stickBottomRef.current = true;
-          setMessages(current => mergeRows(current, [{
-            ...row,
-            display_name: row.user_id === currentUserId ? 'You' : 'Droxion user',
-            username: '',
-            avatar_url: ''
-          }], item => String(item.id), CHAT_LIMIT));
+          setMessages(current => {
+            const next = mergeRows(current, [{
+              ...row,
+              display_name: row.user_id === currentUserId ? 'You' : 'Droxion user',
+              username: '',
+              avatar_url: ''
+            }], item => String(item.id), CHAT_LIMIT);
+            return sameChatRows(current, next) ? current : next;
+          });
           window.setTimeout(() => loadMessages({ force: true, full: true }), 40);
         }
       )
       .subscribe(status => {
-        if (status === 'SUBSCRIBED') loadMessages({ force: true, full: true });
+        if (status === 'SUBSCRIBED' && activeKeyRef.current === subscriptionKey && keyEpochRef.current === subscriptionEpoch) {
+          loadMessages({ force: true, full: true });
+        }
       });
 
     return () => {
@@ -338,10 +385,14 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     const body = draft.trim();
     if (!body || sending) return;
     if (!currentUserId) { setNotice('Sign in to chat on Droxion.'); return; }
+    const sendKey = key;
+    const sendEpoch = keyEpochRef.current;
+    if (activeKeyRef.current !== sendKey) return;
     setSending(true);
     setNotice('');
     try {
-      const { data, error } = await supabase.rpc('droxion_send_external_live_chat', { p_stream_key: key, p_provider: stream.provider, p_body: body });
+      const { data, error } = await supabase.rpc('droxion_send_external_live_chat', { p_stream_key: sendKey, p_provider: stream.provider, p_body: body });
+      if (activeKeyRef.current !== sendKey || keyEpochRef.current !== sendEpoch) return;
       if (error || data?.allowed === false) throw new Error(error?.message || data?.reason || 'Message could not be sent.');
       const eventId = Number(data?.event_id || 0);
       if (eventId > 0) {
@@ -352,18 +403,20 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         stickBottomRef.current = true;
         setMessages(current => {
           const next = mergeRows(current, [optimistic], row => String(row.id), CHAT_LIMIT);
-          writeCachedMessages(key, next);
-          return next;
+          writeCachedMessages(sendKey, next);
+          return sameChatRows(current, next) ? current : next;
         });
         lastIdRef.current = Math.max(lastIdRef.current, eventId);
       }
       setDraft('');
       window.setTimeout(() => loadMessages({ force: true, full: true }), 120);
     } catch (error) {
-      const message = error?.message || 'Message could not be sent.';
-      setNotice(message === 'rate_limited' ? 'Slow down for a moment.' : message);
+      if (activeKeyRef.current === sendKey && keyEpochRef.current === sendEpoch) {
+        const message = error?.message || 'Message could not be sent.';
+        setNotice(message === 'rate_limited' ? 'Slow down for a moment.' : message);
+      }
     } finally {
-      setSending(false);
+      if (activeKeyRef.current === sendKey && keyEpochRef.current === sendEpoch) setSending(false);
     }
   }
 
