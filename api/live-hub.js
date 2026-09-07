@@ -59,6 +59,21 @@ async function fetchJson(url, init = {}) {
   }
 }
 
+async function fetchText(url, init = {}) {
+  const timeout = timeoutSignal();
+  try {
+    const response = await fetch(url, { ...init, signal: timeout.signal });
+    if (!response.ok) {
+      const error = new Error(`HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return await response.text();
+  } finally {
+    timeout.done();
+  }
+}
+
 function sortStreams(streams) {
   return [...(streams || [])].sort((a, b) => number(b?.viewerCount) - number(a?.viewerCount));
 }
@@ -121,6 +136,73 @@ async function loadYouTubeFromEdge(apiKey) {
   return normalizeYouTubeRows(data?.streams);
 }
 
+async function loadYouTubeFromWeb(apiKey) {
+  if (!apiKey) return [];
+  const pages = [
+    'https://www.youtube.com/live?gl=US&hl=en',
+    'https://www.youtube.com/gaming?gl=US&hl=en',
+    'https://www.youtube.com/results?search_query=live&sp=EgJAAQ%253D%253D&gl=US&hl=en',
+    'https://www.youtube.com/results?search_query=hindi+live&sp=EgJAAQ%253D%253D&gl=IN&hl=hi'
+  ];
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9,hi;q=0.7',
+    Accept: 'text/html,application/xhtml+xml'
+  };
+  const pageResults = await Promise.allSettled(pages.map(url => fetchText(url, { headers })));
+  const ids = [];
+  const seen = new Set();
+  for (const result of pageResults) {
+    if (result.status !== 'fulfilled') continue;
+    for (const match of result.value.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) {
+      const id = match[1];
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+      if (ids.length >= 100) break;
+    }
+    if (ids.length >= 100) break;
+  }
+  if (!ids.length) return [];
+
+  const items = [];
+  for (let start = 0; start < ids.length; start += 50) {
+    const chunk = ids.slice(start, start + 50);
+    const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+    url.searchParams.set('part', 'snippet,liveStreamingDetails,status');
+    url.searchParams.set('id', chunk.join(','));
+    url.searchParams.set('key', apiKey);
+    const data = await fetchJson(url);
+    if (Array.isArray(data?.items)) items.push(...data.items);
+  }
+
+  return normalizeYouTubeRows(items.map(item => {
+    const id = text(item?.id);
+    const snippet = item?.snippet || {};
+    const live = item?.liveStreamingDetails || {};
+    const status = item?.status || {};
+    if (!id || status?.embeddable === false || !live?.actualStartTime || live?.actualEndTime) return null;
+    return {
+      id: `youtube:${id}`,
+      provider: 'youtube',
+      providerLabel: 'YouTube',
+      externalId: id,
+      channelId: text(snippet.channelId),
+      channelSlug: '',
+      creatorName: text(snippet.channelTitle, 'YouTube creator'),
+      title: text(snippet.title, 'LIVE on YouTube'),
+      category: normalizeCategory(`${snippet.title || ''} ${snippet.channelTitle || ''}`),
+      language: text(snippet.defaultAudioLanguage || snippet.defaultLanguage),
+      viewerCount: number(live.concurrentViewers),
+      startedAt: text(live.actualStartTime),
+      thumbnailUrl: text(snippet?.thumbnails?.maxres?.url || snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url || snippet?.thumbnails?.default?.url) || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      watchUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
+      embedType: 'youtube',
+      isMature: false
+    };
+  }).filter(Boolean));
+}
+
 function youtubeSearchUrl(apiKey, { region = 'US', language = 'en', q = '', maxResults = 25 } = {}) {
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('part', 'snippet');
@@ -171,7 +253,22 @@ async function loadYouTubeFresh() {
   }
 
   const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
+  if (!apiKey) {
+    if (cachedRows.length && cacheAge < CACHE_STALE_MS) return { provider: 'youtube', enabled: true, streams: cachedRows, reason: '', cacheUsed: true, fallbackUsed: true };
+    return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
+  }
   const errors = [];
+
+  try {
+    const webRows = await loadYouTubeFromWeb(apiKey);
+    if (webRows.length) {
+      await writeProviderCache('youtube', webRows).catch(() => {});
+      return { provider: 'youtube', enabled: true, streams: webRows, reason: '', cacheUsed: false, fallbackUsed: true };
+    }
+  } catch (error) {
+    errors.push(error);
+    console.error('[live-hub] YouTube web recovery failed', text(error?.message, 'unknown'));
+  }
 
   try {
     const edgeRows = await loadYouTubeFromEdge(apiKey);
