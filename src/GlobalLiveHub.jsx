@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Clock3, Compass, Filter, Flame, Globe2, Heart, MessageCircle, Radio, RefreshCw, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
 import { rankLiveStreams, recordLiveBehavior } from './recommendationEngine';
 import { supabase } from './supabaseClient';
@@ -198,15 +199,25 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
   const loadFollowing = useCallback(async () => {
     if (!currentUserId) { setFollowingKeys(new Set()); return; }
     const { data } = await supabase.from('droxion_external_follows').select('creator_key').eq('user_id', currentUserId).limit(1000);
-    setFollowingKeys(new Set((data || []).map(row => row.creator_key)));
+    setFollowingKeys(new Set((data || []).map(row => row.creator_key));
   }, [currentUserId]);
 
   const loadStreams = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
     try {
-      const response = await fetch(`/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}`, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
-      const data = await response.json();
+      let data;
+      if (Capacitor.isNativePlatform()) {
+        const response = await CapacitorHttp.get({
+          url: `https://www.droxion.com/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}`,
+          headers: { Accept: 'application/json' }
+        });
+        if (response.status < 200 || response.status >= 300) throw new Error(`LIVE discovery unavailable (${response.status})`);
+        data = response.data;
+      } else {
+        const response = await fetch(`/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}`, { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
+        data = await response.json();
+      }
       setStreams(Array.isArray(data?.streams) ? data.streams : []);
       setProviders(data?.providers && typeof data.providers === 'object' ? data.providers : {});
       setNotice('');
