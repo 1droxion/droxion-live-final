@@ -1,6 +1,6 @@
 /* Mobile-only guardrail for the external LIVE chat panel.
    Keep the working player and mixed source/Droxion messages unchanged.
-   On phones, pin the existing Droxion gifts + composer to the BOTTOM of the viewport. */
+   Only keep the existing Droxion gift row + composer usable above mobile browser chrome. */
 @media (max-width: 720px) {
   .dxLiveModalSheet .dxExternalLiveLayout {
     flex: 1 1 auto !important;
@@ -34,32 +34,65 @@
     min-height: 260px !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
-    padding-bottom: 150px !important;
+    padding-bottom: 235px !important;
   }
 
-  /* Existing gift row stays immediately above the composer. */
+  /* All five quick gifts + More stay visible in one row above the type bar. */
   .dxLiveModalSheet .dxQuickGiftRail {
     position: fixed !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: calc(68px + env(safe-area-inset-bottom)) !important;
+    bottom: calc(164px + env(safe-area-inset-bottom)) !important;
     z-index: 10058 !important;
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    width: 100% !important;
     margin: 0 !important;
+    padding: 8px !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
     background: #0f131c !important;
     border-top: 1px solid rgba(123,153,202,.12) !important;
   }
 
-  /* The existing Message on Droxion bar is always the LOWEST app control. */
+  .dxLiveModalSheet .dxQuickGiftRail > button {
+    min-width: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  /* Message on Droxion + send button sit above Safari / in-app browser controls. */
   .dxLiveModalSheet .dxDroxionComposer {
     position: fixed !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: 0 !important;
+    bottom: calc(96px + env(safe-area-inset-bottom)) !important;
     z-index: 10059 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
     margin: 0 !important;
-    padding-bottom: calc(7px + env(safe-area-inset-bottom)) !important;
+    padding: 7px 8px !important;
+    box-sizing: border-box !important;
     background: #0f131c !important;
     border-top: 1px solid rgba(123,153,202,.12) !important;
+  }
+
+  .dxLiveModalSheet .dxDroxionComposer input {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  .dxLiveModalSheet .dxDroxionComposer .dxCoinsButton,
+  .dxLiveModalSheet .dxDroxionComposer .dxGiftButton,
+  .dxLiveModalSheet .dxDroxionComposer .dxSendButton {
+    flex: 0 0 auto !important;
+  }
+
+  .dxLiveModalSheet .dxDroxionComposer .dxSendButton {
+    min-width: 54px !important;
   }
 }
 
@@ -71,5 +104,16 @@
 
   .dxLiveModalSheet .dxUnifiedChatStream {
     min-height: 280px !important;
+  }
+}
+
+/* Installed/standalone app has no Safari bottom toolbar, so use the true app bottom. */
+@media (display-mode: standalone) and (max-width: 720px) {
+  .dxLiveModalSheet .dxDroxionComposer {
+    bottom: env(safe-area-inset-bottom) !important;
+  }
+
+  .dxLiveModalSheet .dxQuickGiftRail {
+    bottom: calc(68px + env(safe-area-inset-bottom)) !important;
   }
 }
