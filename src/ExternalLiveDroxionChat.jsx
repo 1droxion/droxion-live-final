@@ -65,6 +65,22 @@ function providerClass(provider) {
   return 'droxion';
 }
 
+async function resolveAuthenticatedUserId(fallback = '') {
+  const known = String(fallback || '').trim();
+  if (known) return known;
+  try {
+    const { data } = await supabase.auth.getSession();
+    const sessionId = data?.session?.user?.id || '';
+    if (sessionId) return sessionId;
+  } catch {}
+  try {
+    const { data } = await supabase.auth.refreshSession();
+    return data?.session?.user?.id || '';
+  } catch {
+    return '';
+  }
+}
+
 function unescapeIrcTag(value = '') {
   return String(value).replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\r/g, '\r').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
 }
@@ -118,6 +134,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const [busyGift, setBusyGift] = useState('');
   const [notice, setNotice] = useState('');
   const [activeGift, setActiveGift] = useState(null);
+  const [chatUserId, setChatUserId] = useState(currentUserId || '');
   const pollTimerRef = useRef(null);
   const sourceTimerRef = useRef(null);
   const socketRef = useRef(null);
@@ -129,6 +146,24 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const stickBottomRef = useRef(true);
 
   useEffect(() => { writeCachedMessages(key, messages); }, [key, messages]);
+
+  useEffect(() => {
+    let active = true;
+    if (currentUserId) setChatUserId(currentUserId);
+    else resolveAuthenticatedUserId().then(id => { if (active && id) setChatUserId(id); });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setChatUserId(session?.user?.id || currentUserId || '');
+    });
+    return () => {
+      active = false;
+      listener?.subscription?.unsubscribe();
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (chatUserId && notice.startsWith('Sign in to ')) setNotice('');
+  }, [chatUserId, notice]);
 
   const loadMessages = useCallback(async ({ force = false, full = false } = {}) => {
     if (!key) return;
@@ -196,7 +231,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           stickBottomRef.current = true;
           setMessages(current => mergeRows(current, [{
             ...row,
-            display_name: row.user_id === currentUserId ? 'You' : 'Droxion user',
+            display_name: row.user_id === chatUserId ? 'You' : 'Droxion user',
             username: '',
             avatar_url: ''
           }], item => String(item.id), CHAT_LIMIT));
@@ -210,7 +245,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     return () => {
       supabase.removeChannel(channel).catch(() => {});
     };
-  }, [key, currentUserId, loadMessages]);
+  }, [key, chatUserId, loadMessages]);
 
   useEffect(() => {
     supabase.rpc('droxion_gift_options').then(({ data, error }) => {
@@ -337,16 +372,18 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   async function sendChat() {
     const body = draft.trim();
     if (!body || sending) return;
-    if (!currentUserId) { setNotice('Sign in to chat on Droxion.'); return; }
     setSending(true);
     setNotice('');
     try {
+      const actorId = await resolveAuthenticatedUserId(chatUserId || currentUserId);
+      if (!actorId) { setNotice('Sign in to chat on Droxion.'); return; }
+      if (actorId !== chatUserId) setChatUserId(actorId);
       const { data, error } = await supabase.rpc('droxion_send_external_live_chat', { p_stream_key: key, p_provider: stream.provider, p_body: body });
       if (error || data?.allowed === false) throw new Error(error?.message || data?.reason || 'Message could not be sent.');
       const eventId = Number(data?.event_id || 0);
       if (eventId > 0) {
         const optimistic = {
-          id: eventId, event_type: 'chat', user_id: currentUserId, display_name: 'You', username: '', avatar_url: '',
+          id: eventId, event_type: 'chat', user_id: actorId, display_name: 'You', username: '', avatar_url: '',
           creator_label: null, body, gift_code: null, gift_name: null, emoji: null, cost_coins: 0, created_at: new Date().toISOString()
         };
         stickBottomRef.current = true;
@@ -369,7 +406,9 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
 
   async function sendGift(gift) {
     if (!gift?.gift_code || busyGift) return;
-    if (!currentUserId) { setGiftOpen(false); setNotice('Sign in to send Droxion gifts.'); return; }
+    const actorId = await resolveAuthenticatedUserId(chatUserId || currentUserId);
+    if (!actorId) { setGiftOpen(false); setNotice('Sign in to send Droxion gifts.'); return; }
+    if (actorId !== chatUserId) setChatUserId(actorId);
     if (Number(gift.cost_coins || 0) > Number(coins || 0)) { setGiftOpen(false); onOpenWallet?.(); return; }
     setBusyGift(String(gift.gift_code)); setNotice('');
     try {
