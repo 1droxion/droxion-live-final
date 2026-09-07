@@ -34,7 +34,7 @@
     min-height: 260px !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
-    padding-bottom: 235px !important;
+    padding-bottom: 70px !important;
   }
 
   /* All five quick gifts + More stay visible in one row above the type bar. */
