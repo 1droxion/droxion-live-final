@@ -1,6 +1,6 @@
 /* Mobile-only guardrail for the external LIVE chat panel.
-   Keeps the existing player, source/Droxion message logic, gifts and composer intact;
-   only guarantees that the shared message stream has usable vertical space. */
+   Keep the working player and mixed source/Droxion messages unchanged.
+   On phones, pin the existing Droxion gifts + composer to the BOTTOM of the viewport. */
 @media (max-width: 720px) {
   .dxLiveModalSheet .dxExternalLiveLayout {
     flex: 1 1 auto !important;
@@ -25,9 +25,7 @@
     overflow: hidden !important;
   }
 
-  .dxLiveModalSheet .dxUnifiedChatTop,
-  .dxLiveModalSheet .dxQuickGiftRail,
-  .dxLiveModalSheet .dxDroxionComposer {
+  .dxLiveModalSheet .dxUnifiedChatTop {
     flex: 0 0 auto !important;
   }
 
@@ -36,6 +34,32 @@
     min-height: 260px !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
+    padding-bottom: 150px !important;
+  }
+
+  /* Existing gift row stays immediately above the composer. */
+  .dxLiveModalSheet .dxQuickGiftRail {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: calc(68px + env(safe-area-inset-bottom)) !important;
+    z-index: 10058 !important;
+    margin: 0 !important;
+    background: #0f131c !important;
+    border-top: 1px solid rgba(123,153,202,.12) !important;
+  }
+
+  /* The existing Message on Droxion bar is always the LOWEST app control. */
+  .dxLiveModalSheet .dxDroxionComposer {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 10059 !important;
+    margin: 0 !important;
+    padding-bottom: calc(7px + env(safe-area-inset-bottom)) !important;
+    background: #0f131c !important;
+    border-top: 1px solid rgba(123,153,202,.12) !important;
   }
 }
 
