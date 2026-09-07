@@ -3,7 +3,7 @@ import { Coins, Gift, MessageCircle, Send, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './external-live-droxion-chat.css';
 
-const DROXION_POLL_MS = 3500;
+const DROXION_POLL_MS = 1500;
 const SOURCE_LIMIT = 180;
 const CHAT_LIMIT = 1000;
 const CHAT_CACHE_PREFIX = 'droxion.live.chat.v2:';
@@ -214,7 +214,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
     const poll = async () => {
       if (stopped) return;
       await loadMessages({ full: lastIdRef.current === 0 });
-      if (!stopped) pollTimerRef.current = window.setTimeout(poll, document.visibilityState === 'hidden' ? 12000 : DROXION_POLL_MS);
+      if (!stopped) pollTimerRef.current = window.setTimeout(poll, document.visibilityState === 'hidden' ? 6000 : DROXION_POLL_MS);
     };
     poll();
     const wake = () => { if (document.visibilityState === 'visible') loadMessages({ force: true, full: true }); };
@@ -306,10 +306,10 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           pageToken = data?.nextPageToken || pageToken;
           addSource((data?.messages || []).map(item => ({ ...item, provider: 'youtube', publishedAt: toMillis(item.publishedAt) })));
           if (data?.available === false) setSourceStatus('YouTube chat is unavailable for this LIVE.');
-          sourceTimerRef.current = window.setTimeout(poll, Math.max(4500, Math.min(15000, Number(data?.pollingIntervalMillis || 6000))));
+          sourceTimerRef.current = window.setTimeout(poll, Math.max(3000, Math.min(10000, Number(data?.pollingIntervalMillis || 4000))));
         } catch {
           setSourceStatus('YouTube chat temporarily unavailable.');
-          sourceTimerRef.current = window.setTimeout(poll, 12000);
+          sourceTimerRef.current = window.setTimeout(poll, 6000);
         }
       };
       poll();
@@ -328,7 +328,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           if (stopped) return;
           if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
             setSourceStatus('Kick chat temporarily unavailable.');
-            sourceTimerRef.current = window.setTimeout(startKick, 12000);
+            sourceTimerRef.current = window.setTimeout(startKick, 6000);
             return;
           }
 
@@ -354,17 +354,17 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
               if (!response.ok) throw new Error('unavailable');
               addSource((data?.messages || []).map(item => ({ ...item, provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
               after = data?.nextAfter || after;
-              sourceTimerRef.current = window.setTimeout(poll, 5000);
+              sourceTimerRef.current = window.setTimeout(poll, 2500);
             } catch {
               setSourceStatus('Kick chat temporarily unavailable.');
-              sourceTimerRef.current = window.setTimeout(poll, 12000);
+              sourceTimerRef.current = window.setTimeout(poll, 6000);
             }
           };
           poll();
         } catch {
           if (!stopped) {
             setSourceStatus('Kick chat temporarily unavailable.');
-            sourceTimerRef.current = window.setTimeout(startKick, 12000);
+            sourceTimerRef.current = window.setTimeout(startKick, 6000);
           }
         }
       };
@@ -397,7 +397,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
               twitchFlushTimerRef.current = null;
               const pending = twitchPendingRef.current.splice(0, twitchPendingRef.current.length);
               addSource(pending);
-            }, 60);
+            }, 20);
           }
         };
         socket.onerror = () => setSourceStatus('Twitch chat temporarily unavailable.');
@@ -474,7 +474,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         lastIdRef.current = Math.max(lastIdRef.current, eventId);
       }
       setDraft('');
-      window.setTimeout(() => loadMessages({ force: true, full: true }), 120);
+      window.setTimeout(() => loadMessages({ force: true, full: true }), 80);
     } catch (error) {
       if (activeKeyRef.current === sendKey && keyEpochRef.current === sendEpoch) {
         const message = error?.message || 'Message could not be sent.';
