@@ -12,7 +12,15 @@ export default function NativeLivePlayer() {
   if (provider === 'youtube' && id) {
     src = `https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1&playsinline=1&rel=0&origin=${encodeURIComponent(window.location.origin)}`;
   } else if (provider === 'twitch' && slug) {
-    src = `https://player.twitch.tv/?channel=${encodeURIComponent(slug)}&parent=${encodeURIComponent(window.location.hostname)}&autoplay=true`;
+    const parents = new Set([window.location.hostname, 'localhost']);
+    try {
+      Array.from(window.location.ancestorOrigins || []).forEach(origin => {
+        const hostname = new URL(origin).hostname;
+        if (hostname) parents.add(hostname);
+      });
+    } catch {}
+    const parentQuery = [...parents].filter(Boolean).map(parent => `&parent=${encodeURIComponent(parent)}`).join('');
+    src = `https://player.twitch.tv/?channel=${encodeURIComponent(slug)}${parentQuery}&autoplay=true&muted=true`;
   }
 
   return (
