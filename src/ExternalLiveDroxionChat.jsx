@@ -122,6 +122,7 @@ function sourceChatFrameUrl(stream) {
   const parent = window.location.hostname;
   if (stream?.provider === 'twitch' && stream?.channelSlug) return `https://www.twitch.tv/embed/${encodeURIComponent(stream.channelSlug)}/chat?parent=${encodeURIComponent(parent)}&darkpopout`;
   if (stream?.provider === 'youtube' && stream?.externalId) return `https://www.youtube.com/live_chat?v=${encodeURIComponent(stream.externalId)}&embed_domain=${encodeURIComponent(parent)}`;
+  if (stream?.provider === 'kick' && stream?.channelSlug) return `https://kick.com/popout/${encodeURIComponent(stream.channelSlug)}/chat`;
   return '';
 }
 
@@ -174,6 +175,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       if (activeKeyRef.current !== requestKey || keyEpochRef.current !== requestEpoch) return;
       if (!error && Array.isArray(data) && data.length) {
         lastIdRef.current = Math.max(lastIdRef.current, ...data.map(row => Number(row.id || 0)));
+        stickBottomRef.current = true;
         setMessages(current => {
           const next = mergeRows(current, data, row => String(row.id), CHAT_LIMIT);
           return sameChatRows(current, next) ? current : next;
@@ -274,6 +276,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
 
     const addSource = rows => {
       if (stopped || !rows?.length) return;
+      stickBottomRef.current = true;
       setSourceMessages(current => {
         const map = new Map(current.map(row => [`${row.provider}:${row.id}`, row]));
         rows.forEach(row => map.set(`${row.provider}:${row.id}`, row));
@@ -378,8 +381,16 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
 
   useEffect(() => {
     const node = chatStreamRef.current;
-    if (node && stickBottomRef.current) node.scrollTop = node.scrollHeight;
-  }, [combinedMessages.length]);
+    if (!node || !stickBottomRef.current) return undefined;
+    const pinBottom = () => { node.scrollTop = node.scrollHeight; };
+    pinBottom();
+    const frame = window.requestAnimationFrame(pinBottom);
+    const timer = window.setTimeout(pinBottom, 80);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [combinedMessages.length, sourceStatus]);
 
   async function sendChat() {
     const body = draft.trim();
