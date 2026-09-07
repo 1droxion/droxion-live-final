@@ -533,10 +533,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       </div>
 
       
-      <div className="dxQuickGiftRail" aria-label="Quick Droxion gifts">
-        {giftOptions.slice(0, 5).map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><small>{gift.cost_coins}</small></button>)}
-        <button type="button" className="dxMoreGifts" onClick={() => setGiftOpen(true)}><Gift size={16} /><small>More</small></button>
-      </div>
+      
       <div className="dxDroxionComposer">
         <button type="button" className="dxCoinsButton" onClick={() => onOpenWallet?.()} aria-label="Buy Droxion coins"><Coins size={16} /><span>{Number(coins || 0)}</span></button>
         <button type="button" className="dxGiftButton" onClick={() => setGiftOpen(true)} aria-label="Send Droxion gift"><Gift size={18} /></button>
