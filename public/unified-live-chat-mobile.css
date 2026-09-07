@@ -1,0 +1,51 @@
+/* Mobile-only guardrail for the external LIVE chat panel.
+   Keeps the existing player, source/Droxion message logic, gifts and composer intact;
+   only guarantees that the shared message stream has usable vertical space. */
+@media (max-width: 720px) {
+  .dxLiveModalSheet .dxExternalLiveLayout {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  .dxLiveModalSheet .dxSourceChatPanel {
+    order: 3 !important;
+    flex: 0 0 max(500px, calc(100dvh - 58px - 56.25vw)) !important;
+    height: max(500px, calc(100dvh - 58px - 56.25vw)) !important;
+    min-height: 500px !important;
+    max-height: none !important;
+    overflow: hidden !important;
+  }
+
+  .dxLiveModalSheet .dxDroxionChat.dxUnifiedChat {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 500px !important;
+    overflow: hidden !important;
+  }
+
+  .dxLiveModalSheet .dxUnifiedChatTop,
+  .dxLiveModalSheet .dxQuickGiftRail,
+  .dxLiveModalSheet .dxDroxionComposer {
+    flex: 0 0 auto !important;
+  }
+
+  .dxLiveModalSheet .dxUnifiedChatStream {
+    flex: 1 1 auto !important;
+    min-height: 260px !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .dxLiveModalSheet .dxSourceChatPanel,
+  .dxLiveModalSheet .dxDroxionChat.dxUnifiedChat {
+    min-height: 520px !important;
+  }
+
+  .dxLiveModalSheet .dxUnifiedChatStream {
+    min-height: 280px !important;
+  }
+}
