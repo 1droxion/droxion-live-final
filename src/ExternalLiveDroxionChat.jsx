@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Coins, Gift, MessageCircle, Send, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './external-live-droxion-chat.css';
@@ -7,6 +8,10 @@ const DROXION_POLL_MS = 1500;
 const SOURCE_LIMIT = 180;
 const CHAT_LIMIT = 1000;
 const CHAT_CACHE_PREFIX = 'droxion.live.chat.v2:';
+
+function apiPath(path) {
+  return `${Capacitor.isNativePlatform() ? 'https://www.droxion.com' : ''}${path}`;
+}
 
 function streamKey(stream) {
   const provider = String(stream?.provider || 'live').toLowerCase();
@@ -299,7 +304,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           const params = new URLSearchParams({ provider: 'youtube', videoId: String(stream.externalId) });
           if (liveChatId) params.set('liveChatId', liveChatId);
           if (pageToken) params.set('pageToken', pageToken);
-          const response = await fetch(`/api/live-chat?${params.toString()}`);
+          const response = await fetch(apiPath(`/api/live-chat?${params.toString()}`));
           const data = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error('unavailable');
           liveChatId = data?.liveChatId || liveChatId;
@@ -320,7 +325,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       const startKick = async () => {
         try {
           if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
-            const resolveResponse = await fetch(`/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`);
+            const resolveResponse = await fetch(apiPath(`/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`));
             const resolved = await resolveResponse.json().catch(() => ({}));
             if (!resolveResponse.ok) throw new Error('resolve_failed');
             broadcasterUserId = Number(resolved?.broadcasterUserId || 0);
@@ -332,7 +337,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
             return;
           }
 
-          const subscribeResponse = await fetch('/api/kick/subscribe-chat', {
+          const subscribeResponse = await fetch(apiPath('/api/kick/subscribe-chat'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ broadcasterUserId })
@@ -349,7 +354,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
             try {
               const params = new URLSearchParams({ broadcasterUserId: String(broadcasterUserId) });
               if (after) params.set('after', after);
-              const response = await fetch(`/api/kick/webhook?${params.toString()}`);
+              const response = await fetch(apiPath(`/api/kick/webhook?${params.toString()}`));
               const data = await response.json().catch(() => ({}));
               if (!response.ok) throw new Error('unavailable');
               addSource((data?.messages || []).map(item => ({ ...item, provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
