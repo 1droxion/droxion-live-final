@@ -12,6 +12,7 @@ import ShortNativeActionsEnhancer from "./ShortNativeActionsEnhancer.jsx";
 import ShortSafetyEnhancer from "./ShortSafetyEnhancer.jsx";
 import DroxionPushNotifications from "./DroxionPushNotifications.jsx";
 import DroxionLivePushBridge from "./DroxionLivePushBridge.jsx";
+import DroxionMultistream from "./DroxionMultistream.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
@@ -34,6 +35,7 @@ export default function App() {
       {!isNativeLivePlayer && <NativeOAuthBridge />}
       {!isLiveV2 && !isNativeLivePlayer && <DroxionPushNotifications />}
       {!isLiveV2 && !isNativeLivePlayer && <DroxionLivePushBridge />}
+      {!isLiveV2 && !isNativeLivePlayer && <DroxionMultistream />}
       {!isLiveV2 && !isNativeLivePlayer && <GlobalEnhancements />}
       {!isLiveV2 && !isNativeLivePlayer && <CreatorV11Enhancer />}
       {!isLiveV2 && !isNativeLivePlayer && <LiveGuestStageGuard />}
