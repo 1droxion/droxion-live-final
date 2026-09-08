@@ -11,7 +11,6 @@ import './watch-related.css';
 const EXTERNAL_PROVIDERS = [
   { id: 'all', label: 'All LIVE' },
   { id: 'youtube', label: 'YouTube' },
-  { id: 'twitch', label: 'Twitch' },
   { id: 'kick', label: 'Kick' }
 ];
 
@@ -31,7 +30,7 @@ const EXPLORE_TOPICS = [
   { id: 'fortnite', label: 'Fortnite', tone: 'purple' }
 ];
 const REFRESH_MS = 120000;
-const LIVE_DISCOVERY_LIMIT = 150;
+const LIVE_DISCOVERY_LIMIT = 200;
 const RECENT_LIVE_KEY = 'droxion.live.recent.v1';
 
 function formatViewers(value) {
@@ -89,7 +88,7 @@ function readRecentIds() {
 function providerEmptyMessage(provider, providers, availableProviderCount) {
   if (provider !== 'all' && provider !== 'droxion') {
     const state = providers?.[provider] || {};
-    const label = provider === 'youtube' ? 'YouTube' : provider === 'twitch' ? 'Twitch' : 'Kick';
+    const label = provider === 'youtube' ? 'YouTube' : 'Kick';
     if (state.reason === 'missing_credentials') return `${label} is not connected to Droxion yet.`;
     if (state.reason === 'provider_error') return `${label} is temporarily unavailable. Other LIVE sources still work.`;
     if (state.reason === 'empty_result') return `${label} returned no embeddable LIVE streams in this refresh. Try again shortly.`;
@@ -150,7 +149,6 @@ function ExternalLivePlayer({ stream, streams, onSelectStream, onClose, currentU
 
   let src = '';
   if (stream?.embedType === 'youtube' && stream.externalId) src = `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&playsinline=1&rel=0`;
-  else if (stream?.embedType === 'twitch' && stream.channelSlug) src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true`;
   else if (stream?.embedType === 'kick' && stream.channelSlug) src = `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}`;
 
   return <div className="dxLiveModal" role="dialog" aria-modal="true" aria-label={`${stream?.creatorName || 'Creator'} LIVE`}>
@@ -218,7 +216,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
         if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
         data = await response.json();
       }
-      setStreams(Array.isArray(data?.streams) ? data.streams : []);
+      setStreams((Array.isArray(data?.streams) ? data.streams : []).filter(stream => stream?.provider === 'youtube' || stream?.provider === 'kick'));
       setProviders(data?.providers && typeof data.providers === 'object' ? data.providers : {});
       setNotice('');
     } catch (error) { setNotice(error?.message || 'Could not refresh global LIVE discovery.'); }
@@ -311,7 +309,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
     const selectedTopicLabel = exploreTopic === 'all' ? 'Recommended LIVE' : (EXPLORE_TOPICS.find(item => item.id === exploreTopic)?.label || 'LIVE');
     const visibleExploreStreams = filtered;
     return <section className="dxGlobalLiveHub dxHubMode-explore dxExploreV2">
-      <div className="dxExploreHeroV2"><div className="dxExploreHeroCopy"><span><Compass size={15} /> DROXION EXPLORE</span><h1>Find your next LIVE.</h1><p>Search creators, games and communities across YouTube, Twitch and Kick — all inside Droxion.</p></div><button type="button" className="dxExploreRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} />{refreshing ? 'Refreshing' : 'Refresh'}</button><label className="dxExploreSearchV2"><Search size={19} /><input value={exploreQuery} onChange={event => { setExploreQuery(event.target.value); setExploreTopic('all'); }} placeholder="Search creators, games, topics or platforms" />{exploreQuery && <button type="button" onClick={() => setExploreQuery('')} aria-label="Clear search"><X size={16} /></button>}</label></div>
+      <div className="dxExploreHeroV2"><div className="dxExploreHeroCopy"><span><Compass size={15} /> DROXION EXPLORE</span><h1>Find your next LIVE.</h1><p>Search creators, games and communities across YouTube and Kick — all inside Droxion.</p></div><button type="button" className="dxExploreRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} />{refreshing ? 'Refreshing' : 'Refresh'}</button><label className="dxExploreSearchV2"><Search size={19} /><input value={exploreQuery} onChange={event => { setExploreQuery(event.target.value); setExploreTopic('all'); }} placeholder="Search creators, games, topics or platforms" />{exploreQuery && <button type="button" onClick={() => setExploreQuery('')} aria-label="Clear search"><X size={16} /></button>}</label></div>
       <div className="dxExploreFiltersV2"><div className="dxGlobalProviderRail" aria-label="LIVE sources">{providerOptions.filter(item => item.id !== 'droxion').map(item => { const external = item.id !== 'all'; const enabled = external ? providers?.[item.id]?.enabled !== false : true; const active = provider === item.id; const count = external ? Number(providers?.[item.id]?.available || 0) : totalAvailable; return <button type="button" key={item.id} className={`${active ? 'active' : ''} ${enabled ? '' : 'disabled'} ${providerClass(item.id)}`} onClick={() => { setProvider(item.id); setExploreTopic('all'); }} disabled={!enabled && external}><span>{item.label}</span>{count > 0 && <small>{count}</small>}</button>; })}</div><div className="dxExploreLanguageBar"><Filter size={13} />{languages.map(item => <button type="button" key={item} className={language === item ? 'active' : ''} onClick={() => { setLanguage(item); setExploreTopic('all'); }}>{item === 'All' ? 'Any language' : item}</button>)}</div></div>
       {notice && <div className="dxGlobalNotice">{notice}</div>}
       {!notice && !loading && missingProviders.length > 0 && <div className="dxGlobalSetupNotice"><Search size={16} /><span>{missingProviders.map(item => item[0].toUpperCase() + item.slice(1)).join(', ')} discovery will turn on automatically after its server credentials are added.</span></div>}
@@ -325,7 +323,7 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
   const pageTitle = mode === 'following' ? 'Following' : 'Recommended for you';
   const pageKicker = mode === 'following' ? 'YOUR CREATORS' : 'LIVE NOW';
   return <section className={`dxGlobalLiveHub dxHubMode-${mode}`}>
-    {mode === 'home' ? <div className="dxGlobalHero"><div className="dxHeroCopy"><span className="dxGlobalEyebrow"><Globe2 size={15} /> DROXION LIVE NETWORK</span><h1>Live everywhere.<br /><em>Picked for you.</em></h1><p>Discover YouTube, Twitch and Kick LIVE streams in one personalized home, then watch, chat and support from Droxion.</p><div className="dxHeroProof"><span><Sparkles size={14} /> Personalized</span><span><ShieldCheck size={14} /> Watch inside Droxion</span><span><Radio size={14} /> {totalAvailable || '—'} LIVE now</span></div></div><button type="button" className="dxGlobalRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Refreshing' : 'Refresh LIVE'}</span></button></div> : <div className="dxExploreHeader"><div><span><Compass size={15} /> {pageKicker}</span><h1>{pageTitle}</h1><p>Your followed creators across YouTube, Twitch and Kick, together in one place.</p></div><button type="button" onClick={() => loadStreams({ manual: true })}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> Refresh</button></div>}
+    {mode === 'home' ? <div className="dxGlobalHero"><div className="dxHeroCopy"><span className="dxGlobalEyebrow"><Globe2 size={15} /> DROXION LIVE NETWORK</span><h1>Live everywhere.<br /><em>Picked for you.</em></h1><p>Discover YouTube and Kick LIVE streams in one personalized home, then watch, chat and support from Droxion.</p><div className="dxHeroProof"><span><Sparkles size={14} /> Personalized</span><span><ShieldCheck size={14} /> Watch inside Droxion</span><span><Radio size={14} /> {totalAvailable || '—'} LIVE now</span></div></div><button type="button" className="dxGlobalRefresh" onClick={() => loadStreams({ manual: true })} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''} /><span>{refreshing ? 'Refreshing' : 'Refresh LIVE'}</span></button></div> : <div className="dxExploreHeader"><div><span><Compass size={15} /> {pageKicker}</span><h1>{pageTitle}</h1><p>Your followed creators across YouTube and Kick, together in one place.</p></div><button type="button" onClick={() => loadStreams({ manual: true })}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> Refresh</button></div>}
     <div className="dxControlDeck"><div className="dxGlobalProviderRail" aria-label="LIVE sources">{providerOptions.map(item => { const external = item.id !== 'all' && item.id !== 'droxion'; const enabled = external ? providers?.[item.id]?.enabled !== false : true; const active = provider === item.id; const count = external ? Number(providers?.[item.id]?.available || 0) : totalAvailable; return <button type="button" key={item.id} className={`${active ? 'active' : ''} ${enabled ? '' : 'disabled'} ${providerClass(item.id)}`} onClick={() => setProvider(item.id)} disabled={!enabled && external}><span>{item.label}</span>{count > 0 && <small>{count}</small>}</button>; })}</div><div className="dxGlobalCategoryRail" aria-label="LIVE categories"><span className="dxFilterLabel"><Filter size={13} /></span>{CATEGORIES.map(item => <button type="button" key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div></div>
     {notice && <div className="dxGlobalNotice">{notice}</div>}
     {!notice && !loading && missingProviders.length > 0 && <div className="dxGlobalSetupNotice"><Search size={16} /><span>{missingProviders.map(item => item[0].toUpperCase() + item.slice(1)).join(', ')} discovery will turn on automatically after its server credentials are added.</span></div>}
