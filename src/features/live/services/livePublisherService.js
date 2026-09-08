@@ -152,7 +152,10 @@ function facecamPublishOptions(studio = {}) {
 }
 
 async function publishAudio(room, browserAudio, logFailure) {
-  if (!browserAudio) throw new Error('LIVE microphone track is missing.');
+  // A creator can still broadcast video when the browser/OS blocks microphone
+  // access. If a microphone track exists we publish it normally; otherwise
+  // leave audio unpublished instead of aborting the entire LIVE session.
+  if (!browserAudio) return null;
   await publishWithRetry(room, browserAudio, {
     source: Track.Source.Microphone,
     name: 'droxion_live_audio'
@@ -237,7 +240,6 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
 
   const { videos, audio } = liveTracks(stream);
   if (!videos.length) throw new Error('LIVE video track is missing.');
-  if (!audio) throw new Error('LIVE microphone track is missing.');
 
   const studioTracks = studioVideoTracks(stream, videos);
   if (studioTracks) {
@@ -249,7 +251,7 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
 
     const screenMediaTrack = mediaTrackOf(screenPublication.track);
     const cameraMediaTrack = mediaTrackOf(cameraPublication?.track);
-    const audioMediaTrack = mediaTrackOf(audioPublication.track);
+    const audioMediaTrack = mediaTrackOf(audioPublication?.track);
     if (screenMediaTrack?.enabled === false) screenMediaTrack.enabled = true;
     if (cameraMediaTrack?.enabled === false) cameraMediaTrack.enabled = true;
     if (audioMediaTrack?.enabled === false) audioMediaTrack.enabled = true;
@@ -272,10 +274,10 @@ export async function publishHostMediaV2({ room, stream, logFailure }) {
   const videoPublication = await publishCameraTrack(room, browserVideo, logFailure);
   const audioPublication = await publishAudio(room, audio, logFailure);
 
-  replaceStreamTracks(stream, [videoPublication.track, audioPublication.track]);
+  replaceStreamTracks(stream, [videoPublication.track, audioPublication?.track]);
 
   const publishedVideo = mediaTrackOf(videoPublication.track);
-  const publishedAudio = mediaTrackOf(audioPublication.track);
+  const publishedAudio = mediaTrackOf(audioPublication?.track);
   if (publishedVideo?.enabled === false) publishedVideo.enabled = true;
   if (publishedAudio?.enabled === false) publishedAudio.enabled = true;
 
