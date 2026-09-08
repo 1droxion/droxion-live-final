@@ -83,12 +83,22 @@ export function useLiveBroadcast() {
       patchState({ phase: LIVE_PHASE.PREVIEW, error: '' });
       return streamRef.current;
     }
-    const stream = await requestBroadcastMedia({ orientation, facingMode });
-    streamRef.current = stream;
-    streamCleanupRef.current = null;
-    setMediaStream(stream);
-    patchState({ phase: LIVE_PHASE.PREVIEW, error: '' });
-    return stream;
+
+    patchState({ phase: LIVE_PHASE.IDLE, error: '' });
+    try {
+      const stream = await requestBroadcastMedia({ orientation, facingMode });
+      streamRef.current = stream;
+      streamCleanupRef.current = null;
+      setMediaStream(stream);
+      patchState({ phase: LIVE_PHASE.PREVIEW, error: '' });
+      return stream;
+    } catch (error) {
+      patchState({
+        phase: LIVE_PHASE.IDLE,
+        error: error?.message || 'Could not open camera and microphone.'
+      });
+      return null;
+    }
   }, [patchState]);
 
   const startBroadcast = useCallback(async ({ title = 'Live on Droxion', tags = [], orientation = 'vertical', allowGuestRequests = false } = {}) => {
