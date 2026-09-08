@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, Coins, Compass, Heart, Home, Inbox, Menu, Search, User, Play, X } from 'lucide-react';
+import { ArrowLeft, Bell, Coins, Compass, Heart, Home, Inbox, Menu, Plus, Search, User, Play, X } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
 import DroxionChat from './DroxionChat';
@@ -23,7 +23,7 @@ import './search-overlay-v2.css';
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
 const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 const PUBLIC_NATIVE_LIVE_ENABLED = false;
-const SEARCH_SHORTCUTS = ['All LIVE', 'YouTube', 'Twitch', 'Kick', 'Gaming', 'Sports', 'Music', 'Just Chatting', 'News'];
+const SEARCH_SHORTCUTS = ['All LIVE', 'YouTube', 'Kick', 'Gaming', 'Sports', 'Music', 'Just Chatting', 'News'];
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
@@ -130,7 +130,6 @@ export default function LiveFirstApp() {
   }, []);
 
   function openGoLiveInsideHome() {
-    if (!PUBLIC_NATIVE_LIVE_ENABLED) return;
     setTab('live'); setImmersiveLive(false); setSearchOpen(false); setMoreOpen(false); setNotificationsOpen(false); setChatOpen(false); setHostStudioOpen(true);
   }
 
@@ -176,12 +175,14 @@ export default function LiveFirstApp() {
       <LiveClientDiagnostics /><ProfileAvatarEnhancer /><PublishReadyEnhancer /><ProfileAccountActionsEnhancer />
       <LiveGuestInvitePrompt currentUserId={user?.id} />
       <LiveGuestViewerBridge enabled={immersiveLive} currentUserId={user?.id} />
+      <style>{`.dxGlobalProviderRail button.twitch{display:none!important}`}</style>
 
       {!immersiveLive && !chatOpen && tab !== 'feed' && <header className={`lfTopbar ${discoveryTab ? 'lfHomeTopbar' : ''}`}>
         <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE</small></span></button>
         {discoveryTab ? <div className="lfHomeActions">
           <button className="lfSearchButton" type="button" onClick={() => { setMoreOpen(false); setSearchOpen(true); }} aria-label="Search LIVE creators"><Search size={19} /></button>
           <button className="lfNotificationButton" type="button" onClick={() => { setMoreOpen(false); setNotificationsOpen(true); }} aria-label="Notifications"><Bell size={19} />{unreadNotifications > 0 && <i />}</button>
+          <button className="lfMenuButton" type="button" onClick={openGoLiveInsideHome} aria-label="Go live"><Plus size={20} /></button>
           <div className="lfQuickMenuWrap">
             <button className={`lfMenuButton ${moreOpen ? 'active' : ''}`} type="button" onClick={() => setMoreOpen(value => !value)} aria-label="Open Droxion menu" aria-expanded={moreOpen}><Menu size={20} /></button>
             {moreOpen && <div className="lfQuickMenu" role="menu">
@@ -206,7 +207,7 @@ export default function LiveFirstApp() {
       <div className={`lfContent ${immersiveLive ? 'lfContentImmersive' : ''}`}>{chatOpen ? <DroxionChat /> : content}</div>
       {!immersiveLive && !chatOpen && <nav className="lfNav" aria-label="Droxion navigation">{TABS.map(item => { const Icon = item.icon; const active = item.id === tab; return <button type="button" data-tab={item.id} key={item.id} onClick={() => chooseTab(item.id)} className={active ? 'active' : ''}><span className="lfNavIcon"><Icon size={20} /></span><span>{item.label}</span></button>; })}</nav>}
 
-      {PUBLIC_NATIVE_LIVE_ENABLED && hostStudioOpen && <ProductionLiveHost creatorId={user?.id} onClose={() => { setHostStudioOpen(false); invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }} />}
+      {hostStudioOpen && <ProductionLiveHost creatorId={user?.id} onClose={() => { setHostStudioOpen(false); invalidateLiveFeedCache(); setLiveHomeVersion(version => version + 1); }} />}
       {walletOpen && <DroxionWallet coins={coins} onClose={() => setWalletOpen(false)} onBalanceRefresh={knownBalance => refreshWallet(user, knownBalance)} />}
       {user && <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} onUnreadChange={setUnreadNotifications} />}
     </main>
