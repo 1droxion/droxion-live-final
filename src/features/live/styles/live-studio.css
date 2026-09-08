@@ -13,3 +13,354 @@
 
 @media(max-width:760px){.liveStudioFormatBar{align-items:stretch;flex-direction:column}.liveStudioFormatChoices{display:grid;grid-template-columns:1fr 1fr}.liveStudioFormatChoices button{min-width:0}.liveStudioMetaPanel{grid-template-columns:1fr}.prodLiveHost.isStudioComposer:not(.isMinimalLive) .prodLiveStage.horizontal{width:96vw!important}.liveStudioComposerPanel{width:96vw!important}}
 @media(max-width:600px){.liveStudioSourcePicker>div{grid-template-columns:1fr}.liveStudioSourcePicker button{min-height:62px;display:grid;grid-template-columns:24px minmax(0,1fr);grid-template-rows:auto auto;text-align:left;justify-items:start}.liveStudioSourcePicker button svg{grid-row:1/3}.liveStudioSourcePicker button strong,.liveStudioSourcePicker button small{grid-column:2}.liveStudioLayoutPanel{right:10px;bottom:calc(74px + env(safe-area-inset-bottom));width:min(290px,calc(100vw - 20px))}.liveStudioFacecamDrag span{font-size:9px}.prodLiveHost.isStudioLive:not(.isMinimalLive) .prodLiveStage.vertical{width:min(86vw,390px)!important;max-height:68vh!important}.prodLiveHost.isStudioLive:not(.isMinimalLive) .prodLiveStage.horizontal{width:96vw!important}.liveStudioAudioNotice{width:96vw;font-size:11px}}
+
+/* ===== Droxion LIVE Premium Visual Pass ===== */
+.prodLiveHost:not(.isMinimalLive){
+  background:
+    radial-gradient(circle at 50% -20%,rgba(126,34,206,.24),transparent 34%),
+    radial-gradient(circle at 8% 78%,rgba(109,40,217,.16),transparent 30%),
+    radial-gradient(circle at 96% 58%,rgba(219,39,119,.13),transparent 28%),
+    #05060b!important;
+}
+.prodLiveHost:not(.isMinimalLive)::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  opacity:.34;
+  background:
+    linear-gradient(120deg,transparent 0 44%,rgba(168,85,247,.08) 44.3%,transparent 44.8%),
+    linear-gradient(300deg,transparent 0 72%,rgba(236,72,153,.06) 72.2%,transparent 72.7%);
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveHostTopbar{
+  height:78px!important;
+  min-height:78px;
+  justify-content:center;
+  border-bottom:1px solid rgba(255,255,255,.07)!important;
+  background:rgba(5,6,11,.78)!important;
+  backdrop-filter:blur(22px);
+  -webkit-backdrop-filter:blur(22px);
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveIconButton{
+  position:absolute;
+  left:max(18px,env(safe-area-inset-left));
+  width:44px!important;
+  height:44px!important;
+  border-color:rgba(255,255,255,.11)!important;
+  background:rgba(15,16,24,.78)!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.25);
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveIdentity{
+  flex:0!important;
+  align-items:center;
+  justify-content:center;
+  min-width:190px;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveIdentity strong{
+  font-size:0!important;
+  line-height:1;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveIdentity strong::before{
+  content:"DROXION";
+  display:block;
+  font-size:25px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.09em;
+  color:#fff;
+  text-shadow:0 0 28px rgba(168,85,247,.22);
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveIdentity span,
+.prodLiveHost:not(.isMinimalLive) .prodLiveStatus{display:none!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatBar{
+  width:min(92vw,1120px)!important;
+  margin-top:20px!important;
+  padding:18px 20px!important;
+  border:1px solid rgba(196,181,253,.13)!important;
+  border-radius:20px!important;
+  background:linear-gradient(135deg,rgba(19,18,31,.92),rgba(10,10,17,.88))!important;
+  box-shadow:0 18px 60px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatBar strong{font-size:16px!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatBar small{font-size:11px!important;color:#9f9ab0!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatChoices{gap:10px!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatChoices button{
+  min-width:170px!important;
+  min-height:66px;
+  padding:12px 16px!important;
+  border-radius:15px!important;
+  border:1px solid rgba(255,255,255,.11)!important;
+  background:linear-gradient(180deg,rgba(20,20,31,.92),rgba(11,11,18,.96))!important;
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease;
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatChoices button:hover:not(:disabled){transform:translateY(-1px);border-color:rgba(216,180,254,.28)!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioFormatChoices button.active{
+  border-color:#c64cff!important;
+  background:linear-gradient(135deg,rgba(94,34,155,.62),rgba(58,20,72,.5))!important;
+  box-shadow:0 0 0 1px rgba(217,70,239,.24),0 0 26px rgba(168,85,247,.2)!important;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveStage{
+  border:1px solid rgba(192,132,252,.34)!important;
+  background:radial-gradient(circle at 50% 46%,rgba(88,28,135,.16),transparent 36%),#080911!important;
+  box-shadow:0 0 0 1px rgba(126,34,206,.1),0 26px 85px rgba(0,0,0,.44),0 0 48px rgba(126,34,206,.09)!important;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveStage.vertical{
+  width:min(72vw,470px)!important;
+  max-width:470px!important;
+  max-height:66vh!important;
+  border-radius:26px!important;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveStage.horizontal{
+  width:min(90vw,1080px)!important;
+  max-width:1080px!important;
+  max-height:64vh!important;
+  border-radius:22px!important;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveStage.isExamplePreview{border-style:solid!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioExamplePlaceholder{gap:12px!important;color:#aaa4ba!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioExamplePlaceholder svg{
+  width:64px;
+  height:64px;
+  padding:16px;
+  border-radius:50%;
+  color:#f4e9ff;
+  background:radial-gradient(circle,rgba(168,85,247,.4),rgba(88,28,135,.12));
+  border:1px solid rgba(216,180,254,.23);
+  filter:drop-shadow(0 0 18px rgba(168,85,247,.34));
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioExamplePlaceholder strong{font-size:21px!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioExamplePlaceholder span{font-size:12px!important;color:#a9a3b7!important}
+.prodLiveHost:not(.isMinimalLive) .prodLiveSetup{
+  width:min(92vw,880px)!important;
+  margin-top:18px!important;
+  gap:15px!important;
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioComposerPanel{
+  width:min(92vw,880px)!important;
+  padding:18px!important;
+  border:1px solid rgba(255,255,255,.07)!important;
+  border-radius:20px!important;
+  background:linear-gradient(180deg,rgba(13,14,22,.84),rgba(8,9,15,.86))!important;
+  box-shadow:0 22px 65px rgba(0,0,0,.28)!important;
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker>span{font-size:13px!important;color:#d7d3df!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker>div{gap:11px!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button{
+  min-height:92px!important;
+  border-radius:17px!important;
+  border:1px solid rgba(255,255,255,.09)!important;
+  background:linear-gradient(160deg,rgba(20,21,32,.94),rgba(11,12,20,.96))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button:hover:not(:disabled){transform:translateY(-2px);border-color:rgba(216,180,254,.24)!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button.active{
+  border-color:#c64cff!important;
+  background:linear-gradient(145deg,rgba(88,28,135,.48),rgba(28,14,42,.94))!important;
+  box-shadow:0 0 0 1px rgba(217,70,239,.2),0 0 30px rgba(168,85,247,.18)!important;
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button svg{color:#f5ebff}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button strong{font-size:14px!important}
+.prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button small{font-size:11px!important;color:#9791a7!important}
+.prodLiveHost:not(.isMinimalLive) .prodLiveSecondary{
+  min-height:54px;
+  border-radius:15px!important;
+  border-color:rgba(255,255,255,.09)!important;
+  background:linear-gradient(180deg,rgba(24,25,36,.9),rgba(14,15,24,.96))!important;
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioMetaPanel input{
+  min-height:56px;
+  border-radius:15px!important;
+  border-color:rgba(255,255,255,.09)!important;
+  background:rgba(11,12,19,.84)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
+}
+.prodLiveHost:not(.isMinimalLive) .liveStudioMetaPanel input:focus{
+  outline:none;
+  border-color:rgba(192,132,252,.58)!important;
+  box-shadow:0 0 0 3px rgba(126,34,206,.12)!important;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveStart{
+  min-height:58px!important;
+  border-radius:16px!important;
+  font-size:17px!important;
+  letter-spacing:.01em;
+  background:linear-gradient(90deg,#6d28d9 0%,#c026d3 48%,#ec2d8f 100%)!important;
+  box-shadow:0 16px 38px rgba(192,38,211,.22),0 0 34px rgba(126,34,206,.14)!important;
+}
+.prodLiveHost:not(.isMinimalLive) .prodLiveStart:not(:disabled):hover{transform:translateY(-1px);filter:brightness(1.05)}
+
+/* Desktop creator LIVE: keep the phone experience full-screen, but give desktop
+   creators a clean broadcast canvas + dedicated chat panel instead of a bare viewport. */
+@media(min-width:900px){
+  .prodLiveHost.isMinimalLive{
+    display:block!important;
+    overflow:auto!important;
+    padding:84px 24px 124px!important;
+    background:
+      radial-gradient(circle at 50% -5%,rgba(126,34,206,.2),transparent 30%),
+      radial-gradient(circle at 96% 66%,rgba(219,39,119,.13),transparent 26%),
+      #05060b!important;
+  }
+  .prodLiveHost.isMinimalLive::after{
+    content:"DROXION   •   LIVE";
+    position:fixed;
+    top:22px;
+    left:50%;
+    z-index:90;
+    transform:translateX(-50%);
+    color:#fff;
+    font-size:20px;
+    font-weight:950;
+    letter-spacing:.12em;
+    text-shadow:0 0 24px rgba(168,85,247,.35);
+    pointer-events:none;
+  }
+  .prodLiveHost.isMinimalLive .hostLiveMonitorTrigger{display:none!important}
+  .prodLiveHost.isMinimalLive .prodLiveStage{
+    overflow:visible!important;
+    border:1px solid rgba(192,132,252,.48)!important;
+    background:#07070d!important;
+    box-shadow:0 0 0 1px rgba(126,34,206,.13),0 28px 90px rgba(0,0,0,.5),0 0 50px rgba(126,34,206,.12)!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveStage.horizontal{
+    width:min(calc(100vw - 470px),1060px)!important;
+    height:auto!important;
+    aspect-ratio:16/9!important;
+    max-height:none!important;
+    border-radius:22px!important;
+    margin:0 auto!important;
+    transform:translateX(-170px);
+  }
+  .prodLiveHost.isMinimalLive .prodLiveStage.vertical{
+    width:min(52vw,520px)!important;
+    height:min(75vh,820px)!important;
+    max-height:820px!important;
+    aspect-ratio:9/16!important;
+    border-radius:26px!important;
+    margin:0 auto!important;
+    transform:translateX(-170px);
+  }
+  .prodLiveHost.isMinimalLive .prodLiveStage video,
+  .prodLiveHost.isMinimalLive .prodLiveStage>.liveV2LocalVideo,
+  .prodLiveHost.isMinimalLive .prodLiveStage>.liveStudioNativePreview{
+    border-radius:inherit!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveStage .hostLiveAudienceChat.hostLiveHudPositioned{
+    left:calc(100% + 20px)!important;
+    right:auto!important;
+    top:0!important;
+    bottom:auto!important;
+    width:360px!important;
+    max-width:360px!important;
+    height:100%!important;
+    max-height:none!important;
+    padding:12px!important;
+    gap:10px!important;
+    border:1px solid rgba(255,255,255,.09)!important;
+    border-radius:20px!important;
+    background:linear-gradient(180deg,rgba(14,15,25,.96),rgba(8,9,15,.96))!important;
+    box-shadow:0 24px 70px rgba(0,0,0,.38)!important;
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+  }
+  .prodLiveHost.isMinimalLive .hostLiveAudienceChat .hostLiveHudHandle{
+    min-height:46px!important;
+    border:0!important;
+    border-bottom:1px solid rgba(255,255,255,.08)!important;
+    border-radius:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+    cursor:default!important;
+    padding:4px 2px 10px!important;
+  }
+  .prodLiveHost.isMinimalLive .hostLiveAudienceChat .hostLiveHudHandle span{font-size:13px!important;letter-spacing:.05em!important}
+  .prodLiveHost.isMinimalLive .hostLiveAudienceChat .hostLiveHudHandle small{font-size:10px!important;color:#8f899c!important}
+  .prodLiveHost.isMinimalLive .hostLiveAudienceChatBody{
+    max-height:calc(100% - 50px)!important;
+    overflow:auto!important;
+    gap:3px!important;
+    padding-right:2px;
+  }
+  .prodLiveHost.isMinimalLive .hostLiveAudienceLine,
+  .prodLiveHost.isMinimalLive .hostLiveAudienceHint{
+    width:100%!important;
+    max-width:100%!important;
+    padding:9px 8px!important;
+    border-radius:10px!important;
+    background:transparent!important;
+    box-shadow:none!important;
+    text-shadow:none!important;
+    font-size:12px!important;
+  }
+  .prodLiveHost.isMinimalLive .hostLiveAudienceLine:hover{background:rgba(255,255,255,.035)!important}
+  .prodLiveHost.isMinimalLive .prodLiveStage .hostLiveGiftHud.hostLiveHudPositioned{
+    left:18px!important;
+    right:auto!important;
+    top:auto!important;
+    bottom:18px!important;
+    width:min(270px,42%)!important;
+    max-width:270px!important;
+  }
+  .prodLiveHost.isMinimalLive .hostLiveGiftHud .hostLiveHudHandle{display:none!important}
+  .prodLiveHost.isMinimalLive .hostLiveGiftHudBody{
+    border-color:rgba(192,132,252,.24)!important;
+    background:linear-gradient(135deg,rgba(76,29,149,.78),rgba(157,23,77,.62))!important;
+    box-shadow:0 14px 36px rgba(0,0,0,.34),0 0 25px rgba(168,85,247,.1)!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveMinimalLiveBadge{
+    top:16px!important;
+    left:16px!important;
+    border:1px solid rgba(255,255,255,.12)!important;
+    background:linear-gradient(135deg,#f52e54,#d61f6e)!important;
+    box-shadow:0 10px 28px rgba(245,46,84,.28)!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveMinimalViewerCount{
+    top:16px!important;
+    right:16px!important;
+    border-color:rgba(255,255,255,.12)!important;
+    background:rgba(7,8,13,.7)!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveMoreButton{
+    right:16px!important;
+    bottom:16px!important;
+    width:56px!important;
+    height:56px!important;
+    border-color:rgba(216,180,254,.22)!important;
+    background:rgba(14,15,24,.82)!important;
+    box-shadow:0 14px 38px rgba(0,0,0,.34),0 0 22px rgba(126,34,206,.1)!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveMoreButton:hover{border-color:rgba(216,180,254,.46)!important;background:rgba(28,22,42,.94)!important}
+  .prodLiveHost.isMinimalLive .prodLiveMoreMenu{
+    right:16px!important;
+    bottom:82px!important;
+    border-color:rgba(216,180,254,.18)!important;
+    background:rgba(12,13,21,.96)!important;
+    box-shadow:0 26px 80px rgba(0,0,0,.52)!important;
+  }
+  .prodLiveHost.isMinimalLive .prodLiveError{
+    position:fixed!important;
+    top:58px!important;
+    left:50%!important;
+    right:auto!important;
+    width:min(90vw,620px)!important;
+    transform:translateX(-50%);
+  }
+}
+
+@media(max-width:899px){
+  .prodLiveHost:not(.isMinimalLive) .prodLiveHostTopbar{height:68px!important;min-height:68px}
+  .prodLiveHost:not(.isMinimalLive) .prodLiveIdentity strong::before{font-size:21px}
+  .prodLiveHost:not(.isMinimalLive) .liveStudioFormatBar{width:94vw!important;padding:14px!important}
+  .prodLiveHost:not(.isMinimalLive) .liveStudioFormatChoices button{min-width:0!important}
+  .prodLiveHost:not(.isMinimalLive) .prodLiveStage.vertical{width:min(86vw,420px)!important}
+  .prodLiveHost:not(.isMinimalLive) .prodLiveSetup,
+  .prodLiveHost:not(.isMinimalLive) .liveStudioComposerPanel{width:94vw!important}
+}
+
+@media(max-width:600px){
+  .prodLiveHost:not(.isMinimalLive) .liveStudioFormatBar{gap:12px!important;margin-top:12px!important}
+  .prodLiveHost:not(.isMinimalLive) .liveStudioFormatChoices button{min-height:58px!important;padding:10px 12px!important}
+  .prodLiveHost:not(.isMinimalLive) .liveStudioSourcePicker button{min-height:68px!important}
+  .prodLiveHost:not(.isMinimalLive) .prodLiveStart{min-height:56px!important}
+}
