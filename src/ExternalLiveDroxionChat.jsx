@@ -164,7 +164,6 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const [sourceMessages, setSourceMessages] = useState([]);
   const [sourceStatus, setSourceStatus] = useState('Connecting source chat…');
   const [giftOptions, setGiftOptions] = useState([]);
-  const [kickFallback, setKickFallback] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
@@ -572,23 +571,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   }
 
   const sourceFrame = sourceChatFrameUrl(stream);
-  useEffect(() => {
-  if (stream?.provider !== 'kick') {
-    setKickFallback(false);
-    return undefined;
-  }
-
-  if (sourceMessages.length > 0) {
-    setKickFallback(false);
-    return undefined;
-  }
-
-  const timer = window.setTimeout(() => {
-    setKickFallback(true);
-  }, 5000);
-
-  return () => window.clearTimeout(timer);
-}, [stream?.provider, stream?.channelSlug, sourceMessages.length]);
+  
 
   return (
     <div className="dxDroxionChat dxUnifiedChat">
@@ -606,20 +589,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       node.scrollHeight - node.scrollTop - node.clientHeight <= 84;
   }}
 >
-  {kickFallback && stream?.provider === 'kick' && sourceFrame ? (
-    <iframe
-      src={sourceFrame}
-      title="Kick LIVE chat"
-      style={{
-        width: '100%',
-        height: '100%',
-        minHeight: '420px',
-        border: 0,
-        background: '#0b0e11'
-      }}
-    />
-  ) : (
-    <>
+  
       {combinedMessages.length === 0 && (
         <div className="dxDroxionChatEmpty">
           <strong>LIVE chat is connecting</strong>
@@ -687,11 +657,9 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
             ) : (
               <p>{message.message}</p>
             )}
-          </div>
+                           </div>
         </div>
       ))}
-    </>
-  )}
 </div>
 
       {notice && <div className="dxSourceStatus">{notice}</div>}
