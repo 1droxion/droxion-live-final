@@ -164,6 +164,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const [sourceMessages, setSourceMessages] = useState([]);
   const [sourceStatus, setSourceStatus] = useState('Connecting source chat…');
   const [giftOptions, setGiftOptions] = useState([]);
+  const [kickFallback, setKickFallback] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
@@ -571,6 +572,23 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   }
 
   const sourceFrame = sourceChatFrameUrl(stream);
+  useEffect(() => {
+  if (stream?.provider !== 'kick') {
+    setKickFallback(false);
+    return undefined;
+  }
+
+  if (sourceMessages.length > 0) {
+    setKickFallback(false);
+    return undefined;
+  }
+
+  const timer = window.setTimeout(() => {
+    setKickFallback(true);
+  }, 5000);
+
+  return () => window.clearTimeout(timer);
+}, [stream?.provider, stream?.channelSlug, sourceMessages.length]);
 
   return (
     <div className="dxDroxionChat dxUnifiedChat">
@@ -579,20 +597,102 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         {sourceFrame ? <button type="button" className="dxSourceComposerButton" onClick={() => setSourceComposerOpen(true)}>Chat on {providerLabel(stream?.provider)}</button> : <span className="dxSourceReadOnly">{providerLabel(stream?.provider)} read-only</span>}
       </div>
 
-      <div ref={chatStreamRef} className="dxUnifiedChatStream" onScroll={event => {
-        const node = event.currentTarget;
-        stickBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 84;
-      }}>
-        {combinedMessages.length === 0 && <div className="dxDroxionChatEmpty"><strong>LIVE chat is connecting</strong><span>{sourceStatus || 'Source messages and Droxion messages will appear together here.'}</span></div>}
-        {sourceStatus && combinedMessages.length > 0 && <div className="dxSourceStatus">{sourceStatus}</div>}
-        {combinedMessages.map(message => <div className={`dxUnifiedMessage ${message.kind}`} key={message.key}>
-          {message.avatarUrl ? <img src={message.avatarUrl} alt="" /> : <span className={`dxUnifiedAvatar ${message.kind}`} />}
+      <div
+  ref={chatStreamRef}
+  className="dxUnifiedChatStream"
+  onScroll={event => {
+    const node = event.currentTarget;
+    stickBottomRef.current =
+      node.scrollHeight - node.scrollTop - node.clientHeight <= 84;
+  }}
+>
+  {kickFallback && stream?.provider === 'kick' && sourceFrame ? (
+    <iframe
+      src={sourceFrame}
+      title="Kick LIVE chat"
+      style={{
+        width: '100%',
+        height: '100%',
+        minHeight: '420px',
+        border: 0,
+        background: '#0b0e11'
+      }}
+    />
+  ) : (
+    <>
+      {combinedMessages.length === 0 && (
+        <div className="dxDroxionChatEmpty">
+          <strong>LIVE chat is connecting</strong>
+          <span>
+            {sourceStatus ||
+              'Source messages and Droxion messages will appear together here.'}
+          </span>
+        </div>
+      )}
+
+      {sourceStatus && combinedMessages.length > 0 && (
+        <div className="dxSourceStatus">{sourceStatus}</div>
+      )}
+
+      {combinedMessages.map(message => (
+        <div
+          className={`dxUnifiedMessage ${message.kind}`}
+          key={message.key}
+        >
+          {message.avatarUrl ? (
+            <img src={message.avatarUrl} alt="" />
+          ) : (
+            <span className={`dxUnifiedAvatar ${message.kind}`} />
+          )}
+
           <div className="dxUnifiedMessageBody">
-            <div className="dxUnifiedNameRow"><strong style={message.color ? { color: message.color } : undefined}>{message.authorName}</strong>{message.kind === 'source' ? <span className={`dxChatSourceBadge ${providerClass(message.provider)}`}>{providerLabel(message.provider)}</span> : <span className="dxChatSourceBadge droxion">Droxion</span>}{message.isModerator && <i>MOD</i>}{message.isVerified && <i>✓</i>}</div>
-            {message.kind === 'gift' ? <p className="dxGiftLine"><b>{message.giftEmoji} {message.giftName}</b><span> sent a Droxion gift{message.costCoins ? ` · ${message.costCoins} coins` : ''}</span></p> : <p>{message.message}</p>}
+            <div className="dxUnifiedNameRow">
+              <strong
+                style={
+                  message.color ? { color: message.color } : undefined
+                }
+              >
+                {message.authorName}
+              </strong>
+
+              {message.kind === 'source' ? (
+                <span
+                  className={`dxChatSourceBadge ${providerClass(
+                    message.provider
+                  )}`}
+                >
+                  {providerLabel(message.provider)}
+                </span>
+              ) : (
+                <span className="dxChatSourceBadge droxion">Droxion</span>
+              )}
+
+              {message.isModerator && <i>MOD</i>}
+              {message.isVerified && <i>✓</i>}
+            </div>
+
+            {message.kind === 'gift' ? (
+              <p className="dxGiftLine">
+                <b>
+                  {message.giftEmoji} {message.giftName}
+                </b>
+                <span>
+                  {' '}
+                  sent a Droxion gift
+                  {message.costCoins
+                    ? ` · ${message.costCoins} coins`
+                    : ''}
+                </span>
+              </p>
+            ) : (
+              <p>{message.message}</p>
+            )}
           </div>
-        </div>)}
-      </div>
+        </div>
+      ))}
+    </>
+  )}
+</div>
 
       {notice && <div className="dxSourceStatus">{notice}</div>}
       <div className="dxDroxionComposer">
