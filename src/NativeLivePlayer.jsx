@@ -113,7 +113,31 @@ export default function NativeLivePlayer() {
             referrerPolicy="strict-origin-when-cross-origin"
             style={fill}
           />
-        ) : <div id={TWITCH_PLAYER_ID} style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, background: '#000', overflow: 'hidden' }} />
+        ) : (
+  <div
+    style={{
+      width: '100%',
+      aspectRatio: '16 / 9',
+      background: '#000',
+      overflow: 'hidden',
+      position: 'relative'
+    }}
+  >
+    <div
+      id={TWITCH_PLAYER_ID}
+      style={{
+        width: '534px',
+        height: '300px',
+        background: '#000',
+        position: 'absolute',
+        top: 0,
+        left: '50%',
+        transformOrigin: 'top center',
+        transform: `translateX(-50%) scale(${Math.min(1, window.innerWidth / 534)})`
+      }}
+    />
+  </div>
+)
       ) : youtubeSrc ? (
         <iframe
           src={youtubeSrc}
