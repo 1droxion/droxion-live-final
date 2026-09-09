@@ -346,61 +346,88 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       };
       poll();
     } else if (stream?.provider === 'kick' && stream?.channelSlug) {
-      let after = '';
-      let broadcasterUserId = Number(stream?.channelId || 0);
+  let after = '';
+  let broadcasterUserId = Number(stream?.channelId || 0);
 
-      const startKick = async () => {
-        try {
-          if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
-            const resolveResponse = await apiJson(`/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`);
-            const resolved = resolveResponse.data || {};
-            if (!resolveResponse.ok) throw new Error('resolve_failed');
-            broadcasterUserId = Number(resolved?.broadcasterUserId || 0);
-          }
-          if (stopped) return;
-          if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
-            setSourceStatus('Kick chat temporarily unavailable.');
-            sourceTimerRef.current = window.setTimeout(startKick, 6000);
-            return;
-          }
+  const pollKick = async () => {
+    if (stopped || !Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) return;
 
-          const subscribeResponse = await apiJson('/api/kick/subscribe-chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: { broadcasterUserId }
-          });
-          const subscribed = subscribeResponse.data || {};
-          if (!subscribeResponse.ok || subscribed?.enabled === false || subscribed?.ok === false) {
-            throw new Error(subscribed?.reason || 'subscribe_failed');
-          }
-          if (stopped) return;
-          setSourceStatus('Waiting for Kick chat…');
+    try {
+      const params = new URLSearchParams({
+        broadcasterUserId: String(broadcasterUserId)
+      });
 
-          const poll = async () => {
-            if (stopped) return;
-            try {
-              const params = new URLSearchParams({ broadcasterUserId: String(broadcasterUserId) });
-              if (after) params.set('after', after);
-              const response = await apiJson(`/api/kick/webhook?${params.toString()}`);
-              const data = response.data || {};
-              if (!response.ok) throw new Error('unavailable');
-              addSource((data?.messages || []).map(item => ({ ...item, provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
-              after = data?.nextAfter || after;
-              sourceTimerRef.current = window.setTimeout(poll, 2500);
-            } catch {
-              setSourceStatus('Kick chat temporarily unavailable.');
-              sourceTimerRef.current = window.setTimeout(poll, 6000);
-            }
-          };
-          poll();
-        } catch {
-          if (!stopped) {
-            setSourceStatus('Kick chat temporarily unavailable.');
-            sourceTimerRef.current = window.setTimeout(startKick, 6000);
-          }
-        }
-      };
-      startKick();
+      if (after) params.set('after', after);
+
+      const response = await apiJson(
+        `/api/kick/webhook?${params.toString()}`
+      );
+
+      const data = response.data || {};
+
+      if (!response.ok) throw new Error('unavailable');
+
+      const rows = (data?.messages || []).map(item => ({
+        ...item,
+        provider: 'kick',
+        publishedAt: toMillis(item.publishedAt)
+      }));
+
+      addSource(rows);
+
+      after = data?.nextAfter || after;
+
+      if (!rows.length) {
+        setSourceStatus('Waiting for new Kick messages…');
+      }
+
+      sourceTimerRef.current = window.setTimeout(pollKick, 2500);
+    } catch {
+      setSourceStatus('Kick chat temporarily unavailable.');
+      sourceTimerRef.current = window.setTimeout(pollKick, 6000);
+    }
+  };
+
+  const startKick = async () => {
+    try {
+      if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
+        const resolveResponse = await apiJson(
+          `/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`
+        );
+
+        const resolved = resolveResponse.data || {};
+
+        if (!resolveResponse.ok) throw new Error('resolve_failed');
+
+        broadcasterUserId = Number(resolved?.broadcasterUserId || 0);
+      }
+
+      if (stopped) return;
+
+      if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
+        setSourceStatus('Kick chat temporarily unavailable.');
+        sourceTimerRef.current = window.setTimeout(startKick, 6000);
+        return;
+      }
+
+      setSourceStatus('Waiting for Kick chat…');
+
+      pollKick();
+
+      apiJson('/api/kick/subscribe-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { broadcasterUserId }
+      }).catch(() => {});
+    } catch {
+      if (!stopped) {
+        setSourceStatus('Kick chat temporarily unavailable.');
+        sourceTimerRef.current = window.setTimeout(startKick, 6000);
+      }
+    }
+  };
+
+  startKick();
     } else if (stream?.provider === 'twitch' && stream?.channelSlug) {
       const channel = String(stream.channelSlug).toLowerCase().replace(/[^a-z0-9_]/g, '');
       try {
