@@ -33,12 +33,18 @@ export default function NativeExternalLivePlayerBridge() {
         if (next.includes('provider=twitch')) {
           const container = frame.parentElement;
           if (container) {
-            container.style.aspectRatio = 'auto';
-            container.style.height = '300px';
-            container.style.minHeight = '300px';
+            container.style.aspectRatio = '16 / 9';
+            container.style.height = 'auto';
+            container.style.minHeight = '0';
+            container.style.background = '#000';
+            container.style.overflow = 'hidden';
           }
-          frame.style.height = '300px';
-          frame.style.minHeight = '300px';
+          frame.style.width = '100%';
+          frame.style.height = '100%';
+          frame.style.minHeight = '0';
+          frame.style.display = 'block';
+          frame.style.background = '#000';
+          frame.style.border = '0';
         }
 
         frame.setAttribute('src', next);
