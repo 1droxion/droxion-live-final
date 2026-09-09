@@ -5,7 +5,7 @@ import LiveClientDiagnostics from './LiveClientDiagnostics';
 import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
 import ShortFeed from './ShortFeed';
-import HomeDiscoveryControls from './HomeDiscoveryControls';
+import GlobalLiveHub from './GlobalLiveHub';
 import DroxionWallet from './DroxionWallet';
 import NotificationsPanel from './NotificationsPanel';
 import ProfileAvatarEnhancer from './ProfileAvatarEnhancer';
@@ -21,6 +21,7 @@ import './live-first-app.css';
 import './product-shell.css';
 
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
+const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
@@ -72,7 +73,7 @@ export default function LiveFirstApp() {
   useEffect(() => {
     if (!immersiveLive) return;
     const unlockLiveAudio = () => {
-      Array.from(document.querySelectorAll('.liveRoomV4 audio')).forEach(audio => {
+      Array.from(document.querySelectorAll('.liveRoomV4 audio,.productionViewerPage audio')).forEach(audio => {
         audio.muted = false; audio.volume = 1;
         const playback = audio.play?.(); if (playback?.catch) playback.catch(() => {});
       });
@@ -85,7 +86,7 @@ export default function LiveFirstApp() {
   }, [immersiveLive]);
 
   useEffect(() => {
-    const openLiveHome = event => {
+    const openLiveHome = () => {
       setHostStudioOpen(false);
       setImmersiveLive(false);
       setSearchOpen(false);
@@ -97,16 +98,30 @@ export default function LiveFirstApp() {
       try { window.localStorage.removeItem(PENDING_LIVE_PUSH_KEY); } catch {}
     };
 
-    window.addEventListener('droxion:live-push-open', openLiveHome);
+    const openChatFromPush = () => {
+      setHostStudioOpen(false);
+      setImmersiveLive(false);
+      setSearchOpen(false);
+      setNotificationsOpen(false);
+      setTab('live');
+      setChatOpen(true);
+      try { window.localStorage.removeItem(PENDING_CHAT_PUSH_KEY); } catch {}
+    };
 
-    // Cold-start fallback: the OneSignal handler stores the payload before the
-    // main app finishes mounting. Consuming it here guarantees a fresh LIVE Home.
+    window.addEventListener('droxion:live-push-open', openLiveHome);
+    window.addEventListener('droxion:chat-push-open', openChatFromPush);
+
     try {
-      const pending = window.localStorage.getItem(PENDING_LIVE_PUSH_KEY);
-      if (pending) window.setTimeout(openLiveHome, 0);
+      const pendingLive = window.localStorage.getItem(PENDING_LIVE_PUSH_KEY);
+      const pendingChat = window.localStorage.getItem(PENDING_CHAT_PUSH_KEY);
+      if (pendingChat) window.setTimeout(openChatFromPush, 0);
+      else if (pendingLive) window.setTimeout(openLiveHome, 0);
     } catch {}
 
-    return () => window.removeEventListener('droxion:live-push-open', openLiveHome);
+    return () => {
+      window.removeEventListener('droxion:live-push-open', openLiveHome);
+      window.removeEventListener('droxion:chat-push-open', openChatFromPush);
+    };
   }, []);
 
   function openGoLiveInsideHome() {
@@ -131,7 +146,23 @@ export default function LiveFirstApp() {
   function startLiveFromFeed() { openGoLiveInsideHome(); }
   function watchCreatorLive() { setTab('live'); setHostStudioOpen(false); }
 
-  let content = <><HomeDiscoveryControls query={searchQuery} /><ProductionLiveBrowser key={`home-live-${liveHomeVersion}`} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} onImmersiveChange={setImmersiveLive} /></>;
+  const nativeLiveBrowser = <ProductionLiveBrowser
+    key={`home-live-${liveHomeVersion}`}
+    currentUserId={user?.id}
+    coins={coins}
+    onCoinsChanged={value => setCoins(Number(value || 0))}
+    onOpenWallet={() => setWalletOpen(true)}
+    onImmersiveChange={setImmersiveLive}
+  />;
+
+  let content = <GlobalLiveHub
+    query={searchQuery}
+    nativeLive={nativeLiveBrowser}
+    currentUserId={user?.id}
+    coins={coins}
+    onCoinsChanged={value => setCoins(Number(value || 0))}
+    onOpenWallet={() => setWalletOpen(true)}
+  />;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
   if (tab === 'rankings') content = <Rankings />;
   if (tab === 'profile') content = <CreatorProfileHome currentUserId={user?.id} coins={coins} onOpenWallet={() => setWalletOpen(true)} />;
@@ -143,13 +174,13 @@ export default function LiveFirstApp() {
       <LiveGuestViewerBridge enabled={immersiveLive} currentUserId={user?.id} />
 
       {!immersiveLive && !chatOpen && tab !== 'feed' && <header className={`lfTopbar ${tab === 'live' ? 'lfHomeTopbar' : ''}`}>
-        <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE SOCIAL</small></span></button>
+        <button className="lfBrand" type="button" onClick={() => chooseTab('live')} aria-label="Open Droxion home"><span><strong>DROXION</strong><small>LIVE EVERYWHERE</small></span></button>
         {tab === 'live' ? <div className="lfHomeActions">
           <button className="lfSearchButton" type="button" onClick={() => setSearchOpen(value => !value)} aria-label="Search LIVE creators"><Search size={19} /></button>
           <button className="lfSearchButton" type="button" onClick={() => setChatOpen(true)} aria-label="Inbox"><Inbox size={19} /></button>
           <button className="lfNotificationButton" type="button" onClick={() => setNotificationsOpen(true)} aria-label="Notifications"><Bell size={19} />{unreadNotifications > 0 && <i />}</button>
         </div> : <div className="lfSectionLabel">{TABS.find(item => item.id === tab)?.label}</div>}
-        {tab === 'live' && searchOpen && <label className="lfSearchOverlay"><Search size={17} /><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search creators or LIVE streams" /><button type="button" onClick={() => { setSearchQuery(''); setSearchOpen(false); }}>×</button></label>}
+        {tab === 'live' && searchOpen && <label className="lfSearchOverlay"><Search size={17} /><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search LIVE creators or platforms" /><button type="button" onClick={() => { setSearchQuery(''); setSearchOpen(false); }}>×</button></label>}
       </header>}
 
       {chatOpen && !immersiveLive && <header className="lfTopbar"><button className="lfBrand" type="button" onClick={() => setChatOpen(false)} aria-label="Back to Droxion Home"><ArrowLeft size={22} /><span><strong>DROXION</strong><small>INBOX</small></span></button><div className="lfSectionLabel">Messages</div></header>}
