@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, Home, Inbox, Plus, Search, Trophy, User, Play } from 'lucide-react';
+import { ArrowLeft, Bell, Home, Inbox, Search, Trophy, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
 import Rankings from './Rankings';
@@ -26,7 +26,6 @@ const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'feed', label: 'Feed', icon: Play },
-  { id: 'go-live', label: 'LIVE', icon: Plus },
   { id: 'rankings', label: 'Ranking', icon: Trophy },
   { id: 'profile', label: 'Profile', icon: User },
 ];
