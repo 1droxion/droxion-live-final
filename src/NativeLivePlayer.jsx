@@ -60,13 +60,13 @@ export default function NativeLivePlayer() {
       host.replaceChildren();
       try {
         player = new window.Twitch.Player(TWITCH_PLAYER_ID, {
-          channel: slug,
-          width: '100%',
-          height: '100%',
-          autoplay: true,
-          muted: false,
-          parent: twitchParents()
-        });
+  channel: slug,
+  width: 534,
+  height: 300,
+  autoplay: true,
+  muted: false,
+  parent: twitchParents()
+});
         twitchPlayerRef.current = player;
       } catch (error) {
         console.warn('Droxion Twitch player could not start', error);
