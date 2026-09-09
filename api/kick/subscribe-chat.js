@@ -103,7 +103,10 @@ export default async function handler(req, res) {
 
   try {
     const token = await getKickAppToken();
-    if (!token) return res.status(200).json({ ok: false, enabled: false, reason: 'missing_credentials' });
+    if (!token) {
+      // Do not block the viewer from polling already persisted Kick messages.
+      return res.status(200).json({ ok: true, enabled: true, degraded: true, reason: 'missing_credentials' });
+    }
 
     const existing = await findExistingSubscription(token, broadcasterUserId);
     if (existing) {
@@ -118,7 +121,9 @@ export default async function handler(req, res) {
     const created = await createSubscription(token, broadcasterUserId);
     const result = Array.isArray(created?.data) ? created.data[0] : null;
     if (result?.error) {
-      return res.status(200).json({ ok: false, enabled: true, reason: text(result.error, 'subscription_failed') });
+      // Polling can still return messages if this channel was already subscribed
+      // by another viewer/request, so keep the client recovery path alive.
+      return res.status(200).json({ ok: true, enabled: true, degraded: true, reason: text(result.error, 'subscription_delayed') });
     }
 
     return res.status(200).json({
@@ -128,8 +133,8 @@ export default async function handler(req, res) {
       subscriptionId: text(result?.subscription_id),
     });
   } catch (error) {
-    const message = text(error?.message, 'Kick event subscription failed');
-    console.error('[kick-chat] subscription failed', message);
-    return res.status(502).json({ ok: false, enabled: true, reason: 'provider_error', error: message });
+    const message = text(error?.message, 'Kick event subscription delayed');
+    console.error('[kick-chat] subscription delayed; viewer polling will continue', message);
+    return res.status(200).json({ ok: true, enabled: true, degraded: true, reason: 'subscription_delayed' });
   }
 }
