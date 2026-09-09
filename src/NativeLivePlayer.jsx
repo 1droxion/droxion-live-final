@@ -64,7 +64,7 @@ export default function NativeLivePlayer() {
   width: 534,
   height: 300,
   autoplay: true,
-  muted: false,
+  muted: true,
   parent: twitchParents()
 });
         twitchPlayerRef.current = player;
@@ -106,7 +106,7 @@ export default function NativeLivePlayer() {
       {isTwitch ? (
         twitchFailed ? (
           <iframe
-            src={`https://player.twitch.tv/?channel=${encodeURIComponent(slug)}${twitchParents().map(parent => `&parent=${encodeURIComponent(parent)}`).join('')}&autoplay=true&muted=false`}
+            src={`https://player.twitch.tv/?channel=${encodeURIComponent(slug)}${twitchParents().map(parent => `&parent=${encodeURIComponent(parent)}`).join('')}&autoplay=true&muted=true`}
             title="Droxion Twitch LIVE"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             allowFullScreen
