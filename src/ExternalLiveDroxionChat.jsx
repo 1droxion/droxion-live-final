@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Coins, Gift, MessageCircle, Send, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import './external-live-droxion-chat.css';
@@ -11,6 +11,30 @@ const CHAT_CACHE_PREFIX = 'droxion.live.chat.v2:';
 
 function apiPath(path) {
   return `${Capacitor.isNativePlatform() ? 'https://www.droxion.com' : ''}${path}`;
+}
+
+async function apiJson(path, { method = 'GET', body = null, headers = {} } = {}) {
+  if (Capacitor.isNativePlatform()) {
+    const response = await CapacitorHttp.request({
+      url: apiPath(path),
+      method,
+      headers: { Accept: 'application/json', ...headers },
+      ...(body === null || body === undefined ? {} : { data: body })
+    });
+    let data = response.data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch { data = {}; }
+    }
+    return { ok: response.status >= 200 && response.status < 300, status: response.status, data: data || {} };
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: { Accept: 'application/json', ...headers },
+    ...(body === null || body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) })
+  });
+  const data = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, data };
 }
 
 function streamKey(stream) {
@@ -80,6 +104,7 @@ function providerLabel(provider) {
   if (provider === 'youtube') return 'YouTube';
   if (provider === 'twitch') return 'Twitch';
   if (provider === 'kick') return 'Kick';
+  if (provider === 'rumble') return 'Rumble';
   return 'Source';
 }
 
@@ -87,6 +112,7 @@ function providerClass(provider) {
   if (provider === 'youtube') return 'youtube';
   if (provider === 'twitch') return 'twitch';
   if (provider === 'kick') return 'kick';
+  if (provider === 'rumble') return 'rumble';
   return 'droxion';
 }
 
@@ -128,6 +154,7 @@ function sourceChatFrameUrl(stream) {
   if (stream?.provider === 'twitch' && stream?.channelSlug) return `https://www.twitch.tv/embed/${encodeURIComponent(stream.channelSlug)}/chat?parent=${encodeURIComponent(parent)}&darkpopout`;
   if (stream?.provider === 'youtube' && stream?.externalId) return `https://www.youtube.com/live_chat?v=${encodeURIComponent(stream.externalId)}&embed_domain=${encodeURIComponent(parent)}`;
   if (stream?.provider === 'kick' && stream?.channelSlug) return `https://kick.com/popout/${encodeURIComponent(stream.channelSlug)}/chat`;
+  if (stream?.provider === 'rumble' && stream?.chatUrl) return stream.chatUrl;
   return '';
 }
 
@@ -304,8 +331,8 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           const params = new URLSearchParams({ provider: 'youtube', videoId: String(stream.externalId) });
           if (liveChatId) params.set('liveChatId', liveChatId);
           if (pageToken) params.set('pageToken', pageToken);
-          const response = await fetch(apiPath(`/api/live-chat?${params.toString()}`));
-          const data = await response.json().catch(() => ({}));
+          const response = await apiJson(`/api/live-chat?${params.toString()}`);
+          const data = response.data || {};
           if (!response.ok) throw new Error('unavailable');
           liveChatId = data?.liveChatId || liveChatId;
           pageToken = data?.nextPageToken || pageToken;
@@ -325,8 +352,8 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       const startKick = async () => {
         try {
           if (!Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) {
-            const resolveResponse = await fetch(apiPath(`/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`));
-            const resolved = await resolveResponse.json().catch(() => ({}));
+            const resolveResponse = await apiJson(`/api/kick/resolve-channel?slug=${encodeURIComponent(stream.channelSlug)}`);
+            const resolved = resolveResponse.data || {};
             if (!resolveResponse.ok) throw new Error('resolve_failed');
             broadcasterUserId = Number(resolved?.broadcasterUserId || 0);
           }
@@ -337,12 +364,12 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
             return;
           }
 
-          const subscribeResponse = await fetch(apiPath('/api/kick/subscribe-chat'), {
+          const subscribeResponse = await apiJson('/api/kick/subscribe-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ broadcasterUserId })
+            body: { broadcasterUserId }
           });
-          const subscribed = await subscribeResponse.json().catch(() => ({}));
+          const subscribed = subscribeResponse.data || {};
           if (!subscribeResponse.ok || subscribed?.enabled === false || subscribed?.ok === false) {
             throw new Error(subscribed?.reason || 'subscribe_failed');
           }
@@ -354,8 +381,8 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
             try {
               const params = new URLSearchParams({ broadcasterUserId: String(broadcasterUserId) });
               if (after) params.set('after', after);
-              const response = await fetch(apiPath(`/api/kick/webhook?${params.toString()}`));
-              const data = await response.json().catch(() => ({}));
+              const response = await apiJson(`/api/kick/webhook?${params.toString()}`);
+              const data = response.data || {};
               if (!response.ok) throw new Error('unavailable');
               addSource((data?.messages || []).map(item => ({ ...item, provider: 'kick', publishedAt: toMillis(item.publishedAt) })));
               after = data?.nextAfter || after;
@@ -406,9 +433,12 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
           }
         };
         socket.onerror = () => setSourceStatus('Twitch chat temporarily unavailable.');
+        socket.onclose = () => { if (!stopped && sourceMessages.length === 0) setSourceStatus('Twitch chat temporarily unavailable.'); };
       } catch {
         setSourceStatus('Twitch chat temporarily unavailable.');
       }
+    } else if (stream?.provider === 'rumble') {
+      setSourceStatus(stream?.chatUrl ? 'Rumble source chat is available from the chat button. Droxion messages appear here.' : 'Rumble source chat is not available for this LIVE. Droxion chat still works here.');
     } else {
       setSourceStatus('Source chat is unavailable for this LIVE.');
     }
@@ -421,7 +451,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       twitchPendingRef.current = [];
       if (socketRef.current) { try { socketRef.current.close(); } catch {} socketRef.current = null; }
     };
-  }, [stream?.provider, stream?.externalId, stream?.channelId, stream?.channelSlug]);
+  }, [stream?.provider, stream?.externalId, stream?.channelId, stream?.channelSlug, stream?.chatUrl]);
 
   const combinedMessages = useMemo(() => {
     const source = sourceMessages.map(row => ({
@@ -537,8 +567,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         </div>)}
       </div>
 
-      
-      
+      {notice && <div className="dxSourceStatus">{notice}</div>}
       <div className="dxDroxionComposer">
         <button type="button" className="dxCoinsButton" onClick={() => onOpenWallet?.()} aria-label="Buy Droxion coins"><Coins size={16} /><span>{Number(coins || 0)}</span></button>
         <button type="button" className="dxGiftButton" onClick={() => setGiftOpen(true)} aria-label="Send Droxion gift"><Gift size={18} /></button>
@@ -546,7 +575,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         <button type="button" className="dxSendButton" disabled={!draft.trim() || sending} onClick={sendChat}><Send size={17} /></button>
       </div>
 
-      {sourceComposerOpen && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}><section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}><header><div><strong>{providerLabel(stream?.provider)} chat</strong><small>Use your {providerLabel(stream?.provider)} account here; Droxion chat remains the default.</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header><iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} /></section></div>}
+      {sourceComposerOpen && sourceFrame && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}><section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}><header><div><strong>{providerLabel(stream?.provider)} chat</strong><small>Use your {providerLabel(stream?.provider)} account here; Droxion chat remains the default.</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header><iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} /></section></div>}
       {giftOpen && <div className="dxGiftBackdrop" onClick={() => setGiftOpen(false)}><section className="dxGiftSheet" onClick={event => event.stopPropagation()}><header><div><span>DROXION GIFTS</span><strong>Send a gift</strong><small>Balance · 🪙 {Number(coins || 0)}</small></div><button type="button" onClick={() => setGiftOpen(false)}><X size={18} /></button></header><div className="dxGiftGrid">{giftOptions.map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><strong>{gift.gift_name}</strong><small>🪙 {gift.cost_coins}</small></button>)}</div><button type="button" className="dxBuyCoinsWide" onClick={() => { setGiftOpen(false); onOpenWallet?.(); }}>+ Buy Coins</button></section></div>}
       {activeGift && <div className="dxExternalGiftBurst" aria-hidden="true"><span>{activeGift.emoji}</span><strong>{activeGift.name}</strong><small>DROXION GIFT</small></div>}
     </div>
