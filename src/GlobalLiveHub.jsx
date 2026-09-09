@@ -153,7 +153,7 @@ function ExternalLivePlayer({ stream, streams, onSelectStream, onClose, currentU
   let src = '';
   if (stream?.embedType === 'youtube' && stream.externalId) src = `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&playsinline=1&rel=0`;
   else if (stream?.embedType === 'kick' && stream.channelSlug) src = `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}`;
-  else if (stream?.embedType === 'twitch' && stream.channelSlug) src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=false&muted=true`;
+  else if (stream?.embedType === 'twitch' && stream.channelSlug) src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=true`;
   else if (stream?.embedType === 'rumble' && stream.embedUrl) src = stream.embedUrl;
 
   return <div className="dxLiveModal" role="dialog" aria-modal="true" aria-label={`${stream?.creatorName || 'Creator'} LIVE`}>
