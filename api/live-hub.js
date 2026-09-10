@@ -200,39 +200,70 @@ async function getKickToken() {
 }
 
 function mapKickItem(item) {
-  const slug = text(item?.slug || item?.broadcaster?.slug || item?.broadcaster?.username || item?.broadcaster_user_name || item?.channel?.slug || item?.channel?.username);
+  const slug = text(
+    item?.slug ||
+    item?.broadcaster?.slug ||
+    item?.broadcaster?.username ||
+    item?.broadcaster_user_name ||
+    item?.channel?.slug ||
+    item?.channel?.username
+  );
+
   if (!slug) return null;
+
   const cat = item?.category || item?.categories?.[0] || {};
+
   const channelId = text(
-  item?.broadcaster_user?.id ||
-  item?.broadcaster_user_id ||
-  item?.broadcaster?.user_id ||
-  item?.broadcaster?.id ||
-  item?.channel?.broadcaster_user_id ||
-  creatorName: text(
-  item?.broadcaster_user?.username ||
-  item?.broadcaster?.username ||
-  item?.broadcaster_user_name ||
-  item?.channel?.username ||
-  item?.channel?.user?.username,
-  slug
-),
-  item?.channel?.user?.id ||
-  item?.channel_id ||
-  item?.user_id
-);
-  const thumbnail = typeof item?.thumbnail === 'string' ? text(item.thumbnail) : text(item?.thumbnail?.url || item?.thumbnail_url || item?.channel?.livestream?.thumbnail?.url || item?.channel?.livestream?.thumbnail_url);
+    item?.broadcaster_user?.id ||
+    item?.broadcaster_user_id ||
+    item?.broadcaster?.user_id ||
+    item?.broadcaster?.id ||
+    item?.channel?.broadcaster_user_id ||
+    item?.channel?.user_id ||
+    item?.channel?.user?.id ||
+    item?.channel_id ||
+    item?.user_id
+  );
+
+  const thumbnail =
+    typeof item?.thumbnail === 'string'
+      ? text(item.thumbnail)
+      : text(
+          item?.thumbnail?.url ||
+          item?.thumbnail_url ||
+          item?.channel?.livestream?.thumbnail?.url ||
+          item?.channel?.livestream?.thumbnail_url
+        );
+
   return {
     id: `kick:${text(item?.id || item?.livestream_id) || slug}`,
-    provider: 'kick', providerLabel: 'Kick', externalId: text(item?.id || item?.livestream_id),
-    channelId, channelSlug: slug,
-    creatorName: text(item?.broadcaster?.username || item?.broadcaster_user_name || item?.channel?.username || item?.channel?.user?.username, slug),
+    provider: 'kick',
+    providerLabel: 'Kick',
+    externalId: text(item?.id || item?.livestream_id),
+    channelId,
+    channelSlug: slug,
+
+    creatorName: text(
+      item?.broadcaster_user?.username ||
+      item?.broadcaster?.username ||
+      item?.broadcaster_user_name ||
+      item?.channel?.username ||
+      item?.channel?.user?.username,
+      slug
+    ),
+
     title: text(item?.stream_title || item?.title, 'LIVE on Kick'),
     category: normalizeCategory(cat?.name || item?.category_name || 'Live'),
-    language: text(item?.language || item?.language_code || item?.channel?.language),
+    language: text(
+      item?.language ||
+      item?.language_code ||
+      item?.channel?.language
+    ),
     viewerCount: number(item?.viewer_count || item?.viewers),
-    startedAt: text(item?.started_at || item?.created_at), thumbnailUrl: thumbnail,
-    watchUrl: `https://kick.com/${encodeURIComponent(slug)}`, embedType: 'kick',
+    startedAt: text(item?.started_at || item?.created_at),
+    thumbnailUrl: thumbnail,
+    watchUrl: `https://kick.com/${encodeURIComponent(slug)}`,
+    embedType: 'kick',
     isMature: Boolean(item?.has_mature_content || item?.is_mature)
   };
 }
@@ -266,7 +297,7 @@ async function loadKick() {
     let streams = [];
     try { streams = await fetchKickPages(token, 'v2'); } catch { streams = await fetchKickPages(token, 'v1'); }
     streams = focusLanguages(streams, KICK_TARGET);
-    if (streams.length) await writeProviderCache('kick-balanced-v2', streams).catch(() => {});
+    if (streams.length) await writeProviderCache('kick-balanced-v3', streams).catch(() => {});
     return { provider: 'kick', enabled: true, streams, reason: streams.length ? '' : 'empty_result', cacheUsed: false };
   } catch (error) {
     console.error('[live-hub] Kick discovery failed', text(error?.message, 'unknown'));
