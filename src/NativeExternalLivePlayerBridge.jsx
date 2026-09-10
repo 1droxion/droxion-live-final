@@ -121,12 +121,12 @@ export default function NativeExternalLivePlayerBridge() {
         frame.style.visibility = 'hidden';
         frame.style.pointerEvents = 'none';
       } catch {
-        // Safe fallback if native plugin is unavailable.
-        activeTwitchFrame = null;
-        frame.style.visibility = 'visible';
-        frame.style.pointerEvents = 'auto';
-        frame.setAttribute('src', url);
-      }
+  // Prevent an infinite MutationObserver retry loop.
+  activeTwitchFrame = null;
+  frame.dataset.nativeTwitchFailed = url;
+  frame.style.visibility = 'visible';
+  frame.style.pointerEvents = 'auto';
+}
     };
 
     const rewritePlayers = () => {
@@ -155,6 +155,9 @@ export default function NativeExternalLivePlayerBridge() {
 
         if (isIOS && next.includes('provider=twitch')) {
           foundIOSTwitch = true;
+          if (frame.dataset.nativeTwitchFailed === next) {
+  return;
+}
 
           if (
             frame.dataset.nativeTwitchUrl !== next ||
