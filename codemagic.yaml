@@ -14,7 +14,7 @@ workflows:
         ANDROID_VERSION_CODE_BASE: "120000"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
-        CM_CLONE_DEPTH: "1"
+        CM_CLONE_DEPTH: "50"
         GIT_LFS_SKIP_SMUDGE: "1"
         HUSKY: "0"
         CI: "true"
