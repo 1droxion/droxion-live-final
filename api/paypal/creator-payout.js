@@ -68,35 +68,55 @@ export default async function handler(req, res) {
     const amountUsd = (Number(payoutRequest.amount_cents || 0) / 100).toFixed(2);
     if (!recipientId) throw new Error('Complete secure PayPal payout setup first.');
 
-    stage = 'create_batch';
-    const batchPayload = await trolleyRequest('/v1/batches', {
-      method: 'POST',
-      body: {
-        currency: 'USD',
-        description: `Droxion creator payout ${requestId}`,
-        tags: ['droxion', 'paypal']
-      }
-    });
-    const batchId = batchPayload?.batch?.id;
-    if (!batchId) throw new Error('Trolley did not create a payout batch.');
+    stage = 'create_batch_with_payment';
 
-    stage = 'create_payment';
-    const paymentPayload = await trolleyRequest(`/v1/batches/${encodeURIComponent(batchId)}/payments`, {
-      method: 'POST',
-      body: {
+const batchPayload = await trolleyRequest('/v1/batches', {
+  method: 'POST',
+  body: {
+    currency: 'USD',
+    description: `Droxion creator payout ${requestId}`,
+    tags: ['droxion', 'paypal'],
+    payments: [
+      {
         recipient: { id: recipientId },
         amount: amountUsd,
         currency: 'USD',
         memo: 'DROXION CREATOR PAYOUT',
         externalId: requestId,
-        taxReportable: true,
-        category: 'services',
         coverFees: false,
         tags: ['droxion', 'paypal']
       }
-    });
-    const paymentId = paymentPayload?.payment?.id;
-    if (!paymentId) throw new Error('Trolley did not create a PayPal payment.');
+    ]
+  }
+});
+
+const batchId = batchPayload?.batch?.id;
+
+if (!batchId) {
+  throw new Error('Trolley did not create a payout batch.');
+}
+
+stage = 'find_created_payment';
+
+const paymentsPayload = await trolleyRequest(
+  `/v1/batches/${encodeURIComponent(batchId)}/payments?page=1&pageSize=10`,
+  { method: 'GET' }
+);
+
+const createdPayments = Array.isArray(paymentsPayload?.payments)
+  ? paymentsPayload.payments
+  : [];
+
+const createdPayment =
+  createdPayments.find(
+    payment => String(payment?.externalId || '') === String(requestId)
+  ) || createdPayments[0];
+
+const paymentId = createdPayment?.id;
+
+if (!paymentId) {
+  throw new Error('Trolley created the batch but payment was not found.');
+}
 
     await callRpc(null, 'droxion_attach_trolley_payment', {
       p_request_id: requestId,
