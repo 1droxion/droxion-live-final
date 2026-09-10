@@ -218,6 +218,12 @@ workflows:
           set -e
           cd "$IOS_PROJECT_PATH"
           pod install --repo-update
+        - name: Configure native iOS Twitch player
+        script: |
+          set -e
+          node scripts/configure-ios-twitch-player.mjs
+          test -f "${IOS_PROJECT_PATH}/App/TwitchPlayer.swift"
+          grep -q "TwitchPlayer.swift" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
 
       - name: Apply Codemagic signing profiles
         script: |
