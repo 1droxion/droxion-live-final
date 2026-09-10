@@ -134,7 +134,7 @@ public class TwitchPlayer: CAPPlugin, CAPBridgedPlugin {
 
             player.frame = frame.intersection(hostView.bounds)
             player.isHidden = false
-            player.isUserInteractionEnabled = false
+            player.isUserInteractionEnabled = true
 
             hostView.bringSubviewToFront(player)
 
@@ -167,11 +167,12 @@ public class TwitchPlayer: CAPPlugin, CAPBridgedPlugin {
                 return
             }
 
-            player.frame = frame
-
             if let hostView = self.bridge?.viewController?.view {
-                hostView.bringSubviewToFront(player)
-            }
+    player.frame = frame.intersection(hostView.bounds)
+    hostView.bringSubviewToFront(player)
+} else {
+    player.frame = frame
+}
 
             call.resolve()
         }
