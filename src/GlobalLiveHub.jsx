@@ -140,7 +140,14 @@ function RelatedLiveRail({ stream, streams, onSelect }) {
 }
 
 function ExternalLivePlayer({ stream, streams, onSelectStream, onClose, currentUserId, coins, onCoinsChanged, onOpenWallet, isFollowing, onToggleFollow }) {
-  const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const parent =
+  typeof window !== 'undefined'
+    ? window.location.hostname
+    : 'localhost';
+
+const isIOSNative =
+  Capacitor.isNativePlatform() &&
+  Capacitor.getPlatform() === 'ios';
 
   useEffect(() => {
     if (!stream) return undefined;
@@ -152,8 +159,11 @@ function ExternalLivePlayer({ stream, streams, onSelectStream, onClose, currentU
 
   let src = '';
   if (stream?.embedType === 'youtube' && stream.externalId) src = `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&playsinline=1&rel=0`;
-  else if (stream?.embedType === 'kick' && stream.channelSlug)
-  src = `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=false`;
+  else if (stream?.embedType === 'kick' && stream.channelSlug) {
+  src = `https://player.kick.com/${encodeURIComponent(
+    stream.channelSlug
+  )}?autoplay=${isIOSNative ? 'false' : 'true'}&muted=false`;
+}
   else if (stream?.embedType === 'twitch' && stream.channelSlug) src = `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=true`;
   else if (stream?.embedType === 'rumble' && stream.embedUrl) src = stream.embedUrl;
 
