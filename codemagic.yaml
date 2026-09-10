@@ -213,7 +213,7 @@ workflows:
           /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "${IOS_PROJECT_PATH}/App/Info.plist"
           grep -q "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
 
-            - name: Install CocoaPods
+      - name: Install CocoaPods
         script: |
           set -e
           cd "$IOS_PROJECT_PATH"
@@ -225,6 +225,14 @@ workflows:
           node scripts/configure-ios-twitch-player.mjs
           test -f "${IOS_PROJECT_PATH}/App/TwitchPlayer.swift"
           grep -q "TwitchPlayer.swift" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
+
+      - name: Register native iOS Twitch plugin
+        script: |
+          set -e
+          node scripts/configure-ios-twitch-registration.mjs
+          test -f "${IOS_PROJECT_PATH}/App/DroxionBridgeViewController.swift"
+          grep -q "DroxionBridgeViewController" "${IOS_PROJECT_PATH}/App/Base.lproj/Main.storyboard"
+          grep -q "DroxionBridgeViewController.swift" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
 
       - name: Apply Codemagic signing profiles
         script: |
