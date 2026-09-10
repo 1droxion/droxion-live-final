@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, Home, Inbox, Search, Trophy, User, Play } from 'lucide-react';
+import { ArrowLeft, Bell, Compass, Home, Inbox, Search, User, Play } from 'lucide-react';
 import { invalidateLiveFeedCache, supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
-import Rankings from './Rankings';
 import DroxionChat from './DroxionChat';
 import ShortFeed from './ShortFeed';
 import GlobalLiveHub from './GlobalLiveHub';
@@ -26,7 +25,7 @@ const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
   { id: 'feed', label: 'Feed', icon: Play },
-  { id: 'rankings', label: 'Ranking', icon: Trophy },
+  { id: 'explore', label: 'Explore', icon: Compass },
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
@@ -163,7 +162,7 @@ export default function LiveFirstApp() {
     onOpenWallet={() => setWalletOpen(true)}
   />;
   if (tab === 'feed') content = <ShortFeed currentUserId={user?.id} onWatchLive={watchCreatorLive} onStartLive={startLiveFromFeed} />;
-  if (tab === 'rankings') content = <Rankings />;
+  if (tab === 'explore') content = <GlobalLiveHub mode="explore" nativeLive={nativeLiveBrowser} currentUserId={user?.id} coins={coins} onCoinsChanged={value => setCoins(Number(value || 0))} onOpenWallet={() => setWalletOpen(true)} />;
   if (tab === 'profile') content = <CreatorProfileHome currentUserId={user?.id} coins={coins} onOpenWallet={() => setWalletOpen(true)} />;
 
   return (
