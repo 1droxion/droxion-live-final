@@ -132,9 +132,9 @@ public class TwitchPlayer: CAPPlugin, CAPBridgedPlugin {
                 hostView.addSubview(player)
             }
 
-            player.frame = frame
+            player.frame = frame.intersection(hostView.bounds)
             player.isHidden = false
-            player.isUserInteractionEnabled = true
+            player.isUserInteractionEnabled = false
 
             hostView.bringSubviewToFront(player)
 
