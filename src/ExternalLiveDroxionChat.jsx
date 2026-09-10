@@ -347,7 +347,8 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
       poll();
     } else if (stream?.provider === 'kick' && stream?.channelSlug) {
   let after = '';
-  let broadcasterUserId = Number(stream?.channelId || 0);
+let broadcasterUserId = Number(stream?.channelId || 0);
+let kickPollCount = 0;
 
   const pollKick = async () => {
     if (stopped || !Number.isInteger(broadcasterUserId) || broadcasterUserId <= 0) return;
@@ -381,7 +382,12 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
         setSourceStatus('Waiting for new Kick messages…');
       }
 
-      sourceTimerRef.current = window.setTimeout(pollKick, 2500);
+      kickPollCount += 1;
+
+sourceTimerRef.current = window.setTimeout(
+  pollKick,
+  kickPollCount <= 6 ? 1000 : 2500
+);
     } catch {
       setSourceStatus('Kick chat temporarily unavailable.');
       sourceTimerRef.current = window.setTimeout(pollKick, 6000);
