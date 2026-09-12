@@ -325,20 +325,23 @@ function mapKickItem(item) {
   };
 }
 
-async function fetchKickPages(token, version = 'v2') {
-  const rows = [];
-  let cursor = '';
-  for (let page = 0; page < 2 && rows.length < KICK_TARGET; page += 1) {
-    const url = new URL(`https://api.kick.com/public/${version}/livestreams`);
-    url.searchParams.set('limit', '50');
-    if (cursor) url.searchParams.set('cursor', cursor);
-    const data = await fetchJson(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-    const pageRows = (Array.isArray(data?.data) ? data.data : []).map(mapKickItem).filter(Boolean);
-    rows.push(...pageRows);
-    const next = text(data?.next_cursor || data?.nextCursor || data?.pagination?.next_cursor || data?.pagination?.cursor);
-    if (!next || next === cursor || !pageRows.length) break;
-    cursor = next;
-  }
+async function fetchKickPages(token) {
+  const url = new URL('https://api.kick.com/public/v1/livestreams');
+
+  url.searchParams.set('limit', '100');
+  url.searchParams.set('sort', 'viewer_count');
+
+  const data = await fetchJson(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json'
+    }
+  });
+
+  const rows = (Array.isArray(data?.data) ? data.data : [])
+    .map(mapKickItem)
+    .filter(Boolean);
+
   return mergeUnique(rows, KICK_TARGET);
 }
 
@@ -351,10 +354,9 @@ async function loadKick() {
   const token = await getKickToken();
   if (!token) return { provider: 'kick', enabled: false, streams: [], reason: 'missing_credentials' };
   try {
-    let streams = [];
-    try { streams = await fetchKickPages(token, 'v2'); } catch { streams = await fetchKickPages(token, 'v1'); }
+    let streams = await fetchKickPages(token);
     streams = focusLanguages(streams, KICK_TARGET);
-    if (streams.length) await writeProviderCache('kick-balanced-v3', streams).catch(() => {});
+    if (streams.length) await writeProviderCache('kick-balanced-v4', streams).catch(() => {});
     return { provider: 'kick', enabled: true, streams, reason: streams.length ? '' : 'empty_result', cacheUsed: false };
   } catch (error) {
     console.error('[live-hub] Kick discovery failed', text(error?.message, 'unknown'));
