@@ -752,6 +752,21 @@ function providerState(result, rows, counts) {
   };
 }
 
+async function providerTimeout(promise, provider, ms = 10000) {
+  return Promise.race([
+    promise,
+    new Promise(resolve =>
+      setTimeout(() => resolve({
+        provider,
+        enabled: true,
+        streams: [],
+        reason: 'provider_timeout',
+        error: `${provider} temporarily timed out`
+      }), ms)
+    )
+  ]);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -759,31 +774,89 @@ export default async function handler(req, res) {
   }
 
   const requested = clampLimit(req.query?.limit);
-  const [youtube, kick, twitch, rumble] = await Promise.all([loadYouTube(), loadKick(), loadTwitch(), loadRumble()]);
-  const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET);
-  const kickRows = focusLanguages(kick.streams || [], KICK_TARGET);
-  const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET);
-  const rumbleRows = (rumble.streams || []).slice(0, RUMBLE_TARGET);
+
+  const [youtube, kick, twitch, rumble] = await Promise.all([
+    providerTimeout(loadYouTube(), 'youtube'),
+    providerTimeout(loadKick(), 'kick'),
+    providerTimeout(loadTwitch(), 'twitch'),
+    providerTimeout(loadRumble(), 'rumble')
+  ]);
+
+  const ytRows = focusLanguages(
+    youtube.streams || [],
+    YOUTUBE_TARGET
+  );
+
+  const kickRows = focusLanguages(
+    kick.streams || [],
+    KICK_TARGET
+  );
+
+  const twitchRows = focusLanguages(
+    twitch.streams || [],
+    TWITCH_TARGET
+  );
+
+  const rumbleRows = (rumble.streams || [])
+    .slice(0, RUMBLE_TARGET);
+
   const streams = [
-  ...ytRows,
-  ...kickRows,
-  ...twitchRows,
-  ...rumbleRows
-]
-  .filter(stream => {
-  if (stream.provider === 'youtube') return true;
-  return number(stream.viewerCount) >= MIN_LIVE_VIEWERS;
-})
-  .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
-  .slice(0, requested);
-  const counts = streams.reduce((map, stream) => { map[stream.provider] = (map[stream.provider] || 0) + 1; return map; }, {});
+    ...ytRows,
+    ...kickRows,
+    ...twitchRows,
+    ...rumbleRows
+  ]
+    .filter(stream => {
+      if (stream.provider === 'youtube') return true;
+      return number(stream.viewerCount) >= MIN_LIVE_VIEWERS;
+    })
+    .sort(
+      (a, b) =>
+        number(b.viewerCount) - number(a.viewerCount)
+    )
+    .slice(0, requested);
+
+  const counts = streams.reduce((map, stream) => {
+    map[stream.provider] =
+      (map[stream.provider] || 0) + 1;
+
+    return map;
+  }, {});
+
   const providers = {
-    youtube: providerState(youtube, ytRows, counts),
-    kick: providerState(kick, kickRows, counts),
-    twitch: providerState(twitch, twitchRows, counts),
-    rumble: providerState(rumble, rumbleRows, counts)
+    youtube: providerState(
+      youtube,
+      ytRows,
+      counts
+    ),
+
+    kick: providerState(
+      kick,
+      kickRows,
+      counts
+    ),
+
+    twitch: providerState(
+      twitch,
+      twitchRows,
+      counts
+    ),
+
+    rumble: providerState(
+      rumble,
+      rumbleRows,
+      counts
+    )
   };
 
-  res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-  return res.status(200).json({ streams, providers, generatedAt: new Date().toISOString() });
+  res.setHeader(
+    'Cache-Control',
+    'public, s-maxage=60, stale-while-revalidate=300'
+  );
+
+  return res.status(200).json({
+    streams,
+    providers,
+    generatedAt: new Date().toISOString()
+  });
 }
