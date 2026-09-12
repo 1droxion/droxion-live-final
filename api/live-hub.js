@@ -306,7 +306,17 @@ function mapKickItem(item) {
       item?.language_code ||
       item?.channel?.language
     ),
-    viewerCount: number(item?.viewer_count || item?.viewers),
+    viewerCount: number(
+  item?.viewer_count ||
+  item?.viewers ||
+  item?.concurrent_viewers ||
+  item?.concurrent_viewer_count ||
+  item?.viewerCount ||
+  item?.livestream?.viewer_count ||
+  item?.livestream?.viewers ||
+  item?.channel?.livestream?.viewer_count ||
+  item?.channel?.livestream?.viewers
+),
     startedAt: text(item?.started_at || item?.created_at),
     thumbnailUrl: thumbnail,
     watchUrl: `https://kick.com/${encodeURIComponent(slug)}`,
@@ -333,7 +343,7 @@ async function fetchKickPages(token, version = 'v2') {
 }
 
 async function loadKick() {
-  const cached = await readProviderCache('kick-balanced-v3').catch(() => null);
+  const cached = await readProviderCache('kick-balanced-v4').catch(() => null);
   const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
   const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
   if (cachedRows.length >= 45 && age < CACHE_FRESH_MS) return { provider: 'kick', enabled: true, streams: focusLanguages(cachedRows, KICK_TARGET), cacheUsed: true };
