@@ -3,6 +3,9 @@ import { readProviderCache, writeProviderCache } from '../server/external-live-c
 const MAX_LIMIT = 200;
 const MIN_LIVE_VIEWERS = 5000;
 const YOUTUBE_TARGET = 80;
+const YOUTUBE_DISCOVERY_TARGET = 250;
+const YOUTUBE_DISCOVERY_CACHE_MS = 6 * 60 * 60 * 1000;
+const YOUTUBE_LIVE_CACHE_MS = 5 * 60 * 1000;
 const KICK_TARGET = 60;
 const TWITCH_TARGET = 40;
 const RUMBLE_TARGET = 20;
@@ -200,39 +203,175 @@ async function enrichYouTubeViewers(apiKey, rows) {
 }
 
 async function loadYouTube() {
-  const cached = await readProviderCache('youtube-balanced-v3').catch(() => null);
-  const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
-  const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
-  if (cachedRows.length >= 60 && age < CACHE_FRESH_MS) return { provider: 'youtube', enabled: true, streams: focusLanguages(cachedRows, YOUTUBE_TARGET), cacheUsed: true };
+  const apiKey = text(
+    process.env.YOUTUBE_DATA_API_KEY ||
+    process.env.YOUTUBE_API_KEY
+  );
 
-  const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
-  if (!apiKey) return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
+  if (!apiKey) {
+    return {
+      provider: 'youtube',
+      enabled: false,
+      streams: [],
+      reason: 'missing_credentials'
+    };
+  }
+
+  const liveCached = await readProviderCache('youtube-live-v4').catch(() => null);
+  const liveCachedRows = Array.isArray(liveCached?.payload)
+    ? liveCached.payload
+    : [];
+
+  const liveAge = liveCached?.updatedAt
+    ? Date.now() - Date.parse(liveCached.updatedAt)
+    : Infinity;
+
+  if (liveCachedRows.length && liveAge < YOUTUBE_LIVE_CACHE_MS) {
+    return {
+      provider: 'youtube',
+      enabled: true,
+      streams: focusLanguages(liveCachedRows, YOUTUBE_TARGET),
+      cacheUsed: true
+    };
+  }
+
+  const discoveryCached = await readProviderCache(
+    'youtube-discovery-v4'
+  ).catch(() => null);
+
+  const discoveryCachedRows = Array.isArray(discoveryCached?.payload)
+    ? discoveryCached.payload
+    : [];
+
+  const legacyCached = await readProviderCache(
+    'youtube-balanced-v3'
+  ).catch(() => null);
+
+  const legacyRows = Array.isArray(legacyCached?.payload)
+    ? legacyCached.payload
+    : [];
+
+  let discovered = discoveryCachedRows.length
+    ? discoveryCachedRows
+    : legacyRows;
+
+  const sourceCache = discoveryCachedRows.length
+    ? discoveryCached
+    : legacyCached;
+
+  const discoveryAge = sourceCache?.updatedAt
+    ? Date.now() - Date.parse(sourceCache.updatedAt)
+    : Infinity;
+
+  let fallbackUsed = false;
+
+  if (!discovered.length || discoveryAge >= YOUTUBE_DISCOVERY_CACHE_MS) {
+    try {
+      const [english, hindi] = await Promise.all([
+        fetchYouTubeGroup(
+          apiKey,
+          { region: 'US', language: 'en' },
+          200
+        ),
+        fetchYouTubeGroup(
+          apiKey,
+          {
+            region: 'IN',
+            language: 'hi',
+            q: 'हिंदी live'
+          },
+          50
+        )
+      ]);
+
+      const fresh = mergeUnique(
+        [...english, ...hindi],
+        YOUTUBE_DISCOVERY_TARGET
+      );
+
+      if (fresh.length) {
+        discovered = fresh;
+
+        await writeProviderCache(
+          'youtube-discovery-v4',
+          fresh
+        ).catch(() => {});
+      }
+    } catch (error) {
+      console.error(
+        '[live-hub] YouTube search refresh failed',
+        text(error?.message, 'unknown')
+      );
+
+      fallbackUsed = true;
+    }
+  }
+
+  if (!discovered.length) {
+    return {
+      provider: 'youtube',
+      enabled: true,
+      streams: [],
+      reason: 'empty_result'
+    };
+  }
 
   try {
-    const [english, hindi] = await Promise.all([
-      fetchYouTubeGroup(apiKey, { region: 'US', language: 'en' }, 64),
-      fetchYouTubeGroup(apiKey, { region: 'IN', language: 'hi', q: 'हिंदी live' }, 16)
-    ]);
-    const discovered = mergeUnique(
-  [...english, ...hindi],
-  YOUTUBE_TARGET
-);
+    const withViewers = await enrichYouTubeViewers(
+      apiKey,
+      discovered
+    );
 
-const withViewers = await enrichYouTubeViewers(apiKey, discovered);
+    const streams = focusLanguages(
+      withViewers.filter(
+        stream => number(stream.viewerCount) > 0
+      ),
+      YOUTUBE_TARGET
+    );
 
-const streams = focusLanguages(
-  withViewers,
-  YOUTUBE_TARGET
-);
-    if (streams.length) await writeProviderCache('youtube-balanced-v3', streams).catch(() => {});
-    return { provider: 'youtube', enabled: true, streams, reason: streams.length ? '' : 'empty_result', cacheUsed: false };
+    if (streams.length) {
+      await writeProviderCache(
+        'youtube-live-v4',
+        streams
+      ).catch(() => {});
+    }
+
+    return {
+      provider: 'youtube',
+      enabled: true,
+      streams,
+      reason: streams.length ? '' : 'empty_result',
+      cacheUsed: false,
+      fallbackUsed
+    };
   } catch (error) {
-    console.error('[live-hub] YouTube discovery failed', text(error?.message, 'unknown'));
-    if (cachedRows.length) return { provider: 'youtube', enabled: true, streams: focusLanguages(cachedRows, YOUTUBE_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
-    return { provider: 'youtube', enabled: true, streams: [], reason: 'provider_error', error: 'YouTube LIVE discovery is temporarily unavailable.' };
+    console.error(
+      '[live-hub] YouTube viewer refresh failed',
+      text(error?.message, 'unknown')
+    );
+
+    if (liveCachedRows.length) {
+      return {
+        provider: 'youtube',
+        enabled: true,
+        streams: focusLanguages(
+          liveCachedRows,
+          YOUTUBE_TARGET
+        ),
+        cacheUsed: true,
+        fallbackUsed: true
+      };
+    }
+
+    return {
+      provider: 'youtube',
+      enabled: true,
+      streams: [],
+      reason: 'provider_error',
+      error: 'YouTube LIVE discovery is temporarily unavailable.'
+    };
   }
 }
-
 async function getKickToken() {
   const now = Date.now();
   if (kickTokenCache.token && kickTokenCache.expiresAt > now + 60000) return kickTokenCache.token;
