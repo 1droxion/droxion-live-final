@@ -1,6 +1,7 @@
 import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
 
-const MAX_LIMIT = 5000;
+const MAX_LIMIT = 200;
+const MIN_LIVE_VIEWERS = 5000;
 const YOUTUBE_TARGET = 80;
 const KICK_TARGET = 60;
 const TWITCH_TARGET = 40;
@@ -199,7 +200,7 @@ async function enrichYouTubeViewers(apiKey, rows) {
 }
 
 async function loadYouTube() {
-  const cached = await readProviderCache('youtube-balanced-v2').catch(() => null);
+  const cached = await readProviderCache('youtube-balanced-v3').catch(() => null);
   const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
   const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
   if (cachedRows.length >= 60 && age < CACHE_FRESH_MS) return { provider: 'youtube', enabled: true, streams: focusLanguages(cachedRows, YOUTUBE_TARGET), cacheUsed: true };
