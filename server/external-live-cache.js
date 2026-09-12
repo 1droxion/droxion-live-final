@@ -1,3 +1,5 @@
+const CACHE_REQUEST_TIMEOUT_MS = 5000;
+
 function text(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
   return String(value).trim();
@@ -21,6 +23,16 @@ function serviceHeaders(extra = {}) {
   };
 }
 
+async function fetchWithTimeout(input, init = {}, timeoutMs = CACHE_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readJson(response) {
   const raw = await response.text();
   if (!raw) return null;
@@ -38,7 +50,7 @@ export async function readProviderCache(provider) {
   url.searchParams.set('provider', `eq.${text(provider)}`);
   url.searchParams.set('limit', '1');
 
-  const response = await fetch(url, { headers });
+  const response = await fetchWithTimeout(url, { headers });
   const data = await readJson(response);
   if (!response.ok) throw new Error(data?.message || 'Could not read external provider cache');
   const row = Array.isArray(data) ? data[0] : null;
@@ -59,7 +71,7 @@ export async function writeProviderCache(provider, payload) {
 
   const url = new URL(`${config.supabaseUrl}/rest/v1/droxion_external_provider_cache`);
   url.searchParams.set('on_conflict', 'provider');
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -90,7 +102,7 @@ export async function saveKickSourceMessage(message) {
 
   const url = new URL(`${config.supabaseUrl}/rest/v1/droxion_external_source_messages`);
   url.searchParams.set('on_conflict', 'provider,external_message_id');
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -137,7 +149,7 @@ export async function readKickSourceMessages(broadcasterUserId, { after = '', li
   url.searchParams.set('order', 'published_at.asc');
   url.searchParams.set('limit', String(Math.max(1, Math.min(200, Number(limit) || 120))));
 
-  const response = await fetch(url, { headers });
+  const response = await fetchWithTimeout(url, { headers });
   const data = await readJson(response);
   if (!response.ok) throw new Error(data?.message || 'Could not read Kick source messages');
   return (Array.isArray(data) ? data : []).map(row => ({
