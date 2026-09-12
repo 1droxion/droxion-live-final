@@ -267,33 +267,68 @@ async function loadYouTube() {
 
   if (!discovered.length || discoveryAge >= YOUTUBE_DISCOVERY_CACHE_MS) {
     try {
-      const [english, hindi] = await Promise.all([
-        fetchYouTubeGroup(
-          apiKey,
-          { region: 'US', language: 'en' },
-          200
-        ),
-        fetchYouTubeGroup(
-          apiKey,
-          {
-            region: 'IN',
-            language: 'hi',
-            q: 'हिंदी live'
-          },
-          50
-        )
-      ]);
+      const [
+  general,
+  gaming,
+  music,
+  sports,
+  irl,
+  hindi
+] = await Promise.all([
+  fetchYouTubeGroup(
+    apiKey,
+    { region: 'US', language: 'en' },
+    50
+  ),
 
-      const fresh = mergeUnique(
-        [...english, ...hindi],
-        YOUTUBE_DISCOVERY_TARGET
-      );
+  fetchYouTubeGroup(
+    apiKey,
+    { region: 'US', language: 'en', q: 'gaming live' },
+    50
+  ),
+
+  fetchYouTubeGroup(
+    apiKey,
+    { region: 'US', language: 'en', q: 'music live' },
+    40
+  ),
+
+  fetchYouTubeGroup(
+    apiKey,
+    { region: 'US', language: 'en', q: 'sports live' },
+    40
+  ),
+
+  fetchYouTubeGroup(
+    apiKey,
+    { region: 'US', language: 'en', q: 'IRL live' },
+    40
+  ),
+
+  fetchYouTubeGroup(
+    apiKey,
+    { region: 'IN', language: 'hi', q: 'हिंदी live' },
+    30
+  )
+]);
+
+const fresh = mergeUnique(
+  [
+    ...general,
+    ...gaming,
+    ...music,
+    ...sports,
+    ...irl,
+    ...hindi
+  ],
+  YOUTUBE_DISCOVERY_TARGET
+);
 
       if (fresh.length) {
         discovered = fresh;
 
         await writeProviderCache(
-          'youtube-discovery-v4',
+          'youtube-discovery-v5',
           fresh
         ).catch(() => {});
       }
