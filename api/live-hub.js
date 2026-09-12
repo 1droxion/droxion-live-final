@@ -236,7 +236,7 @@ async function loadYouTube() {
   }
 
   const discoveryCached = await readProviderCache(
-    'youtube-discovery-v4'
+    'youtube-discovery-v5'
   ).catch(() => null);
 
   const discoveryCachedRows = Array.isArray(discoveryCached?.payload)
@@ -265,7 +265,7 @@ async function loadYouTube() {
 
   let fallbackUsed = false;
 
-  if (!discovered.length || discoveryAge >= YOUTUBE_DISCOVERY_CACHE_MS) {
+  if (!discoveryCachedRows.length || discoveryAge >= YOUTUBE_DISCOVERY_CACHE_MS) {
     try {
       const [
   general,
