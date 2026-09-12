@@ -49,31 +49,74 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
   const rankedClips = useMemo(() => rankClips(clips), [clips]);
   const creatorIds = useMemo(() => [...new Set(clips.map(clip => clip.creator_id).filter(Boolean))], [clips]);
 
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      setLoading(true);
-      const { data: clipRows, error } = await supabase
-        .from('droxion_live_clips')
-        .select('id,creator_id,session_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,highlight_score,storage_path,camera_facing')
-        .eq('status', 'ready')
-        .order('published_at', { ascending: false, nullsFirst: false })
-        .order('highlight_score', { ascending: false })
-        .limit(100);
+ useEffect(() => {
+  let alive = true;
 
-      if (!alive) return;
-      if (error) {
-        setNotice('Could not load the highlight feed.');
-        setClips([]);
-        setLoading(false);
-        return;
-      }
-      setClips(rankClips(clipRows || []));
-      setLoading(false);
+  async function load(showLoading = false) {
+    if (showLoading) setLoading(true);
+
+    const { data: clipRows, error } = await supabase
+      .from('droxion_live_clips')
+      .select('id,creator_id,session_id,video_url,thumbnail_url,caption,duration_seconds,views_count,likes_count,comments_count,shares_count,published_at,created_at,highlight_score,storage_path,camera_facing')
+      .eq('status', 'ready')
+      .not('video_url', 'is', null)
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (!alive) return;
+
+    if (error) {
+      console.error('Droxion Feed clips error:', error);
+      setNotice('Could not load the highlight feed.');
+      if (showLoading) setLoading(false);
+      return;
     }
-    load();
-    return () => { alive = false; };
-  }, []);
+
+    const readyClips = (clipRows || []).filter(
+      clip => typeof clip.video_url === 'string' && clip.video_url.trim()
+    );
+
+    setClips(rankClips(readyClips));
+    setNotice('');
+
+    if (showLoading) setLoading(false);
+  }
+
+  load(true);
+
+  const channel = supabase
+    .channel('droxion-short-feed-live-clips')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'droxion_live_clips'
+      },
+      () => {
+        load(false);
+      }
+    )
+    .subscribe();
+
+  const refreshTimer = window.setInterval(() => {
+    load(false);
+  }, 30000);
+
+  const handleFocus = () => load(false);
+  window.addEventListener('focus', handleFocus);
+
+  return () => {
+    alive = false;
+    window.clearInterval(refreshTimer);
+    window.removeEventListener('focus', handleFocus);
+
+    try {
+      Promise.resolve(supabase.removeChannel(channel)).catch(() => {});
+    } catch {}
+  };
+}, []);
 
   useEffect(() => {
     if (!creatorIds.length) { setProfiles({}); setLiveCreators({}); return; }
