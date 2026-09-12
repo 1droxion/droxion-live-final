@@ -1,6 +1,6 @@
 import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
 
-const MAX_LIMIT = 200;
+const MAX_LIMIT = 5000;
 const YOUTUBE_TARGET = 80;
 const KICK_TARGET = 60;
 const TWITCH_TARGET = 40;
@@ -162,6 +162,42 @@ async function fetchYouTubeGroup(apiKey, options, target) {
   return rows.slice(0, target);
 }
 
+async function enrichYouTubeViewers(apiKey, rows) {
+  const result = [];
+  const list = Array.isArray(rows) ? rows : [];
+
+  for (let i = 0; i < list.length; i += 50) {
+    const batch = list.slice(i, i + 50);
+    const ids = batch.map(row => row.externalId).filter(Boolean);
+
+    if (!ids.length) continue;
+
+    const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+    url.searchParams.set('part', 'liveStreamingDetails');
+    url.searchParams.set('id', ids.join(','));
+    url.searchParams.set('key', apiKey);
+
+    const data = await fetchJson(url);
+    const viewers = new Map();
+
+    for (const item of data?.items || []) {
+      viewers.set(
+        String(item.id),
+        number(item?.liveStreamingDetails?.concurrentViewers)
+      );
+    }
+
+    for (const row of batch) {
+      result.push({
+        ...row,
+        viewerCount: viewers.get(String(row.externalId)) || 0
+      });
+    }
+  }
+
+  return result;
+}
+
 async function loadYouTube() {
   const cached = await readProviderCache('youtube-balanced-v2').catch(() => null);
   const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
@@ -176,8 +212,18 @@ async function loadYouTube() {
       fetchYouTubeGroup(apiKey, { region: 'US', language: 'en' }, 64),
       fetchYouTubeGroup(apiKey, { region: 'IN', language: 'hi', q: 'हिंदी live' }, 16)
     ]);
-    const streams = focusLanguages(mergeUnique([...english, ...hindi], YOUTUBE_TARGET), YOUTUBE_TARGET);
-    if (streams.length) await writeProviderCache('youtube-balanced-v2', streams).catch(() => {});
+    const discovered = mergeUnique(
+  [...english, ...hindi],
+  YOUTUBE_TARGET
+);
+
+const withViewers = await enrichYouTubeViewers(apiKey, discovered);
+
+const streams = focusLanguages(
+  withViewers,
+  YOUTUBE_TARGET
+);
+    if (streams.length) await writeProviderCache('youtube-balanced-v3', streams).catch(() => {});
     return { provider: 'youtube', enabled: true, streams, reason: streams.length ? '' : 'empty_result', cacheUsed: false };
   } catch (error) {
     console.error('[live-hub] YouTube discovery failed', text(error?.message, 'unknown'));
@@ -531,7 +577,15 @@ export default async function handler(req, res) {
   const kickRows = focusLanguages(kick.streams || [], KICK_TARGET);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET);
   const rumbleRows = (rumble.streams || []).slice(0, RUMBLE_TARGET);
-  const streams = interleaveProviders([ytRows, kickRows, twitchRows, rumbleRows], requested);
+  const streams = [
+  ...ytRows,
+  ...kickRows,
+  ...twitchRows,
+  ...rumbleRows
+]
+  .filter(stream => number(stream.viewerCount) >= MIN_LIVE_VIEWERS)
+  .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
+  .slice(0, requested);
   const counts = streams.reduce((map, stream) => { map[stream.provider] = (map[stream.provider] || 0) + 1; return map; }, {});
   const providers = {
     youtube: providerState(youtube, ytRows, counts),
