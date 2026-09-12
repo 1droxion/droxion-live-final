@@ -378,9 +378,7 @@ let kickPollCount = 0;
 
       after = data?.nextAfter || after;
 
-      if (!rows.length) {
-        setSourceStatus('Waiting for new Kick messages…');
-      }
+      
 
       kickPollCount += 1;
 
