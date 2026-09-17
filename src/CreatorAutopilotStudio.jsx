@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -25,6 +25,7 @@ import {
   Youtube,
   Zap
 } from 'lucide-react';
+import { supabase } from './supabaseClient.js';
 import './creator-autopilot-studio.css';
 
 const CHANNELS = [
@@ -99,17 +100,79 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   const [notice, setNotice] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const [connections, setConnections] = useState({});
+  const [connectionsLoading, setConnectionsLoading] = useState(true);
 
   const oauthReady = useMemo(() => {
     return Object.fromEntries(CHANNELS.map(channel => [channel.id, Boolean(envValue(channel.env))]));
   }, []);
 
   const configuredCount = Object.values(oauthReady).filter(Boolean).length;
+  const connectedCount = Object.keys(connections).length;
 
-  function connectChannel(channel) {
+  async function loadConnections() {
+    setConnectionsLoading(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const accessToken = data?.session?.access_token || '';
+      if (!accessToken) {
+        setConnections({});
+        return;
+      }
+      const response = await fetch('/api/creator/connections', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Could not load channel connections.');
+      setConnections(Object.fromEntries((payload.connections || []).map(item => [item.provider, item])));
+    } catch (error) {
+      setNotice(error?.message || 'Could not load channel connections.');
+    } finally {
+      setConnectionsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadConnections();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('youtube') === 'connected') {
+      setNotice('YouTube connected successfully. Droxion can now use this channel for Creator Autopilot.');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('youtube') === 'error') {
+      setNotice(params.get('message') || 'YouTube connection failed.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  async function connectChannel(channel) {
+    if (channel.id === 'youtube') {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data?.session?.access_token || '';
+        if (!accessToken) {
+          setNotice('Sign in to Droxion before connecting YouTube.');
+          return;
+        }
+        const response = await fetch('/api/creator/youtube/start', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ returnPath: '/studio' })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.url) throw new Error(payload?.error || 'Could not start YouTube connection.');
+        window.location.assign(payload.url);
+      } catch (error) {
+        setNotice(error?.message || 'Could not start YouTube connection.');
+      }
+      return;
+    }
+
     const url = envValue(channel.env);
     if (!url) {
-      setNotice(`${channel.name} OAuth is not configured yet. Add ${channel.env} after the provider app is approved.`);
+      setNotice(`${channel.name} OAuth is not configured yet. ${channel.name} will be enabled after YouTube is working end-to-end.`);
       return;
     }
     window.location.assign(url);
@@ -131,7 +194,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   }
 
   function toggleAutopilot() {
-    if (configuredCount === 0) {
+    if (connectedCount === 0) {
       setNotice('Connect at least one publishing provider before turning on Autopilot.');
       setActiveTab('channels');
       return;
@@ -224,7 +287,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
               <Metric label="Clips created" value="0" detail="Ready for first source video" icon={Film} />
               <Metric label="Published" value="0" detail="Connect publishing channels" icon={Play} />
               <Metric label="Total views" value="0" detail="Analytics begins after publishing" icon={Activity} />
-              <Metric label="Channels ready" value={`${configuredCount}/4`} detail="OAuth integrations configured" icon={Link2} />
+              <Metric label="Channels connected" value={`${connectedCount}/4`} detail={connectionsLoading ? 'Checking your channels' : 'Creator accounts connected'} icon={Link2} />
             </div>
 
             <div className="studioTwoCol">
@@ -257,16 +320,24 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
             <div className="studioChannelGrid">
               {CHANNELS.map(channel => {
                 const Icon = channel.icon;
-                const ready = oauthReady[channel.id];
+                const connection = connections[channel.id];
+                const connected = Boolean(connection);
+                const ready = channel.id === 'youtube' || oauthReady[channel.id];
                 return (
-                  <article key={channel.id} className="studioChannelCard">
-                    <div className={`studioChannelIcon ${channel.id}`}><Icon size={24} /></div>
-                    <div className="studioChannelCopy">
-                      <h3>{channel.name}</h3>
-                      <p>{channel.purpose}</p>
-                      <span className={ready ? 'ready' : 'pending'}>{ready ? 'OAuth URL configured' : 'OAuth setup required'}</span>
+                  <article key={channel.id} className={`studioChannelCard ${connected ? 'connected' : ''}`}>
+                    <div className={`studioChannelIcon ${channel.id}`}>
+                      {connected && connection?.avatar_url ? <img src={connection.avatar_url} alt="" /> : <Icon size={24} />}
                     </div>
-                    <button type="button" onClick={() => connectChannel(channel)}>{ready ? 'Connect' : 'Setup'} <ArrowRight size={15} /></button>
+                    <div className="studioChannelCopy">
+                      <h3>{connected ? (connection.display_name || channel.name) : channel.name}</h3>
+                      <p>{connected ? (connection.handle || channel.purpose) : channel.purpose}</p>
+                      <span className={connected ? 'ready' : (ready ? 'pending' : 'pending')}>
+                        {connected ? 'Connected to Droxion' : (channel.id === 'youtube' ? 'Ready to connect' : 'OAuth setup required')}
+                      </span>
+                    </div>
+                    <button type="button" onClick={() => connectChannel(channel)} disabled={connected}>
+                      {connected ? 'Connected' : (channel.id === 'youtube' ? 'Connect' : 'Setup')} {connected ? <CheckCircle2 size={15} /> : <ArrowRight size={15} />}
+                    </button>
                   </article>
                 );
               })}
