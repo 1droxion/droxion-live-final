@@ -13,24 +13,30 @@ import ForgotPassword from "./ForgotPassword.jsx";
 import ResetPassword from "./ResetPassword.jsx";
 import LegalPage from "./LegalPage.jsx";
 import DeleteAccount from "./DeleteAccount.jsx";
+import CreatorAutopilotStudio from "./CreatorAutopilotStudio.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
 import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
 
 export default function App() {
   const location = useLocation();
   const isLiveV2 = location.pathname.startsWith('/live-v2');
+  const isCreatorStudio = ['/studio', '/dashboard', '/connect'].some(path => location.pathname.startsWith(path));
+  const showLegacyEnhancers = !isLiveV2 && !isCreatorStudio;
 
   return (
     <>
-      {!isLiveV2 && <DroxionPushNotifications />}
-      {!isLiveV2 && <DroxionLivePushBridge />}
-      {!isLiveV2 && <GlobalEnhancements />}
-      {!isLiveV2 && <CreatorV11Enhancer />}
-      {!isLiveV2 && <LiveGuestStageGuard />}
-      {!isLiveV2 && <ShortNativeActionsEnhancer />}
-      {!isLiveV2 && <ShortSafetyEnhancer />}
+      {showLegacyEnhancers && <DroxionPushNotifications />}
+      {showLegacyEnhancers && <DroxionLivePushBridge />}
+      {showLegacyEnhancers && <GlobalEnhancements />}
+      {showLegacyEnhancers && <CreatorV11Enhancer />}
+      {showLegacyEnhancers && <LiveGuestStageGuard />}
+      {showLegacyEnhancers && <ShortNativeActionsEnhancer />}
+      {showLegacyEnhancers && <ShortSafetyEnhancer />}
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
+        <Route path="/studio" element={<CreatorAutopilotStudio initialTab="overview" />} />
+        <Route path="/dashboard" element={<CreatorAutopilotStudio initialTab="overview" />} />
+        <Route path="/connect" element={<CreatorAutopilotStudio initialTab="channels" />} />
         <Route path="/live-v2" element={<LiveV2Page />} />
         <Route path="/live-v2/view/:sessionId" element={<LiveV2ViewerPage />} />
         <Route path="/login" element={<Login />} />
@@ -43,7 +49,6 @@ export default function App() {
         <Route path="/child-safety" element={<LegalPage />} />
         <Route path="/support" element={<LegalPage />} />
         <Route path="/delete-account" element={<DeleteAccount />} />
-        <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="/random" element={<Navigate to="/" replace />} />
         <Route path="/direct-call" element={<Navigate to="/" replace />} />
         <Route path="/profile-tools" element={<Navigate to="/" replace />} />
