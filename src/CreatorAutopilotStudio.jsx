@@ -141,6 +141,10 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
     } else if (params.get('youtube') === 'error') {
       setNotice(params.get('message') || 'YouTube connection failed.');
       window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('connect') === 'youtube') {
+      setActiveTab('channels');
+      window.history.replaceState({}, '', window.location.pathname);
+      connectChannel(CHANNELS[0]);
     }
   }, []);
 
@@ -150,7 +154,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
         const { data } = await supabase.auth.getSession();
         const accessToken = data?.session?.access_token || '';
         if (!accessToken) {
-          setNotice('Sign in to Droxion before connecting YouTube.');
+          window.location.assign('/login?next=%2Fstudio&connect=youtube');
           return;
         }
         const response = await fetch('/api/creator/youtube/start', {
