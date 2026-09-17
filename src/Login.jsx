@@ -18,8 +18,16 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const resetComplete = new URLSearchParams(location.search).get("reset") === "success";
-  const legalReturnState = { from: "/login" };
+  const params = new URLSearchParams(location.search);
+  const resetComplete = params.get("reset") === "success";
+  const requestedNext = params.get("next") || "/";
+  const nextPath = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/";
+  const connectAfterLogin = params.get("connect");
+  const loginReturnTarget = connectAfterLogin
+    ? `${nextPath}${nextPath.includes("?") ? "&" : "?"}connect=${encodeURIComponent(connectAfterLogin)}`
+    : nextPath;
+  const signupHref = `/signup?next=${encodeURIComponent(nextPath)}${connectAfterLogin ? `&connect=${encodeURIComponent(connectAfterLogin)}` : ""}`;
+  const legalReturnState = { from: location.pathname + location.search };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -45,7 +53,7 @@ export default function Login() {
       });
       if (termsError) throw new Error("Signed in, but we could not record your Terms acceptance. Please try again.");
 
-      navigate("/", { replace: true });
+      navigate(loginReturnTarget, { replace: true });
     } catch (err) {
       setError(err?.message || "Unable to sign in.");
     } finally {
@@ -95,7 +103,7 @@ export default function Login() {
         </form>
 
         <div className="text-center text-sm text-gray-400 mt-6">
-          New to Droxion? <Link to="/signup" className="text-purple-400 font-semibold">Create account</Link>
+          New to Droxion? <Link to={signupHref} className="text-purple-400 font-semibold">Create account</Link>
         </div>
         <div className="text-center text-xs text-gray-600 mt-5">Droxion is for adults age 21+.</div>
       </div>
