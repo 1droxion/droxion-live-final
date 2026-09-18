@@ -835,6 +835,19 @@ async function loadRumble() {
   }
 }
 
+
+async function loadTango() {
+  const cached = await readProviderCache('partner-tango-live-v1').catch(() => null);
+  const rows = Array.isArray(cached?.payload) ? cached.payload : [];
+  return {
+    provider: 'tango',
+    enabled: true,
+    streams: rows.slice(0, 80),
+    reason: rows.length ? '' : 'awaiting_partner_feed',
+    cacheUsed: true
+  };
+}
+
 function interleaveProviders(groups, limit) {
   const result = [];
   const max = Math.max(0, ...groups.map(group => group.length));
@@ -866,21 +879,24 @@ export default async function handler(req, res) {
   }
 
   const requested = clampLimit(req.query?.limit);
-  const [youtube, kick, twitch, approvedKeys] = await Promise.all([
+  const [youtube, kick, twitch, tango, approvedKeys] = await Promise.all([
     loadYouTube(),
     loadKick(),
     loadTwitch(),
+    loadTango(),
     loadApprovedWomenKeys()
   ]);
 
   const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET);
   const kickRows = focusLanguages(kick.streams || [], KICK_TARGET);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET);
+  const tangoRows = (tango.streams || []).slice(0, 80);
 
   const streams = [
     ...ytRows,
     ...kickRows,
-    ...twitchRows
+    ...twitchRows,
+    ...tangoRows
   ]
     .filter(stream => isApprovedWomanStream(stream, approvedKeys))
     .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
@@ -900,13 +916,7 @@ export default async function handler(req, res) {
     youtube: providerState(youtube, ytRows, counts),
     kick: providerState(kick, kickRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
-    tango: {
-      enabled: false,
-      available: 0,
-      fetched: 0,
-      reason: 'partner_api_required',
-      error: ''
-    }
+    tango: providerState(tango, tangoRows, counts)
   };
 
   res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
