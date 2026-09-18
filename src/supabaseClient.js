@@ -43,14 +43,25 @@ async function droxionSupabaseFetch(input, init = {}) {
     return fetch(input, init);
   }
 
+  const path = `${parsedUrl.pathname}${parsedUrl.search}`;
+  const proxyUrl = `/api/supabase-proxy?path=${encodeURIComponent(path)}`;
+  const isVercelPreview =
+    typeof window !== "undefined" &&
+    /\\.vercel\\.app$/i.test(window.location.hostname);
+
+  // Preview deployments are protected/proxied by Vercel and direct browser
+  // requests to Supabase have been unreliable in this environment. Use the
+  // same-origin route immediately instead of making users wait for a timeout.
+  if (isVercelPreview) {
+    return fetch(proxyUrl, init);
+  }
+
   try {
     return await Promise.race([
       fetch(input, init),
       waitForDirectFetchTimeout(),
     ]);
   } catch (directError) {
-    const path = `${parsedUrl.pathname}${parsedUrl.search}`;
-    const proxyUrl = `/api/supabase-proxy?path=${encodeURIComponent(path)}`;
     try {
       return await fetch(proxyUrl, init);
     } catch (proxyError) {
