@@ -235,7 +235,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
 
         <div className="studioSidebarFoot">
           <div className="studioPlanBadge"><Sparkles size={15} /><span>Creator Preview</span></div>
-          <Link to="/"><Radio size={16} /> Open Droxion LIVE</Link>
+          <Link to="/live-social"><Radio size={16} /> Open Droxion LIVE</Link>
         </div>
       </aside>
 
