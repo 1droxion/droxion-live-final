@@ -21,8 +21,50 @@ const CANONICAL_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_17-SDTCCb40s2jU1UWO3s
 
 const supabaseUrl = CANONICAL_SUPABASE_URL;
 const supabaseAnonKey = CANONICAL_SUPABASE_PUBLISHABLE_KEY;
+const DIRECT_FETCH_TIMEOUT_MS = 6500;
 
-const client = createClient(supabaseUrl, supabaseAnonKey);
+function waitForDirectFetchTimeout() {
+  return new Promise((_, reject) => {
+    window.setTimeout(() => {
+      const error = new Error("Direct Supabase request timed out.");
+      error.name = "DroxionSupabaseNetworkTimeout";
+      reject(error);
+    }, DIRECT_FETCH_TIMEOUT_MS);
+  });
+}
+
+async function droxionSupabaseFetch(input, init = {}) {
+  const rawUrl = typeof input === "string" ? input : input?.url;
+  let parsedUrl = null;
+  try { parsedUrl = new URL(rawUrl); } catch {}
+
+  // Only proxy Droxion's own Supabase project. Everything else uses normal fetch.
+  if (!parsedUrl || parsedUrl.origin !== CANONICAL_SUPABASE_URL) {
+    return fetch(input, init);
+  }
+
+  try {
+    return await Promise.race([
+      fetch(input, init),
+      waitForDirectFetchTimeout(),
+    ]);
+  } catch (directError) {
+    const path = `${parsedUrl.pathname}${parsedUrl.search}`;
+    const proxyUrl = `/api/supabase-proxy?path=${encodeURIComponent(path)}`;
+    try {
+      return await fetch(proxyUrl, init);
+    } catch (proxyError) {
+      // Preserve the more useful fallback failure while retaining the direct
+      // transport failure for debugging in the browser console.
+      try { proxyError.cause = directError; } catch {}
+      throw proxyError;
+    }
+  }
+}
+
+const client = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: droxionSupabaseFetch },
+});
 const originalRpc = client.rpc.bind(client);
 
 // High-concurrency LIVE strategy:
