@@ -80,6 +80,19 @@ export function encryptSecret(value) {
   return `v1:${iv.toString('base64url')}:${tag.toString('base64url')}:${encrypted.toString('base64url')}`;
 }
 
+export function decryptSecret(value) {
+  if (!value) return null;
+  const { encryptionKey } = requireConfig();
+  const [version, ivPart, tagPart, encryptedPart] = String(value).split(':');
+  if (version !== 'v1' || !ivPart || !tagPart || !encryptedPart) throw new Error('Stored creator token format is invalid.');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBytes(encryptionKey), Buffer.from(ivPart, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedPart, 'base64url')),
+    decipher.final()
+  ]).toString('utf8');
+}
+
 export function youtubeRedirectUri(req) {
   const configured = env('GOOGLE_YOUTUBE_REDIRECT_URI');
   if (configured) return configured;
@@ -182,6 +195,106 @@ export async function upsertYoutubeConnection(userId, tokenPayload, channel) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.message || payload?.error || 'Could not save the YouTube connection.');
   return Array.isArray(payload) ? payload[0] : payload;
+}
+
+export async function getYoutubeConnection(userId) {
+  const { supabaseUrl } = getSupabaseConfig();
+  const headers = getSupabaseHeaders(null, true);
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/creator_channel_connections?select=*&user_id=eq.${encodeURIComponent(userId)}&provider=eq.youtube&revoked_at=is.null&limit=1`,
+    { headers }
+  );
+  const payload = await response.json().catch(() => []);
+  if (!response.ok) throw new Error(payload?.message || 'Could not load YouTube connection.');
+  return Array.isArray(payload) ? payload[0] || null : null;
+}
+
+async function saveYoutubeAccessToken(connectionId, accessToken, expiresIn) {
+  const { supabaseUrl } = getSupabaseConfig();
+  const headers = {
+    ...getSupabaseHeaders(null, true),
+    Prefer: 'return=minimal'
+  };
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/creator_channel_connections?id=eq.${encodeURIComponent(connectionId)}`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        access_token_ciphertext: encryptSecret(accessToken),
+        token_expires_at: expiresIn ? new Date(Date.now() + Number(expiresIn) * 1000).toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
+    }
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.message || 'Could not refresh YouTube connection.');
+  }
+}
+
+export async function getValidYoutubeAccessToken(connection) {
+  if (!connection) throw new Error('YouTube is not connected.');
+  const current = decryptSecret(connection.access_token_ciphertext);
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
+  if (current && (!expiresAt || expiresAt > Date.now() + 120000)) return current;
+
+  const refreshToken = decryptSecret(connection.refresh_token_ciphertext);
+  if (!refreshToken) throw new Error('YouTube authorization expired. Reconnect YouTube in Droxion.');
+
+  const { googleClientId, googleClientSecret } = requireConfig();
+  const body = new URLSearchParams({
+    client_id: googleClientId,
+    client_secret: googleClientSecret,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token'
+  });
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    throw new Error(payload.error_description || payload.error || 'Could not refresh YouTube authorization.');
+  }
+  await saveYoutubeAccessToken(connection.id, payload.access_token, payload.expires_in);
+  return payload.access_token;
+}
+
+export async function fetchLatestYoutubeVideos(accessToken, maxResults = 12) {
+  const channelsUrl = 'https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true';
+  const channelResponse = await fetch(channelsUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const channelPayload = await channelResponse.json().catch(() => ({}));
+  const uploadsPlaylistId = channelPayload?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (!channelResponse.ok || !uploadsPlaylistId) {
+    throw new Error(channelPayload?.error?.message || 'Could not find the YouTube uploads playlist.');
+  }
+
+  const playlistUrl = new URL('https://www.googleapis.com/youtube/v3/playlistItems');
+  playlistUrl.searchParams.set('part', 'snippet,contentDetails');
+  playlistUrl.searchParams.set('playlistId', uploadsPlaylistId);
+  playlistUrl.searchParams.set('maxResults', String(Math.max(1, Math.min(25, Number(maxResults) || 12))));
+  const response = await fetch(playlistUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error?.message || 'Could not load YouTube videos.');
+
+  return (payload.items || []).map(item => {
+    const snippet = item?.snippet || {};
+    const videoId = item?.contentDetails?.videoId || snippet?.resourceId?.videoId || '';
+    const thumbnails = snippet?.thumbnails || {};
+    return {
+      id: videoId,
+      title: snippet.title || 'Untitled video',
+      publishedAt: snippet.publishedAt || null,
+      thumbnail: thumbnails.medium?.url || thumbnails.high?.url || thumbnails.default?.url || null,
+      url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null
+    };
+  }).filter(video => video.id);
 }
 
 export async function getCreatorConnections(userId) {
