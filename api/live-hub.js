@@ -673,6 +673,82 @@ async function getTwitchToken() {
   return token;
 }
 
+
+async function loadApprovedTwitchStreams(approvedKeys) {
+  const clientId = text(process.env.TWITCH_CLIENT_ID);
+  const clientSecret = text(process.env.TWITCH_CLIENT_SECRET);
+  if (!clientId || !clientSecret) {
+    return { provider: 'twitch', enabled: false, streams: [], reason: 'missing_credentials' };
+  }
+
+  const handles = [...(approvedKeys || [])]
+    .filter(key => key.startsWith('twitch:'))
+    .map(key => key.slice('twitch:'.length))
+    .filter(Boolean)
+    .slice(0, 100);
+
+  if (!handles.length) {
+    return { provider: 'twitch', enabled: true, streams: [], reason: 'no_approved_channels' };
+  }
+
+  try {
+    const token = await getTwitchToken();
+    if (!token) throw new Error('missing_token');
+
+    const url = new URL('https://api.twitch.tv/helix/streams');
+    handles.forEach(handle => url.searchParams.append('user_login', handle));
+
+    const data = await fetchJson(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Client-Id': clientId,
+        Accept: 'application/json'
+      }
+    });
+
+    const streams = (Array.isArray(data?.data) ? data.data : [])
+      .filter(item => !item?.is_mature)
+      .map(item => {
+        const login = text(item?.user_login);
+        if (!login || !item?.id) return null;
+        return {
+          id: `twitch:${text(item.id)}`,
+          provider: 'twitch',
+          providerLabel: '',
+          externalId: text(item.id),
+          channelId: text(item.user_id),
+          channelSlug: login,
+          creatorName: text(item.user_name, login),
+          title: text(item.title, 'LIVE now'),
+          category: normalizeCategory(`${item.game_name || ''} ${item.title || ''}`),
+          language: text(item.language),
+          viewerCount: number(item.viewer_count),
+          startedAt: text(item.started_at),
+          thumbnailUrl: text(item.thumbnail_url).replace('{width}', '1280').replace('{height}', '720'),
+          watchUrl: `https://www.twitch.tv/${encodeURIComponent(login)}`,
+          embedType: 'twitch',
+          isMature: false
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      provider: 'twitch',
+      enabled: true,
+      streams,
+      reason: streams.length ? '' : 'approved_channels_offline'
+    };
+  } catch (error) {
+    return {
+      provider: 'twitch',
+      enabled: true,
+      streams: [],
+      reason: 'provider_error',
+      error: text(error?.message, 'Twitch LIVE lookup failed')
+    };
+  }
+}
+
 async function loadTwitch() {
   const cached = await readProviderCache('twitch-live-v2').catch(() => null);
   const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
@@ -924,10 +1000,14 @@ export default async function handler(req, res) {
   let twitch = { provider: 'twitch', enabled: true, streams: [], reason: '' };
 
   if (approvedKeys.size > 0) {
+    const hasYouTubeApproved = [...approvedKeys].some(key => key.startsWith('youtube:'));
+    const hasKickApproved = [...approvedKeys].some(key => key.startsWith('kick:'));
+    const hasTwitchApproved = [...approvedKeys].some(key => key.startsWith('twitch:'));
+
     [youtube, kick, twitch] = await Promise.all([
-      loadYouTube(),
-      loadKick(),
-      loadTwitch()
+      hasYouTubeApproved ? loadYouTube() : Promise.resolve({ provider: 'youtube', enabled: true, streams: [], reason: 'no_approved_channels' }),
+      hasKickApproved ? loadKick() : Promise.resolve({ provider: 'kick', enabled: true, streams: [], reason: 'no_approved_channels' }),
+      hasTwitchApproved ? loadApprovedTwitchStreams(approvedKeys) : Promise.resolve({ provider: 'twitch', enabled: true, streams: [], reason: 'no_approved_channels' })
     ]);
   }
 
