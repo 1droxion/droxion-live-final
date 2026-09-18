@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
 const TERMS_VERSION = "2026-08-29-guideline-1-2";
@@ -10,6 +10,7 @@ function platformName() {
 
 function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [name, setName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState("");
@@ -20,7 +21,15 @@ function Signup() {
   const [acceptedSafetyTerms, setAcceptedSafetyTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const legalReturnState = { from: "/signup" };
+  const params = new URLSearchParams(location.search);
+  const requestedNext = params.get("next") || "/";
+  const nextPath = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/";
+  const connectAfterSignup = params.get("connect");
+  const signupReturnTarget = connectAfterSignup
+    ? `${nextPath}${nextPath.includes("?") ? "&" : "?"}connect=${encodeURIComponent(connectAfterSignup)}`
+    : nextPath;
+  const loginHref = `/login?next=${encodeURIComponent(nextPath)}${connectAfterSignup ? `&connect=${encodeURIComponent(connectAfterSignup)}` : ""}`;
+  const legalReturnState = { from: location.pathname + location.search };
 
   const getMaximumBirthDate = () => {
     const today = new Date();
@@ -92,7 +101,7 @@ function Signup() {
       });
       if (termsError) throw new Error("Account created, but we could not record your Terms acceptance. Please sign in again.");
 
-      navigate("/", { replace: true });
+      navigate(signupReturnTarget, { replace: true });
     } catch (err) {
       setError(err?.message || "Signup failed. Please try again.");
     } finally {
@@ -152,7 +161,7 @@ function Signup() {
           <button type="submit" disabled={loading || !acceptedSafetyTerms} className="w-full bg-purple-600 hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50 text-white py-3 px-4 rounded-xl font-bold transition">{loading ? "Creating account..." : "Create Droxion Account"}</button>
         </form>
 
-        <div className="text-sm mt-6 text-center text-gray-400">Already have an account? <Link to="/login" className="text-purple-400 hover:text-purple-300 font-semibold">Login</Link></div>
+        <div className="text-sm mt-6 text-center text-gray-400">Already have an account? <Link to={loginHref} className="text-purple-400 hover:text-purple-300 font-semibold">Login</Link></div>
         <div className="text-sm mt-3 text-center"><Link to="/forgot-password" className="text-purple-400 hover:text-purple-300 font-semibold">Reset password</Link></div>
         <div className="text-xs text-center text-gray-600 mt-5">Droxion is an adults-only 21+ social discovery platform.</div>
       </div>
