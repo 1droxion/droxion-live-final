@@ -1,4 +1,5 @@
 import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
+import { MANUAL_APPROVED_WOMEN } from '../config/approved-women-live.js';
 
 const MAX_LIMIT = 200;
 const MIN_LIVE_VIEWERS = 5000;
@@ -29,6 +30,112 @@ function number(value, fallback = 0) {
 function clampLimit(value) {
   const parsed = Number.parseInt(String(value || ''), 10);
   return Number.isFinite(parsed) ? Math.max(1, Math.min(MAX_LIMIT, parsed)) : MAX_LIMIT;
+}
+
+
+function ageFromDateOfBirth(value) {
+  if (!value) return 0;
+  const birth = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return 0;
+  const now = new Date();
+  let age = now.getUTCFullYear() - birth.getUTCFullYear();
+  const beforeBirthday =
+    now.getUTCMonth() < birth.getUTCMonth() ||
+    (now.getUTCMonth() === birth.getUTCMonth() && now.getUTCDate() < birth.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+async function supabaseRest(path) {
+  const base = text(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL).replace(/\/$/, '');
+  const key = text(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE);
+  if (!base || !key) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    const response = await fetch(`${base}/rest/v1/${path}`, {
+      signal: controller.signal,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        Accept: 'application/json'
+      }
+    });
+    if (!response.ok) return [];
+    const data = await response.json().catch(() => []);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function approvedKey(provider, value) {
+  const p = text(provider).toLowerCase();
+  const v = text(value).toLowerCase();
+  return p && v ? `${p}:${v}` : '';
+}
+
+async function loadApprovedWomenKeys() {
+  const keys = new Set();
+
+  for (const row of Array.isArray(MANUAL_APPROVED_WOMEN) ? MANUAL_APPROVED_WOMEN : []) {
+    const provider = text(row?.provider).toLowerCase();
+    for (const value of [row?.channelId, row?.channelSlug, row?.externalId, row?.creatorName]) {
+      const key = approvedKey(provider, value);
+      if (key) keys.add(key);
+    }
+  }
+
+  const connections = await supabaseRest(
+    'droxion_creator_platform_connections?select=user_id,provider,channel_identifier,enabled,verified&enabled=eq.true&verified=eq.true'
+  );
+  if (!connections.length) return keys;
+
+  const userIds = [...new Set(connections.map(row => text(row?.user_id)).filter(Boolean))];
+  if (!userIds.length) return keys;
+
+  const filter = encodeURIComponent(`in.(${userIds.join(',')})`);
+  const [accounts, profiles] = await Promise.all([
+    supabaseRest(`droxion_creator_accounts?select=user_id,status&user_id=${filter}`),
+    supabaseRest(`droxion_profiles?select=user_id,gender,date_of_birth&user_id=${filter}`)
+  ]);
+
+  const approvedUsers = new Set(
+    accounts
+      .filter(row => text(row?.status).toLowerCase() === 'approved')
+      .map(row => text(row?.user_id))
+  );
+
+  const adultWomen = new Set(
+    profiles
+      .filter(row => {
+        const gender = text(row?.gender).toLowerCase();
+        return (gender === 'woman' || gender === 'female') && ageFromDateOfBirth(row?.date_of_birth) >= 18;
+      })
+      .map(row => text(row?.user_id))
+  );
+
+  for (const row of connections) {
+    const userId = text(row?.user_id);
+    if (!approvedUsers.has(userId) || !adultWomen.has(userId)) continue;
+    const key = approvedKey(row?.provider, row?.channel_identifier);
+    if (key) keys.add(key);
+  }
+
+  return keys;
+}
+
+function isApprovedWomanStream(stream, approvedKeys) {
+  if (!stream || !(approvedKeys instanceof Set) || approvedKeys.size === 0) return false;
+  const provider = text(stream.provider).toLowerCase();
+  return [
+    stream.channelId,
+    stream.channelSlug,
+    stream.externalId,
+    stream.creatorName
+  ].some(value => approvedKeys.has(approvedKey(provider, value)));
 }
 
 function normalizeCategory(value) {
@@ -759,31 +866,54 @@ export default async function handler(req, res) {
   }
 
   const requested = clampLimit(req.query?.limit);
-  const [youtube, kick, twitch, rumble] = await Promise.all([loadYouTube(), loadKick(), loadTwitch(), loadRumble()]);
+  const [youtube, kick, twitch, approvedKeys] = await Promise.all([
+    loadYouTube(),
+    loadKick(),
+    loadTwitch(),
+    loadApprovedWomenKeys()
+  ]);
+
   const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET);
   const kickRows = focusLanguages(kick.streams || [], KICK_TARGET);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET);
-  const rumbleRows = (rumble.streams || []).slice(0, RUMBLE_TARGET);
+
   const streams = [
-  ...ytRows,
-  ...kickRows,
-  ...twitchRows,
-  ...rumbleRows
-]
-  .filter(stream => {
-  if (stream.provider === 'youtube') return true;
-  return number(stream.viewerCount) >= MIN_LIVE_VIEWERS;
-})
-  .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
-  .slice(0, requested);
-  const counts = streams.reduce((map, stream) => { map[stream.provider] = (map[stream.provider] || 0) + 1; return map; }, {});
+    ...ytRows,
+    ...kickRows,
+    ...twitchRows
+  ]
+    .filter(stream => isApprovedWomanStream(stream, approvedKeys))
+    .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
+    .slice(0, requested)
+    .map(stream => ({
+      ...stream,
+      providerLabel: '',
+      approvedWoman: true
+    }));
+
+  const counts = streams.reduce((map, stream) => {
+    map[stream.provider] = (map[stream.provider] || 0) + 1;
+    return map;
+  }, {});
+
   const providers = {
     youtube: providerState(youtube, ytRows, counts),
     kick: providerState(kick, kickRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
-    rumble: providerState(rumble, rumbleRows, counts)
+    tango: {
+      enabled: false,
+      available: 0,
+      fetched: 0,
+      reason: 'partner_api_required',
+      error: ''
+    }
   };
 
-  res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-  return res.status(200).json({ streams, providers, generatedAt: new Date().toISOString() });
+  res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
+  return res.status(200).json({
+    streams,
+    providers,
+    approvedWomenOnly: true,
+    generatedAt: new Date().toISOString()
+  });
 }
