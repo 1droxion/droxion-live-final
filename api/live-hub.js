@@ -19,6 +19,88 @@ function clampLimit(value) {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(MAX_LIMIT, parsed)) : MAX_LIMIT;
 }
 
+function ageFromDateOfBirth(value) {
+  if (!value) return 0;
+  const birth = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return 0;
+  const now = new Date();
+  let age = now.getUTCFullYear() - birth.getUTCFullYear();
+  const beforeBirthday =
+    now.getUTCMonth() < birth.getUTCMonth() ||
+    (now.getUTCMonth() === birth.getUTCMonth() && now.getUTCDate() < birth.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+async function supabaseRest(path) {
+  const supabaseUrl = text(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL).replace(/\/$/, '');
+  const serviceRole = text(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE);
+  if (!supabaseUrl || !serviceRole) return [];
+
+  const url = `${supabaseUrl}/rest/v1/${path}`;
+  const data = await fetchJson(url, {
+    headers: {
+      apikey: serviceRole,
+      Authorization: `Bearer ${serviceRole}`,
+      Accept: 'application/json'
+    }
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+async function loadApprovedCreatorKeys() {
+  const connections = await supabaseRest(
+    'droxion_creator_platform_connections?select=user_id,provider,channel_identifier&enabled=eq.true&verified=eq.true'
+  );
+  if (!connections.length) return new Set();
+
+  const userIds = [...new Set(connections.map(row => text(row?.user_id)).filter(Boolean))];
+  if (!userIds.length) return new Set();
+
+  const inFilter = encodeURIComponent(`in.(${userIds.join(',')})`);
+  const [accounts, profiles] = await Promise.all([
+    supabaseRest(`droxion_creator_accounts?select=user_id,status&user_id=${inFilter}`),
+    supabaseRest(`droxion_profiles?select=user_id,gender,date_of_birth&user_id=${inFilter}`)
+  ]);
+
+  const approvedUsers = new Set(
+    accounts
+      .filter(row => text(row?.status).toLowerCase() === 'approved')
+      .map(row => text(row?.user_id))
+  );
+
+  const adultWomen = new Set(
+    profiles
+      .filter(row =>
+        text(row?.gender).toLowerCase() === 'woman' &&
+        ageFromDateOfBirth(row?.date_of_birth) >= 18
+      )
+      .map(row => text(row?.user_id))
+  );
+
+  return new Set(
+    connections
+      .filter(row => approvedUsers.has(text(row?.user_id)) && adultWomen.has(text(row?.user_id)))
+      .map(row => `${text(row?.provider).toLowerCase()}:${text(row?.channel_identifier).toLowerCase()}`)
+      .filter(value => !value.endsWith(':'))
+  );
+}
+
+function approvedExternalStream(stream, approvedKeys) {
+  if (!stream || !approvedKeys?.size) return false;
+  const provider = text(stream.provider).toLowerCase();
+  const candidates = [
+    stream.channelId,
+    stream.channelSlug,
+    stream.externalId,
+    stream.creatorName
+  ]
+    .map(value => text(value).toLowerCase())
+    .filter(Boolean);
+
+  return candidates.some(value => approvedKeys.has(`${provider}:${value}`));
+}
+
 function timeoutSignal(ms = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -337,10 +419,14 @@ export default async function handler(req, res) {
     loadKick(perProvider).catch(error => providerFailure('kick', error))
   ]);
 
+  const approvedKeys = await loadApprovedCreatorKeys().catch(() => new Set());
+
   const streams = interleaveProviders(
     [youtube.streams || [], twitch.streams || [], kick.streams || []],
-    limit
-  );
+    limit * 2
+  )
+    .filter(stream => approvedExternalStream(stream, approvedKeys))
+    .slice(0, limit);
 
   const providers = Object.fromEntries(
     [youtube, twitch, kick].map(result => [
