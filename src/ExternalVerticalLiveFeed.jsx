@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Radio, RefreshCw, Users, Volume2, X } from 'lucide-react';
+import { MessageCircle, Radio, RefreshCw, Users, Volume2, X } from 'lucide-react';
+import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './external-vertical-live-feed.css';
 
 const ALLOWED_PROVIDERS = new Set(['youtube', 'twitch', 'kick']);
@@ -11,13 +12,6 @@ function formatViewers(value) {
   if (count >= 1000000) return `${(count / 1000000).toFixed(count >= 10000000 ? 0 : 1)}M`;
   if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K`;
   return String(Math.max(0, count));
-}
-
-function providerLabel(provider) {
-  if (provider === 'youtube') return 'YouTube';
-  if (provider === 'twitch') return 'Twitch';
-  if (provider === 'kick') return 'Kick';
-  return 'LIVE';
 }
 
 function embedUrl(stream) {
@@ -37,13 +31,19 @@ function embedUrl(stream) {
   return '';
 }
 
-export default function ExternalVerticalLiveFeed() {
+export default function ExternalVerticalLiveFeed({
+  currentUserId,
+  coins = 0,
+  onCoinsChanged,
+  onOpenWallet
+}) {
   const [streams, setStreams] = useState([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
   const [interactive, setInteractive] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
 
   const touchStartYRef = useRef(null);
   const wheelLockRef = useRef(false);
@@ -137,8 +137,8 @@ export default function ExternalVerticalLiveFeed() {
     return (
       <section className="externalLiveLoading">
         <Radio size={30} />
-        <strong>No LIVE streams available right now</strong>
-        <span>Pulling fresh LIVE streams from connected sources.</span>
+        <strong>No approved LIVE streams available right now</strong>
+        <span>Droxion only shows LIVE creators approved for this feed.</span>
         <button type="button" onClick={() => load({ manual: true })} disabled={refreshing}>
           <RefreshCw size={17} /> {refreshing ? 'Refreshing…' : 'Refresh LIVE'}
         </button>
@@ -148,7 +148,7 @@ export default function ExternalVerticalLiveFeed() {
 
   return (
     <section
-      className={`externalVerticalLive ${interactive ? 'isInteractive' : ''}`}
+      className={`externalVerticalLive ${interactive ? 'isInteractive' : ''} ${chatOpen ? 'hasChat' : ''}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onWheel={handleWheel}
@@ -174,21 +174,37 @@ export default function ExternalVerticalLiveFeed() {
       <div className="externalLiveMeta">
         <strong>{active.creatorName || 'LIVE creator'}</strong>
         <span>{active.title || 'LIVE now'}</span>
-        <small>{providerLabel(active.provider)} · {active.category || 'LIVE'}{active.language ? ` · ${String(active.language).toUpperCase()}` : ''}</small>
+        <small>{active.category || 'LIVE'}{active.language ? ` · ${String(active.language).toUpperCase()}` : ''}</small>
       </div>
 
       <div className="externalLiveActions">
-        <button type="button" onClick={() => setInteractive(value => !value)}>
-          {interactive ? <X size={18} /> : <Volume2 size={18} />}
-          <span>{interactive ? 'Back to swipe' : 'Tap to interact / sound'}</span>
+        <button type="button" onClick={() => setChatOpen(value => !value)} aria-label={chatOpen ? 'Hide chat' : 'Show chat'}>
+          {chatOpen ? <X size={18} /> : <MessageCircle size={18} />}
         </button>
-        <a href={active.watchUrl || '#'} target="_blank" rel="noreferrer">
-          <ExternalLink size={18} />
-          <span>Open source</span>
-        </a>
+        <button type="button" onClick={() => setInteractive(value => !value)} aria-label={interactive ? 'Back to swipe' : 'Enable video controls and sound'}>
+          {interactive ? <X size={18} /> : <Volume2 size={18} />}
+        </button>
       </div>
 
-      {!interactive && <div className="externalSwipeHint">Swipe ↑ for next LIVE</div>}
+      {chatOpen && (
+        <div
+          className="externalLiveChatOverlay"
+          onTouchStart={event => event.stopPropagation()}
+          onTouchEnd={event => event.stopPropagation()}
+          onWheel={event => event.stopPropagation()}
+        >
+          <ExternalLiveDroxionChat
+            stream={active}
+            currentUserId={currentUserId}
+            coins={coins}
+            onCoinsChanged={onCoinsChanged}
+            onOpenWallet={onOpenWallet}
+            hideProviderBranding
+          />
+        </div>
+      )}
+
+      {!interactive && !chatOpen && <div className="externalSwipeHint">Swipe ↑ for next LIVE</div>}
 
       {notice && <div className="externalLiveNotice">{notice}</div>}
 
@@ -197,7 +213,7 @@ export default function ExternalVerticalLiveFeed() {
         className="externalRefreshButton"
         onClick={() => load({ manual: true })}
         disabled={refreshing}
-        aria-label="Refresh LIVE sources"
+        aria-label="Refresh LIVE"
       >
         <RefreshCw size={17} className={refreshing ? 'externalLiveSpinner' : ''} />
       </button>
