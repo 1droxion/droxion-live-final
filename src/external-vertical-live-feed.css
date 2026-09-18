@@ -31,3 +31,24 @@
 @keyframes externalSwipePulse{0%,100%{opacity:.55;transform:translate(-50%,0)}50%{opacity:1;transform:translate(-50%,-4px)}}
 @media(min-width:760px){.externalLiveMeta{left:max(28px,env(safe-area-inset-left));bottom:72px}.externalLiveActions{bottom:72px}.externalSwipeHint{bottom:20px}}
 @media(max-width:520px){.externalLiveTop{top:calc(56px + env(safe-area-inset-top))}.externalLiveMeta{right:78px;bottom:calc(82px + env(safe-area-inset-bottom))}.externalLiveMeta strong{font-size:18px}.externalLiveActions{bottom:calc(82px + env(safe-area-inset-bottom))}.externalRefreshButton{top:44%}}
+
+.externalLiveChatOverlay{position:absolute;z-index:7;left:max(14px,env(safe-area-inset-left));bottom:calc(18px + env(safe-area-inset-bottom));width:min(390px,calc(100vw - 92px));height:min(46dvh,430px);border:1px solid rgba(255,255,255,.12);border-radius:20px;overflow:hidden;background:rgba(5,7,12,.24);box-shadow:0 18px 50px rgba(0,0,0,.28);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.externalLiveChatOverlay .dxDroxionChat,.externalLiveChatOverlay .dxUnifiedChat{height:100%;min-height:0;background:rgba(7,10,16,.36)!important}
+.externalLiveChatOverlay .dxUnifiedChatTop{background:rgba(10,14,22,.45)!important;border-bottom-color:rgba(255,255,255,.06)!important}
+.externalLiveChatOverlay .dxUnifiedChatStream{background:transparent!important}
+.externalLiveChatOverlay .dxUnifiedMessage{background:transparent}
+.externalLiveChatOverlay .dxUnifiedMessage:hover{background:rgba(0,0,0,.12)}
+.externalLiveChatOverlay .dxDroxionComposer{background:rgba(9,12,18,.5)!important}
+.externalLiveChatOverlay .dxDroxionComposer input{background:rgba(16,20,29,.58)!important}
+.externalLiveChatOverlay .dxQuickGiftRail{background:rgba(9,12,18,.42)!important}
+.externalLiveChatOverlay .dxSourceComposerButton,.externalLiveChatOverlay .dxSourceReadOnly{display:none!important}
+.externalVerticalLive.hasChat .externalLiveMeta{left:calc(min(390px,calc(100vw - 92px)) + 30px)}
+@media(max-width:700px){
+  .externalLiveChatOverlay{left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:calc(8px + env(safe-area-inset-bottom));width:auto;height:42dvh;border-radius:18px}
+  .externalVerticalLive.hasChat .externalLiveMeta{left:max(14px,env(safe-area-inset-left));bottom:calc(42dvh + 24px + env(safe-area-inset-bottom));right:78px}
+  .externalLiveChatOverlay .dxDroxionChat{height:100%!important;min-height:0!important}
+  .externalLiveChatOverlay .dxUnifiedChatTop{min-height:40px;padding:5px 7px}
+  .externalLiveChatOverlay .dxUnifiedChatTop small{display:none}
+  .externalLiveChatOverlay .dxQuickGiftRail{display:none}
+  .externalLiveChatOverlay .dxDroxionComposer{grid-template-columns:auto auto minmax(0,1fr) auto}
+}
