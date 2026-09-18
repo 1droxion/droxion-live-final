@@ -17,7 +17,6 @@ function providerLabel(provider) {
   if (provider === 'youtube') return 'YouTube';
   if (provider === 'twitch') return 'Twitch';
   if (provider === 'kick') return 'Kick';
-  if (provider === 'tango') return 'Tango';
   return 'LIVE';
 }
 
@@ -27,7 +26,7 @@ function embedUrl(stream) {
   const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
 
   if (provider === 'youtube' && stream.externalId) {
-    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1`;
+    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&controls=1`;
   }
   if (provider === 'twitch' && stream.channelSlug) {
     return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(host)}&autoplay=true`;
@@ -35,42 +34,7 @@ function embedUrl(stream) {
   if (provider === 'kick' && stream.channelSlug) {
     return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}`;
   }
-  if (provider === 'tango') {
-    return 'https://tango.me/';
-  }
   return '';
-}
-
-function tangoFeedCard() {
-  return {
-    id: 'tango:feed',
-    provider: 'tango',
-    providerLabel: 'Tango',
-    externalId: 'feed',
-    channelSlug: '',
-    creatorName: 'Tango LIVE',
-    title: 'Tango LIVE Feed',
-    category: 'LIVE',
-    language: '',
-    viewerCount: 0,
-    watchUrl: 'https://tango.me/',
-    embedType: 'tango',
-    isTangoFeed: true
-  };
-}
-
-function interleaveTango(rows) {
-  const base = rows.slice(0, 60);
-  const tango = tangoFeedCard();
-  if (base.length <= 3) return [tango, ...base];
-
-  const output = [];
-  const insertAt = Math.min(3, base.length);
-  base.forEach((stream, index) => {
-    if (index === insertAt) output.push(tango);
-    output.push(stream);
-  });
-  return output;
 }
 
 export default function ExternalVerticalLiveFeed() {
@@ -96,16 +60,17 @@ export default function ExternalVerticalLiveFeed() {
       });
       if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
       const data = await response.json();
-      const rows = (Array.isArray(data?.streams) ? data.streams : [])
-        .filter(stream => ALLOWED_PROVIDERS.has(String(stream?.provider || '').toLowerCase()));
 
-      const next = interleaveTango(rows);
+      const next = (Array.isArray(data?.streams) ? data.streams : [])
+        .filter(stream => ALLOWED_PROVIDERS.has(String(stream?.provider || '').toLowerCase()))
+        .filter(stream => Boolean(embedUrl(stream)));
+
       setStreams(next);
       setIndex(current => Math.min(current, Math.max(0, next.length - 1)));
       setNotice('');
     } catch (error) {
       setNotice(error?.message || 'Could not load LIVE streams.');
-      setStreams([tangoFeedCard()]);
+      setStreams([]);
       setIndex(0);
     } finally {
       setLoading(false);
@@ -162,8 +127,8 @@ export default function ExternalVerticalLiveFeed() {
     return (
       <section className="externalLiveLoading">
         <RefreshCw size={30} className="externalLiveSpinner" />
-        <strong>Loading LIVE…</strong>
-        <span>YouTube · Twitch · Kick · Tango</span>
+        <strong>Finding LIVE streams…</strong>
+        <span>Droxion LIVE</span>
       </section>
     );
   }
@@ -172,7 +137,8 @@ export default function ExternalVerticalLiveFeed() {
     return (
       <section className="externalLiveLoading">
         <Radio size={30} />
-        <strong>LIVE is unavailable right now</strong>
+        <strong>No LIVE streams available right now</strong>
+        <span>Pulling fresh LIVE streams from connected sources.</span>
         <button type="button" onClick={() => load({ manual: true })} disabled={refreshing}>
           <RefreshCw size={17} /> {refreshing ? 'Refreshing…' : 'Refresh LIVE'}
         </button>
@@ -188,37 +154,27 @@ export default function ExternalVerticalLiveFeed() {
       onWheel={handleWheel}
     >
       <div className="externalLiveFrameWrap">
-        {src ? (
-          <iframe
-            key={active.id}
-            className="externalLiveFrame"
-            src={src}
-            title={`${providerLabel(active.provider)} LIVE`}
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        ) : (
-          <div className="externalLiveFallback">
-            <Radio size={34} />
-            <strong>This LIVE cannot play inside Droxion.</strong>
-          </div>
-        )}
+        <iframe
+          key={active.id}
+          className="externalLiveFrame"
+          src={src}
+          title="Droxion LIVE"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
         <div className="externalLiveShade" />
       </div>
 
       <div className="externalLiveTop">
-        <span className={`externalProviderBadge ${active.provider}`}>{providerLabel(active.provider)}</span>
         <span className="externalLiveNow">LIVE</span>
-        {!active.isTangoFeed && (
-          <span className="externalViewerCount"><Users size={14} /> {formatViewers(active.viewerCount)}</span>
-        )}
+        <span className="externalViewerCount"><Users size={14} /> {formatViewers(active.viewerCount)}</span>
       </div>
 
       <div className="externalLiveMeta">
-        <strong>{active.creatorName || providerLabel(active.provider)}</strong>
+        <strong>{active.creatorName || 'LIVE creator'}</strong>
         <span>{active.title || 'LIVE now'}</span>
-        <small>{active.category || 'LIVE'}{active.language ? ` · ${String(active.language).toUpperCase()}` : ''}</small>
+        <small>{providerLabel(active.provider)} · {active.category || 'LIVE'}{active.language ? ` · ${String(active.language).toUpperCase()}` : ''}</small>
       </div>
 
       <div className="externalLiveActions">
@@ -226,7 +182,7 @@ export default function ExternalVerticalLiveFeed() {
           {interactive ? <X size={18} /> : <Volume2 size={18} />}
           <span>{interactive ? 'Back to swipe' : 'Tap to interact / sound'}</span>
         </button>
-        <a href={active.watchUrl || 'https://tango.me/'} target="_blank" rel="noreferrer">
+        <a href={active.watchUrl || '#'} target="_blank" rel="noreferrer">
           <ExternalLink size={18} />
           <span>Open source</span>
         </a>
