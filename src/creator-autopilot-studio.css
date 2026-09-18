@@ -336,3 +336,62 @@
 @media (max-width: 720px) {
   .studioYoutubeGrid { grid-template-columns: 1fr; }
 }
+
+
+.studioUploadProgress {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.studioUploadProgress > div {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  overflow: hidden;
+}
+
+.studioUploadProgress > div > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7c5cff, #9c7cff);
+  transition: width .2s ease;
+}
+
+.studioUploadProgress small {
+  color: #8b8b97;
+  font-size: 10px;
+}
+
+.studioJobCreated {
+  margin-top: 12px;
+  border: 1px solid rgba(110,231,183,.14);
+  background: rgba(110,231,183,.04);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #bde9d7;
+}
+
+.studioJobCreated strong,
+.studioJobCreated span {
+  display: block;
+}
+
+.studioJobCreated strong {
+  font-size: 12px;
+}
+
+.studioJobCreated span {
+  margin-top: 2px;
+  color: #83a99b;
+  font-size: 10px;
+}
+
+.studioUploadButton:disabled {
+  opacity: .7;
+  cursor: wait;
+}
