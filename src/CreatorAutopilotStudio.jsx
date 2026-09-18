@@ -104,6 +104,10 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [youtubeVideos, setYoutubeVideos] = useState([]);
   const [youtubeVideosLoading, setYoutubeVideosLoading] = useState(false);
+  const [selectedYoutubeVideo, setSelectedYoutubeVideo] = useState(null);
+  const [sourceUploadProgress, setSourceUploadProgress] = useState(0);
+  const [sourceUploading, setSourceUploading] = useState(false);
+  const [createdJob, setCreatedJob] = useState(null);
 
   const oauthReady = useMemo(() => {
     return Object.fromEntries(CHANNELS.map(channel => [channel.id, Boolean(envValue(channel.env))]));
@@ -161,8 +165,72 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   function chooseYoutubeVideo(video) {
     if (!video?.url) return;
     setVideoUrl(video.url);
+    setSelectedYoutubeVideo(video);
     setActiveTab('create');
-    setNotice(`Selected "${video.title}". Ready for clip generation.`);
+    setNotice(`Selected "${video.title}". Choose the original video file to start processing.`);
+    window.setTimeout(() => document.getElementById('creator-source-file')?.click(), 50);
+  }
+
+  async function uploadCreatorSource(file) {
+    if (!file) return;
+    const allowed = ['video/mp4', 'video/quicktime', 'video/webm'];
+    if (!allowed.includes(file.type)) {
+      setNotice('Use an MP4, MOV, or WebM video file.');
+      return;
+    }
+
+    try {
+      setSourceUploading(true);
+      setSourceUploadProgress(5);
+      setCreatedJob(null);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token || '';
+      const userId = sessionData?.session?.user?.id || '';
+      if (!accessToken || !userId) throw new Error('Sign in to Droxion before uploading.');
+
+      const safeName = String(file.name || 'source.mp4').replace(/[^a-zA-Z0-9._-]+/g, '-');
+      const objectPath = `${userId}/${Date.now()}-${safeName}`;
+
+      setSourceUploadProgress(15);
+      const { error: uploadError } = await supabase.storage
+        .from('droxion-creator-sources')
+        .upload(objectPath, file, {
+          cacheControl: '3600',
+          contentType: file.type || 'video/mp4',
+          upsert: false
+        });
+      if (uploadError) throw uploadError;
+
+      setSourceUploadProgress(85);
+      const response = await fetch('/api/creator/jobs/create', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          sourcePath: objectPath,
+          sourceFilename: file.name,
+          sourceSizeBytes: file.size,
+          sourceMimeType: file.type,
+          youtubeVideoId: selectedYoutubeVideo?.id || null,
+          youtubeTitle: selectedYoutubeVideo?.title || null,
+          youtubeUrl: selectedYoutubeVideo?.url || videoUrl || null
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Could not create processing job.');
+
+      setCreatedJob(payload.job || null);
+      setSourceUploadProgress(100);
+      setNotice('Source uploaded successfully. Droxion created the processing job.');
+    } catch (error) {
+      setNotice(error?.message || 'Source upload failed.');
+      setSourceUploadProgress(0);
+    } finally {
+      setSourceUploading(false);
+    }
   }
 
   useEffect(() => {
@@ -433,10 +501,44 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
                 </div>
               </form>
               <div className="studioDivider"><span>or</span></div>
-              <button type="button" className="studioUploadButton" onClick={() => setNotice('Direct uploads will be enabled with the processing/storage backend.')}>
+              <input
+                id="creator-source-file"
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                hidden
+                onChange={event => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  uploadCreatorSource(file);
+                }}
+              />
+              <button
+                type="button"
+                className="studioUploadButton"
+                onClick={() => document.getElementById('creator-source-file')?.click()}
+                disabled={sourceUploading}
+              >
                 <Upload size={22} />
-                <span><strong>Upload a long video</strong><small>MP4, MOV or WebM</small></span>
+                <span>
+                  <strong>{sourceUploading ? 'Uploading source video…' : 'Upload original video'}</strong>
+                  <small>MP4, MOV or WebM · private source file</small>
+                </span>
               </button>
+              {(sourceUploading || sourceUploadProgress > 0) && (
+                <div className="studioUploadProgress" aria-live="polite">
+                  <div><span style={{ width: `${sourceUploadProgress}%` }} /></div>
+                  <small>{sourceUploading ? `${sourceUploadProgress}% uploaded` : 'Upload complete'}</small>
+                </div>
+              )}
+              {createdJob && (
+                <div className="studioJobCreated">
+                  <CheckCircle2 size={17} />
+                  <div>
+                    <strong>Processing job created</strong>
+                    <span>{createdJob.youtube_title || createdJob.source_filename || 'Creator video'} · {createdJob.status}</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="studioPipelinePreview">
               {['Analyze full video', 'Find strongest moments', 'Reframe + captions', 'Write hooks + metadata', 'Schedule + publish', 'Learn from performance'].map((step, index) => (
