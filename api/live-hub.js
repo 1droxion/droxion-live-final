@@ -684,7 +684,7 @@ async function loadApprovedTwitchStreams(approvedKeys) {
   const handles = [...(approvedKeys || [])]
     .filter(key => key.startsWith('twitch:'))
     .map(key => key.slice('twitch:'.length))
-    .filter(Boolean)
+    .filter(value => /^[a-z0-9_]{2,25}$/i.test(value))
     .slice(0, 100);
 
   if (!handles.length) {
