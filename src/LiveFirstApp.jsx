@@ -79,20 +79,34 @@ export default function LiveFirstApp() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('droxion_profiles')
-        .select('gender,date_of_birth')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const [profileResult, creatorResult] = await Promise.all([
+        supabase
+          .from('droxion_profiles')
+          .select('gender,date_of_birth')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('droxion_creator_accounts')
+          .select('status')
+          .eq('user_id', user.id)
+          .maybeSingle()
+      ]);
 
-      if (error) throw error;
+      if (profileResult.error) throw profileResult.error;
+      if (creatorResult.error) throw creatorResult.error;
 
       const isAdultWoman =
-        String(data?.gender || '').toLowerCase() === 'woman' &&
-        ageFromDateOfBirth(data?.date_of_birth) >= 18;
+        String(profileResult.data?.gender || '').toLowerCase() === 'woman' &&
+        ageFromDateOfBirth(profileResult.data?.date_of_birth) >= 18;
 
       if (!isAdultWoman) {
-        setCreatorNotice('Only adult women (18+) can go LIVE on Droxion.');
+        setCreatorNotice('Only adult women (18+) can become LIVE creators on Droxion.');
+        window.setTimeout(() => setCreatorNotice(''), 3200);
+        return;
+      }
+
+      if (String(creatorResult.data?.status || '').toLowerCase() !== 'approved') {
+        setCreatorNotice('Creator verification is required before you can go LIVE.');
         window.setTimeout(() => setCreatorNotice(''), 3200);
         return;
       }
