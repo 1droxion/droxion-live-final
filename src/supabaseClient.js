@@ -11,12 +11,16 @@ import {
   stableLiveEventId,
 } from "./livekit/reliabilityState";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Browser clients always use Droxion's canonical public Supabase endpoint.
+ // Vercel Preview environments can carry stale branch-scoped env values; using
+ // the canonical publishable client config prevents a bad preview env from
+ // turning public reads into a browser-level "TypeError: Failed to fetch".
+ // This is a publishable key, never a service-role/secret key.
+const CANONICAL_SUPABASE_URL = "https://zlnhaqzawbzagraxhmlb.supabase.co";
+const CANONICAL_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b";
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase environment variables.");
-}
+const supabaseUrl = CANONICAL_SUPABASE_URL;
+const supabaseAnonKey = CANONICAL_SUPABASE_PUBLISHABLE_KEY;
 
 const client = createClient(supabaseUrl, supabaseAnonKey);
 const originalRpc = client.rpc.bind(client);
@@ -358,7 +362,14 @@ client.rpc = (fn, args, options) => {
   const cached = readCache.get(key);
   if (cached && now - cached.at < ttl) return cached.promise;
 
-  const promise = Promise.resolve(originalRpc(fn, args, options));
+  const promise = Promise.resolve(originalRpc(fn, args, options)).catch(error => {
+    // Never cache transport failures. A transient DNS/CORS/network issue must be
+    // allowed to retry immediately on the next refresh instead of replaying the
+    // same rejected promise for the full read TTL.
+    const cachedEntry = readCache.get(key);
+    if (cachedEntry?.promise === promise) readCache.delete(key);
+    throw error;
+  });
   readCache.set(key, { at: now, promise });
   window.setTimeout(() => {
     if (readCache.get(key)?.promise === promise) readCache.delete(key);
