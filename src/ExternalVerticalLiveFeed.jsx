@@ -27,7 +27,7 @@ function embedUrl(stream) {
   if (provider === 'kick' && stream.channelSlug) {
     return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=true`;
   }
-  if (provider === 'tango' && stream.embedUrl) return stream.embedUrl;
+  if (['tango','liveme','poppo'].includes(provider) && stream.embedUrl) return stream.embedUrl;
   return '';
 }
 
