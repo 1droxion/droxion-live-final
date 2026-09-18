@@ -20,8 +20,9 @@ import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
 export default function App() {
   const location = useLocation();
   const isLiveV2 = location.pathname.startsWith('/live-v2');
-  const isCreatorStudio = ['/studio', '/dashboard', '/connect'].some(path => location.pathname.startsWith(path));
-  const showLegacyEnhancers = !isLiveV2 && !isCreatorStudio;
+  const isLegacyLive = location.pathname.startsWith('/live-social');
+  const isCreatorStudio = location.pathname === '/' || ['/studio', '/dashboard', '/connect'].some(path => location.pathname.startsWith(path));
+  const showLegacyEnhancers = isLegacyLive || (!isLiveV2 && !isCreatorStudio);
 
   return (
     <>
@@ -33,8 +34,9 @@ export default function App() {
       {showLegacyEnhancers && <ShortNativeActionsEnhancer />}
       {showLegacyEnhancers && <ShortSafetyEnhancer />}
       <Routes>
-        <Route path="/" element={<LiveFirstApp />} />
+        <Route path="/" element={<CreatorAutopilotStudio initialTab="overview" />} />
         <Route path="/studio" element={<CreatorAutopilotStudio initialTab="overview" />} />
+        <Route path="/live-social" element={<LiveFirstApp />} />
         <Route path="/dashboard" element={<CreatorAutopilotStudio initialTab="overview" />} />
         <Route path="/connect" element={<CreatorAutopilotStudio initialTab="channels" />} />
         <Route path="/live-v2" element={<LiveV2Page />} />
