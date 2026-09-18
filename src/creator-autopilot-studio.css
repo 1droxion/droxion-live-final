@@ -550,3 +550,81 @@
   text-align: center;
   font-size: 10px;
 }
+
+
+.studioJobCreatedWide {
+  grid-template-columns: auto 1fr auto;
+}
+
+.studioJobCreatedWide > button {
+  border: 1px solid rgba(110,231,183,.2);
+  background: rgba(110,231,183,.08);
+  color: #c8f5e3;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.studioJobCreatedWide > button:disabled {
+  opacity: .65;
+  cursor: wait;
+}
+
+.studioClipResults {
+  margin-top: 16px;
+  border-top: 1px solid var(--studio-border);
+  padding-top: 16px;
+}
+
+.studioClipGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+}
+
+.studioClipCard {
+  border: 1px solid var(--studio-border);
+  background: rgba(255,255,255,.018);
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+.studioClipCard video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  background: #050507;
+}
+
+.studioClipCard > div {
+  padding: 10px 11px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.studioClipCard strong {
+  font-size: 11px;
+}
+
+.studioClipCard span {
+  color: #80808c;
+  font-size: 10px;
+}
+
+.studioClipMissing {
+  aspect-ratio: 9 / 16;
+  display: grid !important;
+  place-items: center;
+  color: #777784;
+  padding: 0 !important;
+}
+
+@media (max-width: 850px) {
+  .studioClipGrid { grid-template-columns: 1fr; }
+  .studioJobCreatedWide { grid-template-columns: auto 1fr; }
+  .studioJobCreatedWide > button { grid-column: 1 / -1; }
+}
