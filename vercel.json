@@ -1,4 +1,12 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/supabase-proxy.js": {
+      "regions": ["sfo1"],
+      "functionFailoverRegions": ["pdx1"],
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/index.html",
