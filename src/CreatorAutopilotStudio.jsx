@@ -102,6 +102,8 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [connections, setConnections] = useState({});
   const [connectionsLoading, setConnectionsLoading] = useState(true);
+  const [youtubeVideos, setYoutubeVideos] = useState([]);
+  const [youtubeVideosLoading, setYoutubeVideosLoading] = useState(false);
 
   const oauthReady = useMemo(() => {
     return Object.fromEntries(CHANNELS.map(channel => [channel.id, Boolean(envValue(channel.env))]));
@@ -124,12 +126,43 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.error || 'Could not load channel connections.');
-      setConnections(Object.fromEntries((payload.connections || []).map(item => [item.provider, item])));
+      const nextConnections = Object.fromEntries((payload.connections || []).map(item => [item.provider, item]));
+      setConnections(nextConnections);
+      if (nextConnections.youtube) loadYoutubeVideos(accessToken);
     } catch (error) {
       setNotice(error?.message || 'Could not load channel connections.');
     } finally {
       setConnectionsLoading(false);
     }
+  }
+
+  async function loadYoutubeVideos(existingAccessToken = '') {
+    setYoutubeVideosLoading(true);
+    try {
+      let accessToken = existingAccessToken;
+      if (!accessToken) {
+        const { data } = await supabase.auth.getSession();
+        accessToken = data?.session?.access_token || '';
+      }
+      if (!accessToken) return;
+      const response = await fetch('/api/creator/youtube/videos?limit=12', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Could not load YouTube videos.');
+      setYoutubeVideos(payload.videos || []);
+    } catch (error) {
+      setNotice(error?.message || 'Could not load YouTube videos.');
+    } finally {
+      setYoutubeVideosLoading(false);
+    }
+  }
+
+  function chooseYoutubeVideo(video) {
+    if (!video?.url) return;
+    setVideoUrl(video.url);
+    setActiveTab('create');
+    setNotice(`Selected "${video.title}". Ready for clip generation.`);
   }
 
   useEffect(() => {
@@ -360,6 +393,37 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
               <h2>Turn one video into a content system.</h2>
               <p>Start with a source URL. The production pipeline will analyze the long-form video, create vertical clips, captions and publishing metadata.</p>
             </div>
+            {connections.youtube && (
+              <div className="studioYoutubeLibrary">
+                <div className="studioPanelHead">
+                  <div><span>YOUR YOUTUBE</span><h3>Recent uploads</h3></div>
+                  <button type="button" className="studioTextButton" onClick={() => loadYoutubeVideos()}>
+                    {youtubeVideosLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+                {youtubeVideosLoading && youtubeVideos.length === 0 ? (
+                  <div className="studioYoutubeLoading">Loading your latest YouTube videos…</div>
+                ) : youtubeVideos.length > 0 ? (
+                  <div className="studioYoutubeGrid">
+                    {youtubeVideos.map(video => (
+                      <article key={video.id} className="studioYoutubeVideo">
+                        <div className="studioYoutubeThumb">
+                          {video.thumbnail ? <img src={video.thumbnail} alt="" /> : <div className="studioYoutubeThumbFallback"><Youtube size={22} /></div>}
+                        </div>
+                        <div className="studioYoutubeVideoCopy">
+                          <strong title={video.title}>{video.title}</strong>
+                          <span>{video.publishedAt ? new Date(video.publishedAt).toLocaleDateString() : 'YouTube upload'}</span>
+                        </div>
+                        <button type="button" onClick={() => chooseYoutubeVideo(video)}>Create Shorts <ArrowRight size={14} /></button>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="studioYoutubeLoading">No YouTube uploads found yet.</div>
+                )}
+              </div>
+            )}
+
             <div className="studioCreateCard">
               <form onSubmit={createFromUrl}>
                 <label htmlFor="studio-video-url">Video URL</label>
