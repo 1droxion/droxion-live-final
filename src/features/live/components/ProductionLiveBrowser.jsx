@@ -92,6 +92,8 @@ export default function ProductionLiveBrowser({
   const connectRunRef = useRef(0);
   const refreshTimerRef = useRef(null);
   const lastChatIdRef = useRef(0);
+  const swipeStartYRef = useRef(null);
+  const wheelLockedRef = useRef(false);
 
   const visibleGiftOptions = useMemo(
     () => giftOptions.filter(gift => giftTabFor(gift) === giftTab),
@@ -108,7 +110,13 @@ export default function ProductionLiveBrowser({
     try {
       const { data, error } = await safeRpc('droxion_live_feed');
       if (error) throw error;
-      setProfiles(Array.isArray(data) ? data : []);
+      const eligible = (Array.isArray(data) ? data : []).filter(profile => {
+        const gender = String(profile?.gender || '').toLowerCase();
+        const age = Number(profile?.age || 0);
+        const orientation = String(profile?.orientation || 'vertical').toLowerCase();
+        return gender === 'woman' && age >= 18 && orientation === 'vertical';
+      });
+      setProfiles(eligible);
       setNotice('');
     } catch (error) {
       setNotice(error?.message || 'Could not refresh LIVE.');
@@ -151,6 +159,12 @@ export default function ProductionLiveBrowser({
       try { Promise.resolve(supabase.removeChannel(channel)).catch(() => {}); } catch {}
     };
   }, [currentUserId, loadFeed, activeRoom]);
+
+
+  useEffect(() => {
+    if (loading || activeRoom || profiles.length === 0) return;
+    openRoom(profiles[0]);
+  }, [loading, activeRoom, profiles]);
 
   useEffect(() => {
     onImmersiveChange?.(Boolean(activeRoom));
@@ -259,6 +273,39 @@ export default function ProductionLiveBrowser({
         failOpen: true
       }
     }));
+  }
+
+  function goToRelativeLive(direction) {
+    if (!activeRoom || profiles.length < 2 || giftDrawerOpen || selectedProfile) return;
+    const currentIndex = profiles.findIndex(profile => String(profile.session_id) === String(activeRoom.session_id));
+    if (currentIndex < 0) return;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= profiles.length) return;
+
+    safeRpc('droxion_leave_live', { p_session_id: activeRoom.session_id }).catch(() => {});
+    enterRoom(profiles[nextIndex]);
+  }
+
+  function handleViewerTouchStart(event) {
+    if (giftDrawerOpen || selectedProfile) return;
+    swipeStartYRef.current = event.touches?.[0]?.clientY ?? null;
+  }
+
+  function handleViewerTouchEnd(event) {
+    const start = swipeStartYRef.current;
+    swipeStartYRef.current = null;
+    if (start == null || giftDrawerOpen || selectedProfile) return;
+    const end = event.changedTouches?.[0]?.clientY ?? start;
+    const delta = end - start;
+    if (Math.abs(delta) < 54) return;
+    goToRelativeLive(delta < 0 ? 1 : -1);
+  }
+
+  function handleViewerWheel(event) {
+    if (giftDrawerOpen || selectedProfile || wheelLockedRef.current || Math.abs(event.deltaY) < 45) return;
+    wheelLockedRef.current = true;
+    goToRelativeLive(event.deltaY > 0 ? 1 : -1);
+    window.setTimeout(() => { wheelLockedRef.current = false; }, 650);
   }
 
   // WORKING VIDEO CONNECTION — intentionally unchanged.
@@ -560,12 +607,12 @@ export default function ProductionLiveBrowser({
     ].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))).slice(-8);
 
     return (
-      <section className="productionViewerPage">
+      <section className="productionViewerPage droxionVerticalViewer" onTouchStart={handleViewerTouchStart} onTouchEnd={handleViewerTouchEnd} onWheel={handleViewerWheel}>
         <video ref={videoRef} className="productionViewerVideo" autoPlay playsInline muted />
         <audio ref={audioRef} autoPlay playsInline />
 
         <div className="productionViewerTop">
-          <button type="button" onClick={leaveViewer} aria-label="Back to Home"><ArrowLeft size={22} /></button>
+          <span className="droxionSwipeLiveBadge">LIVE</span>
           <button
             type="button"
             className="productionViewerCreatorProfile"
@@ -766,36 +813,18 @@ export default function ProductionLiveBrowser({
   }
 
   return (
-    <section className="productionLiveBrowse" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
-      <div className="livePullRefresh" style={{ height: pullDistance }}><RefreshCw size={18} /><span>{refreshing ? 'Refreshing LIVE…' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull down to refresh LIVE'}</span></div>
-      <div className="productionLiveRefreshHint"><span>Pull down to refresh LIVE</span><button type="button" onClick={() => loadFeed({ spinner: true })} disabled={refreshing}><RefreshCw size={16} /></button></div>
-
+    <section className="droxionVerticalLoading">
       {notice && <div className="productionBrowseNotice">{notice}</div>}
       {loading ? (
         <div className="productionLiveEmpty"><RefreshCw size={28} /><strong>Loading LIVE…</strong></div>
-      ) : profiles.length === 0 ? (
-        <div className="productionLiveEmpty"><Radio size={30} /><strong>No one is LIVE right now</strong><span>Pull down to refresh.</span></div>
       ) : (
-        <div className="productionLiveGrid">
-          {profiles.map(profile => {
-            const horizontal = String(profile.orientation || '').toLowerCase() === 'horizontal';
-            return (
-              <button type="button" key={`${profile.user_id}:${profile.session_id}`} className={`productionLiveCard ${horizontal ? 'isHorizontal' : 'isVertical'}`} onClick={() => openRoom(profile)}>
-                <div className="productionLiveCardMedia">
-                  {profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <div className="productionLiveAvatarPlaceholder" />}
-                  <div className="productionLiveCardShade" />
-                  <span className="productionLiveBadge">LIVE</span>
-                  <span className="productionLiveViewers"><Users size={14} /> {profile.viewer_count || 0}</span>
-                  <div className="productionLiveCardInfo">
-                    <strong>{profile.display_name || 'Droxion creator'}{profile.age ? `, ${profile.age}` : ''}</strong>
-                    <b>{profile.title || 'Live on Droxion'}</b>
-                    <small>{profile.country || 'Global'}{profile.language ? ` · ${profile.language}` : ''}</small>
-                    <em>{horizontal ? 'Horizontal LIVE' : 'Vertical LIVE'} · Tap to open</em>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+        <div className="productionLiveEmpty">
+          <Radio size={30} />
+          <strong>No women are LIVE right now</strong>
+          <span>Droxion shows verified adult women in vertical LIVE only.</span>
+          <button type="button" className="droxionRefreshLive" onClick={() => loadFeed({ spinner: true })} disabled={refreshing}>
+            <RefreshCw size={17} /> {refreshing ? 'Refreshing…' : 'Refresh LIVE'}
+          </button>
         </div>
       )}
     </section>
