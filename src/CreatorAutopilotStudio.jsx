@@ -108,6 +108,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   const [sourceUploadProgress, setSourceUploadProgress] = useState(0);
   const [sourceUploading, setSourceUploading] = useState(false);
   const [createdJob, setCreatedJob] = useState(null);
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
 
   const oauthReady = useMemo(() => {
     return Object.fromEntries(CHANNELS.map(channel => [channel.id, Boolean(envValue(channel.env))]));
@@ -167,9 +168,8 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
     setVideoUrl(video.url);
     setSelectedYoutubeVideo(video);
     setActiveTab('create');
-    setNotice(`Selected "${video.title}". Choose the original video file to start processing.`);
-    const input = document.getElementById('creator-source-file');
-    if (input) input.click();
+    setSourcePickerOpen(true);
+    setNotice(`Selected "${video.title}". Upload the original video file to start processing.`);
   }
 
   async function uploadCreatorSource(file) {
@@ -225,6 +225,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
 
       setCreatedJob(payload.job || null);
       setSourceUploadProgress(100);
+      setSourcePickerOpen(false);
       setNotice('Source uploaded successfully. Droxion created the processing job.');
     } catch (error) {
       setNotice(error?.message || 'Source upload failed.');
@@ -311,6 +312,36 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
 
   return (
     <div className="studioShell">
+      {sourcePickerOpen && selectedYoutubeVideo && (
+        <div className="studioSourceModalBackdrop" role="dialog" aria-modal="true" aria-label="Upload source video">
+          <div className="studioSourceModal">
+            <button type="button" className="studioSourceModalClose" onClick={() => setSourcePickerOpen(false)}>×</button>
+            <div className="studioSourceModalThumb">
+              {selectedYoutubeVideo.thumbnail ? <img src={selectedYoutubeVideo.thumbnail} alt="" /> : <Youtube size={28} />}
+            </div>
+            <span className="studioEyebrow">CREATE SHORTS</span>
+            <h2>Upload the original video</h2>
+            <p>{selectedYoutubeVideo.title}</p>
+            <p className="studioSourceModalHelp">Droxion needs the original MP4, MOV or WebM file to create and process the Shorts.</p>
+            <button
+              type="button"
+              className="studioPrimaryButton studioLarge studioSourceModalAction"
+              onClick={() => document.getElementById('creator-source-file')?.click()}
+              disabled={sourceUploading}
+            >
+              <Upload size={18} />
+              {sourceUploading ? 'Uploading…' : 'Choose original video'}
+            </button>
+            {(sourceUploading || sourceUploadProgress > 0) && (
+              <div className="studioUploadProgress">
+                <div><span style={{ width: `${sourceUploadProgress}%` }} /></div>
+                <small>{sourceUploading ? `${sourceUploadProgress}% uploaded` : 'Upload complete'}</small>
+              </div>
+            )}
+            <small className="studioSourceModalPrivacy">Private source upload. Droxion does not publish the original file.</small>
+          </div>
+        </div>
+      )}
       <aside className="studioSidebar">
         <div className="studioBrand">
           <div className="studioBrandMark">D</div>
