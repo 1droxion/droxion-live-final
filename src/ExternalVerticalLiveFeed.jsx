@@ -52,10 +52,13 @@ export default function ExternalVerticalLiveFeed({
 
   const load = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10000);
     try {
       const response = await fetch('/api/live-hub?limit=80', {
         headers: { Accept: 'application/json' },
-        cache: 'no-store'
+        cache: 'no-store',
+        signal: controller.signal
       });
       if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
       const payload = await response.json();
@@ -70,8 +73,9 @@ export default function ExternalVerticalLiveFeed({
     } catch (error) {
       setStreams([]);
       setIndex(0);
-      setNotice(error?.message || 'Could not load LIVE streams.');
+      setNotice(error?.name === 'AbortError' ? 'LIVE refresh took too long. Tap Refresh LIVE.' : (error?.message || 'Could not load LIVE streams.'));
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
       if (manual) setRefreshing(false);
     }
