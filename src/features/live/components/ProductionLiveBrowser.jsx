@@ -107,20 +107,44 @@ export default function ProductionLiveBrowser({
 
   const loadFeed = useCallback(async ({ spinner = false } = {}) => {
     if (spinner) setRefreshing(true);
+
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setLoading(false);
+      setRefreshing(false);
+      setProfiles([]);
+      setNotice('LIVE feed is taking too long to load. Tap Refresh LIVE.');
+    }, 9000);
+
     try {
       const { data, error } = await safeRpc('droxion_live_feed');
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
       if (error) throw error;
+
       const eligible = (Array.isArray(data) ? data : []).filter(profile => {
         const gender = String(profile?.gender || '').toLowerCase();
         const age = Number(profile?.age || 0);
         const orientation = String(profile?.orientation || 'vertical').toLowerCase();
         return gender === 'woman' && age >= 18 && orientation === 'vertical';
       });
+
       setProfiles(eligible);
       setNotice('');
     } catch (error) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      setProfiles([]);
       setNotice(error?.message || 'Could not refresh LIVE.');
     } finally {
+      if (!settled) {
+        settled = true;
+        window.clearTimeout(timeout);
+      }
       setLoading(false);
       if (spinner) setRefreshing(false);
     }
