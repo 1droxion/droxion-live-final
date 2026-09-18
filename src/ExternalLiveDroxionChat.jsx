@@ -158,7 +158,7 @@ function sourceChatFrameUrl(stream) {
   return '';
 }
 
-export default function ExternalLiveDroxionChat({ stream, currentUserId, coins = 0, onCoinsChanged, onOpenWallet }) {
+export default function ExternalLiveDroxionChat({ stream, currentUserId, coins = 0, onCoinsChanged, onOpenWallet, hideProviderBranding = false }) {
   const key = useMemo(() => streamKey(stream), [stream?.provider, stream?.externalId, stream?.channelSlug, stream?.channelId, stream?.id]);
   const [messages, setMessages] = useState(() => readCachedMessages(key));
   const [sourceMessages, setSourceMessages] = useState([]);
@@ -580,8 +580,8 @@ sourceTimerRef.current = window.setTimeout(
   return (
     <div className="dxDroxionChat dxUnifiedChat">
       <div className="dxUnifiedChatTop">
-        <div><MessageCircle size={15} /><span><strong>One LIVE chat</strong><small>{providerLabel(stream?.provider)} + Droxion together</small></span></div>
-        {sourceFrame ? <button type="button" className="dxSourceComposerButton" onClick={() => setSourceComposerOpen(true)}>Chat on {providerLabel(stream?.provider)}</button> : <span className="dxSourceReadOnly">{providerLabel(stream?.provider)} read-only</span>}
+        <div><MessageCircle size={15} /><span><strong>LIVE chat</strong><small>{hideProviderBranding ? 'Droxion LIVE' : `${providerLabel(stream?.provider)} + Droxion together`}</small></span></div>
+        {sourceFrame ? <button type="button" className="dxSourceComposerButton" onClick={() => setSourceComposerOpen(true)}>{hideProviderBranding ? 'Source chat' : `Chat on ${providerLabel(stream?.provider)}`}</button> : <span className="dxSourceReadOnly">{hideProviderBranding ? 'LIVE read-only' : `${providerLabel(stream?.provider)} read-only`}</span>}
       </div>
 
       <div
@@ -630,13 +630,7 @@ sourceTimerRef.current = window.setTimeout(
               </strong>
 
               {message.kind === 'source' ? (
-                <span
-                  className={`dxChatSourceBadge ${providerClass(
-                    message.provider
-                  )}`}
-                >
-                  {providerLabel(message.provider)}
-                </span>
+                <span className="dxChatSourceBadge droxion">{hideProviderBranding ? 'LIVE' : providerLabel(message.provider)}</span>
               ) : (
                 <span className="dxChatSourceBadge droxion">Droxion</span>
               )}
@@ -674,7 +668,7 @@ sourceTimerRef.current = window.setTimeout(
         <button type="button" className="dxSendButton" disabled={!draft.trim() || sending} onClick={sendChat}><Send size={17} /></button>
       </div>
 
-      {sourceComposerOpen && sourceFrame && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}><section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}><header><div><strong>{providerLabel(stream?.provider)} chat</strong><small>Use your {providerLabel(stream?.provider)} account here; Droxion chat remains the default.</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header><iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} /></section></div>}
+      {sourceComposerOpen && sourceFrame && <div className="dxSourceComposerBackdrop" onClick={() => setSourceComposerOpen(false)}><section className="dxSourceComposerSheet" onClick={event => event.stopPropagation()}><header><div><strong>{hideProviderBranding ? 'Source chat' : `${providerLabel(stream?.provider)} chat`}</strong><small>{hideProviderBranding ? 'Use your connected source account here; Droxion chat remains the default.' : `Use your ${providerLabel(stream?.provider)} account here; Droxion chat remains the default.`}</small></div><button type="button" onClick={() => setSourceComposerOpen(false)}><X size={18} /></button></header><iframe src={sourceFrame} title={`${providerLabel(stream?.provider)} official chat`} /></section></div>}
       {giftOpen && <div className="dxGiftBackdrop" onClick={() => setGiftOpen(false)}><section className="dxGiftSheet" onClick={event => event.stopPropagation()}><header><div><span>DROXION GIFTS</span><strong>Send a gift</strong><small>Balance · 🪙 {Number(coins || 0)}</small></div><button type="button" onClick={() => setGiftOpen(false)}><X size={18} /></button></header><div className="dxGiftGrid">{giftOptions.map(gift => <button type="button" key={gift.gift_code} disabled={Boolean(busyGift)} onClick={() => sendGift(gift)}><span>{gift.emoji || '🎁'}</span><strong>{gift.gift_name}</strong><small>🪙 {gift.cost_coins}</small></button>)}</div><button type="button" className="dxBuyCoinsWide" onClick={() => { setGiftOpen(false); onOpenWallet?.(); }}>+ Buy Coins</button></section></div>}
       {activeGift && <div className="dxExternalGiftBurst" aria-hidden="true"><span>{activeGift.emoji}</span><strong>{activeGift.name}</strong><small>DROXION GIFT</small></div>}
     </div>
