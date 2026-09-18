@@ -1,6 +1,5 @@
-// Publicly documented adult women creators used to seed Droxion LIVE discovery.
-// This is a curated seed list, not private identity verification.
-// Every entry must be an adult woman with a public creator identity.
+// Curated public adult-women creator channels used to seed Droxion LIVE discovery.
+// Only channel handles are used for provider lookups; display names are metadata.
 export const MANUAL_APPROVED_WOMEN = [
   { provider: 'twitch', channelSlug: 'pokimane', creatorName: 'Pokimane' },
   { provider: 'twitch', channelSlug: 'valkyrae', creatorName: 'Valkyrae' },
@@ -10,5 +9,30 @@ export const MANUAL_APPROVED_WOMEN = [
   { provider: 'twitch', channelSlug: 'lilypichu', creatorName: 'LilyPichu' },
   { provider: 'twitch', channelSlug: 'maya', creatorName: 'Maya Higa' },
   { provider: 'twitch', channelSlug: 'quarterjade', creatorName: 'QuarterJade' },
-  { provider: 'twitch', channelSlug: 'amouranth', creatorName: 'Amouranth' }
+  { provider: 'twitch', channelSlug: 'amouranth', creatorName: 'Amouranth' },
+  { provider: 'twitch', channelSlug: 'extraemily', creatorName: 'ExtraEmily' },
+  { provider: 'twitch', channelSlug: 'cinna', creatorName: 'Cinna' },
+  { provider: 'twitch', channelSlug: 'kyedae', creatorName: 'Kyedae' },
+  { provider: 'twitch', channelSlug: 'loserfruit', creatorName: 'Loserfruit' },
+  { provider: 'twitch', channelSlug: 'alinity', creatorName: 'Alinity' },
+  { provider: 'twitch', channelSlug: 'sweet_anita', creatorName: 'Sweet Anita' },
+  { provider: 'twitch', channelSlug: 'nihachu', creatorName: 'Nihachu' },
+  { provider: 'twitch', channelSlug: 'missmikkaa', creatorName: 'MissMikkaa' },
+  { provider: 'twitch', channelSlug: 'tinakitten', creatorName: 'TinaKitten' },
+  { provider: 'twitch', channelSlug: 'hannahxxrose', creatorName: 'Hannahxxrose' },
+  { provider: 'twitch', channelSlug: 'hafu', creatorName: 'Hafu' },
+  { provider: 'twitch', channelSlug: 'bnans', creatorName: 'Bnans' },
+  { provider: 'twitch', channelSlug: 'xchocobars', creatorName: 'xChocoBars' },
+  { provider: 'twitch', channelSlug: 'starsmitten', creatorName: 'Starsmitten' },
+  { provider: 'twitch', channelSlug: 'natsumiii', creatorName: 'Natsumiii' },
+  { provider: 'twitch', channelSlug: '39daph', creatorName: '39daph' },
+  { provider: 'twitch', channelSlug: 'annemunition', creatorName: 'AnneMunition' },
+  { provider: 'twitch', channelSlug: 'lilsimsie', creatorName: 'lilsimsie' },
+  { provider: 'twitch', channelSlug: 'chrissycostanza', creatorName: 'Chrissy Costanza' },
+  { provider: 'twitch', channelSlug: 'botezlive', creatorName: 'BotezLive' },
+  { provider: 'twitch', channelSlug: 'arigameplays', creatorName: 'AriGameplays' },
+  { provider: 'twitch', channelSlug: 'staryuuki', creatorName: 'Staryuuki' },
+  { provider: 'twitch', channelSlug: 'fanfan', creatorName: 'Fanfan' },
+  { provider: 'twitch', channelSlug: 'fandy', creatorName: 'Fandy' },
+  { provider: 'twitch', channelSlug: 'denims', creatorName: 'Denims' }
 ];
