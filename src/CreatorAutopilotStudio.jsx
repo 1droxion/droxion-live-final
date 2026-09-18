@@ -109,6 +109,7 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
   const [sourceUploading, setSourceUploading] = useState(false);
   const [createdJob, setCreatedJob] = useState(null);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [processingJob, setProcessingJob] = useState(false);
 
   const oauthReady = useMemo(() => {
     return Object.fromEntries(CHANNELS.map(channel => [channel.id, Boolean(envValue(channel.env))]));
@@ -134,10 +135,59 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
       const nextConnections = Object.fromEntries((payload.connections || []).map(item => [item.provider, item]));
       setConnections(nextConnections);
       if (nextConnections.youtube) loadYoutubeVideos(accessToken);
+      loadLatestJob(accessToken);
     } catch (error) {
       setNotice(error?.message || 'Could not load channel connections.');
     } finally {
       setConnectionsLoading(false);
+    }
+  }
+
+  async function loadLatestJob(existingAccessToken = '') {
+    try {
+      let accessToken = existingAccessToken;
+      if (!accessToken) {
+        const { data } = await supabase.auth.getSession();
+        accessToken = data?.session?.access_token || '';
+      }
+      if (!accessToken) return;
+      const response = await fetch('/api/creator/jobs/status', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.job) setCreatedJob(payload.job);
+    } catch {}
+  }
+
+  async function processCreatedJob() {
+    if (!createdJob?.id) {
+      setNotice('Upload a source video first.');
+      return;
+    }
+    try {
+      setProcessingJob(true);
+      setNotice('Processing your source video into Shorts…');
+      const { data } = await supabase.auth.getSession();
+      const accessToken = data?.session?.access_token || '';
+      if (!accessToken) throw new Error('Sign in to Droxion first.');
+
+      const response = await fetch('/api/creator/jobs/process', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ jobId: createdJob.id })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Could not process the video.');
+      setCreatedJob(payload.job || createdJob);
+      setNotice('Shorts are ready for preview.');
+    } catch (error) {
+      setNotice(error?.message || 'Video processing failed.');
+      await loadLatestJob();
+    } finally {
+      setProcessingJob(false);
     }
   }
 
@@ -578,11 +628,29 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
                 </div>
               )}
               {createdJob && (
-                <div className="studioJobCreated">
+                <div className="studioJobCreated studioJobCreatedWide">
                   <CheckCircle2 size={17} />
                   <div>
-                    <strong>Processing job created</strong>
+                    <strong>{createdJob.status === 'complete' ? 'Shorts ready' : 'Processing job created'}</strong>
                     <span>{createdJob.youtube_title || createdJob.source_filename || 'Creator video'} · {createdJob.status}</span>
+                  </div>
+                  {['uploaded','failed'].includes(createdJob.status) && (
+                    <button type="button" onClick={processCreatedJob} disabled={processingJob}>
+                      {processingJob ? 'Processing…' : 'Process now'}
+                    </button>
+                  )}
+                </div>
+              )}
+              {createdJob?.status === 'complete' && createdJob?.metadata?.clips?.length > 0 && (
+                <div className="studioClipResults">
+                  <div className="studioPanelHead"><div><span>SHORTS READY</span><h3>Preview clips</h3></div></div>
+                  <div className="studioClipGrid">
+                    {createdJob.metadata.clips.map((clip, index) => (
+                      <article key={clip.path || index} className="studioClipCard">
+                        {clip.preview_url ? <video controls playsInline preload="metadata" src={clip.preview_url} /> : <div className="studioClipMissing">Preview unavailable</div>}
+                        <div><strong>Clip {index + 1}</strong><span>{Math.round(clip.duration_seconds || 0)} sec</span></div>
+                      </article>
+                    ))}
                   </div>
                 </div>
               )}
