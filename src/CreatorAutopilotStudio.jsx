@@ -168,7 +168,8 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
     setSelectedYoutubeVideo(video);
     setActiveTab('create');
     setNotice(`Selected "${video.title}". Choose the original video file to start processing.`);
-    window.setTimeout(() => document.getElementById('creator-source-file')?.click(), 50);
+    const input = document.getElementById('creator-source-file');
+    if (input) input.click();
   }
 
   async function uploadCreatorSource(file) {
@@ -493,6 +494,21 @@ export default function CreatorAutopilotStudio({ initialTab = 'overview' }) {
             )}
 
             <div className="studioCreateCard">
+              {selectedYoutubeVideo && (
+                <div className="studioSelectedSource">
+                  <div className="studioSelectedSourceThumb">
+                    {selectedYoutubeVideo.thumbnail ? <img src={selectedYoutubeVideo.thumbnail} alt="" /> : <Youtube size={22} />}
+                  </div>
+                  <div>
+                    <span>SELECTED YOUTUBE VIDEO</span>
+                    <strong>{selectedYoutubeVideo.title}</strong>
+                    <small>Upload the original source file to create Shorts.</small>
+                  </div>
+                  <button type="button" onClick={() => document.getElementById('creator-source-file')?.click()}>
+                    Choose file <Upload size={14} />
+                  </button>
+                </div>
+              )}
               <form onSubmit={createFromUrl}>
                 <label htmlFor="studio-video-url">Video URL</label>
                 <div className="studioUrlRow">
