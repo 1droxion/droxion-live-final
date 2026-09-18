@@ -1,20 +1,8 @@
-import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
+const MAX_LIMIT = 90;
+const REQUEST_TIMEOUT_MS = 6500;
 
-const MAX_LIMIT = 200;
-const MIN_LIVE_VIEWERS = 5000;
-const YOUTUBE_TARGET = 100;
-const YOUTUBE_DISCOVERY_TARGET = 250;
-const YOUTUBE_DISCOVERY_CACHE_MS = 6 * 60 * 60 * 1000;
-const YOUTUBE_LIVE_CACHE_MS = 5 * 60 * 1000;
-const KICK_TARGET = 60;
-const TWITCH_TARGET = 40;
-const RUMBLE_TARGET = 20;
-const CACHE_FRESH_MS = 10 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 10000;
-const RUMBLE_TIMEOUT_MS = 5000;
-
-let kickTokenCache = { token: '', expiresAt: 0 };
 let twitchTokenCache = { token: '', expiresAt: 0 };
+let kickTokenCache = { token: '', expiresAt: 0 };
 
 function text(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
@@ -29,16 +17,6 @@ function number(value, fallback = 0) {
 function clampLimit(value) {
   const parsed = Number.parseInt(String(value || ''), 10);
   return Number.isFinite(parsed) ? Math.max(1, Math.min(MAX_LIMIT, parsed)) : MAX_LIMIT;
-}
-
-function normalizeCategory(value) {
-  const s = text(value).toLowerCase();
-  if (/game|gaming|esport|fortnite|minecraft|valorant|league|gta|call of duty|गेम/.test(s)) return 'Gaming';
-  if (/music|dj|concert|song|भजन|संगीत/.test(s)) return 'Music';
-  if (/sport|football|soccer|basketball|baseball|cricket|mma|boxing|racing|f1|क्रिकेट|खेल/.test(s)) return 'Sports';
-  if (/talk|chat|podcast|news|education|science|technology|politic|समाचार|न्यूज़|खबर/.test(s)) return 'Talk';
-  if (/irl|travel|outdoor|people|blog|lifestyle|walking|यात्रा/.test(s)) return 'IRL';
-  return 'Live';
 }
 
 function timeoutSignal(ms = REQUEST_TIMEOUT_MS) {
@@ -63,365 +41,179 @@ async function fetchJson(url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function fetchHtml(url, timeoutMs = RUMBLE_TIMEOUT_MS) {
-  const timeout = timeoutSignal(timeoutMs);
-  try {
-    const response = await fetch(url, {
-      signal: timeout.signal,
-      headers: {
-        Accept: 'text/html,application/xhtml+xml',
-        'User-Agent': 'Mozilla/5.0 (compatible; DroxionLive/1.0; +https://www.droxion.com)'
-      }
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.text();
-  } finally {
-    timeout.done();
-  }
+function normalizeCategory(value) {
+  const source = text(value).toLowerCase();
+  if (/game|gaming|esport|fortnite|minecraft|valorant|league|gta|call of duty/.test(source)) return 'Gaming';
+  if (/music|dj|concert|song/.test(source)) return 'Music';
+  if (/sport|football|soccer|basketball|baseball|cricket|mma|boxing|racing|f1/.test(source)) return 'Sports';
+  if (/talk|chat|podcast|news|education|science|technology/.test(source)) return 'Talk';
+  if (/irl|travel|outdoor|people|blog|lifestyle|walking/.test(source)) return 'IRL';
+  return 'LIVE';
 }
 
-function mergeUnique(rows, limit) {
-  const map = new Map();
-  for (const row of rows || []) {
-    if (!row?.id) continue;
-    const old = map.get(row.id);
-    if (!old || number(row.viewerCount) >= number(old.viewerCount)) map.set(row.id, { ...old, ...row });
-  }
-  return [...map.values()].sort((a, b) => number(b.viewerCount) - number(a.viewerCount)).slice(0, limit);
-}
+async function loadYouTube(limit) {
+  const apiKey = text(process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY);
+  if (!apiKey) return { provider: 'youtube', enabled: false, streams: [], reason: 'missing_credentials' };
 
-function isHindi(stream) {
-  const lang = text(stream?.language).toLowerCase();
-  if (lang === 'hi' || lang.startsWith('hi-')) return true;
-  return /[\u0900-\u097F]/.test(`${stream?.title || ''} ${stream?.creatorName || ''}`);
-}
+  const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
+  searchUrl.searchParams.set('part', 'snippet');
+  searchUrl.searchParams.set('type', 'video');
+  searchUrl.searchParams.set('eventType', 'live');
+  searchUrl.searchParams.set('videoEmbeddable', 'true');
+  searchUrl.searchParams.set('order', 'viewCount');
+  searchUrl.searchParams.set('maxResults', String(Math.min(50, Math.max(12, limit))));
+  searchUrl.searchParams.set('key', apiKey);
 
-function isEnglish(stream) {
-  const lang = text(stream?.language).toLowerCase();
-  return !lang || lang === 'en' || lang.startsWith('en-');
-}
+  const search = await fetchJson(searchUrl);
+  const items = Array.isArray(search?.items) ? search.items : [];
+  const ids = items.map(item => text(item?.id?.videoId)).filter(Boolean);
 
-function focusLanguages(rows, target) {
-  const ranked = [...(rows || [])].sort((a, b) => number(b.viewerCount) - number(a.viewerCount));
-  const englishTarget = Math.round(target * 0.8);
-  const hindiTarget = target - englishTarget;
-  const english = ranked.filter(isEnglish);
-  const hindi = ranked.filter(isHindi);
-  const chosen = [];
-  const seen = new Set();
-  const add = row => { if (row?.id && !seen.has(row.id) && chosen.length < target) { seen.add(row.id); chosen.push(row); } };
-  english.slice(0, englishTarget).forEach(add);
-  hindi.slice(0, hindiTarget).forEach(add);
-  ranked.forEach(add);
-  return chosen.slice(0, target);
-}
+  if (!ids.length) return { provider: 'youtube', enabled: true, streams: [], reason: 'empty_result' };
 
-function youtubeSearchUrl(apiKey, { region = 'US', language = 'en', q = '', maxResults = 50, pageToken = '' } = {}) {
-  const url = new URL('https://www.googleapis.com/youtube/v3/search');
-  url.searchParams.set('part', 'snippet');
-  url.searchParams.set('type', 'video');
-  url.searchParams.set('eventType', 'live');
-  url.searchParams.set('videoEmbeddable', 'true');
-  url.searchParams.set('order', 'viewCount');
-  url.searchParams.set('maxResults', String(Math.min(50, maxResults)));
-  url.searchParams.set('regionCode', region);
-  url.searchParams.set('relevanceLanguage', language);
-  if (q) url.searchParams.set('q', q);
-  if (pageToken) url.searchParams.set('pageToken', pageToken);
-  url.searchParams.set('key', apiKey);
-  return url;
-}
+  const detailsUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
+  detailsUrl.searchParams.set('part', 'snippet,liveStreamingDetails,status');
+  detailsUrl.searchParams.set('id', ids.join(','));
+  detailsUrl.searchParams.set('key', apiKey);
 
-async function fetchYouTubeGroup(apiKey, options, target) {
-  const rows = [];
-  let pageToken = '';
-  while (rows.length < target) {
-    const data = await fetchJson(youtubeSearchUrl(apiKey, { ...options, maxResults: Math.min(50, target - rows.length), pageToken }));
-    for (const item of data?.items || []) {
-      const id = text(item?.id?.videoId);
+  const details = await fetchJson(detailsUrl);
+  const streams = (Array.isArray(details?.items) ? details.items : [])
+    .filter(item => item?.status?.embeddable !== false && !item?.liveStreamingDetails?.actualEndTime)
+    .map(item => {
+      const id = text(item?.id);
       const snippet = item?.snippet || {};
-      if (!id) continue;
-      rows.push({
+      const live = item?.liveStreamingDetails || {};
+      if (!id) return null;
+      return {
         id: `youtube:${id}`,
         provider: 'youtube',
         providerLabel: 'YouTube',
         externalId: id,
         channelId: text(snippet.channelId),
         channelSlug: '',
-        creatorName: text(snippet.channelTitle, 'YouTube creator'),
-        title: text(snippet.title, 'LIVE on YouTube'),
+        creatorName: text(snippet.channelTitle, 'LIVE creator'),
+        title: text(snippet.title, 'LIVE now'),
         category: normalizeCategory(`${snippet.title || ''} ${snippet.channelTitle || ''}`),
-        language: options.language || 'en',
-        viewerCount: 0,
-        startedAt: text(snippet.publishedAt),
-        thumbnailUrl: text(snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url || snippet?.thumbnails?.default?.url) || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        language: text(snippet.defaultAudioLanguage || snippet.defaultLanguage),
+        viewerCount: number(live.concurrentViewers),
+        startedAt: text(live.actualStartTime || snippet.publishedAt),
+        thumbnailUrl: text(snippet?.thumbnails?.maxres?.url || snippet?.thumbnails?.high?.url || snippet?.thumbnails?.medium?.url),
         watchUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
         embedType: 'youtube',
         isMature: false
-      });
-    }
-    pageToken = text(data?.nextPageToken);
-    if (!pageToken || !(data?.items || []).length) break;
-  }
-  return rows.slice(0, target);
-}
-
-async function enrichYouTubeViewers(apiKey, rows) {
-  const result = [];
-  const list = Array.isArray(rows) ? rows : [];
-
-  for (let i = 0; i < list.length; i += 50) {
-    const batch = list.slice(i, i + 50);
-    const ids = batch.map(row => row.externalId).filter(Boolean);
-
-    if (!ids.length) continue;
-
-    const url = new URL('https://www.googleapis.com/youtube/v3/videos');
-    url.searchParams.set('part', 'liveStreamingDetails');
-    url.searchParams.set('id', ids.join(','));
-    url.searchParams.set('key', apiKey);
-
-    const data = await fetchJson(url);
-    const viewers = new Map();
-
-    for (const item of data?.items || []) {
-      viewers.set(
-        String(item.id),
-        number(item?.liveStreamingDetails?.concurrentViewers)
-      );
-    }
-
-    for (const row of batch) {
-      result.push({
-        ...row,
-        viewerCount: viewers.get(String(row.externalId)) || 0
-      });
-    }
-  }
-
-  return result;
-}
-
-async function loadYouTube() {
-  const apiKey = text(
-    process.env.YOUTUBE_DATA_API_KEY ||
-    process.env.YOUTUBE_API_KEY
-  );
-
-  if (!apiKey) {
-    return {
-      provider: 'youtube',
-      enabled: false,
-      streams: [],
-      reason: 'missing_credentials'
-    };
-  }
-
-  const liveCached = await readProviderCache('youtube-live-v4').catch(() => null);
-  const liveCachedRows = Array.isArray(liveCached?.payload)
-    ? liveCached.payload
-    : [];
-
-  const liveAge = liveCached?.updatedAt
-    ? Date.now() - Date.parse(liveCached.updatedAt)
-    : Infinity;
-
-  if (liveCachedRows.length && liveAge < YOUTUBE_LIVE_CACHE_MS) {
-    return {
-      provider: 'youtube',
-      enabled: true,
-      streams: focusLanguages(liveCachedRows, YOUTUBE_TARGET),
-      cacheUsed: true
-    };
-  }
-
-  const discoveryCached = await readProviderCache(
-    'youtube-discovery-v5'
-  ).catch(() => null);
-
-  const discoveryCachedRows = Array.isArray(discoveryCached?.payload)
-    ? discoveryCached.payload
-    : [];
-
-  const legacyCached = await readProviderCache(
-    'youtube-balanced-v3'
-  ).catch(() => null);
-
-  const legacyRows = Array.isArray(legacyCached?.payload)
-    ? legacyCached.payload
-    : [];
-
-  let discovered = discoveryCachedRows.length
-    ? discoveryCachedRows
-    : legacyRows;
-
-  const sourceCache = discoveryCachedRows.length
-    ? discoveryCached
-    : legacyCached;
-
-  const discoveryAge = sourceCache?.updatedAt
-    ? Date.now() - Date.parse(sourceCache.updatedAt)
-    : Infinity;
-
-  let fallbackUsed = false;
-
-  if (!discoveryCachedRows.length || discoveryAge >= YOUTUBE_DISCOVERY_CACHE_MS) {
-    try {
-      const [
-  general,
-  gaming,
-  music,
-  sports,
-  irl,
-  hindi
-] = await Promise.all([
-  fetchYouTubeGroup(
-    apiKey,
-    { region: 'US', language: 'en' },
-    50
-  ),
-
-  fetchYouTubeGroup(
-    apiKey,
-    { region: 'US', language: 'en', q: 'gaming live' },
-    50
-  ),
-
-  fetchYouTubeGroup(
-    apiKey,
-    { region: 'US', language: 'en', q: 'music live' },
-    40
-  ),
-
-  fetchYouTubeGroup(
-    apiKey,
-    { region: 'US', language: 'en', q: 'sports live' },
-    40
-  ),
-
-  fetchYouTubeGroup(
-    apiKey,
-    { region: 'US', language: 'en', q: 'IRL live' },
-    40
-  ),
-
-  fetchYouTubeGroup(
-    apiKey,
-    { region: 'IN', language: 'hi', q: 'हिंदी live' },
-    30
-  )
-]);
-
-const fresh = mergeUnique(
-  [
-    ...general,
-    ...gaming,
-    ...music,
-    ...sports,
-    ...irl,
-    ...hindi
-  ],
-  YOUTUBE_DISCOVERY_TARGET
-);
-
-      if (fresh.length) {
-        discovered = fresh;
-
-        await writeProviderCache(
-          'youtube-discovery-v5',
-          fresh
-        ).catch(() => {});
-      }
-    } catch (error) {
-      console.error(
-        '[live-hub] YouTube search refresh failed',
-        text(error?.message, 'unknown')
-      );
-
-      fallbackUsed = true;
-    }
-  }
-
-  if (!discovered.length) {
-    return {
-      provider: 'youtube',
-      enabled: true,
-      streams: [],
-      reason: 'empty_result'
-    };
-  }
-
-  try {
-    const withViewers = await enrichYouTubeViewers(
-      apiKey,
-      discovered
-    );
-
-    const streams = focusLanguages(
-      withViewers.filter(
-        stream => number(stream.viewerCount) > 0
-      ),
-      YOUTUBE_TARGET
-    );
-
-    if (streams.length) {
-      await writeProviderCache(
-        'youtube-live-v4',
-        streams
-      ).catch(() => {});
-    }
-
-    return {
-      provider: 'youtube',
-      enabled: true,
-      streams,
-      reason: streams.length ? '' : 'empty_result',
-      cacheUsed: false,
-      fallbackUsed
-    };
-  } catch (error) {
-    console.error(
-      '[live-hub] YouTube viewer refresh failed',
-      text(error?.message, 'unknown')
-    );
-
-    if (liveCachedRows.length) {
-      return {
-        provider: 'youtube',
-        enabled: true,
-        streams: focusLanguages(
-          liveCachedRows,
-          YOUTUBE_TARGET
-        ),
-        cacheUsed: true,
-        fallbackUsed: true
       };
-    }
+    })
+    .filter(Boolean);
 
-    return {
-      provider: 'youtube',
-      enabled: true,
-      streams: [],
-      reason: 'provider_error',
-      error: 'YouTube LIVE discovery is temporarily unavailable.'
+  return { provider: 'youtube', enabled: true, streams, reason: streams.length ? '' : 'empty_result' };
+}
+
+async function getTwitchToken() {
+  const now = Date.now();
+  if (twitchTokenCache.token && twitchTokenCache.expiresAt > now + 60000) return twitchTokenCache.token;
+
+  const clientId = text(process.env.TWITCH_CLIENT_ID);
+  const clientSecret = text(process.env.TWITCH_CLIENT_SECRET);
+  if (!clientId || !clientSecret) return '';
+
+  const url = new URL('https://id.twitch.tv/oauth2/token');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('client_secret', clientSecret);
+  url.searchParams.set('grant_type', 'client_credentials');
+
+  const data = await fetchJson(url, { method: 'POST' });
+  const token = text(data?.access_token);
+  if (token) {
+    twitchTokenCache = {
+      token,
+      expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000
     };
   }
-}
-async function getKickToken() {
-  const now = Date.now();
-  if (kickTokenCache.token && kickTokenCache.expiresAt > now + 60000) return kickTokenCache.token;
-  const clientId = text(process.env.KICK_CLIENT_ID);
-  const clientSecret = text(process.env.KICK_CLIENT_SECRET);
-  if (!clientId || !clientSecret) return '';
-  const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
-  const data = await fetchJson('https://id.kick.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: body.toString() });
-  const token = text(data?.access_token);
-  if (token) kickTokenCache = { token, expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000 };
   return token;
 }
 
-function mapKickItem(item) {
-  const slug = text(
+async function loadTwitch(limit) {
+  const clientId = text(process.env.TWITCH_CLIENT_ID);
+  const clientSecret = text(process.env.TWITCH_CLIENT_SECRET);
+  if (!clientId || !clientSecret) return { provider: 'twitch', enabled: false, streams: [], reason: 'missing_credentials' };
+
+  const token = await getTwitchToken();
+  if (!token) throw new Error('Could not obtain Twitch token');
+
+  const url = new URL('https://api.twitch.tv/helix/streams');
+  url.searchParams.set('first', String(Math.min(100, Math.max(12, limit))));
+
+  const data = await fetchJson(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Client-Id': clientId,
+      Accept: 'application/json'
+    }
+  });
+
+  const streams = (Array.isArray(data?.data) ? data.data : [])
+    .filter(item => !item?.is_mature)
+    .map(item => {
+      const login = text(item?.user_login);
+      if (!login || !item?.id) return null;
+      return {
+        id: `twitch:${text(item.id)}`,
+        provider: 'twitch',
+        providerLabel: 'Twitch',
+        externalId: text(item.id),
+        channelId: text(item.user_id),
+        channelSlug: login,
+        creatorName: text(item.user_name, login),
+        title: text(item.title, 'LIVE now'),
+        category: normalizeCategory(`${item.game_name || ''} ${item.title || ''}`),
+        language: text(item.language),
+        viewerCount: number(item.viewer_count),
+        startedAt: text(item.started_at),
+        thumbnailUrl: text(item.thumbnail_url).replace('{width}', '1280').replace('{height}', '720'),
+        watchUrl: `https://www.twitch.tv/${encodeURIComponent(login)}`,
+        embedType: 'twitch',
+        isMature: false
+      };
+    })
+    .filter(Boolean);
+
+  return { provider: 'twitch', enabled: true, streams, reason: streams.length ? '' : 'empty_result' };
+}
+
+async function getKickToken() {
+  const now = Date.now();
+  if (kickTokenCache.token && kickTokenCache.expiresAt > now + 60000) return kickTokenCache.token;
+
+  const clientId = text(process.env.KICK_CLIENT_ID);
+  const clientSecret = text(process.env.KICK_CLIENT_SECRET);
+  if (!clientId || !clientSecret) return '';
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret
+  });
+
+  const data = await fetchJson('https://id.kick.com/oauth/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: body.toString()
+  });
+
+  const token = text(data?.access_token);
+  if (token) {
+    kickTokenCache = {
+      token,
+      expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000
+    };
+  }
+  return token;
+}
+
+function kickSlug(item) {
+  return text(
     item?.slug ||
     item?.broadcaster?.slug ||
     item?.broadcaster?.username ||
@@ -429,342 +221,105 @@ function mapKickItem(item) {
     item?.channel?.slug ||
     item?.channel?.username
   );
-
-  if (!slug) return null;
-
-  const cat = item?.category || item?.categories?.[0] || {};
-
-  const channelId = text(
-    item?.broadcaster_user?.id ||
-    item?.broadcaster_user_id ||
-    item?.broadcaster?.user_id ||
-    item?.broadcaster?.id ||
-    item?.channel?.broadcaster_user_id ||
-    item?.channel?.user_id ||
-    item?.channel?.user?.id ||
-    item?.channel_id ||
-    item?.user_id
-  );
-
-  const thumbnail =
-    typeof item?.thumbnail === 'string'
-      ? text(item.thumbnail)
-      : text(
-          item?.thumbnail?.url ||
-          item?.thumbnail_url ||
-          item?.channel?.livestream?.thumbnail?.url ||
-          item?.channel?.livestream?.thumbnail_url
-        );
-
-  return {
-    id: `kick:${text(item?.id || item?.livestream_id) || slug}`,
-    provider: 'kick',
-    providerLabel: 'Kick',
-    externalId: text(item?.id || item?.livestream_id),
-    channelId,
-    channelSlug: slug,
-
-    creatorName: text(
-      item?.broadcaster_user?.username ||
-      item?.broadcaster?.username ||
-      item?.broadcaster_user_name ||
-      item?.channel?.username ||
-      item?.channel?.user?.username,
-      slug
-    ),
-
-    title: text(item?.stream_title || item?.title, 'LIVE on Kick'),
-    category: normalizeCategory(cat?.name || item?.category_name || 'Live'),
-    language: text(
-      item?.language ||
-      item?.language_code ||
-      item?.channel?.language
-    ),
-    viewerCount: number(
-  item?.viewer_count ||
-  item?.viewers ||
-  item?.concurrent_viewers ||
-  item?.concurrent_viewer_count ||
-  item?.viewerCount ||
-  item?.livestream?.viewer_count ||
-  item?.livestream?.viewers ||
-  item?.channel?.livestream?.viewer_count ||
-  item?.channel?.livestream?.viewers
-),
-    startedAt: text(item?.started_at || item?.created_at),
-    thumbnailUrl: thumbnail,
-    watchUrl: `https://kick.com/${encodeURIComponent(slug)}`,
-    embedType: 'kick',
-    isMature: Boolean(item?.has_mature_content || item?.is_mature)
-  };
 }
 
-async function fetchKickPages(token) {
-  const url = new URL('https://api.kick.com/public/v1/livestreams');
-
-  url.searchParams.set('limit', '100');
-  url.searchParams.set('sort', 'viewer_count');
-
-  const data = await fetchJson(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json'
-    }
-  });
-
-  const rows = (Array.isArray(data?.data) ? data.data : [])
-    .map(mapKickItem)
-    .filter(Boolean);
-
-  return mergeUnique(rows, KICK_TARGET);
-}
-
-async function loadKick() {
-  const cached = await readProviderCache('kick-balanced-v4').catch(() => null);
-  const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
-  const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
-  if (cachedRows.length >= 45 && age < CACHE_FRESH_MS) return { provider: 'kick', enabled: true, streams: focusLanguages(cachedRows, KICK_TARGET), cacheUsed: true };
+async function loadKick(limit) {
+  const clientId = text(process.env.KICK_CLIENT_ID);
+  const clientSecret = text(process.env.KICK_CLIENT_SECRET);
+  if (!clientId || !clientSecret) return { provider: 'kick', enabled: false, streams: [], reason: 'missing_credentials' };
 
   const token = await getKickToken();
-  if (!token) return { provider: 'kick', enabled: false, streams: [], reason: 'missing_credentials' };
-  try {
-    let streams = await fetchKickPages(token);
-    streams = focusLanguages(streams, KICK_TARGET);
-    if (streams.length) await writeProviderCache('kick-balanced-v4', streams).catch(() => {});
-    return { provider: 'kick', enabled: true, streams, reason: streams.length ? '' : 'empty_result', cacheUsed: false };
-  } catch (error) {
-    console.error('[live-hub] Kick discovery failed', text(error?.message, 'unknown'));
-    if (cachedRows.length) return { provider: 'kick', enabled: true, streams: focusLanguages(cachedRows, KICK_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
-    return { provider: 'kick', enabled: true, streams: [], reason: 'provider_error', error: 'Kick LIVE discovery is temporarily unavailable.' };
-  }
-}
+  if (!token) throw new Error('Could not obtain Kick token');
 
-async function getTwitchToken() {
-  const now = Date.now();
-  if (twitchTokenCache.token && twitchTokenCache.expiresAt > now + 60000) return twitchTokenCache.token;
-  const clientId = text(process.env.TWITCH_CLIENT_ID);
-  const clientSecret = text(process.env.TWITCH_CLIENT_SECRET);
-  if (!clientId || !clientSecret) return '';
-  const data = await fetchJson('https://id.twitch.tv/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials' }).toString()
-  });
-  const token = text(data?.access_token);
-  if (token) twitchTokenCache = { token, expiresAt: now + Math.max(60, number(data?.expires_in, 3600)) * 1000 };
-  return token;
-}
-
-async function loadTwitch() {
-  const cached = await readProviderCache('twitch-live-v2').catch(() => null);
-  const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
-  const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
-  if (cachedRows.length >= 25 && age < CACHE_FRESH_MS) return { provider: 'twitch', enabled: true, streams: focusLanguages(cachedRows, TWITCH_TARGET), cacheUsed: true };
-
-  const clientId = text(process.env.TWITCH_CLIENT_ID);
-  const clientSecret = text(process.env.TWITCH_CLIENT_SECRET);
-  if (!clientId || !clientSecret) return { provider: 'twitch', enabled: false, streams: [], reason: 'missing_credentials' };
-  try {
-    const token = await getTwitchToken();
-    if (!token) throw new Error('missing_token');
-    const data = await fetchJson(`https://api.twitch.tv/helix/streams?first=${Math.min(100, Math.max(TWITCH_TARGET, 50))}`, {
-      headers: { Authorization: `Bearer ${token}`, 'Client-Id': clientId, Accept: 'application/json' }
+  const request = async version => {
+    const url = new URL(`https://api.kick.com/public/${version}/livestreams`);
+    url.searchParams.set('limit', String(Math.min(50, Math.max(12, limit))));
+    return fetchJson(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json'
+      }
     });
-    const streams = focusLanguages((Array.isArray(data?.data) ? data.data : [])
-      .filter(item => !item?.is_mature)
-      .map(item => {
-        const login = text(item?.user_login);
-        if (!login || !item?.id) return null;
-        return {
-          id: `twitch:${text(item.id)}`,
-          provider: 'twitch',
-          providerLabel: 'Twitch',
-          externalId: text(item.id),
-          channelId: text(item.user_id),
-          channelSlug: login,
-          creatorName: text(item.user_name, login),
-          title: text(item.title, 'LIVE on Twitch'),
-          category: normalizeCategory(`${item.game_name || ''} ${item.title || ''}`),
-          language: text(item.language),
-          viewerCount: number(item.viewer_count),
-          startedAt: text(item.started_at),
-          thumbnailUrl: text(item.thumbnail_url).replace('{width}', '1280').replace('{height}', '720'),
-          watchUrl: `https://www.twitch.tv/${encodeURIComponent(login)}`,
-          embedType: 'twitch',
-          isMature: false
-        };
-      }).filter(Boolean), TWITCH_TARGET);
-    if (streams.length) await writeProviderCache('twitch-live-v2', streams).catch(() => {});
-    return { provider: 'twitch', enabled: true, streams, reason: streams.length ? '' : 'empty_result', cacheUsed: false };
-  } catch (error) {
-    console.error('[live-hub] Twitch discovery failed', text(error?.message, 'unknown'));
-    if (cachedRows.length) return { provider: 'twitch', enabled: true, streams: focusLanguages(cachedRows, TWITCH_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
-    return { provider: 'twitch', enabled: true, streams: [], reason: 'provider_error', error: 'Twitch LIVE discovery is temporarily unavailable.' };
-  }
-}
-
-function decodeHtml(value = '') {
-  return String(value)
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
-}
-
-function metaContent(html, key) {
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const first = new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']+)["']`, 'i').exec(html);
-  if (first?.[1]) return decodeHtml(first[1]);
-  const second = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escaped}["']`, 'i').exec(html);
-  return decodeHtml(second?.[1] || '');
-}
-
-function rumbleLinks(html) {
-  const links = [];
-  const seen = new Set();
-  const normalized = String(html || '').replace(/\\\//g, '/');
-  const regex = /href=["']([^"']*\/v[a-z0-9]+-[^"']+\.html(?:\?[^"']*)?)["']/gi;
-  let match;
-  while ((match = regex.exec(normalized)) && links.length < 50) {
-    try {
-      const url = new URL(decodeHtml(match[1]), 'https://rumble.com');
-      if (url.hostname !== 'rumble.com' && url.hostname !== 'www.rumble.com') continue;
-      url.search = '';
-      url.hash = '';
-      const clean = url.toString();
-      if (!seen.has(clean)) { seen.add(clean); links.push(clean); }
-    } catch {}
-  }
-  return links;
-}
-
-function parseCompactCount(value) {
-  const raw = text(value).replace(/,/g, '');
-  const match = raw.match(/([0-9]+(?:\.[0-9]+)?)\s*([kKmM]?)/);
-  if (!match) return 0;
-  const base = Number(match[1]);
-  const suffix = match[2].toLowerCase();
-  return Math.round(base * (suffix === 'm' ? 1000000 : suffix === 'k' ? 1000 : 1));
-}
-
-function parseRumblePage(watchUrl, html) {
-  const normalized = String(html || '').replace(/\\\//g, '/');
-  const isLive = /Streaming now/i.test(normalized) || /["']is_live["']\s*:\s*true/i.test(normalized) || /livestream[^\n]{0,80}["']live["']/i.test(normalized);
-  if (!isLive) return null;
-
-  let pageId = '';
-  try { pageId = new URL(watchUrl).pathname.split('/').filter(Boolean)[0] || ''; } catch {}
-  if (!/^v[a-z0-9]+/i.test(pageId)) return null;
-
-  const title = metaContent(normalized, 'og:title') || metaContent(normalized, 'twitter:title') || 'LIVE on Rumble';
-  const thumbnailUrl = metaContent(normalized, 'og:image') || metaContent(normalized, 'twitter:image');
-  const creatorName = metaContent(normalized, 'author') || metaContent(normalized, 'article:author') || 'Rumble creator';
-  const description = metaContent(normalized, 'og:description');
-  const embedMatch = normalized.match(/https:\/\/rumble\.com\/embed\/(v[a-z0-9]+)\/?/i);
-  const chatMatch = normalized.match(/(?:https:\/\/rumble\.com)?(\/chat\/popup\/[a-z0-9_-]+)/i);
-  const viewerMatch = normalized.match(/(?:watching[_ -]?now|viewer[_ -]?count|watching now)[^0-9]{0,80}([0-9][0-9,.]*\s*[kKmM]?)/i);
-  const viewerCount = parseCompactCount(viewerMatch?.[1] || '0');
-
-  return {
-    id: `rumble:${pageId}`,
-    provider: 'rumble',
-    providerLabel: 'Rumble',
-    externalId: pageId,
-    channelId: '',
-    channelSlug: '',
-    creatorName,
-    title,
-    category: normalizeCategory(`${title} ${description}`),
-    language: 'en',
-    viewerCount,
-    startedAt: '',
-    thumbnailUrl,
-    watchUrl,
-    embedType: 'rumble',
-    embedUrl: embedMatch?.[1] ? `https://rumble.com/embed/${embedMatch[1]}/` : '',
-    chatUrl: chatMatch?.[1] ? `https://rumble.com${chatMatch[1]}` : '',
-    isMature: false
   };
+
+  let data;
+  try {
+    data = await request('v2');
+  } catch {
+    data = await request('v1');
+  }
+
+  const streams = (Array.isArray(data?.data) ? data.data : [])
+    .map(item => {
+      const slug = kickSlug(item);
+      if (!slug) return null;
+
+      const category = item?.category || item?.categories?.[0] || {};
+      const channelId = text(
+        item?.broadcaster_user_id ||
+        item?.channel_id ||
+        item?.broadcaster?.id ||
+        item?.channel?.user_id ||
+        item?.channel?.user?.id
+      );
+      const thumbnail = typeof item?.thumbnail === 'string'
+        ? text(item.thumbnail)
+        : text(item?.thumbnail?.url || item?.thumbnail_url || item?.channel?.livestream?.thumbnail?.url || item?.channel?.livestream?.thumbnail_url);
+
+      return {
+        id: `kick:${text(item?.id || item?.livestream_id) || slug}`,
+        provider: 'kick',
+        providerLabel: 'Kick',
+        externalId: text(item?.id || item?.livestream_id),
+        channelId,
+        channelSlug: slug,
+        creatorName: text(item?.broadcaster?.username || item?.broadcaster_user_name || item?.channel?.username || item?.channel?.user?.username, slug),
+        title: text(item?.stream_title || item?.title, 'LIVE now'),
+        category: normalizeCategory(category?.name || item?.category_name || 'LIVE'),
+        language: text(item?.language || item?.language_code || item?.channel?.language),
+        viewerCount: number(item?.viewer_count || item?.viewers || item?.concurrent_viewers),
+        startedAt: text(item?.started_at || item?.created_at),
+        thumbnailUrl: thumbnail,
+        watchUrl: `https://kick.com/${encodeURIComponent(slug)}`,
+        embedType: 'kick',
+        isMature: Boolean(item?.has_mature_content || item?.is_mature)
+      };
+    })
+    .filter(stream => stream && !stream.isMature);
+
+  return { provider: 'kick', enabled: true, streams, reason: streams.length ? '' : 'empty_result' };
 }
 
-async function loadRumble() {
-  const cached = await readProviderCache('rumble-public-live-v1').catch(() => null);
-  const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
-  const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
-  if (cachedRows.length >= 5 && age < CACHE_FRESH_MS) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), cacheUsed: true };
-
-  try {
-    const seedUrls = [
-      'https://rumble.com/',
-      'https://rumble.com/category/24x7',
-      'https://rumble.com/category/gaming',
-      'https://rumble.com/category/news'
-    ];
-    const seedPages = await Promise.allSettled(seedUrls.map(url => fetchHtml(url, 3500)));
-    const candidates = [];
-    const seen = new Set();
-    seedPages.forEach(result => {
-      if (result.status !== 'fulfilled') return;
-      rumbleLinks(result.value).forEach(url => {
-        if (!seen.has(url) && candidates.length < 24) { seen.add(url); candidates.push(url); }
-      });
-    });
-
-    const detailPages = await Promise.allSettled(candidates.map(url => fetchHtml(url, RUMBLE_TIMEOUT_MS).then(html => parseRumblePage(url, html))));
-    const streams = detailPages
-      .filter(result => result.status === 'fulfilled' && result.value)
-      .map(result => result.value)
-      .slice(0, RUMBLE_TARGET);
-
-    if (streams.length) await writeProviderCache('rumble-public-live-v1', streams).catch(() => {});
-    if (streams.length) return { provider: 'rumble', enabled: true, streams, reason: '', cacheUsed: false };
-    if (cachedRows.length) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
-    return { provider: 'rumble', enabled: true, streams: [], reason: 'empty_result' };
-  } catch (error) {
-    console.error('[live-hub] Rumble discovery failed', text(error?.message, 'unknown'));
-    if (cachedRows.length) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
-    return { provider: 'rumble', enabled: true, streams: [], reason: 'provider_error', error: 'Rumble LIVE discovery is temporarily unavailable.' };
-  }
+function providerFailure(provider, error) {
+  return {
+    provider,
+    enabled: true,
+    streams: [],
+    reason: error?.name === 'AbortError' ? 'provider_timeout' : 'provider_error',
+    error: text(error?.message, 'Provider temporarily unavailable')
+  };
 }
 
 function interleaveProviders(groups, limit) {
-  const result = [];
-  const max = Math.max(0, ...groups.map(group => group.length));
-  for (let i = 0; i < max && result.length < limit; i += 1) {
-    for (const group of groups) {
-      if (group[i]) result.push(group[i]);
-      if (result.length >= limit) break;
+  const sorted = groups
+    .map(group => [...group].sort((a, b) => number(b.viewerCount) - number(a.viewerCount)))
+    .filter(group => group.length);
+
+  const output = [];
+  const seen = new Set();
+  const max = Math.max(0, ...sorted.map(group => group.length));
+
+  for (let i = 0; i < max && output.length < limit; i += 1) {
+    for (const group of sorted) {
+      const stream = group[i];
+      if (!stream?.id || seen.has(stream.id)) continue;
+      seen.add(stream.id);
+      output.push(stream);
+      if (output.length >= limit) break;
     }
   }
-  return result.slice(0, limit);
-}
 
-function providerState(result, rows, counts) {
-  return {
-    enabled: Boolean(result.enabled),
-    available: counts[result.provider] || 0,
-    fetched: rows.length,
-    reason: result.reason || '',
-    error: result.error || '',
-    fallbackUsed: Boolean(result.fallbackUsed),
-    cacheUsed: Boolean(result.cacheUsed)
-  };
-}
-
-async function providerTimeout(promise, provider, ms = 10000) {
-  return Promise.race([
-    promise,
-    new Promise(resolve =>
-      setTimeout(() => resolve({
-        provider,
-        enabled: true,
-        streams: [],
-        reason: 'provider_timeout',
-        error: `${provider} temporarily timed out`
-      }), ms)
-    )
-  ]);
+  return output;
 }
 
 export default async function handler(req, res) {
@@ -773,87 +328,33 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const requested = clampLimit(req.query?.limit);
+  const limit = clampLimit(req.query?.limit);
+  const perProvider = Math.max(12, Math.ceil(limit / 3));
 
-  const [youtube, kick, twitch, rumble] = await Promise.all([
-    providerTimeout(loadYouTube(), 'youtube'),
-    providerTimeout(loadKick(), 'kick'),
-    providerTimeout(loadTwitch(), 'twitch'),
-    providerTimeout(loadRumble(), 'rumble')
+  const [youtube, twitch, kick] = await Promise.all([
+    loadYouTube(perProvider).catch(error => providerFailure('youtube', error)),
+    loadTwitch(perProvider).catch(error => providerFailure('twitch', error)),
+    loadKick(perProvider).catch(error => providerFailure('kick', error))
   ]);
 
-  const ytRows = focusLanguages(
-    youtube.streams || [],
-    YOUTUBE_TARGET
+  const streams = interleaveProviders(
+    [youtube.streams || [], twitch.streams || [], kick.streams || []],
+    limit
   );
 
-  const kickRows = focusLanguages(
-    kick.streams || [],
-    KICK_TARGET
+  const providers = Object.fromEntries(
+    [youtube, twitch, kick].map(result => [
+      result.provider,
+      {
+        enabled: Boolean(result.enabled),
+        available: (result.streams || []).length,
+        reason: result.reason || '',
+        error: result.error || ''
+      }
+    ])
   );
 
-  const twitchRows = focusLanguages(
-    twitch.streams || [],
-    TWITCH_TARGET
-  );
-
-  const rumbleRows = (rumble.streams || [])
-    .slice(0, RUMBLE_TARGET);
-
-  const streams = [
-    ...ytRows,
-    ...kickRows,
-    ...twitchRows,
-    ...rumbleRows
-  ]
-    .filter(stream => {
-      if (stream.provider === 'youtube') return true;
-      return number(stream.viewerCount) >= MIN_LIVE_VIEWERS;
-    })
-    .sort(
-      (a, b) =>
-        number(b.viewerCount) - number(a.viewerCount)
-    )
-    .slice(0, requested);
-
-  const counts = streams.reduce((map, stream) => {
-    map[stream.provider] =
-      (map[stream.provider] || 0) + 1;
-
-    return map;
-  }, {});
-
-  const providers = {
-    youtube: providerState(
-      youtube,
-      ytRows,
-      counts
-    ),
-
-    kick: providerState(
-      kick,
-      kickRows,
-      counts
-    ),
-
-    twitch: providerState(
-      twitch,
-      twitchRows,
-      counts
-    ),
-
-    rumble: providerState(
-      rumble,
-      rumbleRows,
-      counts
-    )
-  };
-
-  res.setHeader(
-    'Cache-Control',
-    'public, s-maxage=60, stale-while-revalidate=300'
-  );
-
+  res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
   return res.status(200).json({
     streams,
     providers,
