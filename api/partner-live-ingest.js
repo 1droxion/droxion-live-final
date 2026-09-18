@@ -1,6 +1,6 @@
 import { writeProviderCache } from '../server/external-live-cache.js';
 
-const ALLOWED_PROVIDERS = new Set(['tango']);
+const ALLOWED_PROVIDERS = new Set(['tango', 'liveme', 'poppo']);
 
 function text(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
@@ -19,6 +19,7 @@ function normalizeStream(provider, row, index) {
   const watchUrl = text(row?.watchUrl || row?.url);
 
   if (!channelIdentifier || (!embedUrl && !watchUrl)) return null;
+  if (row?.approvedWoman !== true || row?.adultVerified !== true) return null;
 
   return {
     id: `${provider}:${externalId || channelIdentifier || index}`,
@@ -38,7 +39,10 @@ function normalizeStream(provider, row, index) {
     embedType: provider,
     embedUrl,
     chatUrl: text(row?.chatUrl),
-    isMature: false
+    isMature: false,
+    approvedWoman: true,
+    adultVerified: true,
+    partnerVerified: true
   };
 }
 
