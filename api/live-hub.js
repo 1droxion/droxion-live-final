@@ -128,7 +128,18 @@ async function loadApprovedWomenKeys() {
 }
 
 function isApprovedWomanStream(stream, approvedKeys) {
-  if (!stream || !(approvedKeys instanceof Set) || approvedKeys.size === 0) return false;
+  if (!stream) return false;
+
+  if (
+    stream.partnerVerified === true &&
+    stream.approvedWoman === true &&
+    stream.adultVerified === true
+  ) {
+    return true;
+  }
+
+  if (!(approvedKeys instanceof Set) || approvedKeys.size === 0) return false;
+
   const provider = text(stream.provider).toLowerCase();
   return [
     stream.channelId,
@@ -836,16 +847,28 @@ async function loadRumble() {
 }
 
 
-async function loadTango() {
-  const cached = await readProviderCache('partner-tango-live-v1').catch(() => null);
+async function loadPartnerProvider(provider) {
+  const cached = await readProviderCache(`partner-${provider}-live-v1`).catch(() => null);
   const rows = Array.isArray(cached?.payload) ? cached.payload : [];
   return {
-    provider: 'tango',
+    provider,
     enabled: true,
     streams: rows.slice(0, 80),
     reason: rows.length ? '' : 'awaiting_partner_feed',
     cacheUsed: true
   };
+}
+
+async function loadTango() {
+  return loadPartnerProvider('tango');
+}
+
+async function loadLiveMe() {
+  return loadPartnerProvider('liveme');
+}
+
+async function loadPoppo() {
+  return loadPartnerProvider('poppo');
 }
 
 function interleaveProviders(groups, limit) {
@@ -879,24 +902,49 @@ export default async function handler(req, res) {
   }
 
   const requested = clampLimit(req.query?.limit);
-  const [youtube, kick, twitch, tango, approvedKeys] = await Promise.all([
-    loadYouTube(),
-    loadKick(),
-    loadTwitch(),
+
+  const approvedKeys = await loadApprovedWomenKeys().catch(() => new Set());
+
+  const [tango, liveme, poppo] = await Promise.all([
     loadTango(),
-    loadApprovedWomenKeys()
+    loadLiveMe(),
+    loadPoppo()
   ]);
+
+  const partnerRows = [
+    ...(tango.streams || []),
+    ...(liveme.streams || []),
+    ...(poppo.streams || [])
+  ];
+
+  const hasPartnerWomen = partnerRows.some(stream => isApprovedWomanStream(stream, approvedKeys));
+
+  let youtube = { provider: 'youtube', enabled: true, streams: [], reason: '' };
+  let kick = { provider: 'kick', enabled: true, streams: [], reason: '' };
+  let twitch = { provider: 'twitch', enabled: true, streams: [], reason: '' };
+
+  if (approvedKeys.size > 0) {
+    [youtube, kick, twitch] = await Promise.all([
+      loadYouTube(),
+      loadKick(),
+      loadTwitch()
+    ]);
+  }
 
   const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET);
   const kickRows = focusLanguages(kick.streams || [], KICK_TARGET);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET);
   const tangoRows = (tango.streams || []).slice(0, 80);
+  const livemeRows = (liveme.streams || []).slice(0, 80);
+  const poppoRows = (poppo.streams || []).slice(0, 80);
 
   const streams = [
     ...ytRows,
     ...kickRows,
     ...twitchRows,
-    ...tangoRows
+    ...tangoRows,
+    ...livemeRows,
+    ...poppoRows
   ]
     .filter(stream => isApprovedWomanStream(stream, approvedKeys))
     .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
@@ -916,7 +964,9 @@ export default async function handler(req, res) {
     youtube: providerState(youtube, ytRows, counts),
     kick: providerState(kick, kickRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
-    tango: providerState(tango, tangoRows, counts)
+    tango: providerState(tango, tangoRows, counts),
+    liveme: providerState(liveme, livemeRows, counts),
+    poppo: providerState(poppo, poppoRows, counts)
   };
 
   res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
