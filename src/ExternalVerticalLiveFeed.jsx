@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageCircle, Radio, RefreshCw, Users, Volume2, VolumeX, X } from 'lucide-react';
+import { MessageCircle, Radio, RefreshCw, X } from 'lucide-react';
 import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './external-vertical-live-feed.css';
 
 const REFRESH_MS = 90000;
 const SWIPE_THRESHOLD = 52;
-
-function formatViewers(value) {
-  const count = Number(value || 0);
-  if (count >= 1000000) return `${(count / 1000000).toFixed(count >= 10000000 ? 0 : 1)}M`;
-  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K`;
-  return String(Math.max(0, count));
-}
 
 function embedUrl(stream, soundEnabled = false) {
   if (!stream) return '';
@@ -21,7 +14,7 @@ function embedUrl(stream, soundEnabled = false) {
   const mute = soundEnabled ? '0' : '1';
 
   if (provider === 'youtube' && stream.externalId) {
-    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=${mute}&playsinline=1&rel=0&modestbranding=1&controls=1`;
+    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=${mute}&playsinline=1&rel=0&modestbranding=1&controls=0`;
   }
   if (provider === 'twitch' && stream.channelSlug) {
     return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=${muted}`;
@@ -29,7 +22,7 @@ function embedUrl(stream, soundEnabled = false) {
   if (provider === 'kick' && stream.channelSlug) {
     return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=${muted}`;
   }
-  if (['tango','liveme','poppo'].includes(provider) && stream.embedUrl) return stream.embedUrl;
+  if (['tango', 'liveme', 'poppo'].includes(provider) && stream.embedUrl) return stream.embedUrl;
   return '';
 }
 
@@ -44,8 +37,7 @@ export default function ExternalVerticalLiveFeed({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
-  const [chatOpen, setChatOpen] = useState(true);
-  const [interactive, setInteractive] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const touchStartYRef = useRef(null);
   const wheelLockRef = useRef(false);
@@ -76,7 +68,7 @@ export default function ExternalVerticalLiveFeed({
     } catch (error) {
       setStreams([]);
       setIndex(0);
-      setNotice(error?.name === 'AbortError' ? 'LIVE refresh took too long. Tap Refresh LIVE.' : (error?.message || 'Could not load LIVE streams.'));
+      setNotice(error?.name === 'AbortError' ? 'LIVE refresh took too long.' : (error?.message || 'Could not load LIVE streams.'));
     } finally {
       window.clearTimeout(timeout);
       setLoading(false);
@@ -92,29 +84,28 @@ export default function ExternalVerticalLiveFeed({
     return () => window.clearInterval(timer);
   }, [load]);
 
-  useEffect(() => {
-    setInteractive(false);
-  }, [active?.id]);
-
   const move = useCallback(direction => {
-    if (interactive || streams.length < 2) return;
+    if (streams.length < 2) return;
     setIndex(current => {
       const next = current + direction;
       if (next < 0) return streams.length - 1;
       if (next >= streams.length) return 0;
       return next;
     });
-  }, [interactive, streams.length]);
+  }, [streams.length]);
+
+  function unlockSound() {
+    if (!soundEnabled) setSoundEnabled(true);
+  }
 
   function handleTouchStart(event) {
-    if (interactive) return;
     touchStartYRef.current = event.touches?.[0]?.clientY ?? null;
   }
 
   function handleTouchEnd(event) {
-    if (interactive) return;
     const start = touchStartYRef.current;
     touchStartYRef.current = null;
+    unlockSound();
     if (start == null) return;
     const end = event.changedTouches?.[0]?.clientY ?? start;
     const delta = end - start;
@@ -123,23 +114,18 @@ export default function ExternalVerticalLiveFeed({
   }
 
   function handleWheel(event) {
-    if (interactive || wheelLockRef.current || Math.abs(event.deltaY) < 48) return;
+    unlockSound();
+    if (wheelLockRef.current || Math.abs(event.deltaY) < 48) return;
     wheelLockRef.current = true;
     move(event.deltaY > 0 ? 1 : -1);
     window.setTimeout(() => { wheelLockRef.current = false; }, 650);
   }
 
-  function toggleSound() {
-    setInteractive(false);
-    setSoundEnabled(value => !value);
-  }
-
   if (loading) {
     return (
       <section className="externalLiveLoading">
-        <RefreshCw size={30} className="externalLiveSpinner" />
-        <strong>Finding women LIVE…</strong>
-        <span>Droxion LIVE</span>
+        <RefreshCw size={28} className="externalLiveSpinner" />
+        <strong>Finding LIVE streams…</strong>
       </section>
     );
   }
@@ -147,11 +133,10 @@ export default function ExternalVerticalLiveFeed({
   if (!active) {
     return (
       <section className="externalLiveLoading">
-        <Radio size={30} />
-        <strong>No approved women are LIVE right now</strong>
-        <span>Droxion only shows approved adult women creators in this feed.</span>
+        <Radio size={28} />
+        <strong>No LIVE streams right now</strong>
         <button type="button" onClick={() => load({ manual: true })} disabled={refreshing}>
-          <RefreshCw size={17} /> {refreshing ? 'Refreshing…' : 'Refresh LIVE'}
+          <RefreshCw size={17} /> {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
         {notice && <small>{notice}</small>}
       </section>
@@ -160,10 +145,11 @@ export default function ExternalVerticalLiveFeed({
 
   return (
     <section
-      className={`externalVerticalLive ${interactive ? 'isInteractive' : ''} ${chatOpen ? 'hasChat' : ''}`}
+      className={`externalVerticalLive ${chatOpen ? 'hasChat' : ''}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onWheel={handleWheel}
+      onPointerDown={unlockSound}
     >
       <div className="externalLiveFrameWrap">
         <iframe
@@ -174,40 +160,28 @@ export default function ExternalVerticalLiveFeed({
           allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
+          loading="eager"
         />
         <div className="externalLiveShade" />
       </div>
 
-      <header className="externalLiveHeader">
-        <div className="externalLiveHeaderLine">
-          <span className="externalLiveNow">LIVE</span>
-          <strong className="externalLiveCreator">{active.creatorName || 'LIVE creator'}</strong>
-          <span className="externalViewerCount"><Users size={13} /> {formatViewers(active.viewerCount)}</span>
-        </div>
-        <span className="externalLiveTitle">{active.title || 'LIVE now'}</span>
-        <small>{active.category || 'LIVE'}{active.language ? ` · ${String(active.language).toUpperCase()}` : ''}</small>
-      </header>
-
-      <div className="externalLiveActions">
-        <button type="button" onClick={() => setChatOpen(value => !value)} aria-label={chatOpen ? 'Hide chat' : 'Show chat'}>
-          {chatOpen ? <X size={18} /> : <MessageCircle size={18} />}
-        </button>
-        <button
-          type="button"
-          className={soundEnabled ? 'soundOn' : 'soundOff'}
-          onClick={toggleSound}
-          aria-label={soundEnabled ? 'Mute LIVE' : 'Turn LIVE sound on'}
-        >
-          {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-        </button>
+      <div className="externalLiveMinimalTop">
+        <span>LIVE</span>
+        <strong>{active.creatorName || 'Creator'}</strong>
       </div>
 
-      {!soundEnabled && (
-        <button type="button" className="externalTapForSound" onClick={toggleSound}>
-          <Volume2 size={16} />
-          <span>Tap for sound</span>
-        </button>
-      )}
+      <button
+        type="button"
+        className="externalChatToggle"
+        onClick={event => {
+          event.stopPropagation();
+          unlockSound();
+          setChatOpen(value => !value);
+        }}
+        aria-label={chatOpen ? 'Hide chat' : 'Show chat'}
+      >
+        {chatOpen ? <X size={19} /> : <MessageCircle size={20} />}
+      </button>
 
       {chatOpen && (
         <div
@@ -226,8 +200,6 @@ export default function ExternalVerticalLiveFeed({
           />
         </div>
       )}
-
-      {!interactive && !chatOpen && <div className="externalSwipeHint">Swipe ↑ for next LIVE</div>}
     </section>
   );
 }
