@@ -275,3 +275,34 @@
   .externalChatToggle{right:max(8px,env(safe-area-inset-right));bottom:calc(125px + env(safe-area-inset-bottom))}
   .externalLiveChatOverlay{height:min(29dvh,230px)!important}
 }
+
+
+/* Reliable compact LIVE controls */
+.externalLiveRightControls{
+  position:absolute;
+  z-index:20;
+  right:max(8px,env(safe-area-inset-right));
+  bottom:calc(124px + env(safe-area-inset-bottom));
+  display:flex;
+  flex-direction:column;
+  gap:8px
+}
+.externalLiveRightControls button{
+  position:static!important;
+  width:42px;
+  height:42px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:50%;
+  background:rgba(5,5,8,.36);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  box-shadow:0 8px 24px rgba(0,0,0,.22)
+}
+.externalLiveRightControls .externalSoundToggle.on{
+  background:#fff;
+  color:#050507
+}
+.externalChatToggle{position:static!important}
