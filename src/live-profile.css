@@ -105,3 +105,78 @@
   .lpPage{padding-left:11px;padding-right:11px}
   .lpHero{padding-top:0}
 }
+
+
+/* Normal clean profile */
+.lpPage{
+  background:#0a0a0d!important;
+  max-width:620px!important
+}
+.lpHero{
+  text-align:left!important;
+  display:grid;
+  grid-template-columns:76px minmax(0,1fr);
+  column-gap:14px;
+  align-items:center;
+  padding:6px 0 14px!important
+}
+.lpAvatarWrap{
+  grid-row:1/5;
+  width:76px!important;
+  height:76px!important;
+  margin:0!important
+}
+.lpAvatarWrap img,.lpAvatarFallback{
+  width:76px!important;
+  height:76px!important;
+  border-radius:50%!important
+}
+.lpHero h1{
+  font-size:21px!important;
+  margin:0!important;
+  text-align:left!important
+}
+.lpHero p{
+  margin:3px 0 0!important;
+  text-align:left!important;
+  font-size:12px!important
+}
+.lpBio{
+  margin:6px 0 0!important;
+  text-align:left!important;
+  max-width:none!important;
+  font-size:13px!important
+}
+.lpChips{
+  justify-content:flex-start!important;
+  margin-top:7px!important
+}
+.lpStats{
+  margin-top:6px!important
+}
+.lpStats>div,.lpStats>button{
+  min-height:58px!important;
+  border-radius:12px!important;
+  background:#141419!important
+}
+.lpWallet,.lpCreatorCard,.lpMenu button{
+  background:#141419!important;
+  border-color:rgba(255,255,255,.07)!important
+}
+.lpWallet{
+  border-radius:13px!important
+}
+.lpCreatorCard{
+  border-radius:13px!important
+}
+.lpMenu button{
+  min-height:58px!important;
+  border-radius:12px!important
+}
+.lpIcon{
+  background:#20202a!important;
+  color:#fff!important
+}
+@media(max-width:560px){
+  .lpPage{padding-top:14px!important}
+}
