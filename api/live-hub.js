@@ -979,61 +979,26 @@ export default async function handler(req, res) {
 
   const requested = clampLimit(req.query?.limit);
 
-  const approvedKeys = await loadApprovedWomenKeys().catch(() => new Set());
-
-  const [tango, liveme, poppo] = await Promise.all([
-    loadTango(),
-    loadLiveMe(),
-    loadPoppo()
+  const [youtube, kick, twitch] = await Promise.all([
+    loadYouTube(),
+    loadKick(),
+    loadTwitch()
   ]);
 
-  const partnerRows = [
-    ...(tango.streams || []),
-    ...(liveme.streams || []),
-    ...(poppo.streams || [])
-  ];
+  const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET)
+    .filter(stream => !stream?.isMature);
+  const kickRows = focusLanguages(kick.streams || [], KICK_TARGET)
+    .filter(stream => !stream?.isMature);
+  const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET)
+    .filter(stream => !stream?.isMature);
 
-  const hasPartnerWomen = partnerRows.some(stream => isApprovedWomanStream(stream, approvedKeys));
-
-  let youtube = { provider: 'youtube', enabled: true, streams: [], reason: '' };
-  let kick = { provider: 'kick', enabled: true, streams: [], reason: '' };
-  let twitch = { provider: 'twitch', enabled: true, streams: [], reason: '' };
-
-  if (approvedKeys.size > 0) {
-    const hasYouTubeApproved = [...approvedKeys].some(key => key.startsWith('youtube:'));
-    const hasKickApproved = [...approvedKeys].some(key => key.startsWith('kick:'));
-    const hasTwitchApproved = [...approvedKeys].some(key => key.startsWith('twitch:'));
-
-    [youtube, kick, twitch] = await Promise.all([
-      hasYouTubeApproved ? loadYouTube() : Promise.resolve({ provider: 'youtube', enabled: true, streams: [], reason: 'no_approved_channels' }),
-      hasKickApproved ? loadKick() : Promise.resolve({ provider: 'kick', enabled: true, streams: [], reason: 'no_approved_channels' }),
-      hasTwitchApproved ? loadApprovedTwitchStreams(approvedKeys) : Promise.resolve({ provider: 'twitch', enabled: true, streams: [], reason: 'no_approved_channels' })
-    ]);
-  }
-
-  const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET);
-  const kickRows = focusLanguages(kick.streams || [], KICK_TARGET);
-  const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET);
-  const tangoRows = (tango.streams || []).slice(0, 80);
-  const livemeRows = (liveme.streams || []).slice(0, 80);
-  const poppoRows = (poppo.streams || []).slice(0, 80);
-
-  const streams = [
-    ...ytRows,
-    ...kickRows,
-    ...twitchRows,
-    ...tangoRows,
-    ...livemeRows,
-    ...poppoRows
-  ]
-    .filter(stream => isApprovedWomanStream(stream, approvedKeys))
-    .sort((a, b) => number(b.viewerCount) - number(a.viewerCount))
-    .slice(0, requested)
-    .map(stream => ({
-      ...stream,
-      providerLabel: '',
-      approvedWoman: true
-    }));
+  const streams = interleaveProviders(
+    [ytRows, twitchRows, kickRows],
+    requested
+  ).map(stream => ({
+    ...stream,
+    providerLabel: ''
+  }));
 
   const counts = streams.reduce((map, stream) => {
     map[stream.provider] = (map[stream.provider] || 0) + 1;
@@ -1042,18 +1007,16 @@ export default async function handler(req, res) {
 
   const providers = {
     youtube: providerState(youtube, ytRows, counts),
-    kick: providerState(kick, kickRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
-    tango: providerState(tango, tangoRows, counts),
-    liveme: providerState(liveme, livemeRows, counts),
-    poppo: providerState(poppo, poppoRows, counts)
+    kick: providerState(kick, kickRows, counts)
   };
 
   res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
   return res.status(200).json({
     streams,
     providers,
-    approvedWomenOnly: true,
+    approvedWomenOnly: false,
+    publicProviders: ['youtube', 'twitch', 'kick'],
     generatedAt: new Date().toISOString()
   });
 }
