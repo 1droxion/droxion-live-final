@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageCircle, Radio, RefreshCw, X } from 'lucide-react';
+import { MessageCircle, Radio, RefreshCw, Volume2, VolumeX, X } from 'lucide-react';
 import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './external-vertical-live-feed.css';
 
@@ -61,7 +61,7 @@ export default function ExternalVerticalLiveFeed({
       const payload = await response.json();
 
       const next = (Array.isArray(payload?.streams) ? payload.streams : [])
-        .filter(stream => stream?.approvedWoman === true)
+        .filter(stream => ['youtube', 'twitch', 'kick'].includes(String(stream?.provider || '').toLowerCase()))
         .filter(stream => Boolean(embedUrl(stream, false)));
 
       setStreams(next);
@@ -187,18 +187,30 @@ export default function ExternalVerticalLiveFeed({
         <strong>{active.creatorName || 'Creator'}</strong>
       </div>
 
-      <button
-        type="button"
-        className="externalChatToggle"
-        onClick={event => {
-          event.stopPropagation();
-          unlockSound();
-          setChatOpen(value => !value);
-        }}
-        aria-label={chatOpen ? 'Hide chat' : 'Show chat'}
-      >
-        {chatOpen ? <X size={19} /> : <MessageCircle size={20} />}
-      </button>
+      <div className="externalLiveRightControls">
+        <button
+          type="button"
+          className={`externalSoundToggle ${soundEnabled ? 'on' : ''}`}
+          onClick={event => {
+            event.stopPropagation();
+            setSoundEnabled(value => !value);
+          }}
+          aria-label={soundEnabled ? 'Mute LIVE' : 'Unmute LIVE'}
+        >
+          {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+        </button>
+        <button
+          type="button"
+          className="externalChatToggle"
+          onClick={event => {
+            event.stopPropagation();
+            setChatOpen(value => !value);
+          }}
+          aria-label={chatOpen ? 'Hide chat' : 'Show chat'}
+        >
+          {chatOpen ? <X size={19} /> : <MessageCircle size={20} />}
+        </button>
+      </div>
 
       {chatOpen && (
         <div
