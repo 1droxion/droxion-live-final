@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageCircle, Radio, RefreshCw, Users, Volume2, X } from 'lucide-react';
+import { MessageCircle, Radio, RefreshCw, Users, Volume2, VolumeX, X } from 'lucide-react';
 import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './external-vertical-live-feed.css';
 
@@ -13,19 +13,21 @@ function formatViewers(value) {
   return String(Math.max(0, count));
 }
 
-function embedUrl(stream) {
+function embedUrl(stream, soundEnabled = false) {
   if (!stream) return '';
   const provider = String(stream.provider || '').toLowerCase();
   const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const muted = soundEnabled ? 'false' : 'true';
+  const mute = soundEnabled ? '0' : '1';
 
   if (provider === 'youtube' && stream.externalId) {
-    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&controls=1`;
+    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=${mute}&playsinline=1&rel=0&modestbranding=1&controls=1`;
   }
   if (provider === 'twitch' && stream.channelSlug) {
-    return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=true`;
+    return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=${muted}`;
   }
   if (provider === 'kick' && stream.channelSlug) {
-    return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=true`;
+    return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=${muted}`;
   }
   if (['tango','liveme','poppo'].includes(provider) && stream.embedUrl) return stream.embedUrl;
   return '';
@@ -44,11 +46,12 @@ export default function ExternalVerticalLiveFeed({
   const [notice, setNotice] = useState('');
   const [chatOpen, setChatOpen] = useState(true);
   const [interactive, setInteractive] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const touchStartYRef = useRef(null);
   const wheelLockRef = useRef(false);
 
   const active = streams[index] || null;
-  const src = useMemo(() => embedUrl(active), [active]);
+  const src = useMemo(() => embedUrl(active, soundEnabled), [active, soundEnabled]);
 
   const load = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
@@ -65,7 +68,7 @@ export default function ExternalVerticalLiveFeed({
 
       const next = (Array.isArray(payload?.streams) ? payload.streams : [])
         .filter(stream => stream?.approvedWoman === true)
-        .filter(stream => Boolean(embedUrl(stream)));
+        .filter(stream => Boolean(embedUrl(stream, false)));
 
       setStreams(next);
       setIndex(current => Math.min(current, Math.max(0, next.length - 1)));
@@ -126,6 +129,11 @@ export default function ExternalVerticalLiveFeed({
     window.setTimeout(() => { wheelLockRef.current = false; }, 650);
   }
 
+  function toggleSound() {
+    setInteractive(false);
+    setSoundEnabled(value => !value);
+  }
+
   if (loading) {
     return (
       <section className="externalLiveLoading">
@@ -159,7 +167,7 @@ export default function ExternalVerticalLiveFeed({
     >
       <div className="externalLiveFrameWrap">
         <iframe
-          key={active.id}
+          key={`${active.id}:${soundEnabled ? 'sound' : 'muted'}`}
           className="externalLiveFrame"
           src={src}
           title="Droxion LIVE"
@@ -170,25 +178,36 @@ export default function ExternalVerticalLiveFeed({
         <div className="externalLiveShade" />
       </div>
 
-      <div className="externalLiveTop">
-        <span className="externalLiveNow">LIVE</span>
-        <span className="externalViewerCount"><Users size={14} /> {formatViewers(active.viewerCount)}</span>
-      </div>
-
-      <div className="externalLiveMeta">
-        <strong>{active.creatorName || 'LIVE creator'}</strong>
-        <span>{active.title || 'LIVE now'}</span>
+      <header className="externalLiveHeader">
+        <div className="externalLiveHeaderLine">
+          <span className="externalLiveNow">LIVE</span>
+          <strong className="externalLiveCreator">{active.creatorName || 'LIVE creator'}</strong>
+          <span className="externalViewerCount"><Users size={13} /> {formatViewers(active.viewerCount)}</span>
+        </div>
+        <span className="externalLiveTitle">{active.title || 'LIVE now'}</span>
         <small>{active.category || 'LIVE'}{active.language ? ` · ${String(active.language).toUpperCase()}` : ''}</small>
-      </div>
+      </header>
 
       <div className="externalLiveActions">
         <button type="button" onClick={() => setChatOpen(value => !value)} aria-label={chatOpen ? 'Hide chat' : 'Show chat'}>
           {chatOpen ? <X size={18} /> : <MessageCircle size={18} />}
         </button>
-        <button type="button" onClick={() => setInteractive(value => !value)} aria-label={interactive ? 'Back to swipe' : 'Enable sound and player controls'}>
-          {interactive ? <X size={18} /> : <Volume2 size={18} />}
+        <button
+          type="button"
+          className={soundEnabled ? 'soundOn' : 'soundOff'}
+          onClick={toggleSound}
+          aria-label={soundEnabled ? 'Mute LIVE' : 'Turn LIVE sound on'}
+        >
+          {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
         </button>
       </div>
+
+      {!soundEnabled && (
+        <button type="button" className="externalTapForSound" onClick={toggleSound}>
+          <Volume2 size={16} />
+          <span>Tap for sound</span>
+        </button>
+      )}
 
       {chatOpen && (
         <div
@@ -209,16 +228,6 @@ export default function ExternalVerticalLiveFeed({
       )}
 
       {!interactive && !chatOpen && <div className="externalSwipeHint">Swipe ↑ for next LIVE</div>}
-
-      <button
-        type="button"
-        className="externalRefreshButton"
-        onClick={() => load({ manual: true })}
-        disabled={refreshing}
-        aria-label="Refresh LIVE"
-      >
-        <RefreshCw size={17} className={refreshing ? 'externalLiveSpinner' : ''} />
-      </button>
     </section>
   );
 }
