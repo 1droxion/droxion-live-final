@@ -12,3 +12,17 @@
 /* Droxion vertical women LIVE-only shell */
 .droxionVerticalShell{position:fixed;inset:0;background:#000;color:#fff;overflow:hidden}
 .droxionVerticalBrand{position:fixed;z-index:1200;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:13px;font-weight:950;letter-spacing:.16em;text-shadow:0 2px 14px rgba(0,0,0,.9);pointer-events:none}
+
+
+/* Two-feed navigation: LIVE + REELS only */
+.droxionFeedNav{position:fixed;z-index:100;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:760px;min-height:72px;padding:7px max(8px,env(safe-area-inset-right)) max(7px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));display:grid;grid-template-columns:repeat(2,minmax(0,1fr));background:linear-gradient(180deg,rgba(7,7,11,.78),rgba(7,7,11,.98));border-top:1px solid rgba(255,255,255,.1);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.droxionFeedNav button{border:0;background:transparent;color:#777785;display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;font-size:11px;font-weight:950;letter-spacing:.08em;cursor:pointer}
+.droxionFeedNav button.active{color:#fff}
+.droxionFeedNavDot{width:10px;height:10px;border-radius:50%;background:#5d5d68;box-shadow:0 0 0 4px rgba(255,255,255,.03)}
+.droxionFeedNav button.active .droxionFeedNavDot{background:#ff304f;box-shadow:0 0 16px rgba(255,48,79,.7)}
+.droxionFeedNavReel{width:23px;height:23px;border-radius:8px;display:grid;place-items:center;background:#24242d;color:#888894;font-size:10px;padding-left:1px}
+.droxionFeedNav button.active .droxionFeedNavReel{background:#fff;color:#050507}
+.droxionVerticalShell .externalLiveChatOverlay{bottom:calc(82px + env(safe-area-inset-bottom))}
+.droxionVerticalShell .externalSwipeHint{bottom:calc(86px + env(safe-area-inset-bottom))}
+@media(max-width:700px){.droxionVerticalShell .externalVerticalLive.hasChat .externalLiveMeta{bottom:calc(42dvh + 90px + env(safe-area-inset-bottom))}}
+@media(min-width:760px){.droxionFeedNav{bottom:max(12px,env(safe-area-inset-bottom));width:min(420px,calc(100% - 24px));border:1px solid rgba(255,255,255,.1);border-radius:22px;box-shadow:0 16px 50px rgba(0,0,0,.45)}}
