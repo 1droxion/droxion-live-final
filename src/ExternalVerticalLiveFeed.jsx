@@ -14,7 +14,8 @@ function embedUrl(stream, soundEnabled = false) {
   const mute = soundEnabled ? '0' : '1';
 
   if (provider === 'youtube' && stream.externalId) {
-    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=${mute}&playsinline=1&rel=0&modestbranding=1&controls=0`;
+    const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+    return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=${mute}&playsinline=1&rel=0&modestbranding=1&controls=0&enablejsapi=1${origin ? `&origin=${origin}` : ''}`;
   }
   if (provider === 'twitch' && stream.channelSlug) {
     return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=${muted}`;
@@ -41,6 +42,7 @@ export default function ExternalVerticalLiveFeed({
   const [soundEnabled, setSoundEnabled] = useState(false);
   const touchStartYRef = useRef(null);
   const wheelLockRef = useRef(false);
+  const playerRef = useRef(null);
 
   const active = streams[index] || null;
   const src = useMemo(() => embedUrl(active, soundEnabled), [active, soundEnabled]);
@@ -94,8 +96,18 @@ export default function ExternalVerticalLiveFeed({
     });
   }, [streams.length]);
 
+  function nudgePlayback() {
+    const frame = playerRef.current;
+    if (!frame?.contentWindow) return;
+    try {
+      frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+      if (soundEnabled) frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*');
+    } catch {}
+  }
+
   function unlockSound() {
     if (!soundEnabled) setSoundEnabled(true);
+    window.setTimeout(nudgePlayback, 0);
   }
 
   function handleTouchStart(event) {
@@ -153,6 +165,7 @@ export default function ExternalVerticalLiveFeed({
     >
       <div className="externalLiveFrameWrap">
         <iframe
+          ref={playerRef}
           key={`${active.id}:${soundEnabled ? 'sound' : 'muted'}`}
           className="externalLiveFrame"
           src={src}
@@ -161,6 +174,10 @@ export default function ExternalVerticalLiveFeed({
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
           loading="eager"
+          onLoad={() => {
+            window.setTimeout(nudgePlayback, 60);
+            window.setTimeout(nudgePlayback, 420);
+          }}
         />
         <div className="externalLiveShade" />
       </div>
