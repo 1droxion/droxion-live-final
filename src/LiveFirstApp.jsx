@@ -3,12 +3,14 @@ import { supabase } from './supabaseClient';
 import LiveClientDiagnostics from './LiveClientDiagnostics';
 import DroxionWallet from './DroxionWallet';
 import ExternalVerticalLiveFeed from './ExternalVerticalLiveFeed';
+import ShortFeed from './ShortFeed';
 import './live-first-app.css';
 
 export default function LiveFirstApp() {
   const [user, setUser] = useState(null);
   const [coins, setCoins] = useState(0);
   const [walletOpen, setWalletOpen] = useState(false);
+  const [feedMode, setFeedMode] = useState('live');
 
   async function refreshWallet(authUser = user, knownBalance) {
     if (Number.isFinite(knownBalance)) setCoins(Number(knownBalance));
@@ -62,14 +64,39 @@ export default function LiveFirstApp() {
     <main className="droxionVerticalShell">
       <LiveClientDiagnostics />
 
-      <ExternalVerticalLiveFeed
-        currentUserId={user?.id}
-        coins={coins}
-        onCoinsChanged={value => setCoins(Number(value || 0))}
-        onOpenWallet={() => setWalletOpen(true)}
-      />
+      {feedMode === 'live' ? (
+        <ExternalVerticalLiveFeed
+          currentUserId={user?.id}
+          coins={coins}
+          onCoinsChanged={value => setCoins(Number(value || 0))}
+          onOpenWallet={() => setWalletOpen(true)}
+        />
+      ) : (
+        <ShortFeed currentUserId={user?.id} />
+      )}
 
       <div className="droxionVerticalBrand" aria-hidden="true">DROXION</div>
+
+      <nav className="droxionFeedNav" aria-label="Droxion feeds">
+        <button
+          type="button"
+          className={feedMode === 'live' ? 'active' : ''}
+          onClick={() => setFeedMode('live')}
+          aria-pressed={feedMode === 'live'}
+        >
+          <span className="droxionFeedNavDot" />
+          <strong>LIVE</strong>
+        </button>
+        <button
+          type="button"
+          className={feedMode === 'reels' ? 'active' : ''}
+          onClick={() => setFeedMode('reels')}
+          aria-pressed={feedMode === 'reels'}
+        >
+          <span className="droxionFeedNavReel">▶</span>
+          <strong>REELS</strong>
+        </button>
+      </nav>
 
       {walletOpen && (
         <DroxionWallet
