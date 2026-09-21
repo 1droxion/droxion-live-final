@@ -113,3 +113,18 @@
     border-radius:22px!important
   }
 }
+
+
+/* Three-tab nav: Profile · LIVE · Reels */
+.droxionFeedNav{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.droxionInboxBadge{display:none!important}
+
+/* Prevent iOS/Safari focus zoom on form fields */
+.droxionVerticalShell input,
+.droxionVerticalShell textarea,
+.droxionVerticalShell select,
+.lpPage input,
+.lpPage textarea,
+.lpPage select{
+  font-size:16px!important
+}
