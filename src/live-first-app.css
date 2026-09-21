@@ -26,3 +26,90 @@
 .droxionVerticalShell .externalSwipeHint{bottom:calc(86px + env(safe-area-inset-bottom))}
 @media(max-width:700px){.droxionVerticalShell .externalVerticalLive.hasChat .externalLiveMeta{bottom:calc(42dvh + 90px + env(safe-area-inset-bottom))}}
 @media(min-width:760px){.droxionFeedNav{bottom:max(12px,env(safe-area-inset-bottom));width:min(420px,calc(100% - 24px));border:1px solid rgba(255,255,255,.1);border-radius:22px;box-shadow:0 16px 50px rgba(0,0,0,.45)}}
+
+
+/* Four simple bottom tabs: Profile · Reels · LIVE · Inbox */
+.droxionTabStage{position:absolute;inset:0;min-width:0}
+.droxionFeedNav{
+  z-index:140!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  max-width:760px!important;
+  min-height:70px!important;
+  padding:5px max(4px,env(safe-area-inset-right)) max(5px,env(safe-area-inset-bottom)) max(4px,env(safe-area-inset-left))!important;
+  background:rgba(8,8,12,.88)!important;
+  border-top:1px solid rgba(255,255,255,.08)!important;
+  backdrop-filter:blur(18px)!important;
+  -webkit-backdrop-filter:blur(18px)!important
+}
+.droxionFeedNav button{
+  min-height:54px!important;
+  padding:3px 1px!important;
+  flex-direction:column!important;
+  gap:3px!important;
+  color:#777783!important;
+  font-size:9px!important;
+  font-weight:850!important;
+  letter-spacing:0!important
+}
+.droxionFeedNav button.active{color:#fff!important}
+.droxionNavIcon{
+  position:relative;
+  width:30px;
+  height:27px;
+  display:grid;
+  place-items:center;
+  border-radius:10px
+}
+.droxionFeedNav button.liveTab .droxionNavIcon{
+  width:42px;
+  height:34px;
+  border-radius:14px;
+  background:rgba(255,48,79,.13);
+  color:#ff536d
+}
+.droxionFeedNav button.liveTab.active .droxionNavIcon{
+  background:#ff304f;
+  color:#fff;
+  box-shadow:0 8px 22px rgba(255,48,79,.24)
+}
+.droxionInboxBadge{
+  position:absolute;
+  top:-4px;
+  right:-7px;
+  min-width:16px;
+  height:16px;
+  padding:0 4px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#ff304f;
+  color:#fff;
+  font-size:8px;
+  line-height:1;
+  font-weight:950;
+  border:2px solid #0a0a0f
+}
+.droxionVerticalBrand{
+  top:calc(10px + env(safe-area-inset-top))!important;
+  font-size:9px!important;
+  letter-spacing:.18em!important;
+  opacity:.72
+}
+.droxionMode-profile .lpPage,
+.droxionMode-inbox .dcPage{
+  min-height:100dvh;
+  padding-bottom:calc(92px + env(safe-area-inset-bottom))!important
+}
+.droxionMode-profile .droxionTabStage,
+.droxionMode-inbox .droxionTabStage{
+  overflow-y:auto;
+  background:#08080c
+}
+@media(min-width:760px){
+  .droxionFeedNav{
+    bottom:max(10px,env(safe-area-inset-bottom))!important;
+    width:min(520px,calc(100% - 24px))!important;
+    border:1px solid rgba(255,255,255,.09)!important;
+    border-radius:22px!important
+  }
+}
