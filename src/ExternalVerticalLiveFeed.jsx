@@ -6,10 +6,36 @@ import './external-vertical-live-feed.css';
 const REFRESH_MS = 90000;
 const SWIPE_THRESHOLD = 52;
 
+let twitchSdkPromise = null;
+
+function ensureTwitchSdk() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Browser required'));
+  if (window.Twitch?.Player) return Promise.resolve(window.Twitch);
+  if (twitchSdkPromise) return twitchSdkPromise;
+
+  twitchSdkPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-droxion-twitch-sdk="true"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(window.Twitch), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Twitch player failed to load')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://player.twitch.tv/js/embed/v1.js';
+    script.async = true;
+    script.dataset.droxionTwitchSdk = 'true';
+    script.onload = () => resolve(window.Twitch);
+    script.onerror = () => reject(new Error('Twitch player failed to load'));
+    document.head.appendChild(script);
+  });
+
+  return twitchSdkPromise;
+}
+
 function embedUrl(stream, soundEnabled = false) {
   if (!stream) return '';
   const provider = String(stream.provider || '').toLowerCase();
-  const parent = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   const muted = soundEnabled ? 'false' : 'true';
   const mute = soundEnabled ? '0' : '1';
 
@@ -17,13 +43,12 @@ function embedUrl(stream, soundEnabled = false) {
     const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
     return `https://www.youtube.com/embed/${encodeURIComponent(stream.externalId)}?autoplay=1&mute=${mute}&playsinline=1&rel=0&modestbranding=1&controls=0&enablejsapi=1${origin ? `&origin=${origin}` : ''}`;
   }
-  if (provider === 'twitch' && stream.channelSlug) {
-    return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=${muted}`;
-  }
+
   if (provider === 'kick' && stream.channelSlug) {
     return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=${muted}`;
   }
-  if (['tango', 'liveme', 'poppo'].includes(provider) && stream.embedUrl) return stream.embedUrl;
+
+  if (provider === 'twitch' && stream.channelSlug) return 'twitch-sdk';
   return '';
 }
 
@@ -40,17 +65,24 @@ export default function ExternalVerticalLiveFeed({
   const [notice, setNotice] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
   const touchStartYRef = useRef(null);
   const wheelLockRef = useRef(false);
   const playerRef = useRef(null);
+  const twitchMountRef = useRef(null);
+  const twitchPlayerRef = useRef(null);
+  const switchTimerRef = useRef(null);
 
   const active = streams[index] || null;
+  const provider = String(active?.provider || '').toLowerCase();
   const src = useMemo(() => embedUrl(active, soundEnabled), [active, soundEnabled]);
 
   const load = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10000);
+
     try {
       const response = await fetch('/api/live-hub?limit=80', {
         headers: { Accept: 'application/json' },
@@ -58,8 +90,8 @@ export default function ExternalVerticalLiveFeed({
         signal: controller.signal
       });
       if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
-      const payload = await response.json();
 
+      const payload = await response.json();
       const next = (Array.isArray(payload?.streams) ? payload.streams : [])
         .filter(stream => ['youtube', 'twitch', 'kick'].includes(String(stream?.provider || '').toLowerCase()))
         .filter(stream => Boolean(embedUrl(stream, false)));
@@ -86,28 +118,116 @@ export default function ExternalVerticalLiveFeed({
     return () => window.clearInterval(timer);
   }, [load]);
 
+  useEffect(() => {
+    if (provider !== 'twitch' || !active?.channelSlug || !twitchMountRef.current) {
+      twitchPlayerRef.current = null;
+      return undefined;
+    }
+
+    let cancelled = false;
+    const mount = twitchMountRef.current;
+    mount.innerHTML = '';
+
+    ensureTwitchSdk()
+      .then(Twitch => {
+        if (cancelled || !Twitch?.Player || !mount.isConnected) return;
+
+        const player = new Twitch.Player(mount, {
+          width: '100%',
+          height: '100%',
+          channel: active.channelSlug,
+          parent: [window.location.hostname],
+          autoplay: true,
+          muted: !soundEnabled
+        });
+
+        twitchPlayerRef.current = player;
+
+        player.addEventListener(Twitch.Player.READY, () => {
+          if (cancelled) return;
+          try {
+            player.setVolume(1);
+            player.setMuted(!soundEnabled);
+            player.play();
+          } catch {}
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setNotice('Twitch player could not load.');
+      });
+
+    return () => {
+      cancelled = true;
+      const player = twitchPlayerRef.current;
+      twitchPlayerRef.current = null;
+      try { player?.pause?.(); } catch {}
+      if (mount) mount.innerHTML = '';
+    };
+  }, [active?.id, active?.channelSlug, provider]);
+
+  useEffect(() => {
+    if (provider !== 'twitch') return;
+    const player = twitchPlayerRef.current;
+    if (!player) return;
+
+    try {
+      player.setVolume(1);
+      player.setMuted(!soundEnabled);
+      if (soundEnabled) player.play();
+    } catch {}
+  }, [soundEnabled, provider]);
+
+  useEffect(() => () => {
+    if (switchTimerRef.current) window.clearTimeout(switchTimerRef.current);
+  }, []);
+
   const move = useCallback(direction => {
     if (streams.length < 2) return;
+
+    setSwitching(true);
     setIndex(current => {
       const next = current + direction;
       if (next < 0) return streams.length - 1;
       if (next >= streams.length) return 0;
       return next;
     });
+
+    if (switchTimerRef.current) window.clearTimeout(switchTimerRef.current);
+    switchTimerRef.current = window.setTimeout(() => setSwitching(false), 220);
   }, [streams.length]);
 
-  function nudgePlayback() {
+  function nudgeYouTubePlayback(nextSound = soundEnabled) {
+    if (provider !== 'youtube') return;
     const frame = playerRef.current;
     if (!frame?.contentWindow) return;
+
     try {
       frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
-      if (soundEnabled) frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*');
+      frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: nextSound ? 'unMute' : 'mute', args: [] }), '*');
+      if (nextSound) {
+        frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }), '*');
+      }
     } catch {}
   }
 
-  function unlockSound() {
-    if (!soundEnabled) setSoundEnabled(true);
-    window.setTimeout(nudgePlayback, 0);
+  function toggleSound(event) {
+    event?.stopPropagation?.();
+    const next = !soundEnabled;
+
+    if (provider === 'twitch') {
+      const player = twitchPlayerRef.current;
+      try {
+        player?.setVolume?.(1);
+        player?.setMuted?.(!next);
+        if (next) player?.play?.();
+      } catch {}
+    }
+
+    setSoundEnabled(next);
+
+    if (provider === 'youtube') {
+      window.setTimeout(() => nudgeYouTubePlayback(next), 0);
+    }
   }
 
   function handleTouchStart(event) {
@@ -117,8 +237,8 @@ export default function ExternalVerticalLiveFeed({
   function handleTouchEnd(event) {
     const start = touchStartYRef.current;
     touchStartYRef.current = null;
-    unlockSound();
     if (start == null) return;
+
     const end = event.changedTouches?.[0]?.clientY ?? start;
     const delta = end - start;
     if (Math.abs(delta) < SWIPE_THRESHOLD) return;
@@ -126,11 +246,12 @@ export default function ExternalVerticalLiveFeed({
   }
 
   function handleWheel(event) {
-    unlockSound();
-    if (wheelLockRef.current || Math.abs(event.deltaY) < 48) return;
+    if (wheelLockRef.current || Math.abs(event.deltaY) < 34) return;
     wheelLockRef.current = true;
     move(event.deltaY > 0 ? 1 : -1);
-    window.setTimeout(() => { wheelLockRef.current = false; }, 650);
+    window.setTimeout(() => {
+      wheelLockRef.current = false;
+    }, 420);
   }
 
   if (loading) {
@@ -157,28 +278,33 @@ export default function ExternalVerticalLiveFeed({
 
   return (
     <section
-      className={`externalVerticalLive ${chatOpen ? 'hasChat' : ''}`}
+      className={`externalVerticalLive provider-${provider} ${chatOpen ? 'hasChat' : ''} ${soundEnabled ? 'hasSound' : ''} ${switching ? 'isSwitching' : ''}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onWheel={handleWheel}
-      onPointerDown={unlockSound}
     >
       <div className="externalLiveFrameWrap">
-        <iframe
-          ref={playerRef}
-          key={`${active.id}:${soundEnabled ? 'sound' : 'muted'}`}
-          className="externalLiveFrame"
-          src={src}
-          title="Droxion LIVE"
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
-          loading="eager"
-          onLoad={() => {
-            window.setTimeout(nudgePlayback, 60);
-            window.setTimeout(nudgePlayback, 420);
-          }}
-        />
+        {provider === 'twitch' ? (
+          <div ref={twitchMountRef} className="externalLiveFrame externalTwitchMount" />
+        ) : (
+          <iframe
+            ref={playerRef}
+            key={`${active.id}:${soundEnabled ? 'sound' : 'muted'}`}
+            className="externalLiveFrame"
+            src={src}
+            title="Droxion LIVE"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            loading="eager"
+            onLoad={() => {
+              if (provider === 'youtube') {
+                window.setTimeout(() => nudgeYouTubePlayback(soundEnabled), 80);
+                window.setTimeout(() => nudgeYouTubePlayback(soundEnabled), 420);
+              }
+            }}
+          />
+        )}
         <div className="externalLiveShade" />
       </div>
 
@@ -191,17 +317,21 @@ export default function ExternalVerticalLiveFeed({
         <button
           type="button"
           className={`externalSoundToggle ${soundEnabled ? 'on' : ''}`}
-          onClick={event => {
-            event.stopPropagation();
-            setSoundEnabled(value => !value);
-          }}
+          onPointerDown={event => event.stopPropagation()}
+          onTouchStart={event => event.stopPropagation()}
+          onTouchEnd={event => event.stopPropagation()}
+          onClick={toggleSound}
           aria-label={soundEnabled ? 'Mute LIVE' : 'Unmute LIVE'}
         >
           {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
         </button>
+
         <button
           type="button"
           className="externalChatToggle"
+          onPointerDown={event => event.stopPropagation()}
+          onTouchStart={event => event.stopPropagation()}
+          onTouchEnd={event => event.stopPropagation()}
           onClick={event => {
             event.stopPropagation();
             setChatOpen(value => !value);
