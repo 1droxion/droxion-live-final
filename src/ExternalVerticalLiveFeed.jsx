@@ -72,6 +72,7 @@ export default function ExternalVerticalLiveFeed({
   const playerRef = useRef(null);
   const twitchMountRef = useRef(null);
   const twitchPlayerRef = useRef(null);
+  const twitchMountIdRef = useRef(`droxion-twitch-${Math.random().toString(36).slice(2)}`);
   const switchTimerRef = useRef(null);
 
   const active = streams[index] || null;
@@ -132,7 +133,7 @@ export default function ExternalVerticalLiveFeed({
       .then(Twitch => {
         if (cancelled || !Twitch?.Player || !mount.isConnected) return;
 
-        const player = new Twitch.Player(mount, {
+        const player = new Twitch.Player(twitchMountIdRef.current, {
           width: '100%',
           height: '100%',
           channel: active.channelSlug,
@@ -221,6 +222,20 @@ export default function ExternalVerticalLiveFeed({
         player?.setMuted?.(!next);
         if (next) player?.play?.();
       } catch {}
+      setSoundEnabled(next);
+      return;
+    }
+
+    if (provider === 'kick') {
+      const frame = playerRef.current;
+      if (frame && active?.channelSlug) {
+        const nextSrc = `https://player.kick.com/${encodeURIComponent(active.channelSlug)}?autoplay=true&muted=${next ? 'false' : 'true'}`;
+        try {
+          frame.src = nextSrc;
+        } catch {}
+      }
+      setSoundEnabled(next);
+      return;
     }
 
     setSoundEnabled(next);
@@ -285,7 +300,7 @@ export default function ExternalVerticalLiveFeed({
     >
       <div className="externalLiveFrameWrap">
         {provider === 'twitch' ? (
-          <div ref={twitchMountRef} className="externalLiveFrame externalTwitchMount" />
+          <div id={twitchMountIdRef.current} ref={twitchMountRef} className="externalLiveFrame externalTwitchMount" />
         ) : (
           <iframe
             ref={playerRef}
