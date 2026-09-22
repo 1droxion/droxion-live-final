@@ -6,33 +6,6 @@ import './external-vertical-live-feed.css';
 const REFRESH_MS = 90000;
 const SWIPE_THRESHOLD = 52;
 
-let twitchSdkPromise = null;
-
-function ensureTwitchSdk() {
-  if (typeof window === 'undefined') return Promise.reject(new Error('Browser required'));
-  if (window.Twitch?.Player) return Promise.resolve(window.Twitch);
-  if (twitchSdkPromise) return twitchSdkPromise;
-
-  twitchSdkPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-droxion-twitch-sdk="true"]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve(window.Twitch), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Twitch player failed to load')), { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://player.twitch.tv/js/embed/v1.js';
-    script.async = true;
-    script.dataset.droxionTwitchSdk = 'true';
-    script.onload = () => resolve(window.Twitch);
-    script.onerror = () => reject(new Error('Twitch player failed to load'));
-    document.head.appendChild(script);
-  });
-
-  return twitchSdkPromise;
-}
-
 function embedUrl(stream, soundEnabled = false) {
   if (!stream) return '';
   const provider = String(stream.provider || '').toLowerCase();
@@ -48,7 +21,11 @@ function embedUrl(stream, soundEnabled = false) {
     return `https://player.kick.com/${encodeURIComponent(stream.channelSlug)}?autoplay=true&muted=${muted}`;
   }
 
-  if (provider === 'twitch' && stream.channelSlug) return 'twitch-sdk';
+  if (provider === 'twitch' && stream.channelSlug) {
+    const parent = typeof window !== 'undefined' ? encodeURIComponent(window.location.hostname) : '';
+    return `https://player.twitch.tv/?channel=${encodeURIComponent(stream.channelSlug)}&autoplay=true&muted=${muted}${parent ? `&parent=${parent}` : ''}`;
+  }
+
   return '';
 }
 
@@ -70,10 +47,7 @@ export default function ExternalVerticalLiveFeed({
   const touchStartYRef = useRef(null);
   const wheelLockRef = useRef(false);
   const playerRef = useRef(null);
-  const twitchMountRef = useRef(null);
-  const twitchPlayerRef = useRef(null);
   const soundEnabledRef = useRef(false);
-  const twitchMountIdRef = useRef(`droxion-twitch-${Math.random().toString(36).slice(2)}`);
   const switchTimerRef = useRef(null);
 
   const active = streams[index] || null;
@@ -124,65 +98,6 @@ export default function ExternalVerticalLiveFeed({
     return () => window.clearInterval(timer);
   }, [load]);
 
-  useEffect(() => {
-    if (provider !== 'twitch' || !active?.channelSlug || !twitchMountRef.current) {
-      twitchPlayerRef.current = null;
-      return undefined;
-    }
-
-    let cancelled = false;
-    const mount = twitchMountRef.current;
-    mount.innerHTML = '';
-
-    ensureTwitchSdk()
-      .then(Twitch => {
-        if (cancelled || !Twitch?.Player || !mount.isConnected) return;
-
-        const player = new Twitch.Player(twitchMountIdRef.current, {
-          width: '100%',
-          height: '100%',
-          channel: active.channelSlug,
-          parent: [window.location.hostname],
-          autoplay: true,
-          muted: !soundEnabledRef.current
-        });
-
-        twitchPlayerRef.current = player;
-
-        player.addEventListener(Twitch.Player.READY, () => {
-          if (cancelled) return;
-          try {
-            const wantsSound = soundEnabledRef.current;
-            player.play();
-            player.setMuted(!wantsSound);
-            if (wantsSound) player.setVolume(1);
-          } catch {}
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setNotice('Twitch player could not load.');
-      });
-
-    return () => {
-      cancelled = true;
-      const player = twitchPlayerRef.current;
-      twitchPlayerRef.current = null;
-      try { player?.pause?.(); } catch {}
-      if (mount) mount.innerHTML = '';
-    };
-  }, [active?.id, active?.channelSlug, provider]);
-
-  useEffect(() => {
-    if (provider !== 'twitch') return;
-    const player = twitchPlayerRef.current;
-    if (!player) return;
-
-    try {
-      player.setVolume(1);
-      player.setMuted(!soundEnabled);
-      if (soundEnabled) player.play();
-    } catch {}
-  }, [soundEnabled, provider]);
 
   useEffect(() => () => {
     if (switchTimerRef.current) window.clearTimeout(switchTimerRef.current);
@@ -222,27 +137,11 @@ export default function ExternalVerticalLiveFeed({
     const next = !soundEnabled;
     soundEnabledRef.current = next;
 
-    if (provider === 'twitch') {
-      const player = twitchPlayerRef.current;
-      try {
-        if (next) {
-          player?.play?.();
-          player?.setMuted?.(false);
-          player?.setVolume?.(1);
-        } else {
-          player?.setMuted?.(true);
-        }
-      } catch {}
-      setSoundEnabled(next);
-      return;
-    }
-
-    if (provider === 'kick') {
-      const frame = playerRef.current;
-      if (frame && active?.channelSlug) {
-        const nextSrc = `https://player.kick.com/${encodeURIComponent(active.channelSlug)}?autoplay=true&muted=${next ? 'false' : 'true'}`;
+    if ((provider === 'twitch' || provider === 'kick') && playerRef.current) {
+      const nextSrc = embedUrl(active, next);
+      if (nextSrc) {
         try {
-          frame.src = nextSrc;
+          playerRef.current.src = nextSrc;
         } catch {}
       }
       setSoundEnabled(next);
@@ -310,10 +209,7 @@ export default function ExternalVerticalLiveFeed({
       onWheel={handleWheel}
     >
       <div className="externalLiveFrameWrap">
-        {provider === 'twitch' ? (
-          <div id={twitchMountIdRef.current} ref={twitchMountRef} className="externalLiveFrame externalTwitchMount" />
-        ) : (
-          <iframe
+        <iframe
             ref={playerRef}
             key={active.id}
             className="externalLiveFrame"
@@ -330,7 +226,6 @@ export default function ExternalVerticalLiveFeed({
               }
             }}
           />
-        )}
         <div className="externalLiveShade" />
       </div>
 
