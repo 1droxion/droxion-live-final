@@ -1,4 +1,5 @@
 import { ArrowRight, CheckCircle2, Link2, MessageSquareText, ShieldAlert, Smartphone, Users } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import './family-shield-landing.css';
 
 const STRIPE_LINK = 'https://buy.stripe.com/5kQ14ne9pcl4btpg5t7Re03';
@@ -23,6 +24,7 @@ export default function FamilyShieldLanding() {
 
   return (
     <main className="shieldLanding">
+      <Analytics />
       <header className="shieldNav">
         <a href="/family-shield" className="shieldBrand">DROXION <span>SHIELD</span></a>
         <button type="button" onClick={handlePreorder}>Founding Access</button>
