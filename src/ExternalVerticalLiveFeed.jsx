@@ -72,12 +72,17 @@ export default function ExternalVerticalLiveFeed({
   const playerRef = useRef(null);
   const twitchMountRef = useRef(null);
   const twitchPlayerRef = useRef(null);
+  const soundEnabledRef = useRef(false);
   const twitchMountIdRef = useRef(`droxion-twitch-${Math.random().toString(36).slice(2)}`);
   const switchTimerRef = useRef(null);
 
   const active = streams[index] || null;
   const provider = String(active?.provider || '').toLowerCase();
   const src = useMemo(() => embedUrl(active, soundEnabled), [active, soundEnabled]);
+
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
   const load = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
@@ -139,7 +144,7 @@ export default function ExternalVerticalLiveFeed({
           channel: active.channelSlug,
           parent: [window.location.hostname],
           autoplay: true,
-          muted: !soundEnabled
+          muted: !soundEnabledRef.current
         });
 
         twitchPlayerRef.current = player;
@@ -147,9 +152,10 @@ export default function ExternalVerticalLiveFeed({
         player.addEventListener(Twitch.Player.READY, () => {
           if (cancelled) return;
           try {
-            player.setVolume(1);
-            player.setMuted(!soundEnabled);
+            const wantsSound = soundEnabledRef.current;
             player.play();
+            player.setMuted(!wantsSound);
+            if (wantsSound) player.setVolume(1);
           } catch {}
         });
       })
@@ -214,13 +220,18 @@ export default function ExternalVerticalLiveFeed({
   function toggleSound(event) {
     event?.stopPropagation?.();
     const next = !soundEnabled;
+    soundEnabledRef.current = next;
 
     if (provider === 'twitch') {
       const player = twitchPlayerRef.current;
       try {
-        player?.setVolume?.(1);
-        player?.setMuted?.(!next);
-        if (next) player?.play?.();
+        if (next) {
+          player?.play?.();
+          player?.setMuted?.(false);
+          player?.setVolume?.(1);
+        } else {
+          player?.setMuted?.(true);
+        }
       } catch {}
       setSoundEnabled(next);
       return;
@@ -304,7 +315,7 @@ export default function ExternalVerticalLiveFeed({
         ) : (
           <iframe
             ref={playerRef}
-            key={`${active.id}:${soundEnabled ? 'sound' : 'muted'}`}
+            key={active.id}
             className="externalLiveFrame"
             src={src}
             title="Droxion LIVE"
