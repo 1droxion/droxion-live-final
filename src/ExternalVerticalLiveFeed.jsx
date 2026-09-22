@@ -4,7 +4,7 @@ import ExternalLiveDroxionChat from './ExternalLiveDroxionChat';
 import './external-vertical-live-feed.css';
 
 const REFRESH_MS = 90000;
-const SWIPE_THRESHOLD = 52;
+const SWIPE_THRESHOLD = 44;
 
 function embedUrl(stream, soundEnabled = false) {
   if (!stream) return '';
@@ -52,7 +52,7 @@ export default function ExternalVerticalLiveFeed({
 
   const active = streams[index] || null;
   const provider = String(active?.provider || '').toLowerCase();
-  const src = useMemo(() => embedUrl(active, soundEnabled), [active, soundEnabled]);
+  const src = useMemo(() => embedUrl(active, provider === 'youtube' ? false : soundEnabled), [active, provider, soundEnabled]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -64,7 +64,7 @@ export default function ExternalVerticalLiveFeed({
     const timeout = window.setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch('/api/live-hub?limit=80', {
+      const response = await fetch('/api/live-hub?limit=180', {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
         signal: controller.signal
@@ -115,7 +115,7 @@ export default function ExternalVerticalLiveFeed({
     });
 
     if (switchTimerRef.current) window.clearTimeout(switchTimerRef.current);
-    switchTimerRef.current = window.setTimeout(() => setSwitching(false), 220);
+    switchTimerRef.current = window.setTimeout(() => setSwitching(false), 180);
   }, [streams.length]);
 
   function nudgeYouTubePlayback(nextSound = soundEnabled) {
@@ -137,7 +137,18 @@ export default function ExternalVerticalLiveFeed({
     const next = !soundEnabled;
     soundEnabledRef.current = next;
 
+    if (provider === 'youtube') {
+      // Keep the YouTube iframe URL stable and unmute synchronously inside
+      // the user's tap so mobile autoplay policy does not swallow the gesture.
+      nudgeYouTubePlayback(next);
+      setSoundEnabled(next);
+      window.setTimeout(() => nudgeYouTubePlayback(next), 120);
+      return;
+    }
+
     if ((provider === 'twitch' || provider === 'kick') && playerRef.current) {
+      // Twitch/Kick official embeds use their URL mute state. Update it
+      // synchronously from the sound tap, then expose their native controls.
       const nextSrc = embedUrl(active, next);
       if (nextSrc) {
         try {
@@ -149,10 +160,6 @@ export default function ExternalVerticalLiveFeed({
     }
 
     setSoundEnabled(next);
-
-    if (provider === 'youtube') {
-      window.setTimeout(() => nudgeYouTubePlayback(next), 0);
-    }
   }
 
   function handleTouchStart(event) {
@@ -171,12 +178,12 @@ export default function ExternalVerticalLiveFeed({
   }
 
   function handleWheel(event) {
-    if (wheelLockRef.current || Math.abs(event.deltaY) < 34) return;
+    if (wheelLockRef.current || Math.abs(event.deltaY) < 28) return;
     wheelLockRef.current = true;
     move(event.deltaY > 0 ? 1 : -1);
     window.setTimeout(() => {
       wheelLockRef.current = false;
-    }, 420);
+    }, 320);
   }
 
   if (loading) {
