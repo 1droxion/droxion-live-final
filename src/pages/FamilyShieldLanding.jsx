@@ -1,7 +1,7 @@
 import { ArrowRight, CheckCircle2, Link2, MessageSquareText, ShieldAlert, Smartphone, Users } from 'lucide-react';
 import './family-shield-landing.css';
 
-const STRIPE_LINK = '';
+const STRIPE_LINK = 'https://buy.stripe.com/5kQ14ne9pcl4btpg5t7Re03';
 
 const features = [
   { Icon: MessageSquareText, title: 'Check suspicious messages', text: 'Paste a text, email, or DM and see the warning signs before you reply.' },
