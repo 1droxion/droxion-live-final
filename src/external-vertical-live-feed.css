@@ -306,3 +306,43 @@
   color:#050507
 }
 .externalChatToggle{position:static!important}
+
+
+/* Smoother LIVE changes */
+.externalLiveFrameWrap{
+  transition:opacity .22s ease,transform .22s ease;
+  will-change:opacity,transform
+}
+.externalVerticalLive.isSwitching .externalLiveFrameWrap{
+  opacity:.58;
+  transform:scale(1.012)
+}
+.externalVerticalLive{
+  touch-action:pan-y!important;
+  overscroll-behavior-y:contain
+}
+.externalLiveFrameWrap{
+  backface-visibility:hidden;
+  transform:translateZ(0)
+}
+
+/* Twitch SDK player fills the screen */
+.externalTwitchMount,
+.externalTwitchMount iframe{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  border:0!important
+}
+
+/* Keep swipe handling by default, but let Kick receive taps after sound is enabled */
+.externalVerticalLive.provider-kick.hasSound .externalLiveFrame{
+  pointer-events:auto!important
+}
+.externalVerticalLive.provider-kick.hasSound .externalLiveFrameWrap{
+  pointer-events:auto
+}
+
+/* Sound control must always stay above provider players */
+.externalLiveRightControls{z-index:50!important}
