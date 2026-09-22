@@ -150,3 +150,14 @@
   overflow:visible!important;
   padding-bottom:calc(110px + env(safe-area-inset-bottom))!important
 }
+
+
+/* Smooth profile scrolling */
+.droxionMode-profile .droxionTabStage{
+  scroll-behavior:smooth;
+  scrollbar-width:none
+}
+.droxionMode-profile .droxionTabStage::-webkit-scrollbar{display:none}
+.droxionMode-profile .lpPage{
+  scroll-margin-top:12px
+}
