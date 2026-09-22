@@ -185,11 +185,12 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
       watchTimers.current.set(clipId, { watch, long });
     };
 
+    const feedRoot = document.querySelector('.sfPage');
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         const video = entry.target;
         const clipId = video.dataset.clipId;
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.62) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
           safePlay(video);
           beginWatchTimers(clipId);
           if (clipId && !viewed.current.has(clipId)) {
@@ -206,7 +207,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
           if (clipId) clearWatchTimers(clipId);
         }
       });
-    }, { threshold: [0, 0.3, 0.62, 0.85, 1] });
+    }, { root: feedRoot || null, threshold: [0, 0.2, 0.5, 0.75, 1] });
 
     videoRefs.current.forEach(video => observer.observe(video));
     const retry = window.setInterval(() => {
@@ -214,7 +215,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
         const rect = video.getBoundingClientRect();
         const visible = Math.max(0, Math.min(window.innerHeight, rect.bottom) - Math.max(0, rect.top));
         const ratio = rect.height ? visible / rect.height : 0;
-        if (ratio >= 0.62 && (video.paused || video.ended)) {
+        if (ratio >= 0.5 && (video.paused || video.ended)) {
           try { if (video.ended) video.currentTime = 0; } catch {}
           safePlay(video);
         }
@@ -421,6 +422,14 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
     }
   }
 
+  function handleFeedWheel(event) {
+    const page = event.currentTarget;
+    if (!page || Math.abs(event.deltaY) < 12) return;
+    event.preventDefault();
+    const amount = Math.max(1, page.clientHeight);
+    page.scrollBy({ top: event.deltaY > 0 ? amount : -amount, behavior: 'smooth' });
+  }
+
   if (loading) return <section className="sfPage sfEmpty"><div className="sfLoader" /><strong>Loading highlights…</strong></section>;
 
   if (!clips.length) return (
@@ -433,7 +442,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
   );
 
   return (
-    <section className="sfPage" aria-label="Droxion personalized highlight feed">
+    <section className="sfPage" aria-label="Droxion personalized highlight feed" onWheel={handleFeedWheel}>
       {rankedClips.map(clip => {
         const profile = profiles[clip.creator_id] || {};
         const live = nativeLiveEnabled ? liveCreators[clip.creator_id] : null;
