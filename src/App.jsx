@@ -23,6 +23,7 @@ import DeleteAccount from "./DeleteAccount.jsx";
 import LiveV2Page from "./pages/live/LiveV2Page.jsx";
 import LiveV2ViewerPage from "./pages/live/LiveV2ViewerPage.jsx";
 import NativeLivePlayer from "./NativeLivePlayer.jsx";
+import FamilyShieldLanding from "./pages/FamilyShieldLanding.jsx";
 
 export default function App() {
   const location = useLocation();
@@ -46,6 +47,7 @@ export default function App() {
       {!isLiveV2 && !isNativeLivePlayer && <ShortSafetyEnhancer />}
       <Routes>
         <Route path="/" element={<LiveFirstApp />} />
+        <Route path="/family-shield" element={<FamilyShieldLanding />} />
         <Route path="/native-live-player" element={<NativeLivePlayer />} />
         <Route path="/live-v2" element={<LiveV2Page />} />
         <Route path="/live-v2/view/:sessionId" element={<LiveV2ViewerPage />} />
