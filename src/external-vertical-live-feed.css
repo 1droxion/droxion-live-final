@@ -336,11 +336,13 @@
   border:0!important
 }
 
-/* Keep swipe handling by default, but let Kick receive taps after sound is enabled */
-.externalVerticalLive.provider-kick.hasSound .externalLiveFrame{
+/* Keep swipe handling by default, but let Twitch/Kick receive native player taps after sound is enabled */
+.externalVerticalLive.provider-kick.hasSound .externalLiveFrame,
+.externalVerticalLive.provider-twitch.hasSound .externalLiveFrame{
   pointer-events:auto!important
 }
-.externalVerticalLive.provider-kick.hasSound .externalLiveFrameWrap{
+.externalVerticalLive.provider-kick.hasSound .externalLiveFrameWrap,
+.externalVerticalLive.provider-twitch.hasSound .externalLiveFrameWrap{
   pointer-events:auto
 }
 
