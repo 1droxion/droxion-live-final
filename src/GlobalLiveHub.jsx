@@ -37,6 +37,34 @@ const EXPLORE_TOPICS = [
 const REFRESH_MS = 120000;
 const LIVE_DISCOVERY_LIMIT = 300;
 const RECENT_LIVE_KEY = 'droxion.live.recent.v1';
+const LIVE_HUB_CACHE_KEY = 'droxion.live.hub.cache.v2';
+const LIVE_HUB_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+
+function readLiveHubCache() {
+  if (typeof window === 'undefined') return { streams: [], providers: {} };
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(LIVE_HUB_CACHE_KEY) || '{}');
+    const age = Date.now() - Number(cached?.cachedAt || 0);
+    if (!Array.isArray(cached?.streams) || age > LIVE_HUB_CACHE_MAX_AGE_MS) return { streams: [], providers: {} };
+    return {
+      streams: cached.streams.filter(stream => ['youtube', 'kick', 'twitch', 'rumble', 'tango', 'liveme', 'poppo'].includes(stream?.provider)).slice(0, LIVE_DISCOVERY_LIMIT),
+      providers: cached?.providers && typeof cached.providers === 'object' ? cached.providers : {}
+    };
+  } catch {
+    return { streams: [], providers: {} };
+  }
+}
+
+function writeLiveHubCache(streams, providers) {
+  if (typeof window === 'undefined' || !Array.isArray(streams) || !streams.length) return;
+  try {
+    window.localStorage.setItem(LIVE_HUB_CACHE_KEY, JSON.stringify({
+      cachedAt: Date.now(),
+      streams: streams.slice(0, LIVE_DISCOVERY_LIMIT),
+      providers: providers && typeof providers === 'object' ? providers : {}
+    }));
+  } catch {}
+}
 
 function formatViewers(value) {
   const count = Number(value || 0);
@@ -201,9 +229,10 @@ const isIOSNative =
 }
 
 export default function GlobalLiveHub({ query = '', nativeLive = null, currentUserId, coins = 0, onCoinsChanged, onOpenWallet, mode = 'home' }) {
-  const [streams, setStreams] = useState([]);
-  const [providers, setProviders] = useState({});
-  const [loading, setLoading] = useState(true);
+  const initialLiveCacheRef = useRef(readLiveHubCache());
+  const [streams, setStreams] = useState(() => initialLiveCacheRef.current.streams);
+  const [providers, setProviders] = useState(() => initialLiveCacheRef.current.providers);
+  const [loading, setLoading] = useState(() => initialLiveCacheRef.current.streams.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
   const [provider, setProvider] = useState('all');
@@ -225,25 +254,62 @@ export default function GlobalLiveHub({ query = '', nativeLive = null, currentUs
 
   const loadStreams = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
+    const allowed = ['youtube', 'kick', 'twitch', 'rumble', 'tango', 'liveme', 'poppo'];
+    let lastError = null;
+
     try {
-      let data;
-      if (Capacitor.isNativePlatform()) {
-        const response = await CapacitorHttp.get({
-          url: `https://www.droxion.com/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}`,
-          headers: { Accept: 'application/json' }
-        });
-        if (response.status < 200 || response.status >= 300) throw new Error(`LIVE discovery unavailable (${response.status})`);
-        data = response.data;
-      } else {
-        const response = await fetch(`/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}`, { headers: { Accept: 'application/json' } });
-        if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
-        data = await response.json();
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          let data;
+          const requestPath = `/api/live-hub?limit=${LIVE_DISCOVERY_LIMIT}&fresh=${Date.now()}`;
+
+          if (Capacitor.isNativePlatform()) {
+            const response = await CapacitorHttp.get({
+              url: `https://www.droxion.com${requestPath}`,
+              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' }
+            });
+            if (response.status < 200 || response.status >= 300) throw new Error(`LIVE discovery unavailable (${response.status})`);
+            data = response.data;
+          } else {
+            const response = await fetch(requestPath, {
+              cache: 'no-store',
+              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' }
+            });
+            if (!response.ok) throw new Error(`LIVE discovery unavailable (${response.status})`);
+            data = await response.json();
+          }
+
+          const nextStreams = (Array.isArray(data?.streams) ? data.streams : []).filter(stream => allowed.includes(stream?.provider));
+          const nextProviders = data?.providers && typeof data.providers === 'object' ? data.providers : {};
+
+          if (nextStreams.length) {
+            setStreams(nextStreams);
+            setProviders(nextProviders);
+            writeLiveHubCache(nextStreams, nextProviders);
+            setNotice('');
+            return;
+          }
+
+          lastError = new Error('LIVE discovery returned no streams.');
+        } catch (error) {
+          lastError = error;
+        }
+
+        if (attempt === 0) await new Promise(resolve => window.setTimeout(resolve, 250));
       }
-      setStreams((Array.isArray(data?.streams) ? data.streams : []).filter(stream => ['youtube', 'kick', 'twitch', 'rumble', 'tango', 'liveme', 'poppo'].includes(stream?.provider)));
-      setProviders(data?.providers && typeof data.providers === 'object' ? data.providers : {});
-      setNotice('');
-    } catch (error) { setNotice(error?.message || 'Could not refresh global LIVE discovery.'); }
-    finally { setLoading(false); if (manual) setRefreshing(false); }
+
+      const cached = readLiveHubCache();
+      if (cached.streams.length) {
+        setStreams(cached.streams);
+        setProviders(cached.providers);
+        setNotice('');
+      } else {
+        setNotice(lastError?.message || 'Could not refresh global LIVE discovery.');
+      }
+    } finally {
+      setLoading(false);
+      if (manual) setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => { loadFollowing(); }, [loadFollowing]);
