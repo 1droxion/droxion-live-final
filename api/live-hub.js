@@ -1,13 +1,13 @@
 import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
 import { MANUAL_APPROVED_WOMEN } from '../config/approved-women-live.js';
 
-const MAX_LIMIT = 260;
+const MAX_LIMIT = 300;
 const MIN_LIVE_VIEWERS = 1000;
-const YOUTUBE_TARGET = 120;
+const YOUTUBE_TARGET = 150;
 const YOUTUBE_DISCOVERY_TARGET = 250;
 const YOUTUBE_DISCOVERY_CACHE_MS = 6 * 60 * 60 * 1000;
 const YOUTUBE_LIVE_CACHE_MS = 5 * 60 * 1000;
-const KICK_TARGET = 80;
+const KICK_TARGET = 90;
 const TWITCH_TARGET = 60;
 const RUMBLE_TARGET = 40;
 const CACHE_FRESH_MS = 10 * 60 * 1000;
@@ -967,6 +967,113 @@ async function loadRumble() {
 }
 
 
+async function loadRumbleCreatorApis() {
+  const raw = text(process.env.RUMBLE_LIVESTREAM_API_URLS || process.env.RUMBLE_LIVESTREAM_API_URL);
+  const urls = [...new Set(
+    raw
+      .split(/[\n,;]+/)
+      .map(value => value.trim())
+      .filter(Boolean)
+      .filter(value => {
+        try {
+          const url = new URL(value);
+          return url.protocol === 'https:' && (url.hostname === 'rumble.com' || url.hostname === 'www.rumble.com');
+        } catch {
+          return false;
+        }
+      })
+  )].slice(0, 50);
+
+  if (!urls.length) {
+    return { provider: 'rumble', enabled: true, streams: [], reason: 'creator_api_not_configured' };
+  }
+
+  const results = await Promise.allSettled(
+    urls.map(async apiUrl => {
+      const payload = await fetchJson(apiUrl, { headers: { Accept: 'application/json' } }, 6000);
+      const creatorName = text(payload?.username || payload?.channel_name, 'Rumble creator');
+      const lives = Array.isArray(payload?.livestreams) ? payload.livestreams : [];
+
+      const rows = await Promise.all(
+        lives
+          .filter(item => item && item.is_live !== false)
+          .slice(0, 10)
+          .map(async item => {
+            const watchUrl = text(item?.url) || (text(item?.link) ? new URL(text(item.link), 'https://rumble.com').toString() : '');
+            let embedUrl = '';
+
+            if (watchUrl) {
+              try {
+                const html = await fetchHtml(watchUrl, 3500);
+                const embedId = rumbleEmbedId(html);
+                if (embedId) embedUrl = `https://rumble.com/embed/${embedId}/`;
+              } catch {}
+            }
+
+            return {
+              id: `rumble:api:${text(item?.id || item?.stream_id || watchUrl || item?.title)}`,
+              provider: 'rumble',
+              providerLabel: 'Rumble',
+              externalId: text(item?.id || item?.stream_id),
+              channelId: '',
+              channelSlug: '',
+              creatorName,
+              title: text(item?.title, 'LIVE on Rumble'),
+              category: normalizeCategory(item?.categories?.primary?.title || item?.categories?.primary?.slug || item?.title || 'Live'),
+              language: 'en',
+              viewerCount: number(item?.watching_now ?? item?.viewers),
+              startedAt: text(item?.created_on || item?.started_at),
+              thumbnailUrl: typeof item?.thumbnail === 'string' ? item.thumbnail : text(item?.thumbnail?.url),
+              watchUrl,
+              embedType: 'rumble',
+              embedUrl,
+              chatUrl: text(item?.chat?.url),
+              isMature: false,
+              source: 'rumble_creator_api'
+            };
+          })
+      );
+
+      return rows.filter(row => row.watchUrl || row.embedUrl);
+    })
+  );
+
+  const streams = mergeUnique(
+    results.flatMap(result => result.status === 'fulfilled' ? result.value : []),
+    RUMBLE_TARGET
+  );
+
+  return {
+    provider: 'rumble',
+    enabled: true,
+    streams,
+    reason: streams.length ? '' : 'creator_api_empty',
+    cacheUsed: false
+  };
+}
+
+async function loadRumbleCombined() {
+  const [publicFeed, creatorFeed] = await Promise.all([
+    loadRumble().catch(() => ({ provider: 'rumble', enabled: true, streams: [], reason: 'public_discovery_unavailable' })),
+    loadRumbleCreatorApis().catch(() => ({ provider: 'rumble', enabled: true, streams: [], reason: 'creator_api_error' }))
+  ]);
+
+  const streams = mergeUnique(
+    [...(creatorFeed.streams || []), ...(publicFeed.streams || [])],
+    RUMBLE_TARGET
+  );
+
+  return {
+    provider: 'rumble',
+    enabled: true,
+    streams,
+    reason: streams.length ? '' : (creatorFeed.reason || publicFeed.reason || 'empty_result'),
+    cacheUsed: Boolean(publicFeed.cacheUsed),
+    fallbackUsed: Boolean(publicFeed.fallbackUsed)
+  };
+}
+
+
 async function loadPartnerProvider(provider) {
   const cached = await readProviderCache(`partner-${provider}-live-v1`).catch(() => null);
   const rows = Array.isArray(cached?.payload) ? cached.payload : [];
@@ -1023,10 +1130,11 @@ export default async function handler(req, res) {
 
   const requested = clampLimit(req.query?.limit);
 
-  const [youtube, kick, twitch, tango, liveme, poppo] = await Promise.all([
+  const [youtube, kick, twitch, rumble, tango, liveme, poppo] = await Promise.all([
     loadYouTube(),
     loadKick(),
     loadTwitch(),
+    loadRumbleCombined(),
     loadTango(),
     loadLiveMe(),
     loadPoppo()
@@ -1038,12 +1146,13 @@ export default async function handler(req, res) {
     .filter(stream => !stream?.isMature);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET)
     .filter(stream => !stream?.isMature);
+  const rumbleRows = (rumble.streams || []).filter(stream => !stream?.isMature).slice(0, RUMBLE_TARGET);
   const tangoRows = (tango.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
   const livemeRows = (liveme.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
   const poppoRows = (poppo.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
 
   const streams = interleaveProviders(
-    [ytRows, twitchRows, kickRows, tangoRows, livemeRows, poppoRows],
+    [ytRows, twitchRows, kickRows, rumbleRows, tangoRows, livemeRows, poppoRows],
     requested
   ).filter(stream => !stream?.isMature);
 
@@ -1056,6 +1165,7 @@ export default async function handler(req, res) {
     youtube: providerState(youtube, ytRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
     kick: providerState(kick, kickRows, counts),
+    rumble: providerState(rumble, rumbleRows, counts),
     tango: providerState(tango, tangoRows, counts),
     liveme: providerState(liveme, livemeRows, counts),
     poppo: providerState(poppo, poppoRows, counts)
@@ -1066,7 +1176,7 @@ export default async function handler(req, res) {
     streams,
     providers,
     approvedWomenOnly: false,
-    publicProviders: ['youtube', 'twitch', 'kick', 'tango', 'liveme', 'poppo'],
+    publicProviders: ['youtube', 'twitch', 'kick', 'rumble', 'tango', 'liveme', 'poppo'],
     generatedAt: new Date().toISOString()
   });
 }
