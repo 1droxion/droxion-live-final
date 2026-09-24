@@ -62,7 +62,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
       .not('video_url', 'is', null)
       .order('published_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(80);
 
     if (!alive) return;
 
@@ -462,7 +462,7 @@ export default function ShortFeed({ currentUserId, onWatchLive, onStartLive, nat
               playsInline
               muted={muted}
               loop
-              preload="auto"
+              preload="metadata"
               onCanPlay={event => safePlay(event.currentTarget)}
               onEnded={event => { try { event.currentTarget.currentTime = 0; } catch {}; safePlay(event.currentTarget); }}
               onStalled={event => window.setTimeout(() => safePlay(event.currentTarget), 250)}
