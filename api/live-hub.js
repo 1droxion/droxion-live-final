@@ -818,24 +818,38 @@ function rumbleLinks(html) {
   const links = [];
   const seen = new Set();
   const normalized = String(html || '').replace(/\\\//g, '/');
-  const regex = /(?:href|data-href)\s*=\s*["']?([^"' >]*\/v[a-z0-9][^"' >]*\.html(?:\?[^"' >]*)?)/gi;
+  const anchorRegex = /<a\b([^>]+)>/gi;
   let match;
-  while ((match = regex.exec(normalized)) && links.length < 120) {
+
+  while ((match = anchorRegex.exec(normalized)) && links.length < 120) {
+    const attrs = match[1] || '';
+    const classMatch = attrs.match(/\bclass\s*=\s*["']([^"']+)["']/i);
+    const classes = classMatch?.[1] || '';
+    if (!/\b(video-item--a|videostream__link)\b/i.test(classes)) continue;
+
+    const hrefMatch = attrs.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    const href = decodeHtml(hrefMatch?.[1] || '');
+    if (!href || !/^\/?v[\w.-]+\.html(?:\?|$)/i.test(href)) continue;
+
     try {
-      const url = new URL(decodeHtml(match[1]), 'https://rumble.com');
+      const url = new URL(href, 'https://rumble.com');
       if (url.hostname !== 'rumble.com' && url.hostname !== 'www.rumble.com') continue;
       url.search = '';
       url.hash = '';
       const clean = url.toString();
-      if (!seen.has(clean)) { seen.add(clean); links.push(clean); }
+      if (!seen.has(clean)) {
+        seen.add(clean);
+        links.push(clean);
+      }
     } catch {}
   }
+
   return links;
 }
 
 function rumbleEmbedId(html) {
   const normalized = String(html || '').replace(/\\\//g, '/');
-  const direct = normalized.match(/https:\/\/rumble\.com\/embed\/([a-z0-9]+)\/?/i);
+  const direct = normalized.match(/https:\/\/rumble\.com\/embed\/(?:[0-9a-z]+\.)?([0-9a-z]+)\/?/i);
   if (direct?.[1]) return direct[1];
   const player = normalized.match(/\bRumble\(\s*["']play["']\s*,\s*\{[^}]*["']?video["']?\s*:\s*["']([a-z0-9]+)["']/i);
   return text(player?.[1]);
@@ -905,23 +919,17 @@ function parseRumblePage(watchUrl, html) {
 }
 
 async function loadRumble() {
-  const cached = await readProviderCache('rumble-public-live-v2').catch(() => null);
+  const cached = await readProviderCache('rumble-public-live-v3').catch(() => null);
   const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
   const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
   if (cachedRows.length >= 5 && age < CACHE_FRESH_MS) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), cacheUsed: true };
 
   try {
     const seedUrls = [
-      'https://rumble.com/live-videos',
-      'https://rumble.com/browse',
-      'https://rumble.com/',
-      'https://rumble.com/category/24x7',
-      'https://rumble.com/category/gaming',
-      'https://rumble.com/category/news',
-      'https://rumble.com/category/entertainment',
-      'https://rumble.com/category/sports'
-    ];
-    const seedPages = await Promise.allSettled(seedUrls.map(url => fetchHtml(url, 3500)));
+      'https://rumble.com/browse/live',
+      'https://rumble.com/browse/live?page=2',
+      'https://rumble.com/browse/live?page=3'
+    ];    const seedPages = await Promise.allSettled(seedUrls.map(url => fetchHtml(url, 3500)));
     const candidates = [];
     const seen = new Set();
     seedPages.forEach(result => {
@@ -931,21 +939,23 @@ async function loadRumble() {
       });
     });
 
+    console.log('[live-hub] Rumble candidates', candidates.length);
+
     const detailPages = await Promise.allSettled(
       candidates.map(async url => {
         const html = await fetchHtml(url, RUMBLE_TIMEOUT_MS);
-        const stream = parseRumblePage(url, html);
-        if (!stream?.externalId) return null;
-        const live = await rumbleIsLive(stream.externalId);
-        return live ? stream : null;
+        return parseRumblePage(url, html);
       })
     );
+
     const streams = detailPages
       .filter(result => result.status === 'fulfilled' && result.value)
       .map(result => result.value)
       .slice(0, RUMBLE_TARGET);
 
-    if (streams.length) await writeProviderCache('rumble-public-live-v2', streams).catch(() => {});
+    console.log('[live-hub] Rumble parsed LIVE streams', streams.length);
+
+    if (streams.length) await writeProviderCache('rumble-public-live-v3', streams).catch(() => {});
     if (streams.length) return { provider: 'rumble', enabled: true, streams, reason: '', cacheUsed: false };
     if (cachedRows.length) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
     return { provider: 'rumble', enabled: true, streams: [], reason: 'empty_result' };
