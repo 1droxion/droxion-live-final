@@ -20,5 +20,5 @@
 @media(min-width:1500px){.dxGlobalLiveHub{width:min(100%,1580px);padding-left:18px;padding-right:18px}.dxGlobalGrid{grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}.dxGlobalCardBody{padding:9px 10px 11px}.dxCardCreator strong,.dxCardTitle{font-size:11px}}
 @media(min-width:1281px) and (max-width:1499px){.dxGlobalGrid{grid-template-columns:repeat(5,minmax(0,1fr))}}
 
-.dxProviderBadge.trovo{background:rgba(36,92,178,.95)}.dxProviderBadge.tango{background:rgba(221,54,113,.94)}.dxProviderBadge.liveme{background:rgba(229,93,39,.94)}.dxProviderBadge.poppo{background:rgba(207,52,160,.94)}
-.dxCreatorDot.trovo{box-shadow:inset 0 0 0 2px rgba(59,130,246,.3)}.dxCreatorDot.tango{box-shadow:inset 0 0 0 2px rgba(244,63,94,.3)}.dxCreatorDot.liveme{box-shadow:inset 0 0 0 2px rgba(249,115,22,.3)}.dxCreatorDot.poppo{box-shadow:inset 0 0 0 2px rgba(236,72,153,.3)}
+.dxProviderBadge.tango{background:rgba(221,54,113,.94)}.dxProviderBadge.liveme{background:rgba(229,93,39,.94)}.dxProviderBadge.poppo{background:rgba(207,52,160,.94)}
+.dxCreatorDot.tango{box-shadow:inset 0 0 0 2px rgba(244,63,94,.3)}.dxCreatorDot.liveme{box-shadow:inset 0 0 0 2px rgba(249,115,22,.3)}.dxCreatorDot.poppo{box-shadow:inset 0 0 0 2px rgba(236,72,153,.3)}
