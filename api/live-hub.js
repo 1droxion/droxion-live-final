@@ -818,7 +818,7 @@ function rumbleLinks(html) {
   const links = [];
   const seen = new Set();
   const normalized = String(html || '').replace(/\\\//g, '/');
-  const regex = /href=["']([^"']*\/v[a-z0-9]+-[^"']+\.html(?:\?[^"']*)?)["']/gi;
+  const regex = /(?:href|data-href)\s*=\s*["']?([^"' >]*\/v[a-z0-9][^"' >]*\.html(?:\?[^"' >]*)?)/gi;
   let match;
   while ((match = regex.exec(normalized)) && links.length < 120) {
     try {
@@ -833,6 +833,28 @@ function rumbleLinks(html) {
   return links;
 }
 
+function rumbleEmbedId(html) {
+  const normalized = String(html || '').replace(/\\\//g, '/');
+  const direct = normalized.match(/https:\/\/rumble\.com\/embed\/([a-z0-9]+)\/?/i);
+  if (direct?.[1]) return direct[1];
+  const player = normalized.match(/\bRumble\(\s*["']play["']\s*,\s*\{[^}]*["']?video["']?\s*:\s*["']([a-z0-9]+)["']/i);
+  return text(player?.[1]);
+}
+
+async function rumbleIsLive(embedId) {
+  if (!embedId) return false;
+  try {
+    const info = await fetchJson(
+      `https://rumble.com/embedJS/u3/?request=video&ver=2&v=${encodeURIComponent(embedId)}`,
+      { headers: { Accept: 'application/json' } },
+      4500
+    );
+    return Number(info?.live) === 2;
+  } catch {
+    return false;
+  }
+}
+
 function parseCompactCount(value) {
   const raw = text(value).replace(/,/g, '');
   const match = raw.match(/([0-9]+(?:\.[0-9]+)?)\s*([kKmM]?)/);
@@ -844,18 +866,18 @@ function parseCompactCount(value) {
 
 function parseRumblePage(watchUrl, html) {
   const normalized = String(html || '').replace(/\\\//g, '/');
-  const isLive = /Streaming now/i.test(normalized) || /["']is_live["']\s*:\s*true/i.test(normalized) || /livestream[^\n]{0,80}["']live["']/i.test(normalized);
-  if (!isLive) return null;
 
   let pageId = '';
   try { pageId = new URL(watchUrl).pathname.split('/').filter(Boolean)[0] || ''; } catch {}
   if (!/^v[a-z0-9]+/i.test(pageId)) return null;
 
+  const embedId = rumbleEmbedId(normalized);
+  if (!embedId) return null;
+
   const title = metaContent(normalized, 'og:title') || metaContent(normalized, 'twitter:title') || 'LIVE on Rumble';
   const thumbnailUrl = metaContent(normalized, 'og:image') || metaContent(normalized, 'twitter:image');
   const creatorName = metaContent(normalized, 'author') || metaContent(normalized, 'article:author') || 'Rumble creator';
   const description = metaContent(normalized, 'og:description');
-  const embedMatch = normalized.match(/https:\/\/rumble\.com\/embed\/(v[a-z0-9]+)\/?/i);
   const chatMatch = normalized.match(/(?:https:\/\/rumble\.com)?(\/chat\/popup\/[a-z0-9_-]+)/i);
   const viewerMatch = normalized.match(/(?:watching[_ -]?now|viewer[_ -]?count|watching now)[^0-9]{0,80}([0-9][0-9,.]*\s*[kKmM]?)/i);
   const viewerCount = parseCompactCount(viewerMatch?.[1] || '0');
@@ -864,7 +886,7 @@ function parseRumblePage(watchUrl, html) {
     id: `rumble:${pageId}`,
     provider: 'rumble',
     providerLabel: 'Rumble',
-    externalId: pageId,
+    externalId: embedId,
     channelId: '',
     channelSlug: '',
     creatorName,
@@ -876,7 +898,7 @@ function parseRumblePage(watchUrl, html) {
     thumbnailUrl,
     watchUrl,
     embedType: 'rumble',
-    embedUrl: embedMatch?.[1] ? `https://rumble.com/embed/${embedMatch[1]}/` : '',
+    embedUrl: `https://rumble.com/embed/${embedId}/`,
     chatUrl: chatMatch?.[1] ? `https://rumble.com${chatMatch[1]}` : '',
     isMature: false
   };
@@ -890,8 +912,9 @@ async function loadRumble() {
 
   try {
     const seedUrls = [
-      'https://rumble.com/',
+      'https://rumble.com/live-videos',
       'https://rumble.com/browse',
+      'https://rumble.com/',
       'https://rumble.com/category/24x7',
       'https://rumble.com/category/gaming',
       'https://rumble.com/category/news',
@@ -908,7 +931,15 @@ async function loadRumble() {
       });
     });
 
-    const detailPages = await Promise.allSettled(candidates.map(url => fetchHtml(url, RUMBLE_TIMEOUT_MS).then(html => parseRumblePage(url, html))));
+    const detailPages = await Promise.allSettled(
+      candidates.map(async url => {
+        const html = await fetchHtml(url, RUMBLE_TIMEOUT_MS);
+        const stream = parseRumblePage(url, html);
+        if (!stream?.externalId) return null;
+        const live = await rumbleIsLive(stream.externalId);
+        return live ? stream : null;
+      })
+    );
     const streams = detailPages
       .filter(result => result.status === 'fulfilled' && result.value)
       .map(result => result.value)
