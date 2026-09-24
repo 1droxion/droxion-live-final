@@ -10,6 +10,7 @@ const YOUTUBE_LIVE_CACHE_MS = 5 * 60 * 1000;
 const KICK_TARGET = 80;
 const TWITCH_TARGET = 60;
 const RUMBLE_TARGET = 20;
+const TROVO_TARGET = 60;
 const CACHE_FRESH_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 const RUMBLE_TIMEOUT_MS = 5000;
@@ -923,12 +924,115 @@ async function loadRumble() {
 }
 
 
+async function loadTrovo() {
+  const clientId = text(process.env.TROVO_CLIENT_ID);
+  if (!clientId) {
+    return { provider: 'trovo', enabled: false, streams: [], reason: 'missing_credentials' };
+  }
+
+  try {
+    const data = await fetchJson(
+      'https://open-api.trovo.live/openplatform/gettopchannels',
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Client-ID': clientId
+        },
+        body: JSON.stringify({
+          limit: Math.min(100, TROVO_TARGET),
+          after: true,
+          token: '',
+          cursor: 0,
+          category_id: ''
+        })
+      },
+      8000
+    );
+
+    const rows = Array.isArray(data?.top_channels_lists)
+      ? data.top_channels_lists
+      : Array.isArray(data?.top_channels_list)
+        ? data.top_channels_list
+        : [];
+
+    const streams = rows
+      .filter(item => item?.is_live !== false)
+      .map(item => {
+        const channelUrl = text(item?.channel_url);
+        let slug = text(
+          item?.username ||
+          item?.streamer_username ||
+          item?.streamer_info?.username ||
+          item?.streamer_info?.user_name
+        );
+
+        if (!slug && channelUrl) {
+          try {
+            slug = new URL(channelUrl).pathname.split('/').filter(Boolean)[0] || '';
+          } catch {}
+        }
+
+        if (!slug) return null;
+
+        const audienceType = text(item?.audi_type).toUpperCase();
+        const isMature = audienceType.includes('EIGHTEENPLUS');
+
+        return {
+          id: `trovo:${text(item?.channel_id || item?.streamer_user_id || slug)}`,
+          provider: 'trovo',
+          providerLabel: 'Trovo',
+          externalId: text(item?.channel_id || item?.streamer_user_id),
+          channelId: text(item?.channel_id || item?.streamer_user_id),
+          channelSlug: slug,
+          creatorName: text(
+            item?.nickname ||
+            item?.streamer_nickname ||
+            item?.streamer_info?.nickname ||
+            item?.streamer_info?.user_name,
+            slug
+          ),
+          title: text(item?.title || item?.live_title, 'LIVE on Trovo'),
+          category: normalizeCategory(item?.category_name || item?.title || item?.live_title || 'Live'),
+          language: text(item?.language_code || item?.language, 'en'),
+          viewerCount: number(item?.current_viewers || item?.viewer_count),
+          startedAt: text(item?.started_at),
+          thumbnailUrl: text(item?.thumbnail),
+          watchUrl: channelUrl || `https://trovo.live/${encodeURIComponent(slug)}`,
+          embedType: 'trovo',
+          isMature
+        };
+      })
+      .filter(Boolean)
+      .filter(stream => !stream.isMature)
+      .slice(0, TROVO_TARGET);
+
+    return {
+      provider: 'trovo',
+      enabled: true,
+      streams,
+      reason: streams.length ? '' : 'empty_result',
+      cacheUsed: false
+    };
+  } catch (error) {
+    console.error('[live-hub] Trovo discovery failed', text(error?.message, 'unknown'));
+    return {
+      provider: 'trovo',
+      enabled: true,
+      streams: [],
+      reason: 'provider_error',
+      error: 'Trovo LIVE discovery is temporarily unavailable.'
+    };
+  }
+}
+
 async function loadPartnerProvider(provider) {
   const cached = await readProviderCache(`partner-${provider}-live-v1`).catch(() => null);
   const rows = Array.isArray(cached?.payload) ? cached.payload : [];
   return {
     provider,
-    enabled: true,
+    enabled: rows.length > 0,
     streams: rows.slice(0, 80),
     reason: rows.length ? '' : 'awaiting_partner_feed',
     cacheUsed: true
@@ -979,10 +1083,15 @@ export default async function handler(req, res) {
 
   const requested = clampLimit(req.query?.limit);
 
-  const [youtube, kick, twitch] = await Promise.all([
+  const [youtube, kick, twitch, rumble, trovo, tango, liveme, poppo] = await Promise.all([
     loadYouTube(),
     loadKick(),
-    loadTwitch()
+    loadTwitch(),
+    loadRumble(),
+    loadTrovo(),
+    loadTango(),
+    loadLiveMe(),
+    loadPoppo()
   ]);
 
   const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET)
@@ -991,9 +1100,14 @@ export default async function handler(req, res) {
     .filter(stream => !stream?.isMature);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET)
     .filter(stream => !stream?.isMature);
+  const rumbleRows = (rumble.streams || []).filter(stream => !stream?.isMature).slice(0, RUMBLE_TARGET);
+  const trovoRows = (trovo.streams || []).filter(stream => !stream?.isMature).slice(0, TROVO_TARGET);
+  const tangoRows = (tango.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
+  const livemeRows = (liveme.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
+  const poppoRows = (poppo.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
 
   const streams = interleaveProviders(
-    [ytRows, twitchRows, kickRows],
+    [ytRows, twitchRows, kickRows, rumbleRows, trovoRows, tangoRows, livemeRows, poppoRows],
     requested
   ).filter(stream => !stream?.isMature);
 
@@ -1005,7 +1119,12 @@ export default async function handler(req, res) {
   const providers = {
     youtube: providerState(youtube, ytRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
-    kick: providerState(kick, kickRows, counts)
+    kick: providerState(kick, kickRows, counts),
+    rumble: providerState(rumble, rumbleRows, counts),
+    trovo: providerState(trovo, trovoRows, counts),
+    tango: providerState(tango, tangoRows, counts),
+    liveme: providerState(liveme, livemeRows, counts),
+    poppo: providerState(poppo, poppoRows, counts)
   };
 
   res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
@@ -1013,7 +1132,7 @@ export default async function handler(req, res) {
     streams,
     providers,
     approvedWomenOnly: false,
-    publicProviders: ['youtube', 'twitch', 'kick'],
+    publicProviders: ['youtube', 'twitch', 'kick', 'rumble', 'trovo', 'tango', 'liveme', 'poppo'],
     generatedAt: new Date().toISOString()
   });
 }
