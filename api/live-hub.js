@@ -985,8 +985,11 @@ async function loadRumbleCreatorApis() {
   )].slice(0, 50);
 
   if (!urls.length) {
+    console.log('[live-hub] Rumble creator API configured', false);
     return { provider: 'rumble', enabled: true, streams: [], reason: 'creator_api_not_configured' };
   }
+
+  console.log('[live-hub] Rumble creator API configured', true, 'feeds', urls.length);
 
   const results = await Promise.allSettled(
     urls.map(async apiUrl => {
@@ -1042,6 +1045,8 @@ async function loadRumbleCreatorApis() {
     results.flatMap(result => result.status === 'fulfilled' ? result.value : []),
     RUMBLE_TARGET
   );
+
+  console.log('[live-hub] Rumble creator API LIVE streams', streams.length);
 
   return {
     provider: 'rumble',
