@@ -8,6 +8,27 @@ const DROXION_POLL_MS = 1500;
 const SOURCE_LIMIT = 180;
 const CHAT_LIMIT = 1000;
 const CHAT_CACHE_PREFIX = 'droxion.live.chat.v2:';
+const GIFT_CATALOG_CACHE_KEY = 'droxion.gifts.catalog.v1';
+const GIFT_CATALOG_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+
+function readCachedGiftOptions() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(GIFT_CATALOG_CACHE_KEY) || '{}');
+    const age = Date.now() - Number(cached?.cachedAt || 0);
+    if (!Array.isArray(cached?.rows) || age > GIFT_CATALOG_CACHE_MAX_AGE_MS) return [];
+    return cached.rows;
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedGiftOptions(rows) {
+  if (typeof window === 'undefined' || !Array.isArray(rows) || !rows.length) return;
+  try {
+    window.localStorage.setItem(GIFT_CATALOG_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), rows }));
+  } catch {}
+}
 
 function apiPath(path) {
   return `${Capacitor.isNativePlatform() ? 'https://www.droxion.com' : ''}${path}`;
@@ -163,7 +184,7 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
   const [messages, setMessages] = useState(() => readCachedMessages(key));
   const [sourceMessages, setSourceMessages] = useState([]);
   const [sourceStatus, setSourceStatus] = useState('Connecting source chat…');
-  const [giftOptions, setGiftOptions] = useState([]);
+  const [giftOptions, setGiftOptions] = useState(() => readCachedGiftOptions());
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
@@ -297,7 +318,10 @@ export default function ExternalLiveDroxionChat({ stream, currentUserId, coins =
 
   useEffect(() => {
     supabase.rpc('droxion_gift_options').then(({ data, error }) => {
-      if (!error) setGiftOptions(Array.isArray(data) ? data : []);
+      if (!error && Array.isArray(data) && data.length) {
+        setGiftOptions(data);
+        writeCachedGiftOptions(data);
+      }
     }).catch(() => {});
   }, []);
 
