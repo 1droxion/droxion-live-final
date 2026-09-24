@@ -15,6 +15,27 @@ const PULL_THRESHOLD = 58;
 const VIEWER_HEARTBEAT_MS = 45000;
 const MAX_GIFT_QUANTITY = 10;
 const LIVE_AD_FAIL_OPEN_MS = 15000;
+const GIFT_CATALOG_CACHE_KEY = 'droxion.gifts.catalog.v1';
+const GIFT_CATALOG_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+
+function readCachedGiftOptions() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(GIFT_CATALOG_CACHE_KEY) || '{}');
+    const age = Date.now() - Number(cached?.cachedAt || 0);
+    if (!Array.isArray(cached?.rows) || age > GIFT_CATALOG_CACHE_MAX_AGE_MS) return [];
+    return cached.rows;
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedGiftOptions(rows) {
+  if (typeof window === 'undefined' || !Array.isArray(rows) || !rows.length) return;
+  try {
+    window.localStorage.setItem(GIFT_CATALOG_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), rows }));
+  } catch {}
+}
 const GIFT_TABS = [
   { id: 'popular', label: 'Popular' },
   { id: 'premium', label: 'Premium' },
@@ -75,7 +96,7 @@ export default function ProductionLiveBrowser({
   // Viewer interaction only. These states do not participate in LiveKit.
   const [messages, setMessages] = useState([]);
   const [giftEvents, setGiftEvents] = useState([]);
-  const [giftOptions, setGiftOptions] = useState([]);
+  const [giftOptions, setGiftOptions] = useState(() => readCachedGiftOptions());
   const [giftTab, setGiftTab] = useState('popular');
   const [selectedGift, setSelectedGift] = useState(null);
   const [selectedGiftQuantity, setSelectedGiftQuantity] = useState(1);
@@ -121,7 +142,10 @@ export default function ProductionLiveBrowser({
   useEffect(() => {
     loadFeed();
     safeRpc('droxion_gift_options').then(({ data, error }) => {
-      if (!error) setGiftOptions(Array.isArray(data) ? data : []);
+      if (!error && Array.isArray(data) && data.length) {
+        setGiftOptions(data);
+        writeCachedGiftOptions(data);
+      }
     }).catch(() => {});
 
     const queueRefresh = () => {
