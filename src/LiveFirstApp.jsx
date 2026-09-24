@@ -21,6 +21,8 @@ import './product-shell.css';
 
 const PENDING_LIVE_PUSH_KEY = 'droxion.pendingLivePush';
 const PENDING_CHAT_PUSH_KEY = 'droxion.pendingChatPush';
+const WALLET_PRODUCT_CACHE_KEY = 'droxion.wallet.products.v1';
+const GIFT_CATALOG_CACHE_KEY = 'droxion.gifts.catalog.v1';
 
 const TABS = [
   { id: 'live', label: 'Home', icon: Home },
@@ -50,6 +52,45 @@ export default function LiveFirstApp() {
     const { data, error } = await supabase.from('droxion_wallets').select('coin_balance').eq('user_id', authUser.id).maybeSingle();
     if (!error && data) setCoins(Number(data.coin_balance || 0));
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const warmCommerceData = async () => {
+      const [productsResult, giftsResult] = await Promise.allSettled([
+        supabase
+          .from('droxion_products')
+          .select('id,product_type,name,price_cents,coins_granted,plan,sort_order,apple_product_id,google_product_id')
+          .eq('active', true)
+          .order('sort_order'),
+        supabase.rpc('droxion_gift_options')
+      ]);
+
+      if (cancelled) return;
+
+      const products = productsResult.status === 'fulfilled' && !productsResult.value?.error
+        ? (productsResult.value?.data || [])
+        : [];
+      const gifts = giftsResult.status === 'fulfilled' && !giftsResult.value?.error
+        ? (giftsResult.value?.data || [])
+        : [];
+
+      try {
+        if (products.length) {
+          window.localStorage.setItem(WALLET_PRODUCT_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), rows: products }));
+        }
+        if (gifts.length) {
+          window.localStorage.setItem(GIFT_CATALOG_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), rows: gifts }));
+        }
+      } catch {}
+    };
+
+    const timer = window.setTimeout(warmCommerceData, 100);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
