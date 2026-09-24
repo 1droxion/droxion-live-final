@@ -5,6 +5,27 @@ import { Coins, X } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 const DROXION_API_ORIGIN = 'https://www.droxion.com';
+const WALLET_PRODUCT_CACHE_KEY = 'droxion.wallet.products.v1';
+const WALLET_PRODUCT_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+
+function readCachedProducts() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(WALLET_PRODUCT_CACHE_KEY) || '{}');
+    const age = Date.now() - Number(cached?.cachedAt || 0);
+    if (!Array.isArray(cached?.rows) || age > WALLET_PRODUCT_CACHE_MAX_AGE_MS) return [];
+    return cached.rows;
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedProducts(rows) {
+  if (typeof window === 'undefined' || !Array.isArray(rows) || !rows.length) return;
+  try {
+    window.localStorage.setItem(WALLET_PRODUCT_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), rows }));
+  } catch {}
+}
 
 function getNativeStorePlatform() {
   try {
@@ -39,9 +60,10 @@ function androidProductId(transaction, fallback = '') {
 }
 
 export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free', onClose, onBalanceRefresh }) {
-  const [products, setProducts] = useState([]);
+  const initialProductsRef = useRef(readCachedProducts());
+  const [products, setProducts] = useState(() => initialProductsRef.current);
   const [storeProducts, setStoreProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => initialProductsRef.current.length === 0);
   const [storeLoading, setStoreLoading] = useState(false);
   const [checkoutId, setCheckoutId] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -66,8 +88,15 @@ export default function DroxionWallet({ coins = 0, freeMatches = 0, plan = 'free
         .eq('active', true)
         .order('sort_order');
       if (!alive) return;
-      if (queryError) setError(queryError.message || 'Unable to load Droxion products.');
-      else setProducts(data || []);
+      if (queryError) {
+        if (!initialProductsRef.current.length) setError(queryError.message || 'Unable to load Droxion products.');
+      } else {
+        const rows = data || [];
+        if (rows.length) {
+          setProducts(rows);
+          writeCachedProducts(rows);
+        }
+      }
       setLoading(false);
     })();
     return () => { alive = false; };
