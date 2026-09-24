@@ -1023,11 +1023,10 @@ export default async function handler(req, res) {
 
   const requested = clampLimit(req.query?.limit);
 
-  const [youtube, kick, twitch, rumble, tango, liveme, poppo] = await Promise.all([
+  const [youtube, kick, twitch, tango, liveme, poppo] = await Promise.all([
     loadYouTube(),
     loadKick(),
     loadTwitch(),
-    loadRumble(),
     loadTango(),
     loadLiveMe(),
     loadPoppo()
@@ -1039,13 +1038,12 @@ export default async function handler(req, res) {
     .filter(stream => !stream?.isMature);
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET)
     .filter(stream => !stream?.isMature);
-  const rumbleRows = (rumble.streams || []).filter(stream => !stream?.isMature).slice(0, RUMBLE_TARGET);
   const tangoRows = (tango.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
   const livemeRows = (liveme.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
   const poppoRows = (poppo.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
 
   const streams = interleaveProviders(
-    [ytRows, twitchRows, kickRows, rumbleRows, tangoRows, livemeRows, poppoRows],
+    [ytRows, twitchRows, kickRows, tangoRows, livemeRows, poppoRows],
     requested
   ).filter(stream => !stream?.isMature);
 
@@ -1058,7 +1056,6 @@ export default async function handler(req, res) {
     youtube: providerState(youtube, ytRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
     kick: providerState(kick, kickRows, counts),
-    rumble: providerState(rumble, rumbleRows, counts),
     tango: providerState(tango, tangoRows, counts),
     liveme: providerState(liveme, livemeRows, counts),
     poppo: providerState(poppo, poppoRows, counts)
@@ -1069,7 +1066,7 @@ export default async function handler(req, res) {
     streams,
     providers,
     approvedWomenOnly: false,
-    publicProviders: ['youtube', 'twitch', 'kick', 'rumble', 'tango', 'liveme', 'poppo'],
+    publicProviders: ['youtube', 'twitch', 'kick', 'tango', 'liveme', 'poppo'],
     generatedAt: new Date().toISOString()
   });
 }
