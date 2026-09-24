@@ -1180,3 +1180,5 @@ export default async function handler(req, res) {
     generatedAt: new Date().toISOString()
   });
 }
+
+// redeploy-marker: rumble-api-env-2026-09-24
