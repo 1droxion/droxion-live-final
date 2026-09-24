@@ -995,10 +995,7 @@ export default async function handler(req, res) {
   const streams = interleaveProviders(
     [ytRows, twitchRows, kickRows],
     requested
-  ).filter(stream => !stream?.isMature).map(stream => ({
-    ...stream,
-    providerLabel: ''
-  }));
+  ).filter(stream => !stream?.isMature);
 
   const counts = streams.reduce((map, stream) => {
     map[stream.provider] = (map[stream.provider] || 0) + 1;
