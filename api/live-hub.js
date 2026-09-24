@@ -9,7 +9,7 @@ const YOUTUBE_DISCOVERY_CACHE_MS = 6 * 60 * 60 * 1000;
 const YOUTUBE_LIVE_CACHE_MS = 5 * 60 * 1000;
 const KICK_TARGET = 80;
 const TWITCH_TARGET = 60;
-const RUMBLE_TARGET = 20;
+const RUMBLE_TARGET = 40;
 const CACHE_FRESH_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 const RUMBLE_TIMEOUT_MS = 5000;
@@ -820,7 +820,7 @@ function rumbleLinks(html) {
   const normalized = String(html || '').replace(/\\\//g, '/');
   const regex = /href=["']([^"']*\/v[a-z0-9]+-[^"']+\.html(?:\?[^"']*)?)["']/gi;
   let match;
-  while ((match = regex.exec(normalized)) && links.length < 50) {
+  while ((match = regex.exec(normalized)) && links.length < 120) {
     try {
       const url = new URL(decodeHtml(match[1]), 'https://rumble.com');
       if (url.hostname !== 'rumble.com' && url.hostname !== 'www.rumble.com') continue;
@@ -883,7 +883,7 @@ function parseRumblePage(watchUrl, html) {
 }
 
 async function loadRumble() {
-  const cached = await readProviderCache('rumble-public-live-v1').catch(() => null);
+  const cached = await readProviderCache('rumble-public-live-v2').catch(() => null);
   const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
   const age = cached?.updatedAt ? Date.now() - Date.parse(cached.updatedAt) : Infinity;
   if (cachedRows.length >= 5 && age < CACHE_FRESH_MS) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), cacheUsed: true };
@@ -891,9 +891,12 @@ async function loadRumble() {
   try {
     const seedUrls = [
       'https://rumble.com/',
+      'https://rumble.com/browse',
       'https://rumble.com/category/24x7',
       'https://rumble.com/category/gaming',
-      'https://rumble.com/category/news'
+      'https://rumble.com/category/news',
+      'https://rumble.com/category/entertainment',
+      'https://rumble.com/category/sports'
     ];
     const seedPages = await Promise.allSettled(seedUrls.map(url => fetchHtml(url, 3500)));
     const candidates = [];
@@ -901,7 +904,7 @@ async function loadRumble() {
     seedPages.forEach(result => {
       if (result.status !== 'fulfilled') return;
       rumbleLinks(result.value).forEach(url => {
-        if (!seen.has(url) && candidates.length < 24) { seen.add(url); candidates.push(url); }
+        if (!seen.has(url) && candidates.length < 60) { seen.add(url); candidates.push(url); }
       });
     });
 
@@ -911,7 +914,7 @@ async function loadRumble() {
       .map(result => result.value)
       .slice(0, RUMBLE_TARGET);
 
-    if (streams.length) await writeProviderCache('rumble-public-live-v1', streams).catch(() => {});
+    if (streams.length) await writeProviderCache('rumble-public-live-v2', streams).catch(() => {});
     if (streams.length) return { provider: 'rumble', enabled: true, streams, reason: '', cacheUsed: false };
     if (cachedRows.length) return { provider: 'rumble', enabled: true, streams: cachedRows.slice(0, RUMBLE_TARGET), reason: '', cacheUsed: true, fallbackUsed: true };
     return { provider: 'rumble', enabled: true, streams: [], reason: 'empty_result' };
