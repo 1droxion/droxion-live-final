@@ -1,9 +1,10 @@
 import { supabase } from '../supabaseClient';
 import { highlightCountForLiveDuration } from './liveHighlightPolicy';
 
-const SEGMENT_MS = 30_000;
+const SEGMENT_MS = 40_000;
 const DATA_SLICE_MS = 1_000;
-const MIN_CLIP_SECONDS = 15;
+const MIN_CLIP_SECONDS = 30;
+const MAX_CLIP_SECONDS = 50;
 const MAX_SEGMENTS = 60; // ~30 minutes retained on device.
 const CAMERA_REPLACED_EVENT = 'droxion:live-camera-replaced';
 
@@ -115,7 +116,7 @@ export function createLiveHighlightRecorder({ creatorId, sessionId, stream, titl
       segments.push({
         blob,
         mimeType,
-        durationSeconds: Math.min(45, durationSeconds),
+        durationSeconds: Math.min(MAX_CLIP_SECONDS, durationSeconds),
         score: currentScore,
         cameraFacing: currentSegmentFacing,
         sourceStartMs: currentStartedAt - liveStartedAt,
