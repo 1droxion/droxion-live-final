@@ -16,7 +16,11 @@ const config = Object.freeze({
   reelAdsEnabled: enabled(import.meta.env.VITE_DROXION_REEL_ADS),
   reelInterval: positiveInt(import.meta.env.VITE_DROXION_REEL_AD_INTERVAL, 6, 3),
   homeAdsEnabled: enabled(import.meta.env.VITE_DROXION_HOME_ADS),
-  homeInterval: positiveInt(import.meta.env.VITE_DROXION_HOME_AD_INTERVAL, 4, 3)
+  homeInterval: positiveInt(import.meta.env.VITE_DROXION_HOME_AD_INTERVAL, 4, 3),
+  adsenseClient: String(import.meta.env.VITE_ADSENSE_CLIENT || '').trim(),
+  adsenseReelSlot: String(import.meta.env.VITE_ADSENSE_REEL_SLOT || '').trim(),
+  adsenseHomeSlot: String(import.meta.env.VITE_ADSENSE_HOME_SLOT || '').trim(),
+  adsensePlayerSlot: String(import.meta.env.VITE_ADSENSE_PLAYER_SLOT || '').trim()
 });
 
 const LIVE_OPEN_COUNT_KEY = 'droxion.ads.live.openCount';
@@ -48,10 +52,73 @@ export default function AdReadyEnhancer() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
+    const adsenseConnected = Boolean(
+      config.adsenseClient &&
+      (config.adsenseReelSlot || config.adsenseHomeSlot || config.adsensePlayerSlot)
+    );
+
     window.__droxionAdReady = {
-      version: 3,
+      version: 4,
       ...config,
-      providerConnected: false
+      providerConnected: adsenseConnected,
+      provider: adsenseConnected ? 'adsense' : ''
+    };
+
+    if (adsenseConnected && !document.querySelector('script[data-droxion-adsense]')) {
+      const script = document.createElement('script');
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.dataset.droxionAdsense = 'true';
+      script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(config.adsenseClient)}`;
+      document.head.appendChild(script);
+    }
+
+    const pushAd = node => {
+      if (!node || node.dataset.droxionAdRequested === 'true') return;
+      node.dataset.droxionAdRequested = 'true';
+      window.setTimeout(() => {
+        try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch {}
+      }, 0);
+    };
+
+    const createDisplayAd = (placement, slot) => {
+      if (!adsenseConnected || !slot) return null;
+      const wrap = document.createElement('div');
+      wrap.className = 'droxionDisplayAd';
+      wrap.dataset.droxionGeneratedAd = placement;
+      wrap.setAttribute('aria-label', 'Advertisement');
+
+      const label = document.createElement('span');
+      label.className = 'droxionAdLabel';
+      label.textContent = 'ADVERTISEMENT';
+
+      const ins = document.createElement('ins');
+      ins.className = 'adsbygoogle';
+      ins.style.display = 'block';
+      ins.dataset.adClient = config.adsenseClient;
+      ins.dataset.adSlot = slot;
+      ins.dataset.adFormat = 'auto';
+      ins.dataset.fullWidthResponsive = 'true';
+
+      wrap.append(label, ins);
+      pushAd(ins);
+      return wrap;
+    };
+
+    const ensureAdAfter = (node, placement, slot) => {
+      if (!node || !slot) return;
+      const next = node.nextElementSibling;
+      if (next?.dataset?.droxionGeneratedAd === placement) return;
+      const ad = createDisplayAd(placement, slot);
+      if (ad) node.insertAdjacentElement('afterend', ad);
+    };
+
+    const fillPlayerAd = slotNode => {
+      if (!slotNode || !config.adsensePlayerSlot || slotNode.dataset.droxionFilled === 'true') return;
+      slotNode.dataset.droxionFilled = 'true';
+      const ad = createDisplayAd('live_below_player', config.adsensePlayerSlot);
+      if (!ad) return;
+      slotNode.replaceChildren(ad);
     };
 
     const completeWithoutAd = (detail, reason) => {
@@ -71,6 +138,7 @@ export default function AdReadyEnhancer() {
         if (breakAfter) {
           slide.dataset.droxionAdBreakAfter = 'reel_native';
           slide.dataset.droxionAdPlacement = `reel_native_${index + 1}`;
+          ensureAdAfter(slide, `reel_native_${index + 1}`, config.adsenseReelSlot);
         } else {
           delete slide.dataset.droxionAdBreakAfter;
           delete slide.dataset.droxionAdPlacement;
@@ -83,6 +151,7 @@ export default function AdReadyEnhancer() {
         if (breakAfter) {
           card.dataset.droxionAdBreakAfter = 'home_live_native';
           card.dataset.droxionAdPlacement = `home_live_native_${index + 1}`;
+          ensureAdAfter(card, `home_live_native_${index + 1}`, config.adsenseHomeSlot);
         } else {
           delete card.dataset.droxionAdBreakAfter;
           delete card.dataset.droxionAdPlacement;
@@ -91,8 +160,12 @@ export default function AdReadyEnhancer() {
 
       const belowPlayerSlots = Array.from(document.querySelectorAll('.dxLiveAdSlot[data-droxion-ad-placement="live_below_player"]'));
       belowPlayerSlots.forEach(slot => {
-        if (providerReady && config.homeAdsEnabled) slot.dataset.adActive = 'true';
-        else delete slot.dataset.adActive;
+        if (providerReady && config.homeAdsEnabled) {
+          slot.dataset.adActive = 'true';
+          fillPlayerAd(slot);
+        } else {
+          delete slot.dataset.adActive;
+        }
       });
     };
 
