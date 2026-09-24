@@ -1,13 +1,13 @@
 import { readProviderCache, writeProviderCache } from '../server/external-live-cache.js';
 
-const MAX_LIMIT = 200;
-const MIN_LIVE_VIEWERS = 5000;
-const YOUTUBE_TARGET = 100;
+const MAX_LIMIT = 260;
+const MIN_LIVE_VIEWERS = 1000;
+const YOUTUBE_TARGET = 120;
 const YOUTUBE_DISCOVERY_TARGET = 250;
 const YOUTUBE_DISCOVERY_CACHE_MS = 6 * 60 * 60 * 1000;
 const YOUTUBE_LIVE_CACHE_MS = 5 * 60 * 1000;
-const KICK_TARGET = 60;
-const TWITCH_TARGET = 40;
+const KICK_TARGET = 80;
+const TWITCH_TARGET = 60;
 const RUMBLE_TARGET = 20;
 const CACHE_FRESH_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
@@ -807,6 +807,7 @@ export default async function handler(req, res) {
     ...rumbleRows
   ]
     .filter(stream => {
+      if (stream?.isMature) return false;
       if (stream.provider === 'youtube') return true;
       return number(stream.viewerCount) >= MIN_LIVE_VIEWERS;
     })
