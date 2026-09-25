@@ -1098,183 +1098,6 @@ async function loadRumbleCombined() {
 }
 
 
-function partnerFeedConfig(provider) {
-  const key = provider.toUpperCase();
-  return {
-    url: text(process.env[`${key}_LIVE_FEED_URL`]),
-    token: text(process.env[`${key}_LIVE_FEED_TOKEN`])
-  };
-}
-
-function partnerFeedRows(payload) {
-  if (Array.isArray(payload)) return payload;
-  for (const key of ['streams', 'data', 'items', 'lives', 'results']) {
-    if (Array.isArray(payload?.[key])) return payload[key];
-  }
-  return [];
-}
-
-function normalizePartnerFeedStream(provider, row, index) {
-  const channelIdentifier = text(
-    row?.channelIdentifier ||
-    row?.channelId ||
-    row?.channelSlug ||
-    row?.userId ||
-    row?.creatorId ||
-    row?.uid ||
-    row?.id
-  );
-  const externalId = text(row?.externalId || row?.streamId || row?.liveId || row?.id);
-  const embedUrl = text(row?.embedUrl || row?.playerUrl || row?.playUrl);
-  const watchUrl = text(row?.watchUrl || row?.url || row?.webUrl || row?.shareUrl);
-  const hlsUrl = text(row?.hlsUrl || row?.hls || row?.m3u8Url);
-
-  if (!channelIdentifier || (!embedUrl && !watchUrl && !hlsUrl)) return null;
-
-  const approvedWoman = row?.approvedWoman === true;
-  const adultVerified = row?.adultVerified === true;
-  if (!approvedWoman || !adultVerified) return null;
-
-  return {
-    id: `${provider}:${externalId || channelIdentifier || index}`,
-    provider,
-    providerLabel: provider === 'liveme' ? 'LiveMe' : provider === 'poppo' ? 'Poppo' : 'Tango',
-    externalId,
-    channelId: text(row?.channelId || channelIdentifier),
-    channelSlug: text(row?.channelSlug || channelIdentifier),
-    creatorName: text(
-      row?.creatorName ||
-      row?.displayName ||
-      row?.name ||
-      row?.nickname ||
-      row?.username,
-      'LIVE creator'
-    ),
-    title: text(row?.title || row?.liveTitle, 'LIVE now'),
-    category: normalizeCategory(row?.category || row?.title || 'Live'),
-    language: text(row?.language || row?.lang),
-    viewerCount: Math.max(0, number(
-      row?.viewerCount ??
-      row?.viewers ??
-      row?.watchingNow ??
-      row?.online
-    )),
-    startedAt: text(row?.startedAt || row?.started_at || row?.startTime),
-    thumbnailUrl: text(
-      row?.thumbnailUrl ||
-      row?.thumbnail ||
-      row?.coverUrl ||
-      row?.cover ||
-      row?.avatarUrl
-    ),
-    watchUrl: watchUrl || embedUrl || hlsUrl,
-    embedType: provider,
-    embedUrl: embedUrl || hlsUrl,
-    chatUrl: text(row?.chatUrl || row?.chat_url),
-    isMature: false,
-    approvedWoman: true,
-    adultVerified: true,
-    partnerVerified: true,
-    source: 'partner_feed'
-  };
-}
-
-async function loadPartnerProvider(provider) {
-  const cacheKey = `partner-${provider}-live-v1`;
-  const cached = await readProviderCache(cacheKey).catch(() => null);
-  const cachedRows = Array.isArray(cached?.payload) ? cached.payload : [];
-  const config = partnerFeedConfig(provider);
-
-  if (config.url) {
-    try {
-      const url = new URL(config.url);
-      if (url.protocol !== 'https:') throw new Error('Partner feed must use HTTPS');
-
-      const headers = { Accept: 'application/json' };
-      if (config.token) headers.Authorization = `Bearer ${config.token}`;
-
-      const payload = await fetchJson(url, { headers }, 7000);
-      const streams = partnerFeedRows(payload)
-        .map((row, index) => normalizePartnerFeedStream(provider, row, index))
-        .filter(Boolean)
-        .slice(0, 80);
-
-      if (streams.length) {
-        await writeProviderCache(cacheKey, streams).catch(() => {});
-        return {
-          provider,
-          enabled: true,
-          streams,
-          reason: '',
-          cacheUsed: false,
-          source: 'partner_feed'
-        };
-      }
-
-      if (cachedRows.length) {
-        return {
-          provider,
-          enabled: true,
-          streams: cachedRows.slice(0, 80),
-          reason: '',
-          cacheUsed: true,
-          fallbackUsed: true,
-          source: 'cache'
-        };
-      }
-
-      return {
-        provider,
-        enabled: false,
-        streams: [],
-        reason: 'partner_feed_empty',
-        cacheUsed: false
-      };
-    } catch (error) {
-      console.error(`[live-hub] ${provider} partner feed failed`, text(error?.message, 'unknown'));
-      if (cachedRows.length) {
-        return {
-          provider,
-          enabled: true,
-          streams: cachedRows.slice(0, 80),
-          reason: '',
-          cacheUsed: true,
-          fallbackUsed: true,
-          source: 'cache'
-        };
-      }
-      return {
-        provider,
-        enabled: false,
-        streams: [],
-        reason: 'partner_feed_error',
-        error: `${provider} partner feed is unavailable.`,
-        cacheUsed: false
-      };
-    }
-  }
-
-  return {
-    provider,
-    enabled: cachedRows.length > 0,
-    streams: cachedRows.slice(0, 80),
-    reason: cachedRows.length ? '' : 'awaiting_partner_feed',
-    cacheUsed: true
-  };
-}
-
-async function loadTango() {
-  return loadPartnerProvider('tango');
-}
-
-async function loadLiveMe() {
-  return loadPartnerProvider('liveme');
-}
-
-async function loadPoppo() {
-  return loadPartnerProvider('poppo');
-}
-
 function interleaveProviders(groups, limit) {
   const result = [];
   const max = Math.max(0, ...groups.map(group => group.length));
@@ -1307,14 +1130,11 @@ export default async function handler(req, res) {
 
   const requested = clampLimit(req.query?.limit);
 
-  const [youtube, kick, twitch, rumble, tango, liveme, poppo] = await Promise.all([
+  const [youtube, kick, twitch, rumble] = await Promise.all([
     loadYouTube(),
     loadKick(),
     loadTwitch(),
-    loadRumbleCombined(),
-    loadTango(),
-    loadLiveMe(),
-    loadPoppo()
+    loadRumbleCombined()
   ]);
 
   const ytRows = focusLanguages(youtube.streams || [], YOUTUBE_TARGET)
@@ -1324,12 +1144,9 @@ export default async function handler(req, res) {
   const twitchRows = focusLanguages(twitch.streams || [], TWITCH_TARGET)
     .filter(stream => !stream?.isMature);
   const rumbleRows = (rumble.streams || []).filter(stream => !stream?.isMature).slice(0, RUMBLE_TARGET);
-  const tangoRows = (tango.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
-  const livemeRows = (liveme.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
-  const poppoRows = (poppo.streams || []).filter(stream => !stream?.isMature).slice(0, 80);
 
   const streams = interleaveProviders(
-    [ytRows, twitchRows, kickRows, rumbleRows, tangoRows, livemeRows, poppoRows],
+    [ytRows, twitchRows, kickRows, rumbleRows],
     requested
   ).filter(stream => !stream?.isMature);
 
@@ -1342,10 +1159,7 @@ export default async function handler(req, res) {
     youtube: providerState(youtube, ytRows, counts),
     twitch: providerState(twitch, twitchRows, counts),
     kick: providerState(kick, kickRows, counts),
-    rumble: providerState(rumble, rumbleRows, counts),
-    tango: providerState(tango, tangoRows, counts),
-    liveme: providerState(liveme, livemeRows, counts),
-    poppo: providerState(poppo, poppoRows, counts)
+    rumble: providerState(rumble, rumbleRows, counts)
   };
 
   res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=180');
@@ -1353,7 +1167,7 @@ export default async function handler(req, res) {
     streams,
     providers,
     approvedWomenOnly: false,
-    publicProviders: ['youtube', 'twitch', 'kick', 'rumble', 'tango', 'liveme', 'poppo'],
+    publicProviders: ['youtube', 'twitch', 'kick', 'rumble'],
     generatedAt: new Date().toISOString()
   });
 }
