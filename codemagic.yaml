@@ -10,8 +10,8 @@ workflows:
       vars:
         APP_NAME: Droxion Live
         PACKAGE_NAME: com.droxion.live
-        ANDROID_VERSION_NAME: "1.3"
-        ANDROID_VERSION_CODE_BASE: "120000"
+        ANDROID_VERSION_NAME: "1.6"
+        ANDROID_VERSION_CODE_BASE: "160000"
         VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
         VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
         CM_CLONE_DEPTH: "50"
@@ -56,7 +56,8 @@ workflows:
       - name: Verify Android 16 target
         script: |
           set -e
-          grep -E "compileSdkVersion|targetSdkVersion" android/variables.gradle || true
+          grep -E "minSdkVersion|compileSdkVersion|targetSdkVersion" android/variables.gradle || true
+          grep -q "minSdkVersion = 24" android/variables.gradle
           grep -q "compileSdkVersion = 36" android/variables.gradle
           grep -q "targetSdkVersion = 36" android/variables.gradle
           grep -q 'android:scheme="com.droxion.live"' android/app/src/main/AndroidManifest.xml
