@@ -186,9 +186,14 @@ async function fetchHtml(url, timeoutMs = RUMBLE_TIMEOUT_MS) {
   try {
     const response = await fetch(url, {
       signal: timeout.signal,
+      redirect: 'follow',
       headers: {
-        Accept: 'text/html,application/xhtml+xml',
-        'User-Agent': 'Mozilla/5.0 (compatible; DroxionLive/1.0; +https://www.droxion.com)'
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+        Referer: 'https://rumble.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
       }
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -817,23 +822,15 @@ function metaContent(html, key) {
 function rumbleLinks(html) {
   const links = [];
   const seen = new Set();
-  const normalized = String(html || '').replace(/\\\//g, '/');
-  const anchorRegex = /<a\b([^>]+)>/gi;
-  let match;
+  const normalized = decodeHtml(String(html || '').replace(/\\\//g, '/'));
 
-  while ((match = anchorRegex.exec(normalized)) && links.length < 120) {
-    const attrs = match[1] || '';
-    const classMatch = attrs.match(/\bclass\s*=\s*["']([^"']+)["']/i);
-    const classes = classMatch?.[1] || '';
-    if (!/\b(video-item--a|videostream__link)\b/i.test(classes)) continue;
-
-    const hrefMatch = attrs.match(/\bhref\s*=\s*["']([^"']+)["']/i);
-    const href = decodeHtml(hrefMatch?.[1] || '');
-    if (!href || !/^\/?v[\w.-]+\.html(?:\?|$)/i.test(href)) continue;
-
+  const addHref = hrefValue => {
+    if (links.length >= 160) return;
+    const href = decodeHtml(hrefValue || '').trim();
+    if (!href || !/(?:^|\/)v[\w.-]+\.html(?:[?#]|$)/i.test(href)) return;
     try {
       const url = new URL(href, 'https://rumble.com');
-      if (url.hostname !== 'rumble.com' && url.hostname !== 'www.rumble.com') continue;
+      if (!['rumble.com', 'www.rumble.com'].includes(url.hostname)) return;
       url.search = '';
       url.hash = '';
       const clean = url.toString();
@@ -842,6 +839,21 @@ function rumbleLinks(html) {
         links.push(clean);
       }
     } catch {}
+  };
+
+  const anchorRegex = /<a\b([^>]+)>/gi;
+  let match;
+  while ((match = anchorRegex.exec(normalized)) && links.length < 160) {
+    const attrs = match[1] || '';
+    const hrefMatch = attrs.match(/\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
+    addHref(hrefMatch?.[1] || hrefMatch?.[2] || hrefMatch?.[3] || '');
+  }
+
+  if (links.length < 20) {
+    const rawUrlRegex = /(?:https?:\/\/(?:www\.)?rumble\.com)?(\/v[\w.-]+\.html)(?:[?#][^"'\s<>]*)?/gi;
+    while ((match = rawUrlRegex.exec(normalized)) && links.length < 160) {
+      addHref(match[1]);
+    }
   }
 
   return links;
@@ -928,8 +940,15 @@ async function loadRumble() {
     const seedUrls = [
       'https://rumble.com/browse/live',
       'https://rumble.com/browse/live?page=2',
-      'https://rumble.com/browse/live?page=3'
-    ];    const seedPages = await Promise.allSettled(seedUrls.map(url => fetchHtml(url, 3500)));
+      'https://rumble.com/browse/live?page=3',
+      'https://rumble.com/live-videos',
+      'https://rumble.com/browse',
+      'https://rumble.com/category/gaming',
+      'https://rumble.com/category/news',
+      'https://rumble.com/category/entertainment',
+      'https://rumble.com/category/sports'
+    ];
+    const seedPages = await Promise.allSettled(seedUrls.map(url => fetchHtml(url, 5000)));
     const candidates = [];
     const seen = new Set();
     seedPages.forEach(result => {
