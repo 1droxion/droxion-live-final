@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
-const versionName = process.env.ANDROID_VERSION_NAME || '1.2';
-const versionCodeBase = Number(process.env.ANDROID_VERSION_CODE_BASE || 120000);
+const versionName = process.env.ANDROID_VERSION_NAME || '1.6';
+const versionCodeBase = Number(process.env.ANDROID_VERSION_CODE_BASE || 160000);
 const buildNumber = Math.max(1, Number(process.env.BUILD_NUMBER || 1));
 const withSigning = process.argv.includes('--signing');
 
@@ -11,10 +11,15 @@ if (capacitor.appId !== 'com.droxion.live') throw new Error(`Unexpected Android 
 const variablesPath = 'android/variables.gradle';
 let variables = fs.readFileSync(variablesPath, 'utf8');
 variables = variables
+  .replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 24')
   .replace(/compileSdkVersion\s*=\s*\d+/, 'compileSdkVersion = 36')
   .replace(/targetSdkVersion\s*=\s*\d+/, 'targetSdkVersion = 36');
-if (!variables.includes('compileSdkVersion = 36') || !variables.includes('targetSdkVersion = 36')) {
-  throw new Error('Could not configure Android compile/target SDK 36.');
+if (
+  !variables.includes('minSdkVersion = 24') ||
+  !variables.includes('compileSdkVersion = 36') ||
+  !variables.includes('targetSdkVersion = 36')
+) {
+  throw new Error('Could not configure Android min SDK 24 and compile/target SDK 36.');
 }
 fs.writeFileSync(variablesPath, variables);
 
@@ -68,4 +73,4 @@ if (!manifest.includes('android:scheme="com.droxion.live"')) {
 
 fs.writeFileSync(manifestPath, manifest);
 
-console.log(`Android package=${capacitor.appId} targetSdk=36 versionName=${versionName} versionCode=${versionCodeBase + buildNumber} oauthScheme=com.droxion.live`);
+console.log(`Android package=${capacitor.appId} minSdk=24 targetSdk=36 versionName=${versionName} versionCode=${versionCodeBase + buildNumber} oauthScheme=com.droxion.live`);
