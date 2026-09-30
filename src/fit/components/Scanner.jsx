@@ -4,7 +4,7 @@ import { analyzeFood } from "../api.js";
 import { compressImage, makeThumbnail } from "../image.js";
 import { trackEvent } from "../analytics.js";
 
-export default function Scanner({ freeRemaining, onClose, onPaywall, onSave }) {
+export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave }) {
   const cameraRef = useRef(null);
   const libraryRef = useRef(null);
   const [image, setImage] = useState("");
@@ -68,7 +68,7 @@ export default function Scanner({ freeRemaining, onClose, onPaywall, onSave }) {
           <div className="fitBrandMark"><ScanLine size={18} strokeWidth={2.5} /></div>
           <strong>Droxion Fit</strong>
         </div>
-        <span className="fitScanQuota">{freeRemaining} free</span>
+        <span className="fitScanQuota">{pro ? "PRO" : freeRemaining + " free"}</span>
       </header>
 
       {!image && (
