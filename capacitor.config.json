@@ -1,6 +1,6 @@
 {
   "appId": "com.droxion.live",
-  "appName": "Droxion Live",
+  "appName": "Droxion Fit",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "ios": {

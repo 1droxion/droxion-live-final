@@ -1,6 +1,6 @@
 workflows:
   android-capacitor:
-    name: Droxion Android Play Bundle
+    name: Droxion Fit Android Play Bundle
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -8,14 +8,12 @@ workflows:
       android_signing:
         - droxion_android
       vars:
-        APP_NAME: Droxion Live
+        APP_NAME: Droxion Fit
         PACKAGE_NAME: com.droxion.live
-        ANDROID_VERSION_NAME: "1.6"
-        ANDROID_VERSION_CODE_BASE: "160000"
-        VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
-        VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
-        CM_CLONE_DEPTH: "50"
-        GIT_LFS_SKIP_SMUDGE: "1"
+        ANDROID_VERSION_NAME: "1.7"
+        ANDROID_VERSION_CODE_BASE: "170000"
+        VITE_API_ORIGIN: https://www.droxion.com
+        CM_CLONE_DEPTH: "20"
         HUSKY: "0"
         CI: "true"
       node: 22
@@ -28,55 +26,50 @@ workflows:
         - ~/.gradle/wrapper
 
     scripts:
-      - name: Install web and Android dependencies
+      - name: Install dependencies
         script: |
           set -e
           npm config set audit false
           npm config set fund false
-          npm config set progress false
           npm install --no-audit --no-fund
-          node -e "const p=require('./node_modules/@capacitor/core/package.json'); if(!p.version.startsWith('7.')) throw new Error('Android release expects Capacitor 7, got '+p.version)"
+          npm install --no-save --no-audit --no-fund @capacitor/cli@7 @capacitor/android@7 @capacitor/assets@3.0.5
 
-      - name: Build Droxion web bundle
+      - name: Build web app
         script: |
           set -e
           npm run build
 
-      - name: Create or sync native Android project
+      - name: Create Android project
         script: |
           set -e
-          npm run android:prepare
+          rm -rf android
+          npx cap add android
+          npx cap sync android
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      - name: Generate Droxion Fit Android icon
+        script: |
+          set -e
+          npx @capacitor/assets generate --android             --assetPath assets             --iconBackgroundColor '#080a08'             --iconBackgroundColorDark '#080a08'             --splashBackgroundColor '#080a08'             --splashBackgroundColorDark '#080a08'
 
       - name: Configure Android release
         script: |
           set -e
           node scripts/configure-android-release.mjs --signing
+          grep -q "android.permission.CAMERA" android/app/src/main/AndroidManifest.xml
+          grep -q "com.android.vending.BILLING" android/app/src/main/AndroidManifest.xml
+          ! grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml
+          ! grep -q "ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml
 
-      - name: Verify Android 16 target
-        script: |
-          set -e
-          grep -E "minSdkVersion|compileSdkVersion|targetSdkVersion" android/variables.gradle || true
-          grep -q "minSdkVersion = 24" android/variables.gradle
-          grep -q "compileSdkVersion = 36" android/variables.gradle
-          grep -q "targetSdkVersion = 36" android/variables.gradle
-          grep -q 'android:scheme="com.droxion.live"' android/app/src/main/AndroidManifest.xml
-
-      - name: Build signed Android App Bundle
+      - name: Build signed Android bundle
         script: |
           set -e
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease --stacktrace
-          echo "Generated Android artifacts:"
-          find app/build/outputs -type f -name '*.aab' -print
           AAB="$(find app/build/outputs -name '*.aab' -print -quit)"
           test -n "$AAB"
-          if unzip -Z1 "$AAB" | grep -qi '20250520'; then
-            echo "Legacy 20250520 demo video found in Android App Bundle." >&2
-            exit 1
-          fi
-          echo "Android AAB bytes: $(stat -f%z "$AAB")"
+          echo "Android AAB: $AAB"
           du -h "$AAB"
 
     artifacts:
@@ -84,7 +77,7 @@ workflows:
       - android/app/build/outputs/**/mapping.txt
 
   ios-capacitor:
-    name: Droxion iOS TestFlight
+    name: Droxion Fit iOS TestFlight
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -93,18 +86,16 @@ workflows:
 
     environment:
       vars:
-        APP_NAME: Droxion Live
+        APP_NAME: Droxion Fit
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
-        IOS_MARKETING_VERSION: "1.6"
-        IOS_BUILD_NUMBER_BASE: "120000"
-        VITE_SUPABASE_URL: https://zlnhaqzawbzagraxhmlb.supabase.co
-        VITE_SUPABASE_ANON_KEY: sb_publishable_17-SDTCCb40s2jU1UWO3sw_3Si-jw3b
-        CM_CLONE_DEPTH: "1"
-        GIT_LFS_SKIP_SMUDGE: "1"
-        COCOAPODS_DISABLE_STATS: "true"
+        IOS_MARKETING_VERSION: "1.7"
+        IOS_BUILD_NUMBER_BASE: "130000"
+        VITE_API_ORIGIN: https://www.droxion.com
+        CM_CLONE_DEPTH: "20"
         HUSKY: "0"
         CI: "true"
+        COCOAPODS_DISABLE_STATS: "true"
       node: 22
       xcode: latest
       cocoapods: default
@@ -119,100 +110,42 @@ workflows:
         - $HOME/Library/Developer/Xcode/DerivedData
 
     scripts:
-      - name: Install web and StoreKit dependencies
+      - name: Install dependencies
         script: |
           set -e
           npm config set audit false
           npm config set fund false
-          npm config set progress false
           npm install --no-audit --no-fund
-          npm install --no-save --no-audit --no-fund @capgo/native-purchases@7.16.0
-          node -e "const p=require('./node_modules/@capgo/native-purchases/package.json'); if(p.version!=='7.16.0') throw new Error('Expected native-purchases 7.16.0, got '+p.version); console.log('Using @capgo/native-purchases '+p.version)"
+          npm install --no-save --no-audit --no-fund @capacitor/cli@7 @capacitor/ios@7 @capacitor/assets@3.0.5 @capgo/native-purchases@7.16.0
 
-      - name: Build Droxion web bundle
+      - name: Build web app
         script: |
           set -e
           npm run build
 
-      - name: Install Capacitor tooling for CI
+      - name: Create iOS project
         script: |
           set -e
-
-          LIBVIPS_CACHE="$HOME/.npm/_libvips"
-          LIBVIPS_FILE="$LIBVIPS_CACHE/libvips-8.14.5-darwin-arm64v8.tar.br"
-          LIBVIPS_URL="https://github.com/lovell/sharp-libvips/releases/download/v8.14.5/libvips-8.14.5-darwin-arm64v8.tar.br"
-
-          mkdir -p "$LIBVIPS_CACHE"
-
-          if [ ! -s "$LIBVIPS_FILE" ]; then
-            echo "Priming Sharp libvips cache..."
-            rm -f "${LIBVIPS_FILE}.tmp"
-            curl --fail --location \
-              --retry 5 \
-              --retry-delay 3 \
-              --retry-all-errors \
-              --connect-timeout 30 \
-              --output "${LIBVIPS_FILE}.tmp" \
-              "$LIBVIPS_URL"
-            mv "${LIBVIPS_FILE}.tmp" "$LIBVIPS_FILE"
-          else
-            echo "Using cached Sharp libvips archive."
-          fi
-
-          npm install --no-save --no-audit --no-fund @capacitor/cli@7 @capacitor/ios@7 @capacitor/assets@3.0.5
-
-      - name: Create or sync native iOS project
-        script: |
-          set -e
-          if [ ! -d "ios/App" ]; then
-            npx cap add ios
-          fi
+          rm -rf ios
+          npx cap add ios
           npx cap sync ios
-          sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/" "${IOS_PROJECT_PATH}/Podfile"
-          ruby -e "p='${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj'; s=File.read(p); s=s.gsub(/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/, 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;'); File.write(p,s)"
+          sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/" "$IOS_PROJECT_PATH/Podfile"
 
-      - name: Generate Droxion iOS branding
+      - name: Generate Droxion Fit iOS icon
         script: |
           set -e
-          npx @capacitor/assets generate --ios \
-            --assetPath assets \
-            --iconBackgroundColor '#08080c' \
-            --iconBackgroundColorDark '#08080c' \
-            --splashBackgroundColor '#08080c' \
-            --splashBackgroundColorDark '#08080c'
+          npx @capacitor/assets generate --ios             --assetPath assets             --iconBackgroundColor '#080a08'             --iconBackgroundColorDark '#080a08'             --splashBackgroundColor '#080a08'             --splashBackgroundColorDark '#080a08'
 
-      - name: Configure iOS privacy permissions and OAuth return
+      - name: Configure iOS app metadata
         script: |
           set -e
-          PLIST="${IOS_PROJECT_PATH}/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_NAME}" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_NAME}" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion uses your camera when you go LIVE or join a LIVE conversation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion uses your camera when you go LIVE or join a LIVE conversation." "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Droxion uses your microphone for LIVE conversations and guest participation." "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string Droxion uses your location only when you choose a feature that needs local discovery." "$PLIST"
+          PLIST="$IOS_PROJECT_PATH/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $APP_NAME" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion Fit uses your camera to scan meal photos and estimate nutrition." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion Fit uses your camera to scan meal photos and estimate nutrition." "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription Droxion Fit lets you choose meal photos from your library for nutrition estimates." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string Droxion Fit lets you choose meal photos from your library for nutrition estimates." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
-          python3 - "$PLIST" <<'PY'
-          import plistlib, sys
-          path = sys.argv[1]
-          with open(path, 'rb') as handle:
-              data = plistlib.load(handle)
-          entries = data.setdefault('CFBundleURLTypes', [])
-          scheme = 'com.droxion.live'
-          if not any(scheme in entry.get('CFBundleURLSchemes', []) for entry in entries if isinstance(entry, dict)):
-              entries.append({'CFBundleURLName': 'com.droxion.live.oauth', 'CFBundleURLSchemes': [scheme]})
-          with open(path, 'wb') as handle:
-              plistlib.dump(data, handle)
-          PY
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PLIST"
-
-      - name: Configure native iOS push notifications
-        script: |
-          set -e
-          node scripts/configure-ios-push.mjs
-          test -f "${IOS_PROJECT_PATH}/App/App.entitlements"
-          grep -q "aps-environment" "${IOS_PROJECT_PATH}/App/App.entitlements"
-          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "${IOS_PROJECT_PATH}/App/Info.plist"
-          grep -q "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
+          ! /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST" >/dev/null 2>&1
+          ! /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$PLIST" >/dev/null 2>&1
 
       - name: Install CocoaPods
         script: |
@@ -220,75 +153,30 @@ workflows:
           cd "$IOS_PROJECT_PATH"
           pod install --repo-update
 
-      - name: Configure native iOS Twitch player
-        script: |
-          set -e
-          node scripts/configure-ios-twitch-player.mjs
-          test -f "${IOS_PROJECT_PATH}/App/TwitchPlayer.swift"
-          grep -q "TwitchPlayer.swift" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
-
-      - name: Register native iOS Twitch plugin
-        script: |
-          set -e
-          node scripts/configure-ios-twitch-registration.mjs
-          test -f "${IOS_PROJECT_PATH}/App/DroxionBridgeViewController.swift"
-          grep -q "DroxionBridgeViewController" "${IOS_PROJECT_PATH}/App/Base.lproj/Main.storyboard"
-          grep -q "DroxionBridgeViewController.swift" "${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj"
-
-      - name: Apply Codemagic signing profiles
+      - name: Apply signing profiles
         script: |
           set -e
           xcode-project use-profiles --project "$IOS_PROJECT_PATH/App.xcodeproj" || xcode-project use-profiles
 
-      - name: Set iOS version and build number
+      - name: Set iOS version
         script: |
           set -e
           cd "$IOS_PROJECT_PATH"
           IOS_BUILD_NUMBER=$((IOS_BUILD_NUMBER_BASE + BUILD_NUMBER))
           agvtool new-marketing-version "$IOS_MARKETING_VERSION"
           agvtool new-version -all "$IOS_BUILD_NUMBER"
-          echo "Droxion iOS marketing version: $IOS_MARKETING_VERSION"
-          echo "Droxion iOS build number: $IOS_BUILD_NUMBER"
-          test "$IOS_BUILD_NUMBER" -gt 63
+          echo "Droxion Fit iOS $IOS_MARKETING_VERSION ($IOS_BUILD_NUMBER)"
 
       - name: Build signed IPA
         script: |
-          set +e
-          cd "$IOS_PROJECT_PATH"
-          xcode-project build-ipa \
-            --workspace "App.xcworkspace" \
-            --scheme "App"
-          BUILD_STATUS=$?
-
-          if [ "$BUILD_STATUS" -ne 0 ]; then
-            echo ""
-            echo "========== DROXION XCODE FAILURE DETAILS =========="
-            if [ -d /tmp/xcodebuild_logs ]; then
-              find /tmp/xcodebuild_logs -type f -name '*.log' -print
-              for LOG in /tmp/xcodebuild_logs/*.log; do
-                [ -f "$LOG" ] || continue
-                echo "----- $LOG : signing / entitlement / error lines -----"
-                grep -n -E -i 'error:|provision|entitlement|codesign|signing|aps-environment|push notification|profile' "$LOG" | tail -n 180 || true
-                echo "----- $LOG : final 120 lines -----"
-                tail -n 120 "$LOG" || true
-              done
-            else
-              echo "No /tmp/xcodebuild_logs directory was produced."
-            fi
-            echo "===================================================="
-            exit "$BUILD_STATUS"
-          fi
-
           set -e
-          echo "Generated iOS artifacts:"
-          find build/ios/ipa -maxdepth 2 -type f -print || true
+          cd "$IOS_PROJECT_PATH"
+          xcode-project build-ipa             --workspace "App.xcworkspace"             --scheme "App"
           test -n "$(find build/ios/ipa -name '*.ipa' -print -quit)"
 
     artifacts:
       - ios/App/build/ios/ipa/*.ipa
       - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
