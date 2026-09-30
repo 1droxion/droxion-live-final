@@ -140,6 +140,7 @@ export default function FitApp() {
       {scannerOpen && (
         <Scanner
           freeRemaining={freeRemaining}
+          pro={pro}
           onClose={() => {
             setScannerOpen(false);
             setFreeRemainingState(getFreeRemaining());
