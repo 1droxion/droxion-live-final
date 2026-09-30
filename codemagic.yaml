@@ -8,7 +8,7 @@ workflows:
       android_signing:
         - droxion_android
       vars:
-        APP_NAME: Droxion Live
+        APP_NAME: Droxion Fit
         PACKAGE_NAME: com.droxion.live
         ANDROID_VERSION_NAME: "1.6"
         ANDROID_VERSION_CODE_BASE: "160000"
@@ -35,6 +35,7 @@ workflows:
           npm config set fund false
           npm config set progress false
           npm install --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund @capacitor/assets@3.0.5
           node -e "const p=require('./node_modules/@capacitor/core/package.json'); if(!p.version.startsWith('7.')) throw new Error('Android release expects Capacitor 7, got '+p.version)"
 
       - name: Build Droxion web bundle
@@ -47,6 +48,16 @@ workflows:
           set -e
           npm run android:prepare
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      - name: Generate Droxion Fit Android branding
+        script: |
+          set -e
+          npx @capacitor/assets generate --android \
+            --assetPath assets \
+            --iconBackgroundColor '#08080c' \
+            --iconBackgroundColorDark '#08080c' \
+            --splashBackgroundColor '#08080c' \
+            --splashBackgroundColorDark '#08080c'
 
       - name: Configure Android release
         script: |
@@ -171,7 +182,7 @@ workflows:
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/" "${IOS_PROJECT_PATH}/Podfile"
           ruby -e "p='${IOS_PROJECT_PATH}/App.xcodeproj/project.pbxproj'; s=File.read(p); s=s.gsub(/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/, 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;'); File.write(p,s)"
 
-      - name: Generate Droxion iOS branding
+      - name: Generate Droxion Fit iOS branding
         script: |
           set -e
           npx @capacitor/assets generate --ios \
