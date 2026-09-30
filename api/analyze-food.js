@@ -1,3 +1,4 @@
+// env-refresh: OPENAI_API_KEY wired
 function extractText(payload) {
   if (!payload || !Array.isArray(payload.output)) return "";
   for (const item of payload.output) {
