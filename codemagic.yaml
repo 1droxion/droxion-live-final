@@ -1,6 +1,6 @@
 workflows:
   android-capacitor:
-    name: Droxion Android Play Bundle
+    name: Droxion Fit Android Play Bundle
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -95,7 +95,7 @@ workflows:
       - android/app/build/outputs/**/mapping.txt
 
   ios-capacitor:
-    name: Droxion iOS TestFlight
+    name: Droxion Fit iOS TestFlight
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -104,7 +104,7 @@ workflows:
 
     environment:
       vars:
-        APP_NAME: Droxion Live
+        APP_NAME: Droxion Fit
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
         IOS_MARKETING_VERSION: "1.7"
