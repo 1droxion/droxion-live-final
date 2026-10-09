@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
-const versionName = process.env.ANDROID_VERSION_NAME || "1.7";
-const versionCodeBase = Number(process.env.ANDROID_VERSION_CODE_BASE || 170000);
+const versionName = process.env.ANDROID_VERSION_NAME || "1.8";
+const versionCodeBase = Number(process.env.ANDROID_VERSION_CODE_BASE || 180000);
 const buildNumber = Math.max(1, Number(process.env.BUILD_NUMBER || 1));
 const withSigning = process.argv.includes("--signing");
 
@@ -47,7 +47,7 @@ fs.writeFileSync(buildPath, build);
 
 const manifestPath = "android/app/src/main/AndroidManifest.xml";
 let manifest = fs.readFileSync(manifestPath, "utf8");
-const requiredPermissions = ["CAMERA", "com.android.vending.BILLING"];
+const requiredPermissions = ["com.android.vending.BILLING"];
 for (const permission of requiredPermissions) {
   const full = permission.includes(".") ? permission : "android.permission." + permission;
   if (!manifest.includes(full)) {
@@ -62,4 +62,4 @@ manifest = manifest
   .replace(/\s*<uses-permission android:name="android\.permission\.ACCESS_COARSE_LOCATION"\s*\/?>/g, "");
 
 fs.writeFileSync(manifestPath, manifest);
-console.log("Droxion Fit Android configured: package=" + capacitor.appId + " version=" + versionName + " code=" + (versionCodeBase + buildNumber));
+console.log("Droxion Shorts Android configured: package=" + capacitor.appId + " version=" + versionName + " code=" + (versionCodeBase + buildNumber));

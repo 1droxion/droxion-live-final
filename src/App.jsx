@@ -1,5 +1,2 @@
-import FitApp from "./FitApp.jsx";
-
-export default function App() {
-  return <FitApp />;
-}
+import ShortsApp from './ShortsApp.jsx';
+export default function App(){return <ShortsApp/>}
