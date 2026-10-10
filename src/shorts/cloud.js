@@ -1,5 +1,6 @@
-const origin=String(import.meta.env.VITE_SHORTS_SUPABASE_URL||'').replace(/\/$/,'');
-const key=import.meta.env.VITE_SHORTS_SUPABASE_ANON_KEY||'';
+// Public client configuration; access is enforced by Supabase RLS.
+const origin=String(import.meta.env.VITE_SHORTS_SUPABASE_URL||'https://zlnhaqzawbzagraxhmlb.supabase.co').replace(/\/$/,'');
+const key=import.meta.env.VITE_SHORTS_SUPABASE_ANON_KEY||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsbmhhcXphd2J6YWdyYXhobWxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NTkzMDYsImV4cCI6MjA5OTUzNTMwNn0.kAF2dFpb3SljU0naxAIbbK65bdfL7fvHc8da1jIRGBE';
 export const cloudReady=!!(origin&&key);
 let session=null;
 try{session=JSON.parse(sessionStorage.getItem('shorts-session')||'null')}catch{}
