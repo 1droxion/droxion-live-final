@@ -1,6 +1,6 @@
 workflows:
   android-capacitor:
-    name: Droxion Fit Android Play Bundle
+    name: Droxion Shorts Android Play Bundle
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -8,10 +8,10 @@ workflows:
       android_signing:
         - droxion_android
       vars:
-        APP_NAME: Droxion Fit
+        APP_NAME: Droxion Shorts
         PACKAGE_NAME: com.droxion.live
-        ANDROID_VERSION_NAME: "1.7"
-        ANDROID_VERSION_CODE_BASE: "170000"
+        ANDROID_VERSION_NAME: "1.8"
+        ANDROID_VERSION_CODE_BASE: "180000"
         VITE_API_ORIGIN: https://www.droxion.com
         CM_CLONE_DEPTH: "20"
         HUSKY: "0"
@@ -47,16 +47,15 @@ workflows:
           npx cap sync android
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
-      - name: Generate Droxion Fit Android icon
+      - name: Generate Droxion Shorts Android icon
         script: |
           set -e
-          npx @capacitor/assets generate --android             --assetPath assets             --iconBackgroundColor '#080a08'             --iconBackgroundColorDark '#080a08'             --splashBackgroundColor '#080a08'             --splashBackgroundColorDark '#080a08'
+          npx @capacitor/assets generate --android             --assetPath assets             --iconBackgroundColor '#0c0b10'             --iconBackgroundColorDark '#0c0b10'             --splashBackgroundColor '#0c0b10'             --splashBackgroundColorDark '#0c0b10'
 
       - name: Configure Android release
         script: |
           set -e
           node scripts/configure-android-release.mjs --signing
-          grep -q "android.permission.CAMERA" android/app/src/main/AndroidManifest.xml
           grep -q "com.android.vending.BILLING" android/app/src/main/AndroidManifest.xml
           ! grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml
           ! grep -q "ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml
@@ -77,7 +76,7 @@ workflows:
       - android/app/build/outputs/**/mapping.txt
 
   ios-capacitor:
-    name: Droxion Fit iOS TestFlight
+    name: Droxion Shorts iOS TestFlight
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -86,11 +85,11 @@ workflows:
 
     environment:
       vars:
-        APP_NAME: Droxion Fit
+        APP_NAME: Droxion Shorts
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
-        IOS_MARKETING_VERSION: "1.7"
-        IOS_BUILD_NUMBER_BASE: "130000"
+        IOS_MARKETING_VERSION: "1.8"
+        IOS_BUILD_NUMBER_BASE: "180000"
         VITE_API_ORIGIN: https://www.droxion.com
         CM_CLONE_DEPTH: "20"
         HUSKY: "0"
@@ -131,18 +130,16 @@ workflows:
           npx cap sync ios
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/" "$IOS_PROJECT_PATH/Podfile"
 
-      - name: Generate Droxion Fit iOS icon
+      - name: Generate Droxion Shorts iOS icon
         script: |
           set -e
-          npx @capacitor/assets generate --ios             --assetPath assets             --iconBackgroundColor '#080a08'             --iconBackgroundColorDark '#080a08'             --splashBackgroundColor '#080a08'             --splashBackgroundColorDark '#080a08'
+          npx @capacitor/assets generate --ios             --assetPath assets             --iconBackgroundColor '#0c0b10'             --iconBackgroundColorDark '#0c0b10'             --splashBackgroundColor '#0c0b10'             --splashBackgroundColorDark '#0c0b10'
 
       - name: Configure iOS app metadata
         script: |
           set -e
           PLIST="$IOS_PROJECT_PATH/App/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $APP_NAME" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion Fit uses your camera to scan meal photos and estimate nutrition." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion Fit uses your camera to scan meal photos and estimate nutrition." "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription Droxion Fit lets you choose meal photos from your library for nutrition estimates." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string Droxion Fit lets you choose meal photos from your library for nutrition estimates." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
           ! /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST" >/dev/null 2>&1
           ! /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" "$PLIST" >/dev/null 2>&1
@@ -165,7 +162,7 @@ workflows:
           IOS_BUILD_NUMBER=$((IOS_BUILD_NUMBER_BASE + BUILD_NUMBER))
           agvtool new-marketing-version "$IOS_MARKETING_VERSION"
           agvtool new-version -all "$IOS_BUILD_NUMBER"
-          echo "Droxion Fit iOS $IOS_MARKETING_VERSION ($IOS_BUILD_NUMBER)"
+          echo "Droxion Shorts iOS $IOS_MARKETING_VERSION ($IOS_BUILD_NUMBER)"
 
       - name: Build signed IPA
         script: |
