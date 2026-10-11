@@ -53,7 +53,7 @@ export async function loadSubscriptionProducts() {
     return {
       ...plan,
       nativeProduct,
-      priceString: nativeProduct?.priceString || nativeProduct?.price || plan.fallbackPrice
+      priceString: nativeProduct?.priceString || (nativeProduct?.price ? String(nativeProduct.price) : "Unavailable")
     };
   });
 }

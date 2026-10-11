@@ -65,8 +65,8 @@ function MealEditor({ meal, onClose, onSave, onDelete }) {
             </label>
           ))}
         </div>
-        <button type="button" className="fitPrimary fitWide" onClick={() => onSave(draft)}>Save changes</button>
-        <button type="button" className="fitDanger fitWide" onClick={() => onDelete(meal.id)}><Trash2 size={17} /> Delete meal</button>
+        <button type="button" className="fitPrimary fitWide" onClick={() => onSave(draft)}>{meal.isNew ? "Add meal" : "Save changes"}</button>
+        {!meal.isNew && <button type="button" className="fitDanger fitWide" onClick={() => onDelete(meal.id)}><Trash2 size={17} /> Delete meal</button>}
       </section>
     </div>
   );
@@ -80,6 +80,7 @@ export default function Dashboard({
   onScan,
   onOpenPaywall,
   onReset,
+  onAddMeal,
   onUpdateMeal,
   onDeleteMeal,
   routine, onRoutineChange, onAddGrocery, onProductScan, routineError
@@ -112,14 +113,14 @@ export default function Dashboard({
       <header className="fitTopbar">
         <Brand />
         <button type="button" className={"fitProPill" + (pro ? " active" : "")} onClick={onOpenPaywall}>
-          <Sparkles size={15} /> {pro ? "PRO" : freeRemaining + " FREE"}
+          <Sparkles size={15} /> {pro ? "PLUS" : "Get Plus"}
         </button>
       </header>
 
       <div className="fitContent">
         {routineError && <p className="fitInlineError" role="alert">{routineError}</p>}
         {tab === "groceries" && <Groceries routine={routine} onChange={onRoutineChange} onAdd={onAddGrocery} onScan={onProductScan} />}
-        {tab === "workouts" && <Workouts routine={routine} onChange={onRoutineChange} />}
+        {tab === "workouts" && (pro ? <Workouts routine={routine} onChange={onRoutineChange} /> : <section className="fitCard"><h2>Home workouts with Plus</h2><p>Build a daily movement habit with short home routines.</p><button className="fitPrimary fitWide" onClick={onOpenPaywall}>Explore Plus</button></section>)}
         {tab === "today" && (
           <>
             <section className="fitHero">
@@ -147,6 +148,7 @@ export default function Dashboard({
               <ChevronRight size={21} />
             </button>
 
+            <button type="button" className="routineSecondary fitWide" onClick={() => setEditing({ isNew: true, name: "", calories: "", protein: "", carbs: "", fat: "" })}>Add meal manually · free</button>
             <div className="routineHomeLinks">
               <button className="fitCard" onClick={() => setTab('groceries')}><ShoppingBasket size={23} /><strong>Groceries</strong><span>{routine.groceries.filter(item => !item.done).length} items to buy</span></button>
               <button className="fitCard" onClick={() => setTab('workouts')}><Dumbbell size={23} /><strong>Home workouts</strong><span>Start with 6 minutes</span></button>
@@ -155,7 +157,7 @@ export default function Dashboard({
             <section className="fitSection">
               <div className="fitSectionTitle"><h2>Today’s meals</h2><span>{todayMeals.length} logged</span></div>
               {todayMeals.length === 0 ? (
-                <div className="fitEmpty"><Utensils size={30} /><strong>No meals yet</strong><span>Your first scan will appear here.</span></div>
+                <div className="fitEmpty"><Utensils size={30} /><strong>No meals yet</strong><span>Add a meal manually or try a photo scan.</span></div>
               ) : (
                 <div className="fitMealList">
                   {todayMeals.slice().reverse().map(meal => (
@@ -223,10 +225,10 @@ export default function Dashboard({
               <div><span>Goal</span><strong>{goalLabel(profile.goal)}</strong></div>
               <div><span>Calories</span><strong>{targets.calories}/day</strong></div>
               <div><span>Protein</span><strong>{targets.protein}g/day</strong></div>
-              <div><span>Plan</span><strong>{pro ? "Pro" : "Free"}</strong></div>
+              <div><span>Plan</span><strong>{pro ? "Plus" : "Free"}</strong></div>
             </div>
-            {!pro && <button type="button" className="fitPrimary fitWide fitSettingsUpgrade" onClick={onOpenPaywall}>Upgrade to Pro</button>}
-            <div className="routineActions"><button className="routineSecondary" onClick={() => setTab("history")}>Meal history</button><button className="routineSecondary" onClick={() => setTab("progress")}>Nutrition progress</button></div>
+            {!pro && <button type="button" className="fitPrimary fitWide fitSettingsUpgrade" onClick={onOpenPaywall}>Upgrade to Plus</button>}
+            <div className="routineActions"><button className="routineSecondary" onClick={() => pro ? setTab("history") : onOpenPaywall()}>Meal history</button><button className="routineSecondary" onClick={() => pro ? setTab("progress") : onOpenPaywall()}>Nutrition progress</button></div>
             <div className="fitLegalLinks"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div>
             <button type="button" className="fitDanger fitWide" onClick={onReset}>Reset local profile and activity</button>
           </section>
@@ -256,7 +258,7 @@ export default function Dashboard({
         <MealEditor
           meal={editing}
           onClose={() => setEditing(null)}
-          onSave={meal => { onUpdateMeal(meal); setEditing(null); }}
+          onSave={meal => { if (meal.isNew) { if (!meal.name.trim() || meal.calories === "" || !Number.isFinite(Number(meal.calories)) || Number(meal.calories) < 0 || ["protein", "carbs", "fat"].some(field => !Number.isFinite(Number(meal[field])) || Number(meal[field]) < 0)) { window.alert("Enter a meal name and valid calories."); return; } onAddMeal(meal); } else onUpdateMeal(meal); setEditing(null); }}
           onDelete={id => { onDeleteMeal(id); setEditing(null); }}
         />
       )}

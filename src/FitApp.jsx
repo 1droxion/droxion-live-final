@@ -147,7 +147,7 @@ export default function FitApp() {
         routineError={routineError}
         onRoutineChange={updateRoutine}
         onAddGrocery={addToGroceries}
-        onProductScan={() => setProductScannerOpen(true)}
+        onProductScan={() => pro ? setProductScannerOpen(true) : setPaywallOpen(true)}
         profile={profile}
         meals={meals}
         freeRemaining={freeRemaining}
@@ -155,6 +155,7 @@ export default function FitApp() {
         onScan={openScanner}
         onOpenPaywall={() => setPaywallOpen(true)}
         onReset={resetLocalData}
+        onAddMeal={saveMeal}
         onUpdateMeal={updateMeal}
         onDeleteMeal={deleteMeal}
       />

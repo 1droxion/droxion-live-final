@@ -17,7 +17,7 @@ export const PLAN_IDS = {
     label: "Monthly",
     productId: "com.droxion.fit.pro.monthly",
     androidPlanId: "monthly",
-    fallbackPrice: "$9.99/month"
+    fallbackPrice: "$4.99/month"
   },
   yearly: {
     id: "yearly",

@@ -11,7 +11,7 @@ import { trackEvent } from "../analytics.js";
 
 export default function Paywall({ onClose, onActivated }) {
   const [products, setProducts] = useState([]);
-  const [selected, setSelected] = useState("yearly");
+  const [selected, setSelected] = useState("monthly");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +21,7 @@ export default function Paywall({ onClose, onActivated }) {
     let alive = true;
     trackEvent("paywall_viewed", { source: "app" });
     loadSubscriptionProducts()
-      .then(rows => { if (alive) setProducts(rows); })
+      .then(rows => { if (alive) setProducts(rows.filter(product => product.id === "monthly")); })
       .catch(err => { if (alive) setError(err?.message || "Could not load subscription options."); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -54,7 +54,7 @@ export default function Paywall({ onClose, onActivated }) {
     setError("");
     try {
       const result = await restorePro();
-      if (!result) throw new Error("No active Droxion Fit Pro subscription was found.");
+      if (!result) throw new Error("No active Droxion Plus subscription was found.");
       trackEvent("subscription_restored", { platform: result.platform || "native" });
       onActivated(result);
     } catch (err) {
@@ -65,18 +65,18 @@ export default function Paywall({ onClose, onActivated }) {
   }
 
   return (
-    <div className="fitModalBackdrop" role="dialog" aria-modal="true" aria-label="Droxion Fit Pro">
+    <div className="fitModalBackdrop" role="dialog" aria-modal="true" aria-label="Droxion Plus">
       <section className="fitPaywall">
         <button type="button" className="fitIconButton fitClose" onClick={onClose} aria-label="Close"><X size={20} /></button>
         <div className="fitPaywallIcon"><Sparkles size={28} /></div>
-        <span className="fitEyebrow">DROXION FIT PRO</span>
-        <h2>Scan every meal without manual logging.</h2>
-        <p>Unlimited AI food scans with calories, protein and macros. Cancel anytime in your App Store or Google Play subscription settings.</p>
+        <span className="fitEyebrow">DROXION PLUS</span>
+        <h2>Track your food. Build your daily habit.</h2>
+        <p>Photo meal estimates, packaged-food barcode scanning, progress history and home workouts. Cancel anytime in your App Store or Google Play subscription settings.</p>
 
         <div className="fitBenefits">
-          <div><Check size={18} /> Unlimited AI meal scans</div>
-          <div><Check size={18} /> Calories, protein, carbs and fat</div>
-          <div><Check size={18} /> Full meal history and 7-day progress</div>
+          <div><Check size={18} /> AI meal-photo scanning</div>
+          <div><Check size={18} /> Packaged-food barcode scanning</div>
+          <div><Check size={18} /> Meal history, 7-day progress and home workouts</div>
         </div>
 
         {loading ? <div className="fitMuted">Loading store prices…</div> : products.map(product => (
@@ -96,7 +96,7 @@ export default function Paywall({ onClose, onActivated }) {
 
         {error && <div className="fitInlineError">{error}</div>}
 
-        <button type="button" className="fitPrimary fitWide" onClick={buy} disabled={busy || loading || !selectedProduct}>
+        <button type="button" className="fitPrimary fitWide" onClick={buy} disabled={busy || loading || !selectedProduct || (native && !selectedProduct.nativeProduct)}>
           {busy === "buy" ? "Connecting to store…" : native ? "Continue" : "Available in the mobile app"}
         </button>
 
