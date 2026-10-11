@@ -371,3 +371,28 @@ a { color: inherit; }
   .fitWeekChart { padding: 14px 10px; gap: 6px; }
   .fitWeekChart > div > span { height: 112px; }
 }
+/* Connected shopping and movement */
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.routineHomeLinks { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0; }
+.routineHomeLinks button { display:flex; flex-direction:column; align-items:flex-start; gap:10px; color:inherit; text-align:left; cursor:pointer; }
+.routineHomeLinks svg { color:#c8ff4a; }.routineHomeLinks span { color:#a0a99d; font-size:12px; }
+.routineSecondary { display:inline-flex; justify-content:center; align-items:center; gap:8px; padding:12px 16px; background:#191e17; border:1px solid #35402e; color:#e8f0e1; border-radius:14px; font:inherit; font-size:13px; cursor:pointer; }
+.routineSecondary:disabled, .fitPrimary:disabled { opacity:.45; cursor:default; }
+.routineBudget { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:20px; }
+.routineBudget label { display:grid; gap:8px; font-size:12px; color:#a0a99d; }.routineBudget input { width:110px; }
+.routineBudget > div { display:flex; flex-direction:column; text-align:right; gap:5px; }.routineBudget strong { font-size:26px; }.routineBudget span { color:#a0a99d; font-size:12px; }
+.routineAdd { display:grid; grid-template-columns:minmax(0,1fr) 85px 48px; gap:8px; align-items:end; margin:24px 0 12px; }
+.routineAdd label,.routineField { display:grid; gap:7px; color:#a0a99d; font-size:12px; }
+.routineAdd input,.routineBudget input,.routineField input,.routinePrice input { background:#131810; border:1px solid #35402e; color:#f7f7f2; padding:12px; border-radius:10px; min-width:0; width:100%; box-sizing:border-box; font:inherit; font-size:16px; }
+.routineAdd button { padding:12px; height:44px; }.routineActions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 20px; }
+.routineList { display:grid; gap:8px; margin:20px 0; }.routineRow { display:flex; gap:10px; align-items:center; padding:14px 10px; background:#111410; border:1px solid #252d21; border-radius:16px; }
+.routineCheck { flex-shrink:0; width:26px; height:26px; border:1px solid #6b795e; background:transparent; color:#c8ff4a; border-radius:8px; display:grid; place-items:center; cursor:pointer; }
+.routineItem { flex:1; min-width:0; display:grid; gap:4px; }.routineItem strong { font-size:14px; overflow-wrap:anywhere; }.routineItem span { color:#879082; font-size:12px; }.checked .routineItem { text-decoration:line-through; opacity:.6; }
+.routinePrice { width:77px; display:flex; align-items:center; gap:3px; color:#a0a99d; }.routinePrice input { padding:8px 4px; font-size:13px; }.routineRow .fitIconButton { width:28px; flex-shrink:0; }
+.routineSummary { display:flex; gap:15px; align-items:center; margin:20px 0; }.routineSummary svg { color:#c8ff4a; }.routineSummary div { display:grid; gap:6px; }.routineSummary span { color:#a0a99d; font-size:13px; }
+.routineWorkoutChoice { width:100%; display:flex; align-items:center; gap:12px; padding:20px 16px; margin:12px 0; color:inherit; border:1px solid #35402e; border-radius:18px; background:#111410; text-align:left; cursor:pointer; }.routineWorkoutChoice div { flex:1; display:grid; gap:8px; }.routineWorkoutChoice span { color:#a0a99d; font-size:12px; }.routineWorkoutChoice b { color:#c8ff4a; font-size:13px; }
+.routineExercise { display:flex; gap:14px; padding:18px 0; border-top:1px solid #30382a; }.routineExercise input { width:20px; height:20px; accent-color:#c8ff4a; flex-shrink:0; }.routineExercise strong,.routineExercise b { display:block; font-size:15px; }.routineExercise b { margin-top:6px; color:#c8ff4a; font-size:12px; }.routineExercise p { color:#a0a99d; font-size:13px; line-height:1.5; margin-bottom:0; }
+.routineWorkout .routineSecondary { margin-top:10px; }.routineSource { color:#c8ff4a; font-size:12px; line-height:1.5; }
+.routineScanner { max-height:85dvh; overflow-y:auto; }.routineField { margin:16px 0; }.routineScanner h2 { margin-top:10px; }.routineScanner .fitLead { font-size:14px; }.routineCamera video { width:100%; max-height:240px; border-radius:16px; object-fit:cover; }.routineCamera p { font-size:12px; color:#a0a99d; }
+.routineProduct { border-top:1px solid #35402e; padding-top:20px; margin-top:24px; }.routineProduct h3 { overflow-wrap:anywhere; }.routineProduct details { margin:15px 0; color:#a0a99d; font-size:13px; line-height:1.6; }.routineNutrition { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }.routineNutrition div { padding:12px 5px; text-align:center; background:#191e17; border-radius:12px; display:grid; gap:6px; }.routineNutrition strong { font-size:16px; }.routineNutrition span { font-size:11px; color:#a0a99d; }.routineNotice { color:#c8ff4a; font-size:13px; }
+@media(max-width:360px) { .routineRow { gap:6px; padding:12px 6px; }.routinePrice { width:65px; }.routineBudget { gap:8px; }.routineBudget span { max-width:130px; } }

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+const ProductScanner = lazy(() => import("./fit/components/ProductScanner.jsx"));
+import { ROUTINE_KEY, emptyRoutine, addGrocery } from "./fit/routine.js";
 import Onboarding from "./fit/components/Onboarding.jsx";
 import Scanner from "./fit/components/Scanner.jsx";
 import Dashboard from "./fit/components/Dashboard.jsx";
@@ -9,6 +11,7 @@ import { trackEvent } from "./fit/analytics.js";
 import { clamp, dayKey } from "./fit/nutrition.js";
 import {
   clearUserData,
+  readJson, writeJson,
   getEntitlementMeta,
   getFreeRemaining,
   getMeals,
@@ -30,6 +33,9 @@ export default function FitApp() {
   const [profile, setProfile] = useState(() => getProfile());
   const [meals, setMeals] = useState(() => getMeals());
   const [freeRemaining, setFreeRemainingState] = useState(() => getFreeRemaining());
+  const [routine, setRoutine] = useState(() => readJson(ROUTINE_KEY, emptyRoutine()));
+  const [routineError, setRoutineError] = useState("");
+  const [productScannerOpen, setProductScannerOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [entitlementVersion, setEntitlementVersion] = useState(0);
@@ -114,9 +120,20 @@ export default function FitApp() {
     trackEvent("meal_deleted");
   }
 
+  function updateRoutine(next) {
+    if (!writeJson(ROUTINE_KEY, next)) { setRoutineError("Could not save on this device. Free up storage and try again."); return false; }
+    setRoutine(next); setRoutineError(""); return true;
+  }
+  function addToGroceries(item) {
+    return updateRoutine({ ...routine, groceries: addGrocery(routine.groceries, item) });
+  }
+
   function resetLocalData() {
-    if (!window.confirm("Reset your Droxion Fit profile and local meal history? Your subscription and free-scan allowance will not be reset.")) return;
+    if (!window.confirm("Reset your Droxion Fit profile, meals, grocery list, and workout history? Your subscription and free-scan allowance will not be reset.")) return;
     clearUserData();
+    localStorage.removeItem(ROUTINE_KEY);
+    setRoutine(emptyRoutine());
+    setRoutineError("");
     setMeals([]);
     setProfile(null);
   }
@@ -126,6 +143,11 @@ export default function FitApp() {
   return (
     <>
       <Dashboard
+        routine={routine}
+        routineError={routineError}
+        onRoutineChange={updateRoutine}
+        onAddGrocery={addToGroceries}
+        onProductScan={() => setProductScannerOpen(true)}
         profile={profile}
         meals={meals}
         freeRemaining={freeRemaining}
@@ -136,6 +158,8 @@ export default function FitApp() {
         onUpdateMeal={updateMeal}
         onDeleteMeal={deleteMeal}
       />
+
+      {productScannerOpen && <Suspense fallback={<div className="fitModalBackdrop"><section className="fitMealEditor" role="status">Opening product scanner…</section></div>}><ProductScanner onClose={() => setProductScannerOpen(false)} onAdd={addToGroceries} onLog={saveMeal} /></Suspense>}
 
       {scannerOpen && (
         <Scanner

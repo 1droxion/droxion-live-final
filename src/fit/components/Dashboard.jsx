@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   Camera,
+  ShoppingBasket,
+  Dumbbell,
   ChevronRight,
   Flame,
   History,
@@ -15,6 +17,8 @@ import {
   X
 } from "lucide-react";
 import { dayKey, goalLabel, lastSevenDays, sumMeals } from "../nutrition.js";
+
+import { Groceries, Workouts } from "./Routine.jsx";
 
 function Brand() {
   return (
@@ -77,7 +81,8 @@ export default function Dashboard({
   onOpenPaywall,
   onReset,
   onUpdateMeal,
-  onDeleteMeal
+  onDeleteMeal,
+  routine, onRoutineChange, onAddGrocery, onProductScan, routineError
 }) {
   const [tab, setTab] = useState("today");
   const [editing, setEditing] = useState(null);
@@ -112,6 +117,9 @@ export default function Dashboard({
       </header>
 
       <div className="fitContent">
+        {routineError && <p className="fitInlineError" role="alert">{routineError}</p>}
+        {tab === "groceries" && <Groceries routine={routine} onChange={onRoutineChange} onAdd={onAddGrocery} onScan={onProductScan} />}
+        {tab === "workouts" && <Workouts routine={routine} onChange={onRoutineChange} />}
         {tab === "today" && (
           <>
             <section className="fitHero">
@@ -139,6 +147,11 @@ export default function Dashboard({
               <ChevronRight size={21} />
             </button>
 
+            <div className="routineHomeLinks">
+              <button className="fitCard" onClick={() => setTab('groceries')}><ShoppingBasket size={23} /><strong>Groceries</strong><span>{routine.groceries.filter(item => !item.done).length} items to buy</span></button>
+              <button className="fitCard" onClick={() => setTab('workouts')}><Dumbbell size={23} /><strong>Home workouts</strong><span>Start with 6 minutes</span></button>
+            </div>
+            <button className="routineSecondary fitWide" onClick={onProductScan}>Scan a packaged-food barcode</button>
             <section className="fitSection">
               <div className="fitSectionTitle"><h2>Today’s meals</h2><span>{todayMeals.length} logged</span></div>
               {todayMeals.length === 0 ? (
@@ -213,8 +226,9 @@ export default function Dashboard({
               <div><span>Plan</span><strong>{pro ? "Pro" : "Free"}</strong></div>
             </div>
             {!pro && <button type="button" className="fitPrimary fitWide fitSettingsUpgrade" onClick={onOpenPaywall}>Upgrade to Pro</button>}
+            <div className="routineActions"><button className="routineSecondary" onClick={() => setTab("history")}>Meal history</button><button className="routineSecondary" onClick={() => setTab("progress")}>Nutrition progress</button></div>
             <div className="fitLegalLinks"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div>
-            <button type="button" className="fitDanger fitWide" onClick={onReset}>Reset local meal data</button>
+            <button type="button" className="fitDanger fitWide" onClick={onReset}>Reset local profile and activity</button>
           </section>
         )}
       </div>
@@ -222,9 +236,9 @@ export default function Dashboard({
       <nav className="fitBottomNav" aria-label="Main navigation">
         {[
           ["today", Home, "Today"],
-          ["history", History, "History"],
+          ["groceries", ShoppingBasket, "Groceries"],
           ["scan", ScanLine, "Scan"],
-          ["progress", LineChart, "Progress"],
+          ["workouts", Dumbbell, "Workouts"],
           ["settings", Settings, "Settings"]
         ].map(([id, Icon, label]) => (
           <button

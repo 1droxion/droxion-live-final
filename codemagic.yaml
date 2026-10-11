@@ -10,8 +10,8 @@ workflows:
       vars:
         APP_NAME: Droxion Fit
         PACKAGE_NAME: com.droxion.live
-        ANDROID_VERSION_NAME: "1.7"
-        ANDROID_VERSION_CODE_BASE: "170000"
+        ANDROID_VERSION_NAME: "1.8"
+        ANDROID_VERSION_CODE_BASE: "180000"
         VITE_API_ORIGIN: https://www.droxion.com
         CM_CLONE_DEPTH: "20"
         HUSKY: "0"
@@ -89,8 +89,8 @@ workflows:
         APP_NAME: Droxion Fit
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
-        IOS_MARKETING_VERSION: "1.7"
-        IOS_BUILD_NUMBER_BASE: "130000"
+        IOS_MARKETING_VERSION: "1.8"
+        IOS_BUILD_NUMBER_BASE: "180000"
         VITE_API_ORIGIN: https://www.droxion.com
         CM_CLONE_DEPTH: "20"
         HUSKY: "0"
@@ -141,7 +141,7 @@ workflows:
           set -e
           PLIST="$IOS_PROJECT_PATH/App/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $APP_NAME" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion Fit uses your camera to scan meal photos and estimate nutrition." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion Fit uses your camera to scan meal photos and estimate nutrition." "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription Droxion Fit uses your camera to scan food barcodes and meal photos for nutrition information." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string Droxion Fit uses your camera to scan food barcodes and meal photos for nutrition information." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription Droxion Fit lets you choose meal photos from your library for nutrition estimates." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string Droxion Fit lets you choose meal photos from your library for nutrition estimates." "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
           ! /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST" >/dev/null 2>&1

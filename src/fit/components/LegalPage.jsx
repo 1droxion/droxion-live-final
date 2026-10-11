@@ -4,9 +4,11 @@ import { SUPPORT_EMAIL } from "../constants.js";
 const PAGES = {
   privacy: {
     title: "Privacy Policy",
-    updated: "September 30, 2026",
+    updated: "October 10, 2026",
     sections: [
       ["What Droxion Fit processes", "When you scan a meal, the photo and optional portion note are sent to our AI service to estimate food items and nutrition. Droxion Fit does not need your contacts, precise location, microphone, or social media accounts."],
+      ["Product barcode lookup", "Food barcodes are sent to Open Food Facts to retrieve public product information. Live barcode recognition runs on your device. Database entries can be incomplete or inaccurate; check the package label."],
+      ["Grocery and workout history", "Grocery items, entered prices, budget, and workout completions are stored locally on this device. Sharing a list sends its text through the sharing app you choose. Reset local profile and activity removes these records."],
       ["Meal history", "Your profile, meal results, and small meal thumbnails are stored locally on your device in this release. The full scan photo is not intentionally stored by Droxion Fit after analysis."],
       ["Payments", "Subscriptions are processed by Apple or Google. Droxion Fit receives purchase and entitlement information needed to unlock Pro; we do not receive your full payment card details."],
       ["Analytics", "We may collect limited product events such as onboarding completion, scan success or failure, paywall views, and subscription events to improve the app. These events are not used to provide medical diagnoses."],
@@ -16,7 +18,7 @@ const PAGES = {
   },
   terms: {
     title: "Terms of Use",
-    updated: "September 30, 2026",
+    updated: "October 10, 2026",
     sections: [
       ["Service", "Droxion Fit is a general wellness and nutrition tracking tool. Food recognition, portion sizes, calories, and macros are estimates and may be wrong."],
       ["Not medical advice", "Droxion Fit does not diagnose, treat, prevent, or cure any condition. Do not rely on it for medical, allergy, eating-disorder, or emergency decisions."],
