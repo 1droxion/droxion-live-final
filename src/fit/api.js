@@ -27,7 +27,10 @@ async function postJson(path, body, timeoutMs = 45000) {
       body: JSON.stringify(body),
       signal: controller.signal
     });
-    const payload = await response.json().catch(() => ({}));
+    const text = await response.text();
+    let payload = {};
+    try { payload = JSON.parse(text); } catch {}
+    if (text.includes("DEPLOYMENT_DISABLED")) throw new Error("Food scanning is temporarily offline. Please try again later or add your meal manually.");
     if (!response.ok) {
       const error = new Error(payload?.error || ("Request failed (" + response.status + ")."));
       error.status = response.status;
@@ -35,6 +38,7 @@ async function postJson(path, body, timeoutMs = 45000) {
       error.paywall = Boolean(payload?.paywall);
       throw error;
     }
+    if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("The scanning service returned an invalid response. Please try again later.");
     return payload;
   } catch (error) {
     if (error?.name === "AbortError") {

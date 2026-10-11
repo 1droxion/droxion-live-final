@@ -63,7 +63,7 @@ export default async function handler(req, res) {
   const used = Math.max(0, Number(scan.used || 0));
   if (!isPro && used >= FREE_SCANS) {
     return res.status(402).json({
-      error: "Your free AI scans are used. Upgrade to Droxion Fit Pro for unlimited scanning.",
+      error: "Your free AI scans are used. Upgrade to Droxion Plus to continue scanning.",
       code: "PRO_REQUIRED",
       paywall: true,
       freeRemaining: 0

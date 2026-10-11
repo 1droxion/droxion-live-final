@@ -12,10 +12,11 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function handleFile(file, input) {
     if (input) input.value = "";
-    if (!file) return;
+    if (!file || loading) return;
     setError("");
     setAnalysis(null);
     setLoading(true);
@@ -25,6 +26,7 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
       const prepared = await compressImage(file);
       setImage(prepared);
       const payload = await analyzeFood(prepared, hint);
+      if (!payload.analysis || !Number.isFinite(Number(payload.analysis.calories))) throw new Error("The scan returned no nutrition details. Please try again.");
       setAnalysis(payload.analysis);
       trackEvent("scan_completed", {
         confidence: payload.analysis?.confidence || "unknown",
@@ -48,10 +50,18 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
   }
 
   async function save() {
-    if (!analysis) return;
-    const thumbnail = image ? await makeThumbnail(image).catch(() => "") : "";
-    onSave({ ...analysis, image: thumbnail });
-    trackEvent("meal_saved", { calories: Number(analysis.calories || 0), protein: Number(analysis.protein || 0) });
+    if (!analysis || saving) return;
+    if (!String(analysis.name || "").trim() || ["calories", "protein", "carbs", "fat"].some(key => analysis[key] === "" || !Number.isFinite(Number(analysis[key])) || Number(analysis[key]) < 0)) {
+      setError("Enter a meal name and valid nutrition values before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const thumbnail = image ? await makeThumbnail(image).catch(() => "") : "";
+      await onSave({ ...analysis, image: thumbnail });
+      trackEvent("meal_saved", { calories: Number(analysis.calories), protein: Number(analysis.protein) });
+    } catch (err) { setError(err?.message || "Could not save this meal. Please try again."); }
+    finally { setSaving(false); }
   }
 
   function reset() {
@@ -68,7 +78,7 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
           <div className="fitBrandMark"><ScanLine size={18} strokeWidth={2.5} /></div>
           <strong>Droxion Fit</strong>
         </div>
-        <span className="fitScanQuota">{pro ? "PRO" : freeRemaining + " free"}</span>
+        <span className="fitScanQuota">{pro ? "PLUS" : freeRemaining + " free"}</span>
       </header>
 
       {!image && (
@@ -88,10 +98,10 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
           </label>
 
           <div className="fitScannerActions">
-            <button type="button" className="fitPrimary" onClick={() => cameraRef.current?.click()}>
+            <button type="button" className="fitPrimary" disabled={loading} onClick={() => cameraRef.current?.click()}>
               <Camera size={20} /> Take photo
             </button>
-            <button type="button" className="fitSecondary" onClick={() => libraryRef.current?.click()}>
+            <button type="button" className="fitSecondary" disabled={loading} onClick={() => libraryRef.current?.click()}>
               <ImageIcon size={20} /> Choose photo
             </button>
           </div>
@@ -111,6 +121,8 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
             accept="image/*"
             onChange={event => handleFile(event.target.files?.[0], event.target)}
           />
+          {error && <p role="alert" className="fitInlineError">{error}</p>}
+          {loading && <p role="status">Preparing your photo…</p>}
           <small>AI nutrition values are estimates. Review the result before saving.</small>
         </section>
       )}
@@ -129,7 +141,7 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
           </div>
 
           {error && (
-            <div className="fitError">
+            <div className="fitError" role="alert">
               <strong>We couldn’t scan that photo</strong>
               <span>{error}</span>
               <button type="button" className="fitSecondary" onClick={reset}>Try another photo</button>
@@ -175,7 +187,7 @@ export default function Scanner({ freeRemaining, pro, onClose, onPaywall, onSave
 
               {analysis.note && <p className="fitEstimateNote">{analysis.note}</p>}
               <p className="fitEstimateNote">Photo-based nutrition is approximate. Correct portions if anything looks wrong.</p>
-              <button type="button" className="fitPrimary fitWide" onClick={save}><Plus size={19} /> Add to today</button>
+              <button type="button" className="fitPrimary fitWide" disabled={saving} onClick={save}><Plus size={19} /> {saving ? "Saving…" : "Add to today"}</button>
             </div>
           )}
         </section>
