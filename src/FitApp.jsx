@@ -1,19 +1,15 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-const ProductScanner = lazy(() => import("./fit/components/ProductScanner.jsx"));
+import { useMemo, useState } from "react";
 import { ROUTINE_KEY, emptyRoutine, addGrocery } from "./fit/routine.js";
 import Onboarding from "./fit/components/Onboarding.jsx";
-import Scanner from "./fit/components/Scanner.jsx";
 import Dashboard from "./fit/components/Dashboard.jsx";
 import Paywall from "./fit/components/Paywall.jsx";
 import LegalPage from "./fit/components/LegalPage.jsx";
-import { ensureInstallToken } from "./fit/api.js";
 import { trackEvent } from "./fit/analytics.js";
 import { clamp, dayKey } from "./fit/nutrition.js";
 import {
   clearUserData,
   readJson, writeJson,
   getEntitlementMeta,
-  getFreeRemaining,
   getMeals,
   getProfile,
   saveMeals,
@@ -32,11 +28,8 @@ function currentLegalPage() {
 export default function FitApp() {
   const [profile, setProfile] = useState(() => getProfile());
   const [meals, setMeals] = useState(() => getMeals());
-  const [freeRemaining, setFreeRemainingState] = useState(() => getFreeRemaining());
   const [routine, setRoutine] = useState(() => readJson(ROUTINE_KEY, emptyRoutine()));
   const [routineError, setRoutineError] = useState("");
-  const [productScannerOpen, setProductScannerOpen] = useState(false);
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [entitlementVersion, setEntitlementVersion] = useState(0);
   const legalPage = currentLegalPage();
@@ -49,15 +42,6 @@ export default function FitApp() {
     return Number.isFinite(expires) && expires > Date.now();
   }, [entitlementVersion]);
 
-  useEffect(() => {
-    let alive = true;
-    ensureInstallToken()
-      .then(() => {
-        if (alive) setFreeRemainingState(getFreeRemaining());
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
 
   if (legalPage) return <LegalPage page={legalPage} />;
 
@@ -65,15 +49,6 @@ export default function FitApp() {
     saveProfile(nextProfile);
     setProfile(nextProfile);
     trackEvent("onboarding_completed", { goal: nextProfile.goal });
-  }
-
-  function openScanner() {
-    if (!pro && freeRemaining <= 0) {
-      setPaywallOpen(true);
-      trackEvent("paywall_viewed", { source: "free_limit" });
-      return;
-    }
-    setScannerOpen(true);
   }
 
   function saveMeal(analysis) {
@@ -94,8 +69,6 @@ export default function FitApp() {
     const nextMeals = [...meals, nextMeal];
     saveMeals(nextMeals);
     setMeals(nextMeals);
-    setFreeRemainingState(getFreeRemaining());
-    setScannerOpen(false);
   }
 
   function updateMeal(nextMeal) {
@@ -129,7 +102,7 @@ export default function FitApp() {
   }
 
   function resetLocalData() {
-    if (!window.confirm("Reset your Droxion Fit profile, meals, grocery list, and workout history? Your subscription and free-scan allowance will not be reset.")) return;
+    if (!window.confirm("Reset your Droxion Fit profile, meals, grocery list, and workout history? Your subscription will not be reset.")) return;
     clearUserData();
     localStorage.removeItem(ROUTINE_KEY);
     setRoutine(emptyRoutine());
@@ -147,12 +120,9 @@ export default function FitApp() {
         routineError={routineError}
         onRoutineChange={updateRoutine}
         onAddGrocery={addToGroceries}
-        onProductScan={() => pro ? setProductScannerOpen(true) : setPaywallOpen(true)}
         profile={profile}
         meals={meals}
-        freeRemaining={freeRemaining}
         pro={pro}
-        onScan={openScanner}
         onOpenPaywall={() => setPaywallOpen(true)}
         onReset={resetLocalData}
         onAddMeal={saveMeal}
@@ -160,24 +130,6 @@ export default function FitApp() {
         onDeleteMeal={deleteMeal}
       />
 
-      {productScannerOpen && <Suspense fallback={<div className="fitModalBackdrop"><section className="fitMealEditor" role="status">Opening product scanner…</section></div>}><ProductScanner onClose={() => setProductScannerOpen(false)} onAdd={addToGroceries} onLog={saveMeal} /></Suspense>}
-
-      {scannerOpen && (
-        <Scanner
-          freeRemaining={freeRemaining}
-          pro={pro}
-          onClose={() => {
-            setScannerOpen(false);
-            setFreeRemainingState(getFreeRemaining());
-          }}
-          onPaywall={() => {
-            setScannerOpen(false);
-            setFreeRemainingState(getFreeRemaining());
-            setPaywallOpen(true);
-          }}
-          onSave={saveMeal}
-        />
-      )}
 
       {paywallOpen && (
         <Paywall

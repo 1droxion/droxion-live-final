@@ -23,7 +23,7 @@ import { Groceries, Workouts } from "./Routine.jsx";
 function Brand() {
   return (
     <div className="fitBrand compact">
-      <div className="fitBrandMark"><ScanLine size={18} strokeWidth={2.5} /></div>
+      <img className="fitBrandMark" src="/brand-icon.svg" alt="" />
       <strong>Droxion Fit</strong>
     </div>
   );
@@ -75,15 +75,13 @@ function MealEditor({ meal, onClose, onSave, onDelete }) {
 export default function Dashboard({
   profile,
   meals,
-  freeRemaining,
   pro,
-  onScan,
   onOpenPaywall,
   onReset,
   onAddMeal,
   onUpdateMeal,
   onDeleteMeal,
-  routine, onRoutineChange, onAddGrocery, onProductScan, routineError
+  routine, onRoutineChange, onAddGrocery, routineError
 }) {
   const [tab, setTab] = useState("today");
   const [editing, setEditing] = useState(null);
@@ -119,7 +117,7 @@ export default function Dashboard({
 
       <div className="fitContent">
         {routineError && <p className="fitInlineError" role="alert">{routineError}</p>}
-        {tab === "groceries" && <Groceries routine={routine} onChange={onRoutineChange} onAdd={onAddGrocery} onScan={onProductScan} />}
+        {tab === "groceries" && <Groceries routine={routine} onChange={onRoutineChange} onAdd={onAddGrocery} />}
         {tab === "workouts" && (pro ? <Workouts routine={routine} onChange={onRoutineChange} /> : <section className="fitCard"><h2>Home workouts with Plus</h2><p>Build a daily movement habit with short home routines.</p><button className="fitPrimary fitWide" onClick={onOpenPaywall}>Explore Plus</button></section>)}
         {tab === "today" && (
           <>
@@ -142,9 +140,9 @@ export default function Dashboard({
               </div>
             </section>
 
-            <button type="button" className="fitScanButton" onClick={onScan}>
-              <span><Camera size={25} /></span>
-              <div><strong>Scan food</strong><small>Photo → calories + protein in seconds</small></div>
+            <button type="button" className="fitScanButton" onClick={() => setEditing({ isNew: true, name: "", calories: "", protein: "", carbs: "", fat: "" })}>
+              <span><Utensils size={25} /></span>
+              <div><strong>Log your meal</strong><small>Add calories and protein from your food label</small></div>
               <ChevronRight size={21} />
             </button>
 
@@ -153,11 +151,10 @@ export default function Dashboard({
               <button className="fitCard" onClick={() => setTab('groceries')}><ShoppingBasket size={23} /><strong>Groceries</strong><span>{routine.groceries.filter(item => !item.done).length} items to buy</span></button>
               <button className="fitCard" onClick={() => setTab('workouts')}><Dumbbell size={23} /><strong>Home workouts</strong><span>Start with 6 minutes</span></button>
             </div>
-            <button className="routineSecondary fitWide" onClick={onProductScan}>Scan a packaged-food barcode</button>
             <section className="fitSection">
               <div className="fitSectionTitle"><h2>Today’s meals</h2><span>{todayMeals.length} logged</span></div>
               {todayMeals.length === 0 ? (
-                <div className="fitEmpty"><Utensils size={30} /><strong>No meals yet</strong><span>Add a meal manually or try a photo scan.</span></div>
+                <div className="fitEmpty"><Utensils size={30} /><strong>No meals yet</strong><span>Add your first meal to see your daily totals.</span></div>
               ) : (
                 <div className="fitMealList">
                   {todayMeals.slice().reverse().map(meal => (
@@ -179,7 +176,7 @@ export default function Dashboard({
             <h1>Your meals</h1>
             <p className="fitLead">Tap any meal to correct or delete it.</p>
             {grouped.length === 0 ? (
-              <div className="fitEmpty"><History size={30} /><strong>Nothing logged yet</strong><span>Scan a meal to start your history.</span></div>
+              <div className="fitEmpty"><History size={30} /><strong>Nothing logged yet</strong><span>Log a meal to start your history.</span></div>
             ) : grouped.map(([date, rows]) => {
               const dayTotals = sumMeals(rows);
               return (
@@ -220,7 +217,7 @@ export default function Dashboard({
           <section className="fitSection fitPageSection">
             <span className="fitEyebrow">SETTINGS</span>
             <h1>Droxion Fit</h1>
-            <p className="fitLead">AI nutrition estimates for general wellness and fitness tracking.</p>
+            <p className="fitLead">Simple nutrition tracking for your daily routine.</p>
             <div className="fitSettingsCard">
               <div><span>Goal</span><strong>{goalLabel(profile.goal)}</strong></div>
               <div><span>Calories</span><strong>{targets.calories}/day</strong></div>
@@ -239,15 +236,15 @@ export default function Dashboard({
         {[
           ["today", Home, "Today"],
           ["groceries", ShoppingBasket, "Groceries"],
-          ["scan", ScanLine, "Scan"],
+          ["history", History, "History"],
           ["workouts", Dumbbell, "Workouts"],
           ["settings", Settings, "Settings"]
         ].map(([id, Icon, label]) => (
           <button
             type="button"
             key={id}
-            className={(tab === id ? "active " : "") + (id === "scan" ? "scan" : "")}
-            onClick={() => id === "scan" ? onScan() : setTab(id)}
+            className={tab === id ? "active" : ""}
+            onClick={() => id === "history" && !pro ? onOpenPaywall() : setTab(id)}
           >
             <Icon size={21} /><span>{label}</span>
           </button>

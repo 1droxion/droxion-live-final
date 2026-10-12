@@ -2,7 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { NativePurchases, PURCHASE_TYPE } from "@capgo/native-purchases";
 import { PLAN_IDS } from "./constants.js";
 import { getInstallId, setEntitlement, clearEntitlement } from "./storage.js";
-import { verifyStoreSubscription } from "./api.js";
+import { ensureInstallToken, verifyStoreSubscription } from "./api.js";
 
 function platform() {
   try {
@@ -109,6 +109,8 @@ export async function purchasePlan(planId) {
     options.planIdentifier = selectedPlan.androidPlanId;
   }
 
+  // Check that verification is reachable before initiating a charge.
+  await ensureInstallToken();
   const transaction = await NativePurchases.purchaseProduct(options);
   return verifyAndStore(transaction, selectedPlan);
 }

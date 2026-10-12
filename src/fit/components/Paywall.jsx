@@ -71,12 +71,12 @@ export default function Paywall({ onClose, onActivated }) {
         <div className="fitPaywallIcon"><Sparkles size={28} /></div>
         <span className="fitEyebrow">DROXION PLUS</span>
         <h2>Track your food. Build your daily habit.</h2>
-        <p>Photo meal estimates, packaged-food barcode scanning, progress history and home workouts. Cancel anytime in your App Store or Google Play subscription settings.</p>
+        <p>Meal history, 7-day progress and short home workouts. Cancel anytime in your App Store or Google Play subscription settings.</p>
 
         <div className="fitBenefits">
-          <div><Check size={18} /> AI meal-photo scanning</div>
-          <div><Check size={18} /> Packaged-food barcode scanning</div>
-          <div><Check size={18} /> Meal history, 7-day progress and home workouts</div>
+          <div><Check size={18} /> Review your meal history</div>
+          <div><Check size={18} /> Track your 7-day nutrition progress</div>
+          <div><Check size={18} /> Short home workouts</div>
         </div>
 
         {loading ? <div className="fitMuted">Loading store prices…</div> : products.map(product => (

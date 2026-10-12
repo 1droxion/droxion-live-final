@@ -7,13 +7,12 @@ import {
   kgToPounds,
   poundsToKg
 } from "../nutrition.js";
-import { FREE_SCANS } from "../constants.js";
 
 function Brand() {
   return (
     <div className="fitBrand">
-      <div className="fitBrandMark"><ScanLine size={24} strokeWidth={2.5} /></div>
-      <div><strong>Droxion Fit</strong><span>AI calories + protein</span></div>
+      <img className="fitBrandMark" src="/brand-icon.svg" alt="" />
+      <div><strong>Droxion Fit</strong><span>Calories + protein</span></div>
     </div>
   );
 }
@@ -166,9 +165,9 @@ export default function Onboarding({ onComplete }) {
             <div className="fitTargetMini">
               <div><span>Carbs</span><strong>{targets.carbs}g</strong></div>
               <div><span>Fat</span><strong>{targets.fat}g</strong></div>
-              <div><span>Free AI scans</span><strong>{FREE_SCANS}</strong></div>
+              <div><span>Food logging</span><strong>Free</strong></div>
             </div>
-            <div className="fitTrust"><Lock size={16} /><span>Meal photos are sent only for analysis. Nutrition results are estimates, not medical advice.</span></div>
+            <div className="fitTrust"><Lock size={16} /><span>Your meal diary stays on this device. Nutrition targets are estimates, not medical advice.</span></div>
           </>
         )}
 

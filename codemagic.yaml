@@ -50,7 +50,7 @@ workflows:
       - name: Generate Droxion Fit Android icon
         script: |
           set -e
-          npx @capacitor/assets generate --android             --assetPath assets             --iconBackgroundColor '#080a08'             --iconBackgroundColorDark '#080a08'             --splashBackgroundColor '#080a08'             --splashBackgroundColorDark '#080a08'
+          npx @capacitor/assets generate --android             --assetPath assets             --iconBackgroundColor '#090909'             --iconBackgroundColorDark '#090909'             --splashBackgroundColor '#090909'             --splashBackgroundColorDark '#090909'
 
       - name: Configure Android release
         script: |
@@ -134,7 +134,7 @@ workflows:
       - name: Generate Droxion Fit iOS icon
         script: |
           set -e
-          npx @capacitor/assets generate --ios             --assetPath assets             --iconBackgroundColor '#080a08'             --iconBackgroundColorDark '#080a08'             --splashBackgroundColor '#080a08'             --splashBackgroundColorDark '#080a08'
+          npx @capacitor/assets generate --ios             --assetPath assets             --iconBackgroundColor '#090909'             --iconBackgroundColorDark '#090909'             --splashBackgroundColor '#090909'             --splashBackgroundColorDark '#090909'
 
       - name: Configure iOS app metadata
         script: |
