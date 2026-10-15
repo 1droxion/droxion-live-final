@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { isAppleStore, watchAppleEntitlements } from "./fit/store.js";
 import { ROUTINE_KEY, emptyRoutine, addGrocery } from "./fit/routine.js";
 import Onboarding from "./fit/components/Onboarding.jsx";
 import Dashboard from "./fit/components/Dashboard.jsx";
@@ -37,11 +38,14 @@ export default function FitApp() {
   const pro = useMemo(() => {
     const meta = getEntitlementMeta();
     if (!meta?.active) return false;
-    if (!meta.expiresAt) return true;
+    if (isAppleStore() && meta.verification !== "storekit") return false;
+    if (!meta.expiresAt) return !isAppleStore();
     const expires = Date.parse(meta.expiresAt);
     return Number.isFinite(expires) && expires > Date.now();
   }, [entitlementVersion]);
 
+
+  useEffect(() => watchAppleEntitlements(() => setEntitlementVersion(value => value + 1)), []);
 
   if (legalPage) return <LegalPage page={legalPage} />;
 

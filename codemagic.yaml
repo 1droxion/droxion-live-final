@@ -89,8 +89,8 @@ workflows:
         APP_NAME: Droxion Fit
         BUNDLE_ID: com.droxion.live
         IOS_PROJECT_PATH: ios/App
-        IOS_MARKETING_VERSION: "1.8"
-        IOS_BUILD_NUMBER_BASE: "180000"
+        IOS_MARKETING_VERSION: "1.8.1"
+        IOS_BUILD_NUMBER_BASE: "181000"
         VITE_API_ORIGIN: https://www.droxion.com
         CM_CLONE_DEPTH: "20"
         HUSKY: "0"

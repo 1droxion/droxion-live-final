@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { NativePurchases, PURCHASE_TYPE } from "@capgo/native-purchases";
+import { selectAppleEntitlement } from "./apple-entitlements.js";
 import { PLAN_IDS } from "./constants.js";
 import { getInstallId, setEntitlement, clearEntitlement } from "./storage.js";
 import { ensureInstallToken, verifyStoreSubscription } from "./api.js";
@@ -58,6 +59,48 @@ export async function loadSubscriptionProducts() {
   });
 }
 
+// Apple verifies signatures in native StoreKit; no domain or install-token server.
+export function isAppleStore() { return platform() === "ios"; }
+
+export async function refreshAppleEntitlement() {
+  if (!isAppleStore()) return null;
+  const { purchases } = await NativePurchases.getPurchases({
+    productType: PURCHASE_TYPE.SUBS,
+    onlyCurrentEntitlements: true
+  });
+  const result = selectAppleEntitlement(purchases);
+  if (result) setEntitlement("", result);
+  else clearEntitlement();
+  return result;
+}
+
+export function watchAppleEntitlements(onChange) {
+  if (!isAppleStore()) return () => {};
+  let stopped = false;
+  const refresh = () => refreshAppleEntitlement().then(() => {
+    if (!stopped) onChange();
+  }).catch(() => { /* Keep the last verified access only until its expiry. */ });
+  const visible = () => { if (!document.hidden) refresh(); };
+  const subscriptions = ["transactionUpdated", "transactionVerificationFailed"].map(event =>
+    NativePurchases.addListener(event, refresh).then(handle => {
+      if (stopped) handle.remove();
+      return handle;
+    }).catch(() => null)
+  );
+  document.addEventListener("visibilitychange", visible);
+  window.addEventListener("focus", refresh);
+  // Also re-evaluate expiry while the app remains open.
+  const interval = setInterval(() => { onChange(); refresh(); }, 60000);
+  refresh();
+  return () => {
+    stopped = true;
+    clearInterval(interval);
+    document.removeEventListener("visibilitychange", visible);
+    window.removeEventListener("focus", refresh);
+    subscriptions.forEach(promise => promise.then(handle => handle?.remove()));
+  };
+}
+
 async function verifyAndStore(transaction, selectedPlan) {
   const currentPlatform = platform();
   const result = await verifyStoreSubscription(currentPlatform, {
@@ -109,9 +152,17 @@ export async function purchasePlan(planId) {
     options.planIdentifier = selectedPlan.androidPlanId;
   }
 
-  // Check that verification is reachable before initiating a charge.
-  await ensureInstallToken();
+  // Android still requires its server verifier; iOS uses native StoreKit.
+  if (currentPlatform !== "ios") await ensureInstallToken();
   const transaction = await NativePurchases.purchaseProduct(options);
+  if (currentPlatform === "ios") {
+    const result = await refreshAppleEntitlement();
+    if (!result) throw new Error("Apple has not confirmed active Plus access yet. Try Restore purchases; do not purchase again.");
+    if (transaction.transactionId) {
+      await NativePurchases.acknowledgePurchase({ purchaseToken: String(transaction.transactionId) }).catch(() => {});
+    }
+    return result;
+  }
   return verifyAndStore(transaction, selectedPlan);
 }
 
@@ -119,6 +170,7 @@ export async function restorePro() {
   if (!isNativeStore()) return null;
 
   await NativePurchases.restorePurchases();
+  if (isAppleStore()) return refreshAppleEntitlement();
   const { purchases } = await NativePurchases.getPurchases({
     productType: PURCHASE_TYPE.SUBS
   });

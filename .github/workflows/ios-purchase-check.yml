@@ -1,0 +1,22 @@
+name: iOS purchase verification
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'scripts/**', 'package*.json', '.github/workflows/ios-purchase-check.yml']
+  workflow_dispatch:
+jobs:
+  verify-ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: npx cap add ios && npx cap sync ios
+      - name: Compile native StoreKit bridge for simulator
+        run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
