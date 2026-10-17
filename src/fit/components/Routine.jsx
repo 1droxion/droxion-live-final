@@ -3,6 +3,11 @@ import { ShoppingBasket, Dumbbell, Trash2, Plus, Check, ArrowRight } from 'lucid
 import { WORKOUTS, groceryTotal } from '../routine.js';
 import { dayKey } from '../nutrition.js';
 
+function exerciseArt(name) {
+  const art = name.includes('Chair') ? 'chair' : name.includes('Wall') ? 'wall' : name.includes('calf') ? 'calf' : name.includes('knee') ? 'knee' : 'march';
+  return `/exercise-${art}.svg`;
+}
+
 export function Groceries({ routine, onChange, onAdd, }) {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -17,6 +22,7 @@ export function Groceries({ routine, onChange, onAdd, }) {
     } catch (error) { if (error.name !== 'AbortError') setNotice('Sharing is unavailable on this device.'); }
   }
   return <section className="fitSection fitPageSection">
+    <img className="fitRoutineBanner" src="/daily-routine.svg" alt="A plate of food, a shopping checklist and a grocery basket" />
     <span className="fitEyebrow">SHOP YOUR WEEK</span><h1>Your groceries.</h1><p className="fitLead">One list for your meals. Check items off as you shop.</p>
     <div className="routineBudget fitCard"><label>Weekly budget ($)<input type="number" min="0" max="10000" value={routine.budget} onChange={e => onChange({ ...routine, budget: Math.min(10000, Math.max(0, Number(e.target.value) || 0)) })} /></label><div><strong>${total.toFixed(2)}</strong><span>of ${routine.budget} entered prices</span></div></div>
     <p className="fitMuted">Enter each line’s total price, including its quantity. Missing prices are excluded.{total > routine.budget ? ' Your entered total is over budget.' : ''}</p>
@@ -60,7 +66,7 @@ export function Workouts({ routine, onChange }) {
     <div className="routineSummary fitCard"><Dumbbell size={24} /><div><strong>{todayDone.length ? 'You moved today.' : 'A small start counts.'}</strong><span>{routine.sessions.length} sessions completed</span></div></div>
     <div className="workoutWeek" aria-label="Workout activity for the past seven days">{Array.from({length:7},(_,i) => { const d=new Date(); d.setDate(d.getDate() - 6 + i); const key=dayKey(d); const done=routine.sessions.some(s=>s.date===key); return <div key={key}><span>{d.toLocaleDateString('en-US',{weekday:'short'})}</span><b className={done ? 'done' : ''} aria-label={key + (done ? ': workout completed' : ': no workout')}>{done ? '✓' : d.getDate()}</b></div>; })}</div>
     {selected ? <div className="fitCard routineWorkout"><h2>{selected.name}</h2><div className="workoutTimer"><strong>{String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}</strong><span>{completed.length} / {selected.exercises.length} exercises completed</span><button className="fitSecondary" onClick={() => setRunning(!running)}>{running ? 'Pause timer' : 'Resume timer'}</button></div><p className="fitMuted">Allow about {selected.minutes} minutes, including rests. Rest 30–60 seconds between sets; take longer as needed.</p>
-      {selected.exercises.map(([name, reps, detail], i) => <label className="routineExercise" key={name}><input type="checkbox" checked={completed.includes(i)} onChange={e => setCompleted(e.target.checked ? [...completed, i] : completed.filter(n => n !== i))} /><img className="exerciseArt" src="/exercise-guide.svg" alt="" /><div><strong>{name}</strong><b>{reps}</b><p>{detail}</p></div></label>)}
+      {selected.exercises.map(([name, reps, detail], i) => <label className="routineExercise" key={name}><input type="checkbox" checked={completed.includes(i)} onChange={e => setCompleted(e.target.checked ? [...completed, i] : completed.filter(n => n !== i))} /><img className="exerciseArt" src={exerciseArt(name)} alt={`${name} illustration`} /><div><strong>{name}</strong><b>{reps}</b><p>{detail}</p></div></label>)}
       <button className="fitPrimary fitWide" disabled={completed.length !== selected.exercises.length} onClick={finish}>Finish workout</button><button className="routineSecondary fitWide" onClick={() => { setSelected(null); setCompleted([]); setRunning(false); setElapsed(0); }}>Back to routines</button>
     </div> : WORKOUTS.map(workout => <button className="routineWorkoutChoice" key={workout.id} onClick={() => { setSelected(workout); setCompleted([]); setElapsed(0); setRunning(true); }}><img className="workoutArt" src="/workout-guide.svg" alt="" /><div><strong>{workout.name}</strong><span>{workout.detail}</span></div><b>~{workout.minutes} min</b><ArrowRight size={18} /></button>)}
     <p className="fitMuted">Stop if movement causes pain, dizziness, or unusual shortness of breath. These routines are general fitness guidance.</p>

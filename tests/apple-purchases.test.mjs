@@ -14,16 +14,18 @@ test('Apple selection rejects expired, refunded, upgraded, unknown and malformed
   assert.equal(selectAppleEntitlement([{...active,willCancel:true}]).active, true);
 });
 
-async function storeHarness({purchases=[active], queryError, purchaseError}={}) {
+async function storeHarness({purchases=[active], queryError, purchaseError, productResponses=[{products:[{identifier: PLAN_IDS.monthly.productId, priceString: "$4.99"}]}], productTimeout=false}={}) {
   let saved, cleared=false, finished=false;
   const calls=[];
   const native={
+    isBillingSupported:async()=>({isBillingSupported:true}),
+    getProducts:async options=>{calls.push(["products",options]);if(productTimeout)return new Promise(()=>{});const result=productResponses.length>1?productResponses.shift():productResponses[0];if(result instanceof Error)throw result;return result;},
     purchaseProduct:async options=>{calls.push(['purchase',options]);if(purchaseError)throw purchaseError;return active;},
     getPurchases:async options=>{calls.push(['query',options]);if(queryError)throw queryError;return {purchases};},
     restorePurchases:async()=>calls.push(['restore']),
     acknowledgePurchase:async()=>{finished=true;},
   };
-  const context=vm.createContext({console});
+  const context=vm.createContext({console, setTimeout: (fn, ms) => setTimeout(fn, productTimeout ? 0 : ms), clearTimeout});
   const module=new vm.SourceTextModule(await fs.readFile(new URL('../src/fit/store.js',import.meta.url),'utf8'),{context});
   const mocks={
     '@capacitor/core':{Capacitor:{getPlatform:()=> 'ios'}},
@@ -72,4 +74,29 @@ test('Native query is patched to current verified StoreKit entitlements',async()
   assert.match(swift,/if call.getBool\("onlyCurrentEntitlements"\) == true \{\s*await TransactionHelpers.collectCurrentEntitlements/);
   const helper=await fs.readFile('node_modules/@capgo/native-purchases/ios/Sources/NativePurchasesPlugin/TransactionHelpers.swift','utf8');
   assert.match(helper,/for await result in Transaction.currentEntitlements \{\s*guard case .verified\(let transaction\) = result else/);
+});
+
+
+test('store loads only configured monthly SKU using localized StoreKit price',async()=>{
+  const h=await storeHarness({productResponses:[{products:[{identifier:PLAN_IDS.monthly.productId,priceString:'€5,99'}]}]});
+  const products=await h.api.loadSubscriptionProducts();
+  assert.equal(products.length,1);assert.equal(products[0].priceString,'€5,99');
+  assert.deepEqual(Array.from(h.calls[0][1].productIdentifiers),[PLAN_IDS.monthly.productId]);
+});
+test('empty product catalogue fails clearly and can recover on the next load',async()=>{
+  const h=await storeHarness({productResponses:[{products:[]},{products:[{identifier:PLAN_IDS.monthly.productId,priceString:'$4.99'}]}]});
+  await assert.rejects(h.api.loadSubscriptionProducts(),/could not load/);
+  const products=await h.api.loadSubscriptionProducts();assert.equal(products[0].priceString,'$4.99');
+  assert.equal(h.state().saved,undefined);assert.equal(h.calls.some(([kind])=>kind==='purchase'),false);
+});
+test('price-query connection error can be retried without starting a purchase',async()=>{
+  const h=await storeHarness({productResponses:[Error('Load failed'),{products:[{identifier:PLAN_IDS.monthly.productId,priceString:'$4.99'}]}]});
+  await assert.rejects(h.api.loadSubscriptionProducts(),/Load failed/);
+  assert.equal((await h.api.loadSubscriptionProducts()).length,1);
+  assert.equal(h.calls.some(([kind])=>kind==='purchase'),false);
+});
+test('a stalled product request times out instead of leaving prices loading forever',async()=>{
+  const h=await storeHarness({productTimeout:true});
+  await assert.rejects(h.api.loadSubscriptionProducts(),/taking too long/);
+  assert.equal(h.state().saved,undefined);
 });

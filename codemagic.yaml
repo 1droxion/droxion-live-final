@@ -34,9 +34,10 @@ workflows:
           npm install --no-audit --no-fund
           npm install --no-save --no-audit --no-fund @capacitor/cli@7 @capacitor/android@7 @capacitor/assets@3.0.5
 
-      - name: Build web app
+      - name: Verify and build web app
         script: |
           set -e
+          npm test
           npm run build
 
       - name: Create Android project
@@ -118,9 +119,10 @@ workflows:
           npm install --no-audit --no-fund
           npm install --no-save --no-audit --no-fund @capacitor/cli@7 @capacitor/ios@7 @capacitor/assets@3.0.5 @capgo/native-purchases@7.16.0
 
-      - name: Build web app
+      - name: Verify and build web app
         script: |
           set -e
+          npm test
           npm run build
 
       - name: Create iOS project
@@ -130,6 +132,7 @@ workflows:
           npx cap add ios
           npx cap sync ios
           sed -i '' "s/platform :ios, '[^']*'/platform :ios, '15.0'/" "$IOS_PROJECT_PATH/Podfile"
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [^;]*/IPHONEOS_DEPLOYMENT_TARGET = 15.0/g' "$IOS_PROJECT_PATH/App.xcodeproj/project.pbxproj"
 
       - name: Generate Droxion Fit iOS icon
         script: |

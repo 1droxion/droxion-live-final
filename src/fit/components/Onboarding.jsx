@@ -66,6 +66,7 @@ export default function Onboarding({ onComplete }) {
 
         {step === 0 && (
           <>
+            <img className="fitRoutineBanner" src="/daily-routine.svg" alt="Food tracking and grocery planning" />
             <span className="fitEyebrow">YOUR GOAL</span>
             <h1>What are you working toward?</h1>
             <p className="fitLead">We’ll use this only to create a simple starting calorie and protein target.</p>

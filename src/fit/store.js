@@ -31,25 +31,40 @@ function transactionToken(transaction) {
   ).trim();
 }
 
+function storeRead(promise) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("The store is taking too long to respond. Please try loading the price again.")), 15000);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+
 export async function loadSubscriptionProducts() {
+  // Only request the monthly plan offered in the app and configured in the store.
+  const plans = [PLAN_IDS.monthly];
   if (!isNativeStore()) {
-    return Object.values(PLAN_IDS).map(plan => ({
+    return plans.map(plan => ({
       ...plan,
-      priceString: plan.fallbackPrice
+      priceString: plan.fallbackPrice.replace(/\/month$/, "")
     }));
   }
 
-  const { isBillingSupported } = await NativePurchases.isBillingSupported();
+  const { isBillingSupported } = await storeRead(NativePurchases.isBillingSupported());
   if (!isBillingSupported) throw new Error("Subscriptions are not available on this device.");
 
-  const identifiers = Object.values(PLAN_IDS).map(plan => plan.productId);
-  const { products } = await NativePurchases.getProducts({
+  const identifiers = plans.map(plan => plan.productId);
+  const { products } = await storeRead(NativePurchases.getProducts({
     productIdentifiers: identifiers,
     productType: PURCHASE_TYPE.SUBS
-  });
+  }));
 
   const map = new Map((products || []).map(product => [productKey(product), product]));
-  return Object.values(PLAN_IDS).map(plan => {
+  if (!map.has(PLAN_IDS.monthly.productId)) {
+    throw new Error("The store could not load Droxion Plus Monthly. Check your connection and try again. You have not been charged.");
+  }
+  return plans.map(plan => {
     const nativeProduct = map.get(plan.productId) || null;
     return {
       ...plan,

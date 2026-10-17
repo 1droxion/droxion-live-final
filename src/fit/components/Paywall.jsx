@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Sparkles, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import {
   isNativeStore,
   loadSubscriptionProducts,
@@ -15,17 +15,21 @@ export default function Paywall({ onClose, onActivated }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const native = isNativeStore();
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
+    setError("");
+    setProducts([]);
     trackEvent("paywall_viewed", { source: "app" });
     loadSubscriptionProducts()
       .then(rows => { if (alive) setProducts(rows.filter(product => product.id === "monthly")); })
-      .catch(err => { if (alive) setError(err?.message || "Could not load subscription options."); })
+      .catch(() => { if (alive) setError("We couldn’t load the store price. Check your connection, then try again. You have not been charged."); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, []);
+  }, [attempt]);
 
   const selectedProduct = products.find(item => item.id === selected);
 
@@ -68,7 +72,7 @@ export default function Paywall({ onClose, onActivated }) {
     <div className="fitModalBackdrop" role="dialog" aria-modal="true" aria-label="Droxion Plus">
       <section className="fitPaywall">
         <button type="button" className="fitIconButton fitClose" onClick={onClose} aria-label="Close"><X size={20} /></button>
-        <div className="fitPaywallIcon"><Sparkles size={28} /></div>
+        <img className="fitPaywallArt" src="/daily-routine.svg" alt="Meal diary, grocery basket and home exercise" />
         <span className="fitEyebrow">DROXION PLUS</span>
         <h2>Track your food. Build your daily habit.</h2>
         <p>Meal history, 7-day progress and short home workouts. Cancel anytime in your App Store or Google Play subscription settings.</p>
@@ -87,17 +91,18 @@ export default function Paywall({ onClose, onActivated }) {
             onClick={() => setSelected(product.id)}
           >
             <div>
-              <strong>{product.label}</strong>
+              <strong>Droxion Plus Monthly</strong>
               <span>{product.id === "yearly" ? "Best value" : "Flexible monthly plan"}</span>
             </div>
-            <b>{product.priceString}</b>
+            <b>{product.priceString}<small> / month</small></b>
           </button>
         ))}
 
-        {error && <div className="fitInlineError">{error}</div>}
+        {error && <div role="alert" className="fitInlineError">{error}</div>}
+        {!loading && !selectedProduct && <button type="button" className="fitSecondary fitWide" disabled={Boolean(busy)} onClick={() => setAttempt(value => value + 1)}>Try loading price again</button>}
 
         <button type="button" className="fitPrimary fitWide" onClick={buy} disabled={busy || loading || !selectedProduct || (native && !selectedProduct.nativeProduct)}>
-          {busy === "buy" ? "Connecting to store…" : native ? "Continue" : "Available in the mobile app"}
+          {busy === "buy" ? "Connecting to store…" : native ? "Subscribe monthly" : "Available in the mobile app"}
         </button>
 
         <div className="fitPaywallLinks">

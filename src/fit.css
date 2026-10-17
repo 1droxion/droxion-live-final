@@ -426,3 +426,10 @@ button:not(:disabled) { transition: background-color 140ms ease, border-color 14
 .workoutWeek b { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#242424; color:white; }
 .workoutWeek b.done { background:#c4a6ff; color:#090909; }
 .routineWorkoutChoice { gap:12px; }
+
+/* Bundled illustrations remain available without a website connection. */
+.fitRoutineBanner { display:block; width:100%; height:auto; border-radius:22px; margin:0 0 24px; }
+.fitPaywallArt { display:block; width:100%; height:auto; border-radius:20px; margin:0 0 22px; }
+.fitPlan b small { font-size:12px; font-weight:500; color:#bcbcbc; }
+.exerciseArt { width:76px; height:76px; object-fit:contain; }
+@media(max-width:380px) { .routineExercise { gap:9px; }.exerciseArt { width:56px; height:56px; } }
